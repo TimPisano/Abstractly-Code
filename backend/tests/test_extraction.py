@@ -31,9 +31,19 @@ DOCS = [
         "path": "sample_lease_commercial.pdf",
         "expected": {
             "tenant": "Blue Sky Coffee Roasters, Inc.",
+            "landlord": "Meridian Properties Group, LLC",
             "rent_amount": "$6,250.00",
             "lease_start_date": "April 1, 2025",
             "lease_end_date": "March 31, 2030",
+            "property_address": "4200 Commerce Parkway",
+            "security_deposit": "$12,500.00",
+            "cam_charges": "$875.00",
+            "rent_escalation": "3%",
+            "renewal_options": "2 option",
+            "permitted_use": "coffee shop",
+            "exclusivity_clause": "coffee",
+            "insurance_requirements": "$2,000,000",
+            "default_cure_period": "10 days",
         },
     },
 ]
@@ -73,6 +83,19 @@ def test_extraction():
                 print(f"✓ {field_name}: PASS")
             else:
                 print(f"✗ {field_name}: FAIL (expected '{expected_value}', got '{actual_value}')")
+                overall_pass = False
+
+        # Confidence sanity check: found fields must carry a valid tier,
+        # not-found fields must report confidence None
+        for field_name, field_data in extracted_fields.items():
+            confidence = field_data.get("confidence", "MISSING_KEY")
+            if field_data["value"] is not None:
+                ok = confidence in ("high", "medium", "low")
+            else:
+                ok = confidence is None
+
+            if not ok:
+                print(f"✗ {field_name}: FAIL (invalid confidence '{confidence}' for value '{field_data['value']}')")
                 overall_pass = False
 
         print()

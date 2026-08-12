@@ -16,6 +16,17 @@ the first one that matches. A bounded, period-free "gap" is used between a
 keyword and its value (instead of requiring immediate adjacency) so that
 narrative sentences like "shall commence on April 1, 2025" are matched
 without also running past the end of the sentence into unrelated text.
+
+Every strategy is tagged with a confidence level ("high"/"medium"/"low"):
+  - high:   an unambiguous, tightly-anchored match (explicit label, or a
+            prose pattern with a strong disambiguating cue like "per month"
+            or a defined-term marker)
+  - medium: a looser prose match, a reversed-order match (value appears
+            before its keyword), or a composite clause missing some of its
+            expected sub-parts
+  - low:    a generic fallback pattern with little context to confirm the
+            match is actually the field in question
+Fields that were not found have confidence None.
 """
 
 import re
@@ -44,6 +55,8 @@ WIDE_GAP = r"[^.]{0,150}?"
 QUOTE_OPEN = r"[\"“]"
 QUOTE_CLOSE = r"[\"”]"
 
+CONFIDENCE_LEVELS = ("high", "medium", "low")
+
 
 def _clean_value(value: str) -> str:
     """Collapse line-wrap whitespace/newlines in a captured value."""
@@ -57,6 +70,10 @@ def _make_quote(text: str, start: int, end: int, pad: int = 50) -> str:
     quote = text[quote_start:quote_end].strip()
     # Collapse line-wrap newlines into spaces for readability
     return re.sub(r"\s+", " ", quote)
+
+
+def _not_found() -> Dict[str, Any]:
+    return {"value": None, "source": None, "confidence": None}
 
 
 class FieldExtractor:
@@ -73,7 +90,9 @@ class FieldExtractor:
             pages: List of page dictionaries with "page" and "text" keys
 
         Returns:
-            Dictionary with extracted fields in the required format
+            Dictionary with extracted fields in the required format:
+            {"value": ..., "source": {"page": N, "quote": "..."} or None,
+             "confidence": "high"/"medium"/"low" or None}
         """
         result = {
             "tenant": self._extract_defined_party(pages, "Tenant", self._party_label_patterns("tenant", "lessee", "renter")),
@@ -98,24 +117,30 @@ class FieldExtractor:
         self,
         pages: List[Dict[str, Any]],
         patterns: List[str],
+        confidences: List[str],
         group: int = 1
     ) -> Optional[Dict[str, Any]]:
         """
         Try each pattern (in priority order) against each page (in document
-        order), returning the first match found.
+        order), returning the first match found. `confidences` must be the
+        same length as `patterns` and gives the confidence tier to report
+        for a match on that pattern.
         """
+        assert len(patterns) == len(confidences)
+
         for page in pages:
             page_num = page["page"]
             text = page["text"]
 
-            for pattern in patterns:
+            for pattern, confidence in zip(patterns, confidences):
                 match = re.search(pattern, text, re.IGNORECASE)
                 if match:
                     value = _clean_value(match.group(group))
                     quote = _make_quote(text, match.start(), match.end())
                     return {
                         "value": value,
-                        "source": {"page": page_num, "quote": quote}
+                        "source": {"page": page_num, "quote": quote},
+                        "confidence": confidence
                     }
 
         return None
@@ -142,14 +167,14 @@ class FieldExtractor:
     ) -> Dict[str, Any]:
         """
         Extract a party name (Tenant/Landlord). Tries, in order:
-          1. Defined-term prose style: '...Some Company, LLC ("Tenant")'
-          2. Label style: 'Tenant: John Smith'
+          1. Defined-term prose style: '...Some Company, LLC ("Tenant")' (high)
+          2. Label style: 'Tenant: John Smith' (high)
         """
         defined_term_pattern = (
             rf"([A-Z][A-Za-z0-9&,\.\'\-\s]{{2,80}}?)\s*\(\s*{QUOTE_OPEN}{role}{QUOTE_CLOSE}\s*\)"
         )
 
-        result = self._search_ordered(pages, [defined_term_pattern])
+        result = self._search_ordered(pages, [defined_term_pattern], ["high"])
         if result:
             value = result["value"]
             # Strip leading connector words swept in by the broad name charclass
@@ -165,11 +190,11 @@ class FieldExtractor:
             result["value"] = value.strip().rstrip(",")
             return result
 
-        result = self._search_ordered(pages, label_patterns)
+        result = self._search_ordered(pages, label_patterns, ["high", "high"])
         if result:
             return result
 
-        return {"value": None, "source": None}
+        return _not_found()
 
     # ------------------------------------------------------------------
     # Financial terms
@@ -183,19 +208,22 @@ class FieldExtractor:
     ) -> Optional[Dict[str, Any]]:
         """
         Generic dollar-amount extractor for a labeled or prose-described
-        charge (deposit, CAM, insurance coverage, etc). Tries label style,
-        then keyword-before-amount prose, then (optionally) amount-before-
-        keyword prose, since some clauses state the figure before naming it
-        (e.g. "...the sum of $12,500.00 as a security deposit").
+        charge (deposit, CAM, insurance coverage, etc). Tries label style
+        (high), then keyword-before-amount prose (high), then (optionally)
+        amount-before-keyword prose (medium) since some clauses state the
+        figure before naming it (e.g. "...the sum of $12,500.00 as a
+        security deposit") and the association is a little less direct.
         """
         patterns = [
             rf"{keyword}[:\s]+{CURRENCY_REGEX}",
             rf"{keyword}{GAP}{CURRENCY_REGEX}",
         ]
+        confidences = ["high", "high"]
         if amount_before_keyword:
             patterns.append(rf"{CURRENCY_REGEX}{GAP}{keyword}")
+            confidences.append("medium")
 
-        result = self._search_ordered(pages, patterns)
+        result = self._search_ordered(pages, patterns, confidences)
         if result:
             value = result["value"]
             if not value.startswith("$"):
@@ -205,17 +233,17 @@ class FieldExtractor:
 
     def _extract_security_deposit(self, pages: List[Dict[str, Any]]) -> Dict[str, Any]:
         result = self._extract_amount(pages, r"security\s+deposit", amount_before_keyword=True)
-        return result if result else {"value": None, "source": None}
+        return result if result else _not_found()
 
     def _extract_cam_charges(self, pages: List[Dict[str, Any]]) -> Dict[str, Any]:
         cam_keyword = r"(?:common\s+area\s+maintenance(?:\s*\(\s*cam\s*\))?|cam\s+charges)"
         result = self._extract_amount(pages, cam_keyword)
-        return result if result else {"value": None, "source": None}
+        return result if result else _not_found()
 
     def _extract_insurance_requirements(self, pages: List[Dict[str, Any]]) -> Dict[str, Any]:
         result = self._extract_amount(pages, r"insurance")
         if not result:
-            return {"value": None, "source": None}
+            return _not_found()
 
         # Look just past the match for a "per occurrence" / "aggregate" qualifier
         value = result["value"]
@@ -230,25 +258,23 @@ class FieldExtractor:
     def _extract_rent(self, pages: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
         Extract monthly rent amount. Tries, in order:
-          1. Label style: "Monthly Rent: $2,500.00"
-          2. Prose style: "base rent ... the sum of $6,250.00 per month"
-          3. Loose fallback: any rent-labeled dollar amount, even without
-             an explicit "per month" suffix
+          1. Label style: "Monthly Rent: $2,500.00" (high)
+          2. Prose style with "per month" cue: "...the sum of $6,250.00
+             per month" (high)
+          3. Prose style without the trailing "per month" cue (medium)
+          4. Generic "rent is $X" fallback (low)
         """
         rent_keyword = r"(?:base\s+rent|monthly\s+rent|rental\s+amount|monthly\s+payment)"
 
         patterns = [
-            # Label style: keyword immediately followed by amount
             rf"{rent_keyword}[:\s]+{CURRENCY_REGEX}",
-            # Prose style: keyword ... "sum of" ... amount ... "per month"
             rf"{rent_keyword}{GAP}{CURRENCY_REGEX}\s*(?:per\s+month|/\s*mo\.?|monthly)",
-            # Prose style without the trailing "per month" cue
             rf"{rent_keyword}{GAP}{CURRENCY_REGEX}",
-            # Generic "rent is $X" phrasing
             rf"rent\s+is\s+{CURRENCY_REGEX}",
         ]
+        confidences = ["high", "high", "medium", "low"]
 
-        result = self._search_ordered(pages, patterns)
+        result = self._search_ordered(pages, patterns, confidences)
         if result:
             value = result["value"]
             if not value.startswith("$"):
@@ -256,7 +282,7 @@ class FieldExtractor:
             result["value"] = value
             return result
 
-        return {"value": None, "source": None}
+        return _not_found()
 
     # ------------------------------------------------------------------
     # Dates
@@ -265,8 +291,10 @@ class FieldExtractor:
     def _extract_start_date(self, pages: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
         Extract lease start date. Tries, in order:
-          1. Label style: "Lease Start Date: January 15, 2024"
-          2. Prose style: "term shall commence on April 1, 2025"
+          1. Label style: "Lease Start Date: January 15, 2024" (high)
+          2. Prose style: "term shall commence on April 1, 2025" (high)
+          3. Loose "begin..." fallback, e.g. could latch onto unrelated
+             text like "beginning of the fiscal year" (medium)
         """
         patterns = [
             rf"(?:lease\s+)?start\s+date[:\s]+{DATE_REGEX}",
@@ -277,15 +305,16 @@ class FieldExtractor:
             rf"(?:shall\s+)?commenc\w*{GAP}{DATE_REGEX}",
             rf"begin\w*{GAP}{DATE_REGEX}",
         ]
+        confidences = ["high", "high", "high", "high", "high", "high", "medium"]
 
-        result = self._search_ordered(pages, patterns)
-        return result if result else {"value": None, "source": None}
+        result = self._search_ordered(pages, patterns, confidences)
+        return result if result else _not_found()
 
     def _extract_end_date(self, pages: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
         Extract lease end date. Tries, in order:
-          1. Label style: "Lease End Date: January 14, 2025"
-          2. Prose style: "shall expire on March 31, 2030"
+          1. Label style: "Lease End Date: January 14, 2025" (high)
+          2. Prose style: "shall expire on March 31, 2030" (high)
         """
         patterns = [
             rf"(?:lease\s+)?end\s+date[:\s]+{DATE_REGEX}",
@@ -296,16 +325,21 @@ class FieldExtractor:
             rf"(?:shall\s+)?expir\w*{GAP}{DATE_REGEX}",
             rf"(?:shall\s+)?terminat\w*{GAP}{DATE_REGEX}",
         ]
+        confidences = ["high", "high", "high", "high", "high", "high", "high"]
 
-        result = self._search_ordered(pages, patterns)
-        return result if result else {"value": None, "source": None}
+        result = self._search_ordered(pages, patterns, confidences)
+        return result if result else _not_found()
 
     def _extract_rent_escalation(self, pages: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
         Extract rent escalation schedule. Tries, in order:
-          1. Full year-by-year breakdown, e.g. "Year 1: $6,250; Year 2: $6,438"
-          2. Percentage increase tied to an annual/anniversary cadence
-          3. Any percentage increase near an "escalat.../increase" keyword
+          1. Full year-by-year breakdown, e.g. "Year 1: $6,250; Year 2:
+             $6,438" (high — explicit structured data)
+          2. Percentage increase stated in parens right after "increase
+             by" (high — unambiguous)
+          3. Percentage tied to an annual/anniversary cadence keyword
+             found nearby (medium)
+          4. Any percentage loosely near an "escalat..." keyword (low)
         """
         year_line = r"year\s+(\d+)[:\s]+\$?([\d,]+(?:\.\d{2})?)"
 
@@ -320,7 +354,8 @@ class FieldExtractor:
                 end = year_matches[-1].end()
                 return {
                     "value": "; ".join(parts),
-                    "source": {"page": page_num, "quote": _make_quote(text, start, end, pad=20)}
+                    "source": {"page": page_num, "quote": _make_quote(text, start, end, pad=20)},
+                    "confidence": "high"
                 }
 
         patterns = [
@@ -328,21 +363,26 @@ class FieldExtractor:
             rf"(\d{{1,2}}(?:\.\d+)?)\s*%[^.]{{0,60}}?(?:annual\w*|anniversary|per\s+year|each\s+year)",
             rf"escalat\w*{GAP}(\d{{1,2}}(?:\.\d+)?)\s*%",
         ]
+        confidences = ["high", "medium", "low"]
 
-        result = self._search_ordered(pages, patterns)
+        result = self._search_ordered(pages, patterns, confidences)
         if result:
             quote = result["source"]["quote"].lower()
             suffix = " annually" if ("annual" in quote or "anniversary" in quote or "each year" in quote or "per year" in quote) else " increase"
             result["value"] = f"{result['value']}%{suffix}"
             return result
 
-        return {"value": None, "source": None}
+        return _not_found()
 
     def _extract_renewal_options(self, pages: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
         Extract renewal option terms: number of options, term length, notice
         period, and basis for renewal rent. Assembled into one summary value
         since these details are usually spread across a single clause.
+        Confidence reflects how many of the expected sub-parts were
+        corroborated: high if notice AND basis were both found alongside
+        the option count/term, medium if only one was found, low if
+        neither was found.
         """
         options_pattern = rf"\(\s*(\d+)\s*\)\s+options?\s+to\s+renew{WIDE_GAP}\(\s*(\d+)\s*\)\s+years?"
         notice_pattern = rf"(?:not\s+less\s+than\s*)?\(\s*(\d+)\s*\)\s+days\b[^.]{{0,30}}?(?:notice|prior)"
@@ -369,15 +409,19 @@ class FieldExtractor:
             if basis_match:
                 parts.append(f"renewal rent based on {_clean_value(basis_match.group(1)).lower()}")
 
+            sub_parts_found = sum([bool(notice_match), bool(basis_match)])
+            confidence = "high" if sub_parts_found == 2 else ("medium" if sub_parts_found == 1 else "low")
+
             quote = _make_quote(text, match.start(), match.end(), pad=80)
             return {
                 "value": "; ".join(parts),
-                "source": {"page": page_num, "quote": quote}
+                "source": {"page": page_num, "quote": quote},
+                "confidence": confidence
             }
 
-        # Fallback: label-style single-line summary
-        result = self._search_ordered(pages, [r"renewal\s+option[s]?[:\s]+([^\n]+)"])
-        return result if result else {"value": None, "source": None}
+        # Fallback: label-style single-line summary (medium — raw, unparsed content)
+        result = self._search_ordered(pages, [r"renewal\s+option[s]?[:\s]+([^\n]+)"], ["medium"])
+        return result if result else _not_found()
 
     def _extract_default_cure_period(self, pages: List[Dict[str, Any]]) -> Dict[str, Any]:
         patterns = [
@@ -385,13 +429,14 @@ class FieldExtractor:
             r"(\d+)\s+days\b[^.]{0,40}?written\s+notice",
             r"cure\s+period[:\s]+(\d+)\s+days",
         ]
+        confidences = ["high", "medium", "high"]
 
-        result = self._search_ordered(pages, patterns)
+        result = self._search_ordered(pages, patterns, confidences)
         if result:
             result["value"] = f"{result['value']} days after written notice"
             return result
 
-        return {"value": None, "source": None}
+        return _not_found()
 
     # ------------------------------------------------------------------
     # Property / use clauses
@@ -402,9 +447,10 @@ class FieldExtractor:
             rf"located\s+at\s+([^.(]{{5,120}}?)(?:\s*\(\s*the\s*{QUOTE_OPEN}Premises{QUOTE_CLOSE}\s*\)|,?\s+consisting|\.)",
             r"(?:property\s+)?address[:\s]+([^\n]+)",
         ]
+        confidences = ["high", "high"]
 
-        result = self._search_ordered(pages, patterns)
-        return result if result else {"value": None, "source": None}
+        result = self._search_ordered(pages, patterns, confidences)
+        return result if result else _not_found()
 
     def _extract_permitted_use(self, pages: List[Dict[str, Any]]) -> Dict[str, Any]:
         patterns = [
@@ -412,19 +458,21 @@ class FieldExtractor:
             r"permitted\s+use[:\s]+([^\n]+)",
             r"use\s+clause[:\s]+([^\n]+)",
         ]
+        confidences = ["high", "high", "high"]
 
-        result = self._search_ordered(pages, patterns)
-        return result if result else {"value": None, "source": None}
+        result = self._search_ordered(pages, patterns, confidences)
+        return result if result else _not_found()
 
     def _extract_exclusivity_clause(self, pages: List[Dict[str, Any]]) -> Dict[str, Any]:
         patterns = [
             rf"exclusiv\w*[.\s]{{0,5}}Landlord\s+(?:agrees|covenants)\s+that,?\s+([\s\S]{{5,300}}?)\.",
             r"exclusivity[:\s]+([^\n]+)",
         ]
+        confidences = ["high", "medium"]
 
-        result = self._search_ordered(pages, patterns)
+        result = self._search_ordered(pages, patterns, confidences)
         if result:
             result["value"] = re.sub(r"\s+", " ", result["value"]).strip()
             return result
 
-        return {"value": None, "source": None}
+        return _not_found()
