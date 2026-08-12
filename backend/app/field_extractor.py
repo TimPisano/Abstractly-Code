@@ -47,12 +47,13 @@ class FieldExtractor:
             or {"value": null, "source": null} if not found
         """
         # Keywords that typically precede tenant name
+        # Use [^\n] to avoid capturing newlines in names
         tenant_keywords = [
-            r"tenant[:\s]+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)",
-            r"lessee[:\s]+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)",
-            r"renter[:\s]+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)",
-            r"tenant\s+name[:\s]+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)",
-            r"name\s+of\s+tenant[:\s]+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)"
+            r"tenant[:\s]+([A-Z][a-z]+(?:[ \t]+[A-Z][a-z]+)*)",
+            r"lessee[:\s]+([A-Z][a-z]+(?:[ \t]+[A-Z][a-z]+)*)",
+            r"renter[:\s]+([A-Z][a-z]+(?:[ \t]+[A-Z][a-z]+)*)",
+            r"tenant\s+name[:\s]+([A-Z][a-z]+(?:[ \t]+[A-Z][a-z]+)*)",
+            r"name\s+of\s+tenant[:\s]+([A-Z][a-z]+(?:[ \t]+[A-Z][a-z]+)*)"
         ]
 
         # Search through pages (prioritize earlier pages)
