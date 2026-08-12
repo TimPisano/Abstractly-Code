@@ -33,11 +33,20 @@ import re
 from typing import Optional, Dict, Any, List
 
 
-MONTHS = (r"January|February|March|April|May|June|July|August|September"
-          r"|October|November|December")
+MONTHS_FULL = (r"January|February|March|April|May|June|July|August|September"
+               r"|October|November|December")
+MONTHS_ABBR = r"Jan\.?|Feb\.?|Mar\.?|Apr\.?|Jun\.?|Jul\.?|Aug\.?|Sept\.?|Sep\.?|Oct\.?|Nov\.?|Dec\.?"
+MONTHS = rf"{MONTHS_FULL}|{MONTHS_ABBR}"
+ORDINAL_SUFFIX = r"(?:st|nd|rd|th)?"
 
-# Matches "01/15/2024", "1-15-24", or "January 15, 2024"
-DATE_REGEX = rf"(\d{{1,2}}[/-]\d{{1,2}}[/-]\d{{2,4}}|(?:{MONTHS})\s+\d{{1,2}},?\s+\d{{4}})"
+# Matches "01/15/2024", "1-15-24", "January 15, 2024", "Sept 1 2025"
+# (abbreviated months, optional ordinal suffixes, optional comma), and the
+# legal-drafting style "1st day of April, 2025"
+DATE_REGEX = (
+    rf"(\d{{1,2}}[/-]\d{{1,2}}[/-]\d{{2,4}}"
+    rf"|(?:{MONTHS})\s+\d{{1,2}}{ORDINAL_SUFFIX},?\s+\d{{4}}"
+    rf"|\d{{1,2}}{ORDINAL_SUFFIX}\s+day\s+of\s+(?:{MONTHS}),?\s+\d{{4}})"
+)
 
 # Matches "$2,500.00", "$2,500", "$ 2,500.00"
 CURRENCY_REGEX = r"\$\s?([\d,]+(?:\.\d{2})?)"
@@ -259,20 +268,24 @@ class FieldExtractor:
         """
         Extract monthly rent amount. Tries, in order:
           1. Label style: "Monthly Rent: $2,500.00" (high)
-          2. Prose style with "per month" cue: "...the sum of $6,250.00
+          2. Annual-rent-with-monthly-parenthetical: "$72,000.00 per annum
+             ($6,000.00 per month)" — common in formal leases that state
+             rent as an annual figure first (high)
+          3. Prose style with "per month" cue: "...the sum of $6,250.00
              per month" (high)
-          3. Prose style without the trailing "per month" cue (medium)
-          4. Generic "rent is $X" fallback (low)
+          4. Prose style without the trailing "per month" cue (medium)
+          5. Generic "rent is $X" fallback (low)
         """
         rent_keyword = r"(?:base\s+rent|monthly\s+rent|rental\s+amount|monthly\s+payment)"
 
         patterns = [
             rf"{rent_keyword}[:\s]+{CURRENCY_REGEX}",
+            rf"{rent_keyword}{GAP}\$[\d,.]+\s*per\s+annum\s*\(\s*{CURRENCY_REGEX}\s*per\s+month\s*\)",
             rf"{rent_keyword}{GAP}{CURRENCY_REGEX}\s*(?:per\s+month|/\s*mo\.?|monthly)",
             rf"{rent_keyword}{GAP}{CURRENCY_REGEX}",
             rf"rent\s+is\s+{CURRENCY_REGEX}",
         ]
-        confidences = ["high", "high", "medium", "low"]
+        confidences = ["high", "high", "high", "medium", "low"]
 
         result = self._search_ordered(pages, patterns, confidences)
         if result:
@@ -315,6 +328,8 @@ class FieldExtractor:
         Extract lease end date. Tries, in order:
           1. Label style: "Lease End Date: January 14, 2025" (high)
           2. Prose style: "shall expire on March 31, 2030" (high)
+          3. "...and ending March 31, 2030" cue (medium — broader verb,
+             slightly more room for a false positive)
         """
         patterns = [
             rf"(?:lease\s+)?end\s+date[:\s]+{DATE_REGEX}",
@@ -324,8 +339,9 @@ class FieldExtractor:
             rf"expires?[:\s]+{DATE_REGEX}",
             rf"(?:shall\s+)?expir\w*{GAP}{DATE_REGEX}",
             rf"(?:shall\s+)?terminat\w*{GAP}{DATE_REGEX}",
+            rf"ending{GAP}{DATE_REGEX}",
         ]
-        confidences = ["high", "high", "high", "high", "high", "high", "high"]
+        confidences = ["high", "high", "high", "high", "high", "high", "high", "medium"]
 
         result = self._search_ordered(pages, patterns, confidences)
         return result if result else _not_found()
@@ -425,8 +441,8 @@ class FieldExtractor:
 
     def _extract_default_cure_period(self, pages: List[Dict[str, Any]]) -> Dict[str, Any]:
         patterns = [
-            r"\(\s*(\d+)\s*\)\s+days\b[^.]{0,40}?written\s+notice",
-            r"(\d+)\s+days\b[^.]{0,40}?written\s+notice",
+            r"\(\s*(\d+)\s*\)\s+(?:business\s+|calendar\s+)?days\b[^.]{0,40}?written\s+notice",
+            r"(\d+)\s+(?:business\s+|calendar\s+)?days\b[^.]{0,40}?written\s+notice",
             r"cure\s+period[:\s]+(\d+)\s+days",
         ]
         confidences = ["high", "medium", "high"]
