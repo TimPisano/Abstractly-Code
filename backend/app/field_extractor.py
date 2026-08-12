@@ -85,6 +85,37 @@ def _not_found() -> Dict[str, Any]:
     return {"value": None, "source": None, "confidence": None}
 
 
+def _concat_pages(pages: List[Dict[str, Any]]):
+    """
+    Join all pages into one continuous string (so a keyword/value pair
+    split across a page break — e.g. "Base Rent: " at the bottom of page 1
+    and "$6,250.00" at the top of page 2 — can still be matched by a single
+    regex search) along with a function mapping a character offset in that
+    joined string back to the page number it came from.
+    """
+    parts = []
+    boundaries = []  # (start_offset, end_offset, page_num)
+    offset = 0
+    for page in pages:
+        text = page["text"] or ""
+        start = offset
+        parts.append(text)
+        offset += len(text)
+        boundaries.append((start, offset, page["page"]))
+        parts.append("\n")
+        offset += 1
+
+    full_text = "".join(parts)
+
+    def page_for_offset(pos: int) -> int:
+        for start, end, page_num in boundaries:
+            if start <= pos < end:
+                return page_num
+        return boundaries[-1][2] if boundaries else 1
+
+    return full_text, page_for_offset
+
+
 class FieldExtractor:
     """Extracts specific fields from lease text using pattern matching."""
 
@@ -143,23 +174,28 @@ class FieldExtractor:
         parts locally with (?i:...) — otherwise IGNORECASE makes [A-Z] and
         [a-z] equivalent and the capitalization heuristic silently stops
         bounding anything.
+
+        Patterns are tried against the whole document (all pages joined),
+        not page-by-page, for two reasons: it lets a keyword/value pair
+        split across a page break still match, and it means pattern
+        priority (most-reliable-first) always wins over "whichever page
+        happens to come first" — a low-confidence match on page 1 should
+        not beat a high-confidence match on page 2.
         """
         assert len(patterns) == len(confidences)
 
-        for page in pages:
-            page_num = page["page"]
-            text = page["text"]
+        full_text, page_for_offset = _concat_pages(pages)
 
-            for pattern, confidence in zip(patterns, confidences):
-                match = re.search(pattern, text, flags)
-                if match:
-                    value = _clean_value(match.group(group))
-                    quote = _make_quote(text, match.start(), match.end())
-                    return {
-                        "value": value,
-                        "source": {"page": page_num, "quote": quote},
-                        "confidence": confidence
-                    }
+        for pattern, confidence in zip(patterns, confidences):
+            match = re.search(pattern, full_text, flags)
+            if match:
+                value = _clean_value(match.group(group))
+                quote = _make_quote(full_text, match.start(), match.end())
+                return {
+                    "value": value,
+                    "source": {"page": page_for_offset(match.start()), "quote": quote},
+                    "confidence": confidence
+                }
 
         return None
 
@@ -404,20 +440,17 @@ class FieldExtractor:
         """
         year_line = r"year\s+(\d+)[:\s]+\$?([\d,]+(?:\.\d{2})?)"
 
-        for page in pages:
-            page_num = page["page"]
-            text = page["text"]
-
-            year_matches = list(re.finditer(year_line, text, re.IGNORECASE))
-            if len(year_matches) >= 2:
-                parts = [f"Year {m.group(1)}: ${m.group(2)}" for m in year_matches]
-                start = year_matches[0].start()
-                end = year_matches[-1].end()
-                return {
-                    "value": "; ".join(parts),
-                    "source": {"page": page_num, "quote": _make_quote(text, start, end, pad=20)},
-                    "confidence": "high"
-                }
+        full_text, page_for_offset = _concat_pages(pages)
+        year_matches = list(re.finditer(year_line, full_text, re.IGNORECASE))
+        if len(year_matches) >= 2:
+            parts = [f"Year {m.group(1)}: ${m.group(2)}" for m in year_matches]
+            start = year_matches[0].start()
+            end = year_matches[-1].end()
+            return {
+                "value": "; ".join(parts),
+                "source": {"page": page_for_offset(start), "quote": _make_quote(full_text, start, end, pad=20)},
+                "confidence": "high"
+            }
 
         patterns = [
             rf"increas\w*\s+by[^.$]{{0,60}}?\(\s*(\d{{1,2}}(?:\.\d+)?)\s*%\s*\)",
@@ -459,34 +492,30 @@ class FieldExtractor:
         notice_pattern = rf"(?:not\s+less\s+than\s*)?\(?\s*(\d+)\s*\)?\s+days\b[^.]{{0,30}}?(?:notice|prior)"
         basis_pattern = r"(fair\s+market\s+(?:rate|value)|then[- ]prevailing\s+(?:fair\s+)?market\s+rate|consumer\s+price\s+index|CPI|fixed\s+(?:rate|amount|increase))"
 
-        for page in pages:
-            page_num = page["page"]
-            text = page["text"]
+        full_text, page_for_offset = _concat_pages(pages)
 
-            match = re.search(options_pattern, text, re.IGNORECASE)
-            if not match:
-                continue
-
+        match = re.search(options_pattern, full_text, re.IGNORECASE)
+        if match:
             num_options = match.group(1) or match.group(3)
             term_years = match.group(2) or match.group(4)
 
             parts = [f"{num_options} option(s) of {term_years} year(s) each"]
 
-            notice_match = re.search(notice_pattern, text, re.IGNORECASE)
+            notice_match = re.search(notice_pattern, full_text, re.IGNORECASE)
             if notice_match:
                 parts.append(f"{notice_match.group(1)} days notice")
 
-            basis_match = re.search(basis_pattern, text, re.IGNORECASE)
+            basis_match = re.search(basis_pattern, full_text, re.IGNORECASE)
             if basis_match:
                 parts.append(f"renewal rent based on {_clean_value(basis_match.group(1)).lower()}")
 
             sub_parts_found = sum([bool(notice_match), bool(basis_match)])
             confidence = "high" if sub_parts_found == 2 else ("medium" if sub_parts_found == 1 else "low")
 
-            quote = _make_quote(text, match.start(), match.end(), pad=80)
+            quote = _make_quote(full_text, match.start(), match.end(), pad=80)
             return {
                 "value": "; ".join(parts),
-                "source": {"page": page_num, "quote": quote},
+                "source": {"page": page_for_offset(match.start()), "quote": quote},
                 "confidence": confidence
             }
 
@@ -506,17 +535,13 @@ class FieldExtractor:
         context_pattern = re.compile(r"\b(?:default|cure)\w*\b", re.IGNORECASE)
         context_window = 150
 
-        for page in pages:
-            page_num = page["page"]
-            text = page["text"]
+        full_text, page_for_offset = _concat_pages(pages)
 
-            candidates = list(re.finditer(day_notice_pattern, text, re.IGNORECASE))
-            if not candidates:
-                continue
-
+        candidates = list(re.finditer(day_notice_pattern, full_text, re.IGNORECASE))
+        if candidates:
             anchored_match = None
             for m in candidates:
-                window = text[max(0, m.start() - context_window):min(len(text), m.end() + context_window)]
+                window = full_text[max(0, m.start() - context_window):min(len(full_text), m.end() + context_window)]
                 if context_pattern.search(window):
                     anchored_match = m
                     break
@@ -526,7 +551,7 @@ class FieldExtractor:
 
             return {
                 "value": f"{match.group(1)} days after written notice",
-                "source": {"page": page_num, "quote": _make_quote(text, match.start(), match.end())},
+                "source": {"page": page_for_offset(match.start()), "quote": _make_quote(full_text, match.start(), match.end())},
                 "confidence": confidence
             }
 
