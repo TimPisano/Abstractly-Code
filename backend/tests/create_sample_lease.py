@@ -19,7 +19,7 @@ def create_sample_lease():
     output_path = os.path.join(os.path.dirname(__file__), "sample_lease.pdf")
 
     # Create PDF
-    c = canvas.Canvas(output_path, pagesize=letter)
+    c = canvas.Canvas(output_path, pagesize=letter, invariant=1)
     width, height = letter
 
     # Title

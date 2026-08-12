@@ -19,7 +19,7 @@ def create_commercial_lease():
 
     output_path = os.path.join(os.path.dirname(__file__), "sample_lease_commercial.pdf")
 
-    c = canvas.Canvas(output_path, pagesize=letter)
+    c = canvas.Canvas(output_path, pagesize=letter, invariant=1)
     width, height = letter
 
     c.setFont("Helvetica-Bold", 16)

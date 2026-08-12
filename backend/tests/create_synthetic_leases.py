@@ -29,7 +29,7 @@ import os
 
 def _write_pdf(filename, paragraphs, title=None):
     output_path = os.path.join(os.path.dirname(__file__), filename)
-    c = canvas.Canvas(output_path, pagesize=letter)
+    c = canvas.Canvas(output_path, pagesize=letter, invariant=1)
     width, height = letter
     left_margin = 1 * inch
     right_margin = width - 1 * inch
