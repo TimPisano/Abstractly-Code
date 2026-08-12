@@ -127,13 +127,22 @@ class FieldExtractor:
         pages: List[Dict[str, Any]],
         patterns: List[str],
         confidences: List[str],
-        group: int = 1
+        group: int = 1,
+        flags: int = re.IGNORECASE
     ) -> Optional[Dict[str, Any]]:
         """
         Try each pattern (in priority order) against each page (in document
         order), returning the first match found. `confidences` must be the
         same length as `patterns` and gives the confidence tier to report
         for a match on that pattern.
+
+        `flags` defaults to case-insensitive, which is fine for keyword
+        anchors and dates/currency. Patterns whose capture group relies on
+        [A-Z]/[a-z] to detect real capitalization (e.g. bounding a proper
+        name) must pass flags=0 and scope any case-insensitive keyword
+        parts locally with (?i:...) — otherwise IGNORECASE makes [A-Z] and
+        [a-z] equivalent and the capitalization heuristic silently stops
+        bounding anything.
         """
         assert len(patterns) == len(confidences)
 
@@ -142,7 +151,7 @@ class FieldExtractor:
             text = page["text"]
 
             for pattern, confidence in zip(patterns, confidences):
-                match = re.search(pattern, text, re.IGNORECASE)
+                match = re.search(pattern, text, flags)
                 if match:
                     value = _clean_value(match.group(group))
                     quote = _make_quote(text, match.start(), match.end())
@@ -159,13 +168,29 @@ class FieldExtractor:
     # ------------------------------------------------------------------
 
     def _party_label_patterns(self, *keywords: str) -> List[str]:
+        # Keyword and connector are scoped case-insensitive with (?i:...)
+        # rather than relying on a global IGNORECASE flag, because these
+        # patterns are run case-sensitive overall (see _extract_defined_party)
+        # so that [A-Z]/[a-z] in the capture group genuinely require real
+        # capitalization to bound the name — under a blanket IGNORECASE
+        # flag, [A-Z][a-z]+ stops meaning "a capitalized word" and starts
+        # matching any word at all, letting the match run on indefinitely
+        # (e.g. "Landlord is Jordan Blake and the tenant is Alex Chen").
         keyword_group = "|".join(keywords)
+        # Optional "is"/"was" filler covers casual phrasing like
+        # "the tenant is Alex Chen" alongside formal "Tenant: Alex Chen"
+        connector = rf"[:\s]+(?:(?i:is|was)\s+)?"
+        # A repeated word may be a normal capitalized word ("Apparel") or an
+        # ALL-CAPS acronym suffix ("LLC", "LP"), each with an optional
+        # trailing period, so entity suffixes aren't truncated.
+        word = r"(?:[A-Z][a-z]+\.?|[A-Z]{2,}\.?)"
         return [
-            # Capitalized personal name, e.g. "Tenant: John Smith"
-            rf"(?:{keyword_group})[:\s]+([A-Z][a-z]+(?:[ \t]+[A-Z][a-z]+)*)",
+            # Capitalized personal/company name, e.g. "Tenant: John Smith"
+            # or "Landlord: Property Management LLC"
+            rf"(?i:{keyword_group}){connector}([A-Z][a-z]+(?:[ \t]+{word})*)",
             # Company/entity name (allows acronyms like LLC), to end of line,
             # e.g. "Landlord: Property Management LLC"
-            rf"(?:{keyword_group})[:\s]+([A-Z][\w&,\.\'\-\s]+?)(?:\n|$)",
+            rf"(?i:{keyword_group}){connector}([A-Z][\w&,\.\'\-\s]+?)(?:\n|$)",
         ]
 
     def _extract_defined_party(
@@ -178,12 +203,15 @@ class FieldExtractor:
         Extract a party name (Tenant/Landlord). Tries, in order:
           1. Defined-term prose style: '...Some Company, LLC ("Tenant")' (high)
           2. Label style: 'Tenant: John Smith' (high)
+
+        Both run case-sensitive (flags=0) with keywords scoped
+        case-insensitive via (?i:...) — see _party_label_patterns.
         """
         defined_term_pattern = (
-            rf"([A-Z][A-Za-z0-9&,\.\'\-\s]{{2,80}}?)\s*\(\s*{QUOTE_OPEN}{role}{QUOTE_CLOSE}\s*\)"
+            rf"([A-Z][A-Za-z0-9&,\.\'\-\s]{{2,80}}?)\s*\(\s*{QUOTE_OPEN}(?i:{role}){QUOTE_CLOSE}\s*\)"
         )
 
-        result = self._search_ordered(pages, [defined_term_pattern], ["high"])
+        result = self._search_ordered(pages, [defined_term_pattern], ["high"], flags=0)
         if result:
             value = result["value"]
             # Strip leading connector words swept in by the broad name charclass
@@ -199,8 +227,18 @@ class FieldExtractor:
             result["value"] = value.strip().rstrip(",")
             return result
 
-        result = self._search_ordered(pages, label_patterns, ["high", "high"])
+        result = self._search_ordered(pages, label_patterns, ["high", "high"], flags=0)
         if result:
+            # A trailing period is only meaningful if it's a real
+            # abbreviation ("Co.", "Inc."); otherwise it's just the
+            # sentence's own end punctuation swept in by the optional
+            # per-word period in the pattern, so strip it.
+            value = result["value"]
+            if value.endswith("."):
+                last_word = value[:-1].rsplit(" ", 1)[-1].lower()
+                if last_word not in ("co", "inc", "corp", "ltd", "llp", "lp", "llc"):
+                    value = value[:-1]
+            result["value"] = value
             return result
 
         return _not_found()
@@ -223,9 +261,14 @@ class FieldExtractor:
         figure before naming it (e.g. "...the sum of $12,500.00 as a
         security deposit") and the association is a little less direct.
         """
+        # The optional ".?\s*" right after the keyword absorbs a heading's
+        # own period (e.g. "7. INSURANCE. Tenant shall maintain...") before
+        # the exclusion-based GAP starts — otherwise a heading period sits
+        # directly after the keyword and GAP (which excludes ".") can never
+        # cross it to reach the amount later in the same clause.
         patterns = [
             rf"{keyword}[:\s]+{CURRENCY_REGEX}",
-            rf"{keyword}{GAP}{CURRENCY_REGEX}",
+            rf"{keyword}\.?\s*{GAP}{CURRENCY_REGEX}",
         ]
         confidences = ["high", "high"]
         if amount_before_keyword:
@@ -245,7 +288,7 @@ class FieldExtractor:
         return result if result else _not_found()
 
     def _extract_cam_charges(self, pages: List[Dict[str, Any]]) -> Dict[str, Any]:
-        cam_keyword = r"(?:common\s+area\s+maintenance(?:\s*\(\s*cam\s*\))?|cam\s+charges)"
+        cam_keyword = r"(?:common\s+area\s+maintenance(?:\s*\(\s*cam\s*\))?|cam\s+(?:charges|contribution|fees?))"
         result = self._extract_amount(pages, cam_keyword)
         return result if result else _not_found()
 
@@ -283,7 +326,7 @@ class FieldExtractor:
             rf"{rent_keyword}{GAP}\$[\d,.]+\s*per\s+annum\s*\(\s*{CURRENCY_REGEX}\s*per\s+month\s*\)",
             rf"{rent_keyword}{GAP}{CURRENCY_REGEX}\s*(?:per\s+month|/\s*mo\.?|monthly)",
             rf"{rent_keyword}{GAP}{CURRENCY_REGEX}",
-            rf"rent\s+is\s+{CURRENCY_REGEX}",
+            rf"rent\s+(?:is|will\s+be|shall\s+be)[:\s]*{CURRENCY_REGEX}",
         ]
         confidences = ["high", "high", "high", "medium", "low"]
 
@@ -317,8 +360,9 @@ class FieldExtractor:
             rf"effective\s+date[:\s]+{DATE_REGEX}",
             rf"(?:shall\s+)?commenc\w*{GAP}{DATE_REGEX}",
             rf"begin\w*{GAP}{DATE_REGEX}",
+            rf"starting{GAP}{DATE_REGEX}",
         ]
-        confidences = ["high", "high", "high", "high", "high", "high", "medium"]
+        confidences = ["high", "high", "high", "high", "high", "high", "medium", "medium"]
 
         result = self._search_ordered(pages, patterns, confidences)
         return result if result else _not_found()
@@ -340,8 +384,9 @@ class FieldExtractor:
             rf"(?:shall\s+)?expir\w*{GAP}{DATE_REGEX}",
             rf"(?:shall\s+)?terminat\w*{GAP}{DATE_REGEX}",
             rf"ending{GAP}{DATE_REGEX}",
+            rf"running\s+through{GAP}{DATE_REGEX}",
         ]
-        confidences = ["high", "high", "high", "high", "high", "high", "high", "medium"]
+        confidences = ["high", "high", "high", "high", "high", "high", "high", "medium", "medium"]
 
         result = self._search_ordered(pages, patterns, confidences)
         return result if result else _not_found()
@@ -400,8 +445,18 @@ class FieldExtractor:
         the option count/term, medium if only one was found, low if
         neither was found.
         """
-        options_pattern = rf"\(\s*(\d+)\s*\)\s+options?\s+to\s+renew{WIDE_GAP}\(\s*(\d+)\s*\)\s+years?"
-        notice_pattern = rf"(?:not\s+less\s+than\s*)?\(\s*(\d+)\s*\)\s+days\b[^.]{{0,30}}?(?:notice|prior)"
+        # Two common phrasings: "(N) options to renew ... (M) years" and
+        # "extend this Lease for (N) additional period(s) of (M) years".
+        # Both often write the number as a spelled-out word immediately
+        # before the parenthetical digit ("for one (1) additional
+        # period..."), so an optional word is allowed there too.
+        spelled_number = r"(?:[a-z\-]+\s+)?"
+        options_pattern = (
+            rf"\(\s*(\d+)\s*\)\s+options?\s+to\s+renew{WIDE_GAP}\(\s*(\d+)\s*\)\s+years?"
+            rf"|extend\w*(?:\s+this\s+lease)?\s+for\s+{spelled_number}\(?\s*(\d+)\s*\)?\s+additional\s+periods?"
+            rf"\s+of\s+{spelled_number}\(?\s*(\d+)\s*\)?\s+years?"
+        )
+        notice_pattern = rf"(?:not\s+less\s+than\s*)?\(?\s*(\d+)\s*\)?\s+days\b[^.]{{0,30}}?(?:notice|prior)"
         basis_pattern = r"(fair\s+market\s+(?:rate|value)|then[- ]prevailing\s+(?:fair\s+)?market\s+rate|consumer\s+price\s+index|CPI|fixed\s+(?:rate|amount|increase))"
 
         for page in pages:
@@ -412,8 +467,8 @@ class FieldExtractor:
             if not match:
                 continue
 
-            num_options = match.group(1)
-            term_years = match.group(2)
+            num_options = match.group(1) or match.group(3)
+            term_years = match.group(2) or match.group(4)
 
             parts = [f"{num_options} option(s) of {term_years} year(s) each"]
 
@@ -440,14 +495,43 @@ class FieldExtractor:
         return result if result else _not_found()
 
     def _extract_default_cure_period(self, pages: List[Dict[str, Any]]) -> Dict[str, Any]:
-        patterns = [
-            r"\(\s*(\d+)\s*\)\s+(?:business\s+|calendar\s+)?days\b[^.]{0,40}?written\s+notice",
-            r"(\d+)\s+(?:business\s+|calendar\s+)?days\b[^.]{0,40}?written\s+notice",
-            r"cure\s+period[:\s]+(\d+)\s+days",
-        ]
-        confidences = ["high", "medium", "high"]
+        """
+        Extract the default/cure notice period. A lease can contain several
+        unrelated "(N) days ... written notice" clauses (renewal notice,
+        cure notice, etc), so this scans every candidate on the page and
+        prefers the one with "default"/"cure" nearby, rather than blindly
+        taking the first match in document order.
+        """
+        day_notice_pattern = r"\(?\s*(\d+)\s*\)?\s+(?:business\s+|calendar\s+)?days\b[^.]{0,40}?written\s+notice"
+        context_pattern = re.compile(r"\b(?:default|cure)\w*\b", re.IGNORECASE)
+        context_window = 150
 
-        result = self._search_ordered(pages, patterns, confidences)
+        for page in pages:
+            page_num = page["page"]
+            text = page["text"]
+
+            candidates = list(re.finditer(day_notice_pattern, text, re.IGNORECASE))
+            if not candidates:
+                continue
+
+            anchored_match = None
+            for m in candidates:
+                window = text[max(0, m.start() - context_window):min(len(text), m.end() + context_window)]
+                if context_pattern.search(window):
+                    anchored_match = m
+                    break
+
+            match = anchored_match or candidates[0]
+            confidence = "high" if anchored_match else "low"
+
+            return {
+                "value": f"{match.group(1)} days after written notice",
+                "source": {"page": page_num, "quote": _make_quote(text, match.start(), match.end())},
+                "confidence": confidence
+            }
+
+        # Fallback: explicit label style
+        result = self._search_ordered(pages, [r"cure\s+period[:\s]+(\d+)\s+days"], ["high"])
         if result:
             result["value"] = f"{result['value']} days after written notice"
             return result
@@ -471,10 +555,11 @@ class FieldExtractor:
     def _extract_permitted_use(self, pages: List[Dict[str, Any]]) -> Dict[str, Any]:
         patterns = [
             r"used\s+solely\s+for(?:\s+the\s+(?:operation|purpose)\s+of)?\s+([^.]{5,150}?)(?:,?\s+and\s+for\s+no\s+other\s+purpose|\.)",
+            r"use\s+the\s+premises\s+exclusively\s+as\s+([^.]{5,150}?)(?:,?\s+and\s+shall\s+not|\.)",
             r"permitted\s+use[:\s]+([^\n]+)",
             r"use\s+clause[:\s]+([^\n]+)",
         ]
-        confidences = ["high", "high", "high"]
+        confidences = ["high", "high", "high", "high"]
 
         result = self._search_ordered(pages, patterns, confidences)
         return result if result else _not_found()
