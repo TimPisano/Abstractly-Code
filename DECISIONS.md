@@ -134,17 +134,28 @@ professional-looking output, correctly surfacing all 23 real risk
 flags from this session's portfolio.
 
 ### Frontend: stays vanilla JS, no build step, restructured as a multi-view app
-**Status: in progress.** The single-lease-upload page is becoming a
-small multi-view app (portfolio dashboard, upload/batch, lease detail,
-expiration timeline, comparison, Q&A, printable report) using plain
-`<script>` includes, a sidebar nav, and a simple view-router — not a
-framework/bundler.
+**Status: done.** The single-lease-upload page is now a sidebar-
+navigated multi-view app: Dashboard, Upload, Lease Detail (inline
+editing, risk panel, amendments, per-lease Q&A), Expiration Timeline,
+Compare, Ask a Question, and Portfolio Report — plain `<script>`
+includes, no framework/bundler.
 - **Reason**: Session 1 explicitly chose vanilla JS for zero build
   tooling and stayed consistent through session 2's larger single-page
   rebuild; introducing a framework now would be a bigger, tangential
   architectural change the brief didn't ask for. Vanilla JS can still
   organize multiple views cleanly with careful state management — it
   just takes more discipline than a framework would.
+- **Verification note**: found and fixed two test-harness-only issues
+  while verifying this (neither was a real app bug): a jsdom
+  `window.eval()`-per-file harness doesn't reproduce how real
+  `<script>` tags share one global scope for top-level `let`/`const`
+  across a page, and jsdom's `FormData`/`File` aren't recognized by
+  Node's native `fetch` (a cross-realm mismatch that doesn't exist in
+  an actual browser). Fixed by having jsdom execute the real
+  `<script src>` tags (`JSDOM.fromFile` + `runScripts: "dangerously"`)
+  and bridging FormData across realms in the harness — see the
+  frontend rebuild commit for detail. All 30 end-to-end checks passed
+  against the real backend with real file uploads afterward.
 
 ### Backend module ownership during parallel work
 Foundation (`database.py`, `normalize.py`, the `square_footage` field,
