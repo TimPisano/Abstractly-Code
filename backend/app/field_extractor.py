@@ -149,6 +149,7 @@ class FieldExtractor:
             "exclusivity_clause": self._extract_exclusivity_clause(pages),
             "insurance_requirements": self._extract_insurance_requirements(pages),
             "default_cure_period": self._extract_default_cure_period(pages),
+            "square_footage": self._extract_square_footage(pages),
         }
 
         return result
@@ -576,6 +577,30 @@ class FieldExtractor:
 
         result = self._search_ordered(pages, patterns, confidences)
         return result if result else _not_found()
+
+    def _extract_square_footage(self, pages: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Extract the premises' square footage. Tries, in order:
+          1. Label style: "Square Footage: 2,400" / "Rentable Area: 2,400 sq ft" (high)
+          2. Prose style with an explicit cue: "approximately 2,400 square
+             feet" / "consisting of 2,400 square feet" (high)
+          3. Any bare "N square feet" mention (medium — could in principle
+             refer to something other than the premises itself)
+        """
+        sqft_unit = r"(?:square\s+feet|sq\.?\s*ft\.?)"
+        patterns = [
+            rf"(?:square\s+footage|rentable\s+area|leasable\s+area)[:\s]+([\d,]+)",
+            rf"(?:approximately|consisting\s+of)\s+([\d,]+)\s*{sqft_unit}",
+            rf"([\d,]+)\s*{sqft_unit}",
+        ]
+        confidences = ["high", "high", "medium"]
+
+        result = self._search_ordered(pages, patterns, confidences)
+        if result:
+            result["value"] = f"{result['value']} sq ft"
+            return result
+
+        return _not_found()
 
     def _extract_permitted_use(self, pages: List[Dict[str, Any]]) -> Dict[str, Any]:
         patterns = [

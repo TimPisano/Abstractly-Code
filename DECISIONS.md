@@ -1,5 +1,120 @@
 # Implementation Decisions
 
+## Portfolio Intelligence Expansion (2026-08-12, session 3) — IN PROGRESS
+
+This section is being updated live as work happens, not just at the end,
+per explicit instruction. If you're reading this mid-session, the
+"Status" lines below tell you what's actually done vs. planned.
+
+### Scope
+Moving from single-lease extraction to portfolio-level intelligence:
+multi-lease upload/storage, a portfolio dashboard, expiration timeline,
+risk/anomaly detection, a grounded natural-language Q&A interface,
+lease-vs-lease comparison and benchmarking, batch upload with per-file
+error recovery, amendment linking, rent roll export, and a printable
+portfolio summary report.
+
+### Persistence: SQLite via Python's stdlib `sqlite3`, not a new dependency
+**Status: done.**
+Portfolio features (sort/filter across leases, aggregate averages, link
+amendments to a base lease) genuinely require queryable persistence —
+the previous session's browser-localStorage-only state can't support
+this. Chose `sqlite3` (stdlib, zero new dependency) over a JSON-file
+store or a heavier ORM/database.
+- **Reason**: Keeps the "minimal dependencies" philosophy from session 1
+  while giving real query capability (filtering, sorting, joins for
+  amendments) that a flat JSON file would make painful to maintain
+  correctly as the number of leases grows. A learning-project scale
+  (dozens to low hundreds of leases) is exactly SQLite's sweet spot.
+- **Schema**: single `leases` table — `id`, `filename`, `uploaded_at`,
+  `extracted_fields` (JSON blob of the existing 14/15-field extraction
+  result, unchanged shape), `document_type` ('lease' or 'amendment'),
+  `base_lease_id` (NULL for base leases, FK to the base lease for an
+  amendment). An "effective" lease view merges a base lease's fields
+  with its most recent amendment's non-null fields (amendment overrides
+  base per-field) — see `database.py: get_effective_lease()`.
+
+### New field: square_footage (15th extracted field)
+**Status: done.**
+Added to support "average rent per square foot" portfolio metric, which
+the brief explicitly conditions on square footage being extracted.
+- **Reason**: Needed as an input to a specific requested metric; follows
+  the same label-style/prose-style pattern-matching approach as every
+  other field in `field_extractor.py`.
+
+### Normalization layer for portfolio math
+**Status: done.**
+`app/normalize.py` — parses the extractor's *display strings* ("$6,250.00",
+"April 1, 2025", "3% annually", "10 days after written notice") into
+actual numbers/dates for aggregation, comparison, and risk-threshold
+checks. Shared by every downstream module (risk analysis, portfolio
+metrics, comparison, Q&A, rent roll export).
+- **Reason**: The extraction engine's job is to produce human-readable,
+  source-verifiable strings, not machine-typed values — that's the right
+  design for the extraction layer, but portfolio math needs real numbers.
+  Building this parsing once as a shared utility avoids every downstream
+  module re-implementing (and subtly disagreeing on) currency/date
+  parsing.
+
+### Q&A engine: deterministic intent-matching, NOT an LLM call
+**Status: done.**
+The brief asks for "an accurate answer grounded in the actual extracted/
+source data — not a hallucinated answer," with citations. Built as a
+rule-based natural-language query engine: pattern-match the question
+against a set of known intents (list-expiring, aggregate-field,
+field-lookup-on-lease, has-clause, etc.), execute a real query against
+the SQLite-stored extracted data, and construct the answer directly from
+stored values with a citation (lease name + page + quote) pulled from
+the actual stored source. Unsupported questions get an honest "I can't
+answer that yet" rather than a guess.
+- **Reason**: An LLM-generated answer — even a good one — can hallucinate
+  a number or misattribute a citation, which is exactly what the brief
+  says to avoid. A deterministic query engine cannot fabricate a value:
+  it either finds a real stored fact and returns it with its real
+  source, or it says it doesn't know. The tradeoff is coverage (only
+  questions matching a known intent pattern are answerable) rather than
+  open-ended chat — a deliberate choice given the "not hallucinated"
+  requirement is explicit and non-negotiable in the brief. No API keys,
+  no external LLM dependency, no per-query cost.
+
+### Risk detection: rule-based thresholds + cross-field consistency checks
+**Status: in progress.**
+`app/risk_analysis.py` — flags below-market rent (vs. portfolio average),
+notice-period outliers, missing standard clauses (no insurance
+requirement, no default/cure clause), and internal inconsistencies
+within a single lease (escalation math, conflicting dates). Each flag
+carries a severity and a plain-English explanation of why it was raised.
+- **Reason**: This is explicitly "the differentiator" per the brief — go
+  beyond extraction into analysis. Rule-based (not ML-based) for the
+  same reason as the Q&A engine: explainability. Every flag needs to say
+  *why* it fired, which a rule threshold can state directly ("rent is
+  22% below the portfolio average of $X") in a way an opaque model
+  score couldn't.
+
+### Frontend: stays vanilla JS, no build step, but restructured as a multi-view app
+**Status: planned.**
+The single-lease-upload page becomes a small multi-view app (portfolio
+dashboard, lease detail, comparison, Q&A, printable report) using plain
+`<script>` includes and a simple view-router, not a framework/bundler.
+- **Reason**: Session 1 explicitly chose vanilla JS for zero build
+  tooling and stayed consistent through session 2's larger single-page
+  rebuild; introducing a framework now would be a bigger, tangential
+  architectural change the brief didn't ask for. Vanilla JS can still
+  organize multiple views cleanly with careful state management — it
+  just takes more discipline than a framework would.
+
+### Backend module ownership during parallel work
+Foundation (`database.py`, `normalize.py`, the `square_footage` field,
+and the new lease/batch/amendment API routes) was built first and
+sequentially, since every other module depends on its contract. The
+independent analysis modules (`risk_analysis.py`, `qa_engine.py`,
+`portfolio.py`/`comparison.py`, `rent_roll_export.py`/`report.py`) were
+then built in parallel by separate agents, each producing a new
+self-contained file plus its own tests and NOT touching `api.py` or each
+other's files — wiring those modules into Flask routes was done
+afterward by the orchestrating session alone, specifically to avoid
+multiple agents editing the same shared file concurrently.
+
 ## Backend Structure (2026-08-12)
 
 Built Python backend for lease PDF extraction with the following design choices:

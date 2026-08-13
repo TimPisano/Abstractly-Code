@@ -28,3 +28,7 @@ tests/sample_lease.pdf
 # Temp files
 *.tmp
 *.log
+
+# Runtime database (portfolio data — not test fixtures, not committed)
+*.db
+*.db-journal

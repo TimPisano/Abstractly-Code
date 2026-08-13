@@ -32,7 +32,7 @@ ALL_FIELDS = [
     "tenant", "landlord", "rent_amount", "lease_start_date", "lease_end_date",
     "property_address", "security_deposit", "cam_charges", "rent_escalation",
     "renewal_options", "permitted_use", "exclusivity_clause",
-    "insurance_requirements", "default_cure_period",
+    "insurance_requirements", "default_cure_period", "square_footage",
 ]
 
 
@@ -56,6 +56,7 @@ def run_report():
                 "exclusivity_clause": None,
                 "insurance_requirements": None,
                 "default_cure_period": None,
+                "square_footage": None,
             },
         },
         {
@@ -76,6 +77,7 @@ def run_report():
                 "exclusivity_clause": "coffee",
                 "insurance_requirements": "$2,000,000",
                 "default_cure_period": "10 days",
+                "square_footage": "2,400",
             },
         },
         {"name": "retail_lease.pdf", "path": "retail_lease.pdf", "expected": create_retail_lease()},

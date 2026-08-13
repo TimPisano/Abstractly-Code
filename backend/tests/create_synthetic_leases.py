@@ -83,6 +83,7 @@ def create_retail_lease():
         "LANDLORD: Harborview Retail Partners LP",
         "TENANT: Cascade Apparel Co.",
         "PREMISES ADDRESS: 8890 Riverside Plaza, Unit 12, Portland, Oregon 97201",
+        "Square Footage: 1,800",
         "Lease Commencement Date: 04/01/2025",
         "Lease Expiration Date: 03/31/2035",
         "",
@@ -136,6 +137,7 @@ def create_retail_lease():
         "exclusivity_clause": None,
         "insurance_requirements": "$1,000,000",
         "default_cure_period": "5 days",
+        "square_footage": "1,800",
     }
 
 
@@ -148,7 +150,7 @@ def create_office_lease():
         "",
         "A. PREMISES. The premises are located at 2200 Wilshire Corporate "
         "Center, 14th Floor, Los Angeles, California 90025 (the "
-        "\"Premises\").",
+        "\"Premises\"), consisting of approximately 6,200 square feet.",
         "",
         "B. TERM. This Lease shall commence on the 1st day of January, "
         "2026, and shall continue for a period of ten (10) years, ending "
@@ -199,6 +201,7 @@ def create_office_lease():
         "exclusivity_clause": "direct competitor",
         "insurance_requirements": "$2,000,000",
         "default_cure_period": "15 days",
+        "square_footage": "6,200",
     }
 
 
