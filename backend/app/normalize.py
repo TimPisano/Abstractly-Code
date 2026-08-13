@@ -186,3 +186,58 @@ def rent_per_sqft(rent_value: Optional[str], sqft_value: Optional[str]) -> Optio
     if rent is None or sqft is None or sqft == 0:
         return None
     return rent / sqft
+
+
+def parse_escalation_schedule(value: Optional[str]):
+    """
+    Parses a year-by-year rent_escalation display string, e.g.
+      "Year 1: $6,000.00; Year 2: $6,180.00; Year 3: $6,365.00"
+    into [(1, 6000.0), (2, 6180.0), (3, 6365.0)], sorted by year.
+    Returns [] if the value isn't a year-by-year table (e.g. it's a bare
+    "3% annually" string instead — use parse_percent for that shape).
+    """
+    if not value:
+        return []
+    matches = re.findall(r"Year\s+(\d+)\s*:\s*\$?([\d,]+(?:\.\d+)?)", value, re.IGNORECASE)
+    if not matches:
+        return []
+    try:
+        pairs = [(int(year), float(amount.replace(",", ""))) for year, amount in matches]
+    except ValueError:
+        return []
+    return sorted(pairs, key=lambda p: p[0])
+
+
+def escalation_rate_consistency(value: Optional[str]):
+    """
+    For a year-by-year escalation table, computes the year-over-year
+    percentage increase between each consecutive pair and reports how
+    consistent they are. Returns None if there aren't at least 2
+    consecutive years to compare (including a bare percentage string,
+    which has nothing to check internal consistency against).
+
+    Returns a dict: {"rates": [pct, ...], "min_rate": float,
+    "max_rate": float, "spread": float} where spread = max_rate -
+    min_rate (0 for a perfectly consistent schedule).
+    """
+    pairs = parse_escalation_schedule(value)
+    if len(pairs) < 3:
+        # Need at least 2 consecutive increases (3 years) to judge
+        # "consistency" — a single increase has nothing to compare against.
+        return None
+
+    rates = []
+    for (_, amt1), (_, amt2) in zip(pairs, pairs[1:]):
+        if amt1 == 0:
+            continue
+        rates.append(((amt2 - amt1) / amt1) * 100)
+
+    if len(rates) < 2:
+        return None
+
+    return {
+        "rates": rates,
+        "min_rate": min(rates),
+        "max_rate": max(rates),
+        "spread": max(rates) - min(rates),
+    }

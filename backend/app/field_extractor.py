@@ -381,13 +381,16 @@ class FieldExtractor:
     # Dates
     # ------------------------------------------------------------------
 
-    def _extract_start_date(self, pages: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def _start_date_patterns(self):
         """
-        Extract lease start date. Tries, in order:
+        Shared pattern list for start-date matching. Tries, in order:
           1. Label style: "Lease Start Date: January 15, 2024" (high)
           2. Prose style: "term shall commence on April 1, 2025" (high)
           3. Loose "begin..." fallback, e.g. could latch onto unrelated
              text like "beginning of the fiscal year" (medium)
+        Module-level so both single-match extraction (_extract_start_date)
+        and multi-match scanning (find_all_date_candidates, used for
+        cross-section consistency checking) stay in sync.
         """
         patterns = [
             rf"(?:lease\s+)?start\s+date[:\s]+{DATE_REGEX}",
@@ -395,18 +398,31 @@ class FieldExtractor:
             rf"begin(?:ning)?\s+date[:\s]+{DATE_REGEX}",
             rf"term\s+begins?[:\s]+{DATE_REGEX}",
             rf"effective\s+date[:\s]+{DATE_REGEX}",
-            rf"(?:shall\s+)?commenc\w*{GAP}{DATE_REGEX}",
-            rf"begin\w*{GAP}{DATE_REGEX}",
+            # \b(?!\s+Date) excludes the noun form in a defined-term aside
+            # like '(the "Commencement Date")'. The \b matters: without it,
+            # \w* backtracks one character short of the full word (e.g.
+            # matching "Commencemen" instead of "Commencement"), which
+            # sidesteps the lookahead entirely since it's no longer
+            # checking right before " Date" — and the gap then reaches
+            # past that whole clause to grab an unrelated later date
+            # (e.g. the lease's END date). \b forces \w* to only stop at
+            # an actual word boundary, so the lookahead can't be dodged
+            # by a partial-word backtrack.
+            rf"(?:shall\s+)?commenc\w*\b(?!\s+Date){GAP}{DATE_REGEX}",
+            rf"begin\w*\b(?!\s+Date){GAP}{DATE_REGEX}",
             rf"starting{GAP}{DATE_REGEX}",
         ]
         confidences = ["high", "high", "high", "high", "high", "high", "medium", "medium"]
+        return patterns, confidences
 
+    def _extract_start_date(self, pages: List[Dict[str, Any]]) -> Dict[str, Any]:
+        patterns, confidences = self._start_date_patterns()
         result = self._search_ordered(pages, patterns, confidences)
         return result if result else _not_found()
 
-    def _extract_end_date(self, pages: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def _end_date_patterns(self):
         """
-        Extract lease end date. Tries, in order:
+        Shared pattern list for end-date matching. Tries, in order:
           1. Label style: "Lease End Date: January 14, 2025" (high)
           2. Prose style: "shall expire on March 31, 2030" (high)
           3. "...and ending March 31, 2030" cue (medium — broader verb,
@@ -418,12 +434,46 @@ class FieldExtractor:
             rf"termination\s+date[:\s]+{DATE_REGEX}",
             rf"term\s+ends?[:\s]+{DATE_REGEX}",
             rf"expires?[:\s]+{DATE_REGEX}",
-            rf"(?:shall\s+)?expir\w*{GAP}{DATE_REGEX}",
-            rf"(?:shall\s+)?terminat\w*{GAP}{DATE_REGEX}",
+            rf"(?:shall\s+)?expir\w*\b(?!\s+Date){GAP}{DATE_REGEX}",
+            rf"(?:shall\s+)?terminat\w*\b(?!\s+Date){GAP}{DATE_REGEX}",
             rf"ending{GAP}{DATE_REGEX}",
             rf"running\s+through{GAP}{DATE_REGEX}",
         ]
         confidences = ["high", "high", "high", "high", "high", "high", "high", "medium", "medium"]
+        return patterns, confidences
+
+    def find_all_date_candidates(self, pages: List[Dict[str, Any]], role: str) -> List[Dict[str, Any]]:
+        """
+        Scans the whole document for EVERY match of the start-date or
+        end-date pattern list (role="start"|"end"), not just the first —
+        used for internal-consistency checking (e.g. does a date stated
+        in one section conflict with a date stated elsewhere?), which
+        the single-best-match extractors above can't support since they
+        stop at the first hit. Deduplicates by the raw matched text, not
+        by parsed date, so a genuine conflict (two different-but-both-
+        well-formed dates) is preserved for the caller to compare.
+
+        Returns a list of {"value": ..., "source": {"page": N, "quote": ...}}.
+        """
+        patterns, _confidences = self._start_date_patterns() if role == "start" else self._end_date_patterns()
+        full_text, page_for_offset = _concat_pages(pages)
+
+        seen_values = set()
+        candidates = []
+        for pattern in patterns:
+            for match in re.finditer(pattern, full_text, re.IGNORECASE):
+                value = _clean_value(match.group(1))
+                if value in seen_values:
+                    continue
+                seen_values.add(value)
+                candidates.append({
+                    "value": value,
+                    "source": {"page": page_for_offset(match.start()), "quote": _make_quote(full_text, match.start(), match.end())}
+                })
+        return candidates
+
+    def _extract_end_date(self, pages: List[Dict[str, Any]]) -> Dict[str, Any]:
+        patterns, confidences = self._end_date_patterns()
 
         result = self._search_ordered(pages, patterns, confidences)
         return result if result else _not_found()
