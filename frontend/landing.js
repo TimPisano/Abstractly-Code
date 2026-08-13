@@ -1,6 +1,10 @@
 /**
- * Landing page waitlist form: posts to the backend and swaps in a
- * confirmation state instead of navigating away.
+ * Landing page behavior:
+ *  - Request-access form: posts to the backend and swaps in a
+ *    confirmation state instead of navigating away.
+ *  - Scroll reveal: a subtle fade + rise for elements marked .reveal
+ *    as they enter the viewport, restrained rather than bouncy, and
+ *    skipped entirely for prefers-reduced-motion (handled in CSS).
  */
 
 const API_BASE_URL = 'http://localhost:5000';
@@ -15,7 +19,7 @@ document.getElementById('waitlistForm').addEventListener('submit', async (e) => 
 
     errorEl.classList.remove('show');
     submitBtn.disabled = true;
-    submitBtn.textContent = 'Joining...';
+    submitBtn.textContent = 'Submitting...';
 
     try {
         const response = await fetch(`${API_BASE_URL}/waitlist`, {
@@ -35,6 +39,23 @@ document.getElementById('waitlistForm').addEventListener('submit', async (e) => 
         errorEl.textContent = err.message;
         errorEl.classList.add('show');
         submitBtn.disabled = false;
-        submitBtn.textContent = 'Join the waitlist';
+        submitBtn.textContent = 'Request Access';
     }
 });
+
+if ('IntersectionObserver' in window) {
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+            if (entry.isIntersecting) {
+                entry.target.classList.add('in-view');
+                observer.unobserve(entry.target);
+            }
+        });
+    }, { threshold: 0.15, rootMargin: '0px 0px -60px 0px' });
+
+    document.querySelectorAll('.reveal').forEach((el) => observer.observe(el));
+} else {
+    // No IntersectionObserver support: show everything immediately
+    // rather than leaving it permanently hidden.
+    document.querySelectorAll('.reveal').forEach((el) => el.classList.add('in-view'));
+}

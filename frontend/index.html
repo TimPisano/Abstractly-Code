@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Lumen Lease — Automated Lease Abstraction</title>
+    <title>Lumen Lease — Portfolio Intelligence for Real Estate</title>
     <link rel="stylesheet" href="design-system.css">
     <link rel="stylesheet" href="landing.css">
 </head>
@@ -17,32 +17,70 @@
             Lumen Lease
         </div>
         <div class="landing-nav-links">
-            <a href="#how-it-works">How it works</a>
-            <a href="/app/">Sign in</a>
+            <a href="#capabilities">Capabilities</a>
+            <a href="#request-access">Request Access</a>
+            <a href="/app/" class="nav-client-login">Client Login</a>
         </div>
     </nav>
 
     <!-- ===================== Hero ===================== -->
-    <header class="hero">
-        <span class="hero-eyebrow">✦ Now accepting early access signups</span>
-        <h1>Turn every lease PDF into a <span class="accent">clean, searchable rent roll</span></h1>
-        <p class="hero-subhead">
-            Upload a commercial lease and get structured, source-cited data back in seconds —
-            rent, escalations, key dates, renewal options, and the terms most tools miss.
-            No more manual abstraction spreadsheets.
-        </p>
+    <header class="hero" id="request-access">
+        <div class="hero-bg" aria-hidden="true">
+            <div class="hero-glow"></div>
+            <div class="hero-grid"></div>
+            <svg class="hero-skyline" viewBox="0 0 1440 200" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg" fill="currentColor">
+                <rect x="0" y="140" width="70" height="60"/>
+                <rect x="80" y="100" width="50" height="100"/>
+                <rect x="140" y="120" width="36" height="80"/>
+                <rect x="185" y="70" width="60" height="130"/>
+                <rect x="255" y="110" width="44" height="90"/>
+                <rect x="310" y="90" width="30" height="110"/>
+                <rect x="350" y="130" width="55" height="70"/>
+                <rect x="420" y="60" width="65" height="140"/>
+                <rect x="495" y="105" width="40" height="95"/>
+                <rect x="545" y="85" width="34" height="115"/>
+                <rect x="590" y="125" width="58" height="75"/>
+                <rect x="660" y="45" width="70" height="155"/>
+                <rect x="740" y="100" width="46" height="100"/>
+                <rect x="796" y="115" width="32" height="85"/>
+                <rect x="840" y="75" width="60" height="125"/>
+                <rect x="910" y="120" width="44" height="80"/>
+                <rect x="965" y="95" width="34" height="105"/>
+                <rect x="1010" y="55" width="65" height="145"/>
+                <rect x="1085" y="110" width="48" height="90"/>
+                <rect x="1145" y="130" width="36" height="70"/>
+                <rect x="1190" y="80" width="60" height="120"/>
+                <rect x="1260" y="115" width="42" height="85"/>
+                <rect x="1315" y="95" width="30" height="105"/>
+                <rect x="1360" y="135" width="80" height="65"/>
+            </svg>
+        </div>
 
-        <div class="hero-form-wrap" id="heroFormWrap">
-            <form class="waitlist-form" id="waitlistForm">
-                <input type="email" id="waitlistEmail" placeholder="you@company.com" required autocomplete="email">
-                <button type="submit" class="btn-primary" id="waitlistSubmitBtn">Join the waitlist</button>
-            </form>
-            <div class="waitlist-confirm" id="waitlistConfirm">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                <span>You're on the list — we'll email you when it's your turn.</span>
+        <div class="hero-inner reveal">
+            <span class="eyebrow">Portfolio Intelligence</span>
+            <h1>Your Portfolio,<br><span class="accent">Finally Clear.</span></h1>
+            <p class="hero-subhead">
+                Built for real estate firms managing real portfolios — not a general
+                productivity tool. See every lease, every renewal, and every risk
+                clearly, and spend your time on strategy instead of paperwork.
+            </p>
+            <p class="hero-exclusivity">
+                We work with a limited number of real estate firms at a time.
+                Request access below.
+            </p>
+
+            <div class="hero-form-wrap" id="heroFormWrap">
+                <form class="waitlist-form" id="waitlistForm">
+                    <input type="email" id="waitlistEmail" placeholder="you@company.com" required autocomplete="email">
+                    <button type="submit" class="btn-primary" id="waitlistSubmitBtn">Request Access</button>
+                </form>
+                <div class="waitlist-confirm" id="waitlistConfirm">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    <span>Your request has been received. If it's a fit, we'll be in touch.</span>
+                </div>
+                <p class="waitlist-error" id="waitlistError"></p>
+                <p class="waitlist-note">By request only — we personally review every inquiry.</p>
             </div>
-            <p class="waitlist-error" id="waitlistError"></p>
-            <p class="waitlist-note">Free during early access. No credit card required.</p>
         </div>
     </header>
 

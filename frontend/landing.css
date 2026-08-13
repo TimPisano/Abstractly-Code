@@ -1,20 +1,107 @@
 /**
- * Landing page styles. Tokens come from design-system.css (loaded
- * before this file in index.html) — this file is layout/component
- * styling specific to the marketing page.
+ * Landing page styles.
+ *
+ * design-system.css (loaded before this file) provides the shared
+ * app-wide tokens/components used by /app/ and /admin/. This page
+ * overrides several of those custom properties below — a heavier,
+ * restrained luxury palette in place of the SaaS indigo/violet — but
+ * that override only takes effect on documents that load THIS
+ * stylesheet, i.e. the landing page alone. /app/ and /admin/ never
+ * load landing.css, so they're unaffected. Shared component classes
+ * (.btn-primary, etc.) are reused here rather than redefined, so they
+ * automatically pick up this page's palette via the custom properties.
  */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@900&display=swap');
+
+:root {
+    /* ---- Luxury palette: deep charcoal/black, warm brass accent, ivory ---- */
+    --lux-black: #0a0a0b;
+    --lux-charcoal: #17171a;
+    --lux-charcoal-2: #202024;
+    --lux-ivory: #f6f3ec;
+    --lux-line-dark: rgba(246, 243, 236, 0.12);
+    --lux-accent: #b68a4e;
+    --lux-accent-hover: #a37a41;
+    --lux-accent-tint: #f2e9d8;
+
+    /* Override the shared tokens so every reused component (.btn-primary,
+       .empty-state, etc.) renders in this page's palette instead of the
+       app's indigo/violet — no default SaaS blues/purples here. */
+    --primary-color: var(--lux-accent);
+    --primary-hover: var(--lux-accent-hover);
+    --primary-light: var(--lux-accent-tint);
+    --gradient-brand: var(--lux-accent);
+    --text-dark: #161512;
+    --text-medium: #58554d;
+    --text-light: #8b8779;
+    --border-color: #e6e0d2;
+    --background: var(--lux-ivory);
+    --shadow-sm: 0 1px 2px rgba(10, 10, 11, 0.05);
+    --shadow-md: 0 8px 20px -6px rgba(10, 10, 11, 0.12);
+    --shadow-lg: 0 20px 40px -12px rgba(10, 10, 11, 0.22);
+    --radius-sm: 2px;
+    --radius-md: 3px;
+    --radius-lg: 4px;
+    --radius-xl: 6px;
+}
 
 body {
     overflow-x: hidden;
+    background: var(--lux-ivory);
 }
 
+html {
+    scroll-behavior: smooth;
+}
+
+/* ---- Small uppercase eyebrow label, reused above every section heading ---- */
+
+.eyebrow {
+    display: inline-block;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--lux-accent);
+    margin-bottom: 1.25rem;
+}
+
+/* ---- Scroll reveal: subtle fade + rise, no bounce. Elements start
+   hidden via .reveal and get .in-view added by an IntersectionObserver
+   in landing.js. Falls back to fully visible if JS never runs or the
+   visitor prefers reduced motion. ---- */
+
+.reveal {
+    opacity: 0;
+    transform: translateY(28px);
+    transition: opacity 0.9s cubic-bezier(0.16, 1, 0.3, 1), transform 0.9s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.reveal.in-view {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .reveal {
+        opacity: 1;
+        transform: none;
+        transition: none;
+    }
+}
+
+/* ===================== Nav ===================== */
+
 .landing-nav {
+    position: relative;
+    z-index: 2;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    max-width: 1120px;
+    max-width: 1200px;
     margin: 0 auto;
-    padding: 1.5rem 1.5rem 0;
+    padding: 2rem 1.5rem 0;
 }
 
 .landing-brand {
@@ -22,95 +109,141 @@ body {
     align-items: center;
     gap: 0.625rem;
     font-weight: 800;
-    font-size: 1.125rem;
+    font-size: 1.0625rem;
     letter-spacing: -0.01em;
-    color: var(--text-dark);
+    color: var(--lux-ivory);
 }
 
 .landing-brand-icon {
-    width: 1.875rem;
-    height: 1.875rem;
+    width: 1.75rem;
+    height: 1.75rem;
+    border: 1px solid var(--lux-accent);
     border-radius: var(--radius-sm);
-    background: var(--gradient-brand);
-    padding: 0.375rem;
-    color: var(--white);
-    box-shadow: 0 2px 8px rgba(79, 70, 229, 0.35);
+    padding: 0.3125rem;
+    color: var(--lux-accent);
+    flex-shrink: 0;
 }
 
 .landing-nav-links {
     display: flex;
-    gap: 1.5rem;
-    font-size: 0.875rem;
+    align-items: center;
+    gap: 2rem;
+    font-size: 0.8125rem;
     font-weight: 500;
-    color: var(--text-medium);
+    letter-spacing: 0.03em;
+    color: rgba(246, 243, 236, 0.65);
+}
+
+.landing-nav-links a {
+    transition: color 0.2s ease;
 }
 
 .landing-nav-links a:hover {
-    color: var(--text-dark);
+    color: var(--lux-ivory);
+}
+
+.nav-client-login {
+    padding: 0.5rem 1rem;
+    border: 1px solid var(--lux-line-dark);
+    border-radius: var(--radius-sm);
+}
+
+.nav-client-login:hover {
+    border-color: var(--lux-accent);
 }
 
 /* ===================== Hero ===================== */
 
 .hero {
     position: relative;
-    max-width: 1120px;
-    margin: 0 auto;
-    padding: 5.5rem 1.5rem 4.5rem;
+    overflow: hidden;
+    background: var(--lux-black);
+    padding: 6rem 1.5rem 7rem;
     text-align: center;
 }
 
-.hero::before {
-    content: '';
+.hero-bg {
     position: absolute;
-    top: -6rem;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 60rem;
-    height: 32rem;
-    background: radial-gradient(ellipse at center, rgba(124, 58, 237, 0.14), transparent 65%);
-    z-index: -1;
+    inset: 0;
+    z-index: 0;
     pointer-events: none;
 }
 
-.hero-eyebrow {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.375rem 0.875rem;
-    border-radius: var(--radius-full);
-    background: var(--primary-light);
-    color: var(--primary-color);
-    font-size: 0.8125rem;
-    font-weight: 600;
-    margin-bottom: 1.5rem;
+.hero-glow {
+    position: absolute;
+    top: -18rem;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 70rem;
+    height: 44rem;
+    background: radial-gradient(ellipse at center, rgba(182, 138, 78, 0.22), transparent 68%);
+}
+
+.hero-grid {
+    position: absolute;
+    inset: 0;
+    background-image:
+        repeating-linear-gradient(90deg, rgba(246, 243, 236, 0.05) 0, rgba(246, 243, 236, 0.05) 1px, transparent 1px, transparent 88px),
+        repeating-linear-gradient(0deg, rgba(246, 243, 236, 0.05) 0, rgba(246, 243, 236, 0.05) 1px, transparent 1px, transparent 88px);
+    -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 30%, black 40%, transparent 85%);
+    mask-image: radial-gradient(ellipse 70% 60% at 50% 30%, black 40%, transparent 85%);
+}
+
+.hero-skyline {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    height: 200px;
+    color: var(--lux-charcoal-2);
+    opacity: 0.55;
+}
+
+.hero-inner {
+    position: relative;
+    z-index: 1;
+    max-width: 860px;
+    margin: 0 auto;
+}
+
+.hero .eyebrow {
+    color: var(--lux-accent);
 }
 
 .hero h1 {
-    font-size: clamp(2.25rem, 5vw, 3.5rem);
-    font-weight: 800;
-    letter-spacing: -0.03em;
-    line-height: 1.08;
-    color: var(--text-dark);
-    max-width: 780px;
-    margin: 0 auto 1.25rem;
+    font-family: 'Inter', sans-serif;
+    font-weight: 900;
+    font-size: clamp(2.75rem, 6.5vw, 5rem);
+    letter-spacing: -0.04em;
+    line-height: 1.02;
+    color: var(--lux-ivory);
+    margin: 0 auto 1.75rem;
 }
 
 .hero h1 .accent {
-    background: var(--gradient-brand);
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
+    color: var(--lux-accent);
 }
 
 .hero-subhead {
-    font-size: 1.125rem;
-    color: var(--text-medium);
-    max-width: 560px;
-    margin: 0 auto 2.5rem;
-    line-height: 1.6;
+    font-size: 1.1875rem;
+    color: rgba(246, 243, 236, 0.7);
+    max-width: 600px;
+    margin: 0 auto 2.25rem;
+    line-height: 1.65;
+    font-weight: 400;
 }
 
-/* ===================== Waitlist form ===================== */
+.hero-exclusivity {
+    font-size: 0.9375rem;
+    color: rgba(246, 243, 236, 0.55);
+    font-style: italic;
+    max-width: 480px;
+    margin: 0 auto 2rem;
+    line-height: 1.5;
+}
+
+/* ===================== Request access form ===================== */
 
 .waitlist-form {
     display: flex;
@@ -121,36 +254,45 @@ body {
 
 .waitlist-form input[type="email"] {
     flex: 1;
-    padding: 0.8125rem 1.125rem;
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
+    padding: 0.875rem 1.125rem;
+    border: 1px solid rgba(246, 243, 236, 0.18);
+    border-radius: var(--radius-sm);
     font-size: 0.9375rem;
     font-family: inherit;
-    background: var(--white);
-    box-shadow: var(--shadow-sm);
+    background: rgba(246, 243, 236, 0.04);
+    color: var(--lux-ivory);
+}
+
+.waitlist-form input[type="email"]::placeholder {
+    color: rgba(246, 243, 236, 0.4);
 }
 
 .waitlist-form input[type="email"]:focus {
     outline: none;
-    border-color: var(--primary-color);
-    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
+    border-color: var(--lux-accent);
+    background: rgba(246, 243, 236, 0.07);
 }
 
 .waitlist-form button {
-    padding: 0.8125rem 1.5rem;
-    font-size: 0.9375rem;
+    padding: 0.875rem 1.75rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    border-radius: var(--radius-sm);
     flex-shrink: 0;
 }
 
 .waitlist-note {
     font-size: 0.8125rem;
-    color: var(--text-light);
-    margin-top: 0.875rem;
+    color: rgba(246, 243, 236, 0.45);
+    margin-top: 1.125rem;
+    letter-spacing: 0.01em;
 }
 
 .waitlist-error {
     font-size: 0.8125rem;
-    color: var(--error-color);
+    color: #e5a5a0;
     margin-top: 0.875rem;
     display: none;
 }
@@ -168,12 +310,14 @@ body {
     gap: 0.75rem;
     max-width: 460px;
     margin: 0 auto;
-    padding: 1rem 1.5rem;
-    border-radius: var(--radius-md);
-    background: var(--success-light);
-    color: #065f46;
-    font-weight: 600;
+    padding: 1.125rem 1.5rem;
+    border: 1px solid var(--lux-accent);
+    border-radius: var(--radius-sm);
+    background: rgba(182, 138, 78, 0.08);
+    color: var(--lux-ivory);
+    font-weight: 500;
     font-size: 0.9375rem;
+    text-align: left;
 }
 
 .waitlist-confirm.show {
@@ -184,6 +328,7 @@ body {
     width: 1.25rem;
     height: 1.25rem;
     flex-shrink: 0;
+    color: var(--lux-accent);
 }
 
 .hero-form-wrap.submitted .waitlist-form {
