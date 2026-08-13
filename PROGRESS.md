@@ -1,6 +1,147 @@
 # Progress Summary
 
-**Last updated**: session 6 — landing page redesigned for a premium real estate audience (luxury visual language, outcome-first copy, exclusivity-framed access)
+**Last updated**: session 7 — daily-use feature expansion, Phase 1 of 6 complete and verified (Phases 2-6 not started)
+
+---
+
+## Session 7: Daily-Use Expansion — Phase 1 Complete, Phases 2-6 Not Started
+
+**Honest status up front**: the session's request was a 6-phase feature
+expansion (dashboard upgrades, renewal/expiration workflow, deeper
+intelligence, search/organization, reporting, daily-use polish). Only
+**Phase 1** was built this session. It is fully built, tested, and
+verified against the live app — not just claimed. Phases 2 through 6
+were not started; nothing about them exists yet, not even scaffolding.
+Stopping here was a deliberate choice to keep Phase 1 genuinely done
+rather than spread this session thin across partially-wired features,
+per the explicit instruction to stop at a clean checkpoint rather than
+rush ahead.
+
+Nothing from the hardening pass (OCR pipeline, security validation,
+error handling) or the landing page/waitlist flow was touched. The full
+pre-existing test suite (all 14 files from before this session) still
+passes unchanged.
+
+### Phase 1: Daily-Use Dashboard Upgrades — DONE
+
+**"What needs attention today" panel** (`GET /portfolio/attention`,
+`compute_attention_items()` in `portfolio.py`): three groups — leases
+expiring within 90 days, leases missing core fields (tenant, landlord,
+rent, either date), and leases with medium/high-severity risk flags.
+The third group deliberately reuses the existing `analyze_lease_risks()`
+engine rather than inventing a new "unusual terms" heuristic, so it can
+never disagree with what the lease detail page's risk panel already
+shows. Each item click-through navigates straight to that lease. Shows
+a genuine "portfolio is in good shape" state, not just an empty list,
+when nothing needs review.
+
+**Recent activity feed** (`GET /activity?limit=10`, `activity_log`
+table in `database.py`): logs lease uploads (one entry per single
+upload, one summary entry per batch — not one per file, so a 20-file
+batch doesn't crowd out everything else), amendment uploads, deletes,
+comparisons run, and rent-roll exports (CSV/Excel). **Deliberately does
+NOT log the portfolio report preview** — `report-view.js` fetches that
+HTML on every visit to the Report view, not just on intentional
+generation, and logging it would flood the feed with noise every time
+someone switches tabs. This is documented inline in `api.py`, not just
+here. Field corrections are also not logged yet, honestly, because
+correction persistence doesn't exist yet — `detail-view.js`'s inline
+edit currently only mutates in-memory state and is lost on reload; that
+gap belongs to Phase 4 ("inline correction workflow... save the
+correction"), not this one, and logging an activity for something that
+doesn't actually save would be dishonest instrumentation.
+
+**Portfolio health strip** (`GET /portfolio/health`,
+`compute_portfolio_health()`): % of leases needing no review (derived
+from the same attention computation above, not a separate heuristic —
+the two literally cannot disagree), average days to next expiration,
+and monthly rent exposure expiring in the next 6/12 months.
+
+**Quick actions bar**: moved into the shared app shell in `index.html`
+so it's present on every view, not just the dashboard — reuses the
+existing `data-goto` navigation, no new routing logic needed.
+
+**A schema note worth flagging explicitly**: `activity_log.lease_id`
+has `ON DELETE SET NULL` on its foreign key to `leases`, discovered to
+be necessary while building this (not anticipated up front) — without
+it, deleting a lease that has activity history would either violate the
+FK constraint or require deleting its own history. With `SET NULL`,
+deleting a lease works exactly as before and its activity entries
+survive (with `lease_id` nulled) since their `description` text already
+has the filename baked in.
+
+### Verified this session (not just written)
+- **16/16 backend test files pass**, including all pre-existing ones —
+  run via `python run_all_tests.py --live` after every change, not just
+  once at the end
+- New unit tests (`test_dashboard_features.py`, 11 tests): attention
+  window boundaries, missing-data detection, risk-engine reuse, health/
+  attention agreement, activity log persistence, the `ON DELETE SET
+  NULL` behavior specifically, limit clamping — against hand-built
+  fixtures, no live server needed
+- New live-API tests (`test_live_dashboard_api.py`, 22 checks): the
+  three new endpoints exercised against the real running backend with
+  real fixture PDFs uploaded/compared/exported/deleted, not mocked.
+  While building this, a real bug in the *test itself* was caught and
+  fixed: an early version compared two `limit=50` snapshots to detect
+  activity growth, which silently breaks once the dev DB accumulates
+  more than 50 rows (it now has 80+, from cumulative sessions) — fixed
+  to check the exact identity/order of the 2 most-recent entries
+  instead, which stays correct at any table size
+- Full dashboard verified end-to-end via jsdom against the live running
+  app (not just the API in isolation): quick actions bar, attention
+  panel in both its populated and "all clear" states, health strip, and
+  activity feed all confirmed rendering correctly with real data and
+  zero JS errors, including click-through from an attention item to the
+  lease detail page
+
+### What Phase 1 explicitly does NOT include (scope, not a bug)
+- No new external paid API dependency was introduced — flagging this
+  proactively per the session's instructions, even though nothing
+  applies yet: none of Phases 2-6 as currently scoped obviously need one
+  either (calendar/notifications/search/tagging/reporting are all
+  buildable with the existing stack), but Phase 2's "configurable alert
+  windows" could eventually want real email/SMS delivery, which *would*
+  need a third-party service and a key from you — flagged now so it's
+  not a surprise later, nothing has been built against one.
+
+### Phases 2-6: NOT STARTED
+To be direct about exactly what that means — none of the following
+exist in any form yet:
+- **Phase 2** (renewal/expiration workflow): no calendar view, no
+  configurable alert windows, no notification center, no per-lease
+  renewal status field
+- **Phase 3** (deeper intelligence): no new extracted fields (early
+  termination, co-tenancy, assignment/subletting are not yet extracted
+  — everything else in the requested field list already existed before
+  this session), no portfolio-wide analytics charts
+- **Phase 4** (search/organization/correction): no global search, no
+  tagging/folders, no persisted field-correction workflow, no bulk
+  actions
+- **Phase 5** (reporting/export): the portfolio report and CSV/Excel
+  rent-roll export already existed before this session and still work;
+  no custom report builder exists
+- **Phase 6** (daily-use polish): no keyboard shortcuts, no
+  last-viewed-screen memory, no mobile-responsive pass specifically on
+  dashboard/calendar/detail
+
+### Exact commands to restart both servers
+
+```bash
+# Terminal 1 — backend
+cd backend
+export PATH="$HOME/.miniforge3/bin:$PATH"   # tesseract + poppler, for OCR
+source venv/bin/activate
+python run.py
+# Confirm: curl http://localhost:5000/health
+
+# Terminal 2 — frontend
+cd frontend
+python3 -m http.server 8000
+# Landing:      http://localhost:8000/
+# App:          http://localhost:8000/app/          (attention panel, health strip, activity feed live on the dashboard)
+# Admin:        http://localhost:8000/admin/waitlist/
+```
 
 ---
 
