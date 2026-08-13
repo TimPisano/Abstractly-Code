@@ -78,7 +78,11 @@ answer that yet" rather than a guess.
   no external LLM dependency, no per-query cost.
 
 ### Risk detection: rule-based thresholds + cross-field consistency checks
-**Status: in progress — delegated to a parallel subagent, not yet integrated.**
+**Status: done.** `app/risk_analysis.py`. Built by a parallel subagent per
+the shared contract, independently re-verified afterward (re-ran its
+tests, then ran it against all 5 real red-flag fixture PDFs with a
+portfolio context computed from actual data) — every deliberately-built
+issue was caught correctly.
 `app/risk_analysis.py` — flags below-market rent (vs. portfolio average),
 notice-period outliers, missing standard clauses (no insurance
 requirement, no default/cure clause), and internal inconsistencies
