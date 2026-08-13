@@ -57,7 +57,11 @@ metrics, comparison, Q&A, rent roll export).
   parsing.
 
 ### Q&A engine: deterministic intent-matching, NOT an LLM call
-**Status: done.**
+**Status: done, independently verified.** `app/qa_engine.py`, built by a
+parallel subagent. Re-ran its tests myself, confirmed no network/LLM
+imports, then ran the brief's own example questions against real
+extracted data from actual test PDFs — each answered correctly with
+citations traced back to real stored source data.
 The brief asks for "an accurate answer grounded in the actual extracted/
 source data — not a hallucinated answer," with citations. Built as a
 rule-based natural-language query engine: pattern-match the question
@@ -78,16 +82,20 @@ answer that yet" rather than a guess.
   no external LLM dependency, no per-query cost.
 
 ### Risk detection: rule-based thresholds + cross-field consistency checks
-**Status: done.** `app/risk_analysis.py`. Built by a parallel subagent per
-the shared contract, independently re-verified afterward (re-ran its
-tests, then ran it against all 5 real red-flag fixture PDFs with a
-portfolio context computed from actual data) — every deliberately-built
-issue was caught correctly.
-`app/risk_analysis.py` — flags below-market rent (vs. portfolio average),
-notice-period outliers, missing standard clauses (no insurance
-requirement, no default/cure clause), and internal inconsistencies
-within a single lease (escalation math, conflicting dates). Each flag
-carries a severity and a plain-English explanation of why it was raised.
+**Status: done.** `app/risk_analysis.py`. Flags below-market rent (vs.
+portfolio average, preferring a per-sqft comparison when available),
+notice-period outliers (absolute bounds + portfolio-relative
+deviation), missing standard clauses (insurance, default/cure,
+security deposit), one-sided terms (no escalation on a long-term
+lease, unusually long cure period), and internal inconsistencies
+within a single lease (escalation-schedule rate spread, invalid/
+reversed date range, conflicting dates across sections). Each flag
+carries a severity and a plain-English explanation citing the actual
+numbers it fired on. Built by a parallel subagent per the shared
+contract, independently re-verified afterward (re-ran its 26 tests,
+then ran it against all 5 real red-flag fixture PDFs with a portfolio
+context computed from actual data) — every deliberately-built issue
+was caught correctly.
 - **Reason**: This is explicitly "the differentiator" per the brief — go
   beyond extraction into analysis. Rule-based (not ML-based) for the
   same reason as the Q&A engine: explainability. Every flag needs to say
@@ -95,11 +103,42 @@ carries a severity and a plain-English explanation of why it was raised.
   22% below the portfolio average of $X") in a way an opaque model
   score couldn't.
 
-### Frontend: stays vanilla JS, no build step, but restructured as a multi-view app
-**Status: planned.**
-The single-lease-upload page becomes a small multi-view app (portfolio
-dashboard, lease detail, comparison, Q&A, printable report) using plain
-`<script>` includes and a simple view-router, not a framework/bundler.
+### Portfolio metrics, timeline, comparison, and benchmarking
+**Status: done.** `app/portfolio.py` (totals/averages computed only
+over leases whose value actually parsed — a missing field is skipped,
+never counted as zero, so an average can't be silently diluted;
+expiration timeline bucketed 0-6/6-12/12-24/24+ months plus already-
+expired/unknown) and `app/comparison.py` (side-by-side N-lease compare
+keeping the extractor's original display strings verbatim — a compare
+view is exactly where a human checks the tool's work against the
+source, so normalizing the numbers there would work against the
+point; single-lease-vs-portfolio benchmarking with a signed % diff and
+above/below/in-line assessment). Built by a parallel subagent,
+independently re-verified: re-ran its 24 tests, then ran both modules
+against all 10 real test PDFs — the benchmark for the deliberately
+underpriced lease (64.8% below average rent) is consistent with the
+below_market_rent flag risk_analysis raised for the same lease
+independently.
+
+### Rent roll export and printable portfolio report
+**Status: done.** `app/rent_roll_export.py` (CSV via stdlib, Excel via
+the one new dependency this session — `openpyxl==3.1.5` — with real
+numeric typing applied conservatively so a qualified value like "$4.50
+per sq ft annually" never gets misrepresented as a bare number) and
+`app/report.py` (self-contained, print-oriented HTML one-pager: no
+external assets, so it renders identically saved or emailed). Built by
+a parallel subagent, independently re-verified: re-ran its 22 tests,
+then generated real CSV/Excel/HTML from all 10 actual test PDFs and
+read the Excel file back with openpyxl and the HTML report by eye —
+professional-looking output, correctly surfacing all 23 real risk
+flags from this session's portfolio.
+
+### Frontend: stays vanilla JS, no build step, restructured as a multi-view app
+**Status: in progress.** The single-lease-upload page is becoming a
+small multi-view app (portfolio dashboard, upload/batch, lease detail,
+expiration timeline, comparison, Q&A, printable report) using plain
+`<script>` includes, a sidebar nav, and a simple view-router — not a
+framework/bundler.
 - **Reason**: Session 1 explicitly chose vanilla JS for zero build
   tooling and stayed consistent through session 2's larger single-page
   rebuild; introducing a framework now would be a bigger, tangential
