@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Waitlist — Admin</title>
+    <title>Access Requests — Admin</title>
     <link rel="stylesheet" href="../../design-system.css">
     <link rel="stylesheet" href="admin.css">
 </head>
@@ -11,17 +11,17 @@
 
     <!--
       NOTE: This page has no authentication. Anyone with the URL can view
-      every waitlist email and approve signups. That's an accepted gap
-      for the current pre-launch stage, but this MUST be locked down
-      behind real auth before real users are on the waitlist. See the
+      every access request's email and grant access. That's an accepted
+      gap for the current pre-launch stage, but this MUST be locked down
+      behind real auth before real users are requesting access. See the
       matching note in backend/app/api.py above the /waitlist routes.
     -->
 
     <div class="admin-shell">
         <header class="admin-header">
             <div class="admin-header-title">
-                <h1>Waitlist</h1>
-                <p class="admin-subtitle">Manually approve signups to let them into the app. No auth on this page yet — do not share this link.</p>
+                <h1>Access Requests</h1>
+                <p class="admin-subtitle">Review requests and grant access to firms that are a fit. No auth on this page yet — do not share this link.</p>
             </div>
             <button class="btn-secondary" id="refreshBtn" type="button">Refresh</button>
         </header>

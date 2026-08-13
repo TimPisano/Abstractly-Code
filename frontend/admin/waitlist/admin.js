@@ -21,6 +21,14 @@ function formatDate(isoString) {
     return d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 }
 
+// Display copy only — reads like a selection decision ("Access
+// Granted"), not a queue. The underlying status value stored in the DB
+// is unchanged ('pending'/'approved'), this just controls the label
+// shown for it.
+function statusLabel(status) {
+    return status === 'approved' ? 'Access Granted' : 'Pending Review';
+}
+
 const WaitlistAdmin = {
     signups: [],
 
@@ -46,8 +54,8 @@ const WaitlistAdmin = {
                     <div class="empty-state-icon">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m.94 3.198l.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0112 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 016 18.719m12 0a5.971 5.971 0 00-.941-3.197m0 0A5.995 5.995 0 0012 12.75a5.995 5.995 0 00-5.058 2.772m0 0a3 3 0 00-4.681 2.72 8.986 8.986 0 003.74.477m.94-3.197a5.971 5.971 0 00-.94 3.197M15 6.75a3 3 0 11-6 0 3 3 0 016 0zm6 3a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0zm-13.5 0a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z"/></svg>
                     </div>
-                    <p class="empty-state-title">No signups yet</p>
-                    <p class="empty-state-hint">Once people join the waitlist from the landing page, they'll show up here.</p>
+                    <p class="empty-state-title">No requests yet</p>
+                    <p class="empty-state-hint">Once a real estate firm requests access from the landing page, they'll show up here.</p>
                 </div>
             `;
             return;
@@ -68,10 +76,10 @@ const WaitlistAdmin = {
                         <tr>
                             <td>${escapeHtml(s.email)}</td>
                             <td>${escapeHtml(formatDate(s.created_at))}</td>
-                            <td><span class="status-pill status-${escapeHtml(s.status)}">${escapeHtml(s.status)}</span></td>
+                            <td><span class="status-pill status-${escapeHtml(s.status)}">${escapeHtml(statusLabel(s.status))}</span></td>
                             <td>
                                 <button class="btn-secondary approve-btn" data-id="${s.id}" ${s.status === 'approved' ? 'disabled' : ''}>
-                                    ${s.status === 'approved' ? 'Approved' : 'Approve'}
+                                    ${s.status === 'approved' ? 'Access Granted' : 'Grant Access'}
                                 </button>
                             </td>
                         </tr>
@@ -93,15 +101,15 @@ const WaitlistAdmin = {
         document.getElementById('adminStats').innerHTML = `
             <div class="admin-stat-tile">
                 <div class="admin-stat-value">${total}</div>
-                <div class="admin-stat-label">Total signups</div>
+                <div class="admin-stat-label">Total requests</div>
             </div>
             <div class="admin-stat-tile">
                 <div class="admin-stat-value">${pending}</div>
-                <div class="admin-stat-label">Pending</div>
+                <div class="admin-stat-label">Pending review</div>
             </div>
             <div class="admin-stat-tile">
                 <div class="admin-stat-value">${approved}</div>
-                <div class="admin-stat-label">Approved</div>
+                <div class="admin-stat-label">Access granted</div>
             </div>
         `;
     },
@@ -114,7 +122,7 @@ const WaitlistAdmin = {
             if (signup) signup.status = 'approved';
             this.render();
         } catch (err) {
-            alert(`Failed to approve: ${err.message}`);
+            alert(`Failed to grant access: ${err.message}`);
         }
     },
 };

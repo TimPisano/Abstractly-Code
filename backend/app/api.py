@@ -357,9 +357,9 @@ def join_waitlist():
     if result["status"] == "duplicate":
         # Same UX either way — we don't want to reveal whether an email
         # is already on the list to a third party probing addresses.
-        return jsonify({"message": "You're on the list, we'll email you when it's your turn"}), 200
+        return jsonify({"message": "Your request has been received. If it's a fit, we'll be in touch."}), 200
 
-    return jsonify({"message": "You're on the list, we'll email you when it's your turn"}), 201
+    return jsonify({"message": "Your request has been received. If it's a fit, we'll be in touch."}), 201
 
 
 @app.route('/waitlist', methods=['GET'])
