@@ -57,6 +57,7 @@ def init_db() -> None:
                 extracted_fields TEXT NOT NULL,
                 document_type TEXT NOT NULL DEFAULT 'lease',
                 base_lease_id INTEGER,
+                date_candidates TEXT,
                 FOREIGN KEY (base_lease_id) REFERENCES leases(id)
             )
         """)
@@ -79,6 +80,7 @@ def reset_db() -> None:
 def _row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
     d = dict(row)
     d["extracted_fields"] = json.loads(d["extracted_fields"])
+    d["date_candidates"] = json.loads(d["date_candidates"]) if d.get("date_candidates") else None
     return d
 
 
@@ -87,19 +89,29 @@ def insert_lease(
     extracted_fields: Dict[str, Any],
     document_type: str = "lease",
     base_lease_id: Optional[int] = None,
+    date_candidates: Optional[Dict[str, Any]] = None,
 ) -> int:
-    """Persist one extracted document. Returns its new lease id."""
+    """
+    Persist one extracted document. Returns its new lease id.
+
+    `date_candidates` (shape: {"start": [...], "end": [...]}, from
+    FieldExtractor.find_all_date_candidates) is stored alongside the
+    extracted fields specifically so risk_analysis's cross-section
+    date-conflict check can run later without re-parsing the PDF —
+    only the extracted text is available at upload time, not after.
+    """
     conn = get_connection()
     try:
         cur = conn.execute(
-            "INSERT INTO leases (filename, uploaded_at, extracted_fields, document_type, base_lease_id) "
-            "VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO leases (filename, uploaded_at, extracted_fields, document_type, base_lease_id, date_candidates) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
             (
                 filename,
                 datetime.now(timezone.utc).isoformat(),
                 json.dumps(extracted_fields),
                 document_type,
                 base_lease_id,
+                json.dumps(date_candidates) if date_candidates is not None else None,
             ),
         )
         conn.commit()

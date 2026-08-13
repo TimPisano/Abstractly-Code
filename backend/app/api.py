@@ -1,13 +1,19 @@
 """
 Flask API for the lease abstraction / portfolio intelligence tool.
 
-Two layers of endpoints:
+Three layers of endpoints:
   - Stateless single-document extraction (/extract) — unchanged from
     earlier sessions, for quick one-off use that doesn't need to persist
     anything.
-  - Persisted portfolio endpoints (/leases, /leases/batch, amendments,
-    /portfolio/*, /qa, /leases/compare) — upload PDFs, store their
-    extraction results in SQLite, and analyze them as a collection.
+  - Persisted leases (/leases, /leases/batch, amendments) — upload PDFs,
+    store their extraction results (and amendments) in SQLite.
+  - Portfolio analysis (/portfolio/*, /leases/<id>/risks, /qa,
+    /leases/compare, /leases/<id>/benchmark) — everything downstream of
+    persisted leases: metrics, timeline, risk flags, grounded Q&A,
+    comparison/benchmarking, rent roll export, and the printable report.
+    These are thin wiring around the analysis modules (risk_analysis.py,
+    qa_engine.py, portfolio.py, comparison.py, rent_roll_export.py,
+    report.py) — the actual logic lives there, not here.
 """
 
 from flask import Flask, request, jsonify, Response
@@ -18,6 +24,16 @@ import tempfile
 from app.pdf_extractor import PDFExtractor
 from app.field_extractor import FieldExtractor
 from app import database
+from app.risk_analysis import analyze_lease_risks
+from app.qa_engine import answer_question
+from app.portfolio import (
+    compute_portfolio_metrics,
+    compute_expiration_timeline,
+    portfolio_context_for_risk_analysis,
+)
+from app.comparison import compare_leases, benchmark_lease
+from app.rent_roll_export import generate_rent_roll_csv, generate_rent_roll_excel
+from app.report import generate_portfolio_report_html
 
 
 app = Flask(__name__)
@@ -40,10 +56,17 @@ def _extract_fields_from_file_storage(file_storage):
     Shared pipeline: save an uploaded werkzeug FileStorage to a temp path,
     run PDF text extraction + field extraction, clean up the temp file.
 
-    Returns (extracted_fields, None) on success, or (None, (error_message,
-    http_status)) on failure — callers turn that into a JSON error
-    response themselves, since batch endpoints need to report a per-file
-    error without aborting the whole request.
+    Also computes every start/end date candidate found in the document
+    (FieldExtractor.find_all_date_candidates) so it can be persisted
+    alongside the extracted fields — this is the only point where the
+    raw PDF text is available; once the temp file is cleaned up,
+    risk_analysis's cross-section date-conflict check would otherwise
+    have nothing to work from for a lease loaded back out of storage.
+
+    Returns (extracted_fields, date_candidates, None) on success, or
+    (None, None, (error_message, http_status)) on failure — callers turn
+    that into a JSON error response themselves, since batch endpoints
+    need to report a per-file error without aborting the whole request.
     """
     temp_path = None
     try:
@@ -56,14 +79,18 @@ def _extract_fields_from_file_storage(file_storage):
             pages = pdf_extractor.extract_text(pdf_file, pdf_path=temp_path)
 
         if not pages or len(pages) == 0:
-            return None, ("Failed to extract text from PDF. The file may be corrupted or unsupported.", 500)
+            return None, None, ("Failed to extract text from PDF. The file may be corrupted or unsupported.", 500)
 
         field_extractor = FieldExtractor()
         extracted_fields = field_extractor.extract_fields(pages)
-        return extracted_fields, None
+        date_candidates = {
+            "start": field_extractor.find_all_date_candidates(pages, "start"),
+            "end": field_extractor.find_all_date_candidates(pages, "end"),
+        }
+        return extracted_fields, date_candidates, None
 
     except Exception as e:
-        return None, (f"Error processing PDF: {str(e)}", 500)
+        return None, None, (f"Error processing PDF: {str(e)}", 500)
 
     finally:
         if temp_path and os.path.exists(temp_path):
@@ -105,7 +132,7 @@ def extract_lease_data():
     if error:
         return error
 
-    extracted_fields, error = _extract_fields_from_file_storage(file)
+    extracted_fields, _date_candidates, error = _extract_fields_from_file_storage(file)
     if error:
         message, status = error
         return jsonify({"error": message}), status
@@ -138,12 +165,12 @@ def upload_lease():
         return error
 
     filename = file.filename
-    extracted_fields, error = _extract_fields_from_file_storage(file)
+    extracted_fields, date_candidates, error = _extract_fields_from_file_storage(file)
     if error:
         message, status = error
         return jsonify({"error": message}), status
 
-    lease_id = database.insert_lease(filename, extracted_fields, document_type="lease")
+    lease_id = database.insert_lease(filename, extracted_fields, document_type="lease", date_candidates=date_candidates)
     lease = database.get_effective_lease(lease_id)
     return jsonify(_lease_summary(lease)), 201
 
@@ -168,13 +195,13 @@ def upload_leases_batch():
                              "error": "Invalid file type. Only PDF files are allowed."})
             continue
 
-        extracted_fields, error = _extract_fields_from_file_storage(file_storage)
+        extracted_fields, date_candidates, error = _extract_fields_from_file_storage(file_storage)
         if error:
             message, _status = error
             results.append({"filename": filename, "success": False, "error": message})
             continue
 
-        lease_id = database.insert_lease(filename, extracted_fields, document_type="lease")
+        lease_id = database.insert_lease(filename, extracted_fields, document_type="lease", date_candidates=date_candidates)
         lease = database.get_effective_lease(lease_id)
         results.append({"filename": filename, "success": True, "lease": _lease_summary(lease)})
 
@@ -225,12 +252,12 @@ def upload_amendment(lease_id):
         return error
 
     filename = file.filename
-    extracted_fields, error = _extract_fields_from_file_storage(file)
+    extracted_fields, date_candidates, error = _extract_fields_from_file_storage(file)
     if error:
         message, status = error
         return jsonify({"error": message}), status
 
-    amendment_id = database.insert_lease(filename, extracted_fields, document_type="amendment", base_lease_id=lease_id)
+    database.insert_lease(filename, extracted_fields, document_type="amendment", base_lease_id=lease_id, date_candidates=date_candidates)
     lease = database.get_effective_lease(lease_id)
     return jsonify(_lease_summary(lease)), 201
 
@@ -245,6 +272,167 @@ def list_amendments(lease_id):
         "id": a["id"], "filename": a["filename"], "uploaded_at": a["uploaded_at"],
         "extracted_fields": a["extracted_fields"],
     } for a in amendments]), 200
+
+
+# ----------------------------------------------------------------------
+# Portfolio analysis
+# ----------------------------------------------------------------------
+
+def _lease_risks(lease):
+    """Risk flags for one effective lease, using its own stored date_candidates and the current portfolio average as context."""
+    all_leases = database.get_all_effective_leases()
+    context = portfolio_context_for_risk_analysis(all_leases)
+    date_candidates = lease.get("date_candidates")
+    flags = analyze_lease_risks(lease["extracted_fields"], context, date_candidates)
+    return flags
+
+
+@app.route('/portfolio/summary', methods=['GET'])
+def portfolio_summary():
+    leases = database.get_all_effective_leases()
+    return jsonify(compute_portfolio_metrics(leases)), 200
+
+
+@app.route('/portfolio/timeline', methods=['GET'])
+def portfolio_timeline():
+    leases = database.get_all_effective_leases()
+    return jsonify(compute_expiration_timeline(leases)), 200
+
+
+@app.route('/portfolio/risks', methods=['GET'])
+def portfolio_risks():
+    """Risk flags for every lease in the portfolio, most-flagged-first isn't imposed here — callers sort/filter as needed."""
+    leases = database.get_all_effective_leases()
+    context = portfolio_context_for_risk_analysis(leases)
+
+    results = []
+    for lease in leases:
+        date_candidates = lease.get("date_candidates")
+        flags = analyze_lease_risks(lease["extracted_fields"], context, date_candidates)
+        results.append({
+            "lease_id": lease["id"],
+            "filename": lease["filename"],
+            "tenant": (lease["extracted_fields"].get("tenant") or {}).get("value"),
+            "flags": flags,
+        })
+    return jsonify(results), 200
+
+
+@app.route('/leases/<int:lease_id>/risks', methods=['GET'])
+def lease_risks(lease_id):
+    lease = database.get_effective_lease(lease_id)
+    if not lease:
+        return jsonify({"error": "Lease not found"}), 404
+    flags = _lease_risks(lease)
+    return jsonify(flags), 200
+
+
+@app.route('/qa', methods=['POST'])
+def ask_question():
+    """
+    Body: {"question": str, "lease_id": int (optional)}.
+    If lease_id is given, the question is scoped to that one lease
+    (the lease-detail "ask about this lease" UI); otherwise it's
+    answered against the whole portfolio.
+    """
+    body = request.get_json(silent=True) or {}
+    question = body.get("question")
+    if not question or not isinstance(question, str):
+        return jsonify({"error": "Request body must include a non-empty 'question' string"}), 400
+
+    lease_id = body.get("lease_id")
+    if lease_id is not None:
+        lease = database.get_effective_lease(lease_id)
+        if not lease:
+            return jsonify({"error": "Lease not found"}), 404
+        leases = [lease]
+    else:
+        leases = database.get_all_effective_leases()
+
+    result = answer_question(question, leases)
+    return jsonify(result), 200
+
+
+@app.route('/leases/compare', methods=['GET'])
+def leases_compare():
+    """GET /leases/compare?ids=1,2,3"""
+    ids_param = request.args.get('ids', '')
+    try:
+        ids = [int(i) for i in ids_param.split(',') if i.strip()]
+    except ValueError:
+        return jsonify({"error": "ids must be a comma-separated list of integers"}), 400
+
+    if len(ids) < 2:
+        return jsonify({"error": "Provide at least 2 lease ids to compare (e.g. ?ids=1,2)"}), 400
+
+    leases = []
+    for lease_id in ids:
+        lease = database.get_effective_lease(lease_id)
+        if not lease:
+            return jsonify({"error": f"Lease {lease_id} not found"}), 404
+        leases.append(lease)
+
+    return jsonify(compare_leases(leases)), 200
+
+
+@app.route('/leases/<int:lease_id>/benchmark', methods=['GET'])
+def lease_benchmark(lease_id):
+    """Benchmarks one lease against every OTHER lease in the portfolio (this lease excluded from its own comparison average)."""
+    lease = database.get_effective_lease(lease_id)
+    if not lease:
+        return jsonify({"error": "Lease not found"}), 404
+
+    other_leases = [l for l in database.get_all_effective_leases() if l["id"] != lease_id]
+    if not other_leases:
+        return jsonify({"error": "No other leases in the portfolio to benchmark against yet"}), 400
+
+    return jsonify(benchmark_lease(lease, other_leases)), 200
+
+
+@app.route('/portfolio/rent-roll.csv', methods=['GET'])
+def rent_roll_csv():
+    leases = database.get_all_effective_leases()
+    csv_text = generate_rent_roll_csv(leases)
+    return Response(
+        csv_text,
+        mimetype='text/csv',
+        headers={"Content-Disposition": "attachment; filename=rent_roll.csv"},
+    )
+
+
+@app.route('/portfolio/rent-roll.xlsx', methods=['GET'])
+def rent_roll_excel():
+    leases = database.get_all_effective_leases()
+    excel_bytes = generate_rent_roll_excel(leases)
+    return Response(
+        excel_bytes,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        headers={"Content-Disposition": "attachment; filename=rent_roll.xlsx"},
+    )
+
+
+@app.route('/portfolio/report', methods=['GET'])
+def portfolio_report():
+    """Returns the printable portfolio summary as an HTML page (rendered directly, not downloaded, so the frontend can preview it before printing/saving)."""
+    leases = database.get_all_effective_leases()
+    metrics = compute_portfolio_metrics(leases)
+    timeline = compute_expiration_timeline(leases)
+    context = portfolio_context_for_risk_analysis(leases)
+
+    all_risks = []
+    for lease in leases:
+        date_candidates = lease.get("date_candidates")
+        flags = analyze_lease_risks(lease["extracted_fields"], context, date_candidates)
+        if flags:
+            all_risks.append({
+                "lease_id": lease["id"],
+                "filename": lease["filename"],
+                "tenant": (lease["extracted_fields"].get("tenant") or {}).get("value"),
+                "flags": flags,
+            })
+
+    html = generate_portfolio_report_html(leases, metrics, timeline, all_risks)
+    return Response(html, mimetype='text/html')
 
 
 @app.route('/health', methods=['GET'])
