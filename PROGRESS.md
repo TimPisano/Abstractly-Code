@@ -1,6 +1,91 @@
 # Progress Summary
 
-**Last updated**: session 5 — visual redesign: landing page + waitlist gate, and a full app restyle
+**Last updated**: session 6 — landing page redesigned for a premium real estate audience (luxury visual language, outcome-first copy, exclusivity-framed access)
+
+---
+
+## Session 6: Landing Page — Luxury Repositioning
+
+A landing-page-only pass (per explicit scope): copy, layout, and visual
+treatment of the request-access flow and confirmation states. Nothing
+in `/app/`, `/admin/waitlist/`'s data logic, the waitlist table schema,
+or any backend extraction/OCR/security code was touched — only display
+copy in two backend strings (the `/waitlist` success message) changed,
+since that copy is part of the confirmation-state flow the task
+explicitly covered.
+
+### What changed
+
+**Visual direction** — the landing page now reads like a high-end
+product page (automotive/luxury brand references) rather than a SaaS
+template:
+- Full-bleed, cinematic dark hero: radial glow, a faint architectural
+  grid, and an inline SVG skyline silhouette sitting at the bottom edge
+- Oversized heavy-sans headline (Inter 900, tight negative tracking),
+  small uppercase eyebrow labels above every section heading, generous
+  whitespace throughout
+- A restrained, expensive palette — deep charcoal/black, warm brass
+  accent, off-white — with **no default SaaS blues or purple
+  gradients**. This palette lives entirely in `landing.css`'s own
+  `:root` override block, which only takes effect on documents that
+  load that stylesheet (the landing page). `design-system.css` itself
+  is unchanged, so `/app/` and `/admin/waitlist/` keep their original
+  indigo palette exactly as before — verified directly (see below).
+- Capabilities section restyled as a luxury "spec sheet": six bordered,
+  adjoining badge cards (icon + uppercase label + one-line outcome),
+  replacing the old numbered 3-step layout
+- A dark, moody statement section (bold one-liner + a single CTA) in
+  place of the old placeholder-metrics stats strip
+- Subtle scroll-reveal animations (fade + rise via IntersectionObserver,
+  `.reveal`/`.in-view`) on every major section — respects
+  `prefers-reduced-motion`, and falls back to fully-visible immediately
+  if `IntersectionObserver` isn't available at all
+
+**Copy — outcome-first, zero backend mechanics**: rewritten to lead
+entirely with the real estate outcome (portfolio clarity, fewer missed
+renewals, sharper decisions, more time on strategy). The words "OCR,"
+"extraction," "parsing," and "AI pipeline" do not appear anywhere on the
+page — verified by scanning the rendered page text directly, not just
+by eye.
+
+**Waitlist reframed as exclusive access, not a signup queue**:
+- Button copy: "Request Access" (was "Join the waitlist")
+- An explicit scarcity line above the form: "We work with a limited
+  number of real estate firms at a time. Request access below."
+- Confirmation state reads as being noticed, not queued: "Your request
+  has been received. If it's a fit, we'll be in touch." — no position
+  number, no count, anywhere (checked directly against the rendered
+  page and the backend's JSON response)
+- Admin view (`/admin/waitlist/`) copy reframed to match: "Approve" ->
+  "Grant Access," status labels read "Pending Review" / "Access
+  Granted." This is **display copy only** — the underlying
+  `waitlist_signups` table and its `pending`/`approved` status values
+  are unchanged; `statusLabel()` in `admin.js` just maps the existing
+  value to friendlier text.
+
+**Contact**: a small, single-line contact (email + phone) added to the
+footer, deliberately understated — no contact form, no dedicated
+section.
+
+### Verified this session
+- Full backend suite re-run after the `api.py` copy change: **14/14
+  test files pass**, no regressions
+- Hero, capabilities, statement, and footer sections each verified via
+  jsdom against the live backend as they were built (not just at the
+  end) — copy, structure, and a real request-access submit-to-
+  confirmation round trip all checked, zero JS errors throughout
+- Directly confirmed `/app/`'s `--primary-color` computed style is
+  still `#4f46e5` (the original indigo) after this session's changes —
+  i.e. the landing page's new palette provably did not leak into the
+  app
+- Scanned the rendered landing page's text content for banned
+  tech-mechanics words and for queue-position language ("position in
+  line," "#N in line," etc.) — none found
+
+### What's NOT done / known gaps (carried over, still true)
+- No real authentication on `/admin/waitlist/` or on reaching `/app/`
+- Sidebar/app views inside `/app/` were not touched this session — this
+  was scoped to the landing page only, per explicit instruction
 
 ---
 
