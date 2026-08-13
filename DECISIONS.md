@@ -1,10 +1,10 @@
 # Implementation Decisions
 
-## Portfolio Intelligence Expansion (2026-08-12, session 3) — IN PROGRESS
+## Portfolio Intelligence Expansion (2026-08-12, session 3)
 
-This section is being updated live as work happens, not just at the end,
-per explicit instruction. If you're reading this mid-session, the
-"Status" lines below tell you what's actually done vs. planned.
+This section was updated live as work happened, not just at the end,
+per explicit instruction — the per-decision "Status" lines below were
+the running record during the session and are now all "done."
 
 ### Scope
 Moving from single-lease extraction to portfolio-level intelligence:

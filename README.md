@@ -1,36 +1,54 @@
-# Lease Abstraction Tool
+# Lease Portfolio Intelligence
 
-A full-stack web application for extracting structured data from lease PDF documents.
+A full-stack application for extracting structured data from commercial
+lease PDFs and analyzing them as a portfolio — not just one document at
+a time.
 
 ## Overview
 
-This tool helps automate the extraction of key information from commercial lease agreements. Upload a PDF lease document, and the tool will automatically extract 14 fields:
+Upload one or many lease PDFs. The tool extracts 15 fields per lease
+(with source page/quote and a confidence level on every field), then
+goes beyond extraction into portfolio-level analysis:
 
-**Parties**: tenant name, landlord name, property address
-**Financial terms**: monthly rent, security deposit, CAM charges, rent escalation schedule, insurance requirements
-**Dates & term**: lease start/end dates, renewal options, default/cure period
-**Special clauses**: permitted use, exclusivity clause
+- **Dashboard** — every lease in a sortable/filterable table, with portfolio metrics (total/average rent, CAM exposure, square footage) and an inline risk indicator
+- **Risk detection** — a rule-based engine flags below-market rent, missing standard clauses, notice-period outliers, one-sided terms, and internal inconsistencies (bad escalation math, conflicting or reversed dates) — every flag explains itself with the actual numbers it fired on
+- **Grounded Q&A** — ask plain-English questions ("which leases expire in the next year," "what's our total CAM exposure") and get answers assembled from real stored data with page-level citations; this is a deterministic rule engine, not an LLM, specifically so it can't hallucinate a number or a citation
+- **Comparison & benchmarking** — side-by-side terms for 2+ leases, and single-lease-vs-portfolio-average benchmarking
+- **Amendments** — link an amendment/addendum PDF to a base lease; its fields override the base lease's in an "effective" view used everywhere else
+- **Exports** — CSV/Excel rent roll, and a one-page printable HTML portfolio summary report
 
-Each extracted field includes source attribution (page number + exact quote) and a confidence level (high/medium/low) reflecting how directly the source text matched the expected pattern, so a human reviewer knows what to double-check.
+**Extracted fields**: tenant, landlord, monthly rent, lease start/end
+dates, property address, security deposit, CAM charges, rent
+escalation, renewal options, permitted use, exclusivity clause,
+insurance requirements, default/cure period, square footage.
 
 ## Project Structure
 
 ```
 lease-abstraction/
-├── backend/          # Flask API server
-│   ├── app/          # Application code
-│   │   ├── api.py              # API endpoints
-│   │   ├── pdf_extractor.py    # PDF text extraction
-│   │   └── field_extractor.py  # Field pattern matching
-│   ├── tests/        # Test files and sample PDFs
-│   ├── run.py        # Server entry point
-│   └── README.md     # Backend documentation
+├── backend/                    # Flask API + SQLite persistence
+│   ├── app/
+│   │   ├── api.py                  # Routes
+│   │   ├── pdf_extractor.py         # PDF text extraction (+ OCR fallback)
+│   │   ├── field_extractor.py        # 15-field regex extraction engine
+│   │   ├── database.py                # SQLite persistence, amendments
+│   │   ├── normalize.py                # Display-string -> real number/date parsing
+│   │   ├── risk_analysis.py             # Rule-based risk/anomaly detection
+│   │   ├── qa_engine.py                  # Deterministic grounded Q&A
+│   │   ├── portfolio.py                   # Portfolio metrics + expiration timeline
+│   │   ├── comparison.py                   # Side-by-side compare + benchmarking
+│   │   ├── rent_roll_export.py              # CSV / Excel export
+│   │   └── report.py                         # Printable HTML report
+│   ├── tests/                  # Automated test suite + PDF fixtures
+│   ├── run.py
+│   └── README.md
 │
-└── frontend/         # Web UI
-    ├── index.html    # Main page structure
-    ├── app.js        # Application logic
-    ├── styles.css    # Styling
-    └── README.md     # Frontend documentation
+└── frontend/                   # Multi-view vanilla JS app
+    ├── index.html                  # App shell + sidebar nav
+    ├── api.js / app.js              # API client / router + shared state
+    ├── *-view.js                     # One file per view
+    ├── styles.css
+    └── README.md
 ```
 
 ## Quick Start
@@ -38,149 +56,95 @@ lease-abstraction/
 ### 1. Start the Backend
 
 ```bash
-# Navigate to backend directory
 cd backend
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Start the server
+source venv/bin/activate   # or: python3 -m venv venv && pip install -r requirements.txt
 python run.py
 ```
-
-The backend API will run on `http://localhost:5000`
+Runs on `http://localhost:5000`. Confirm: `curl http://localhost:5000/health`
 
 ### 2. Start the Frontend
 
-In a new terminal:
-
 ```bash
-# Navigate to frontend directory
 cd frontend
-
-# Start a simple web server (Python 3)
 python3 -m http.server 8080
 ```
+Open `http://localhost:8080`
 
-Open your browser to `http://localhost:8080`
+### 3. Use It
 
-### 3. Use the Application
-
-1. Drag and drop a lease PDF onto the upload area (or click to browse)
-2. Wait for processing to complete
-3. Review the extracted fields with their source citations
-4. Export results as JSON if needed
-
-## Features
-
-### Backend
-- RESTful API with `/extract` endpoint
-- Text extraction from PDF documents, with OCR fallback (pytesseract + poppler) for scanned/image-based PDFs
-- Regex-based pattern matching for 14 lease fields, tuned for both rigid "Label: Value" formatting and narrative legal prose
-- Per-field confidence scoring (high/medium/low)
-- Source attribution (page number + quote) for each field, correctly attributed even when a field's keyword and value are split across a page break
-- CORS enabled for frontend integration
-
-### Frontend
-- Clean, modern UI with drag-and-drop upload
-- Results grouped into Parties, Financial Terms, Dates & Term, and Special Clauses
-- Color-coded confidence badge per field
-- Click-to-edit inline correction of any extracted value before export
-- JSON export includes value, source, confidence, and edited-flag for every field
-- Session Stats panel (localStorage-backed) tracking fields-found and confidence breakdown across documents processed in the browser session
-- Fully responsive design
+1. **Upload Leases** — drag in one or many PDFs; a batch reports per-file success/failure so one bad file doesn't block the rest
+2. **Dashboard** — see the whole portfolio, sort/filter, spot risk flags at a glance
+3. Click into a lease for the **Detail** view — grouped fields, inline editing, risk explanations, amendments, and a per-lease Q&A box
+4. **Expirations** — renewal risk timeline
+5. **Compare** — pick 2+ leases for a side-by-side + benchmark view
+6. **Ask a Question** — portfolio-wide grounded Q&A
+7. **Portfolio Report** — printable/downloadable one-page summary
 
 ## Technology Stack
 
-**Backend:**
-- Python 3.8+
-- Flask - Web framework
-- PyPDF2 - PDF text extraction
-- flask-cors - CORS support
-
-**Frontend:**
-- Vanilla JavaScript - No frameworks
-- Modern CSS (Grid, Flexbox)
-- HTML5 - Semantic markup
+**Backend:** Python 3.8+, Flask, PyPDF2 (+ pytesseract/pdf2image for OCR), SQLite (stdlib `sqlite3`), openpyxl (Excel export)
+**Frontend:** Vanilla JavaScript, no framework/build step — CSS Grid/Flexbox, semantic HTML5
 
 ## API Documentation
 
-### POST /extract
+Two layers:
 
-Extract lease data from PDF file.
+- **Stateless**: `POST /extract` — extract without persisting (unchanged since the tool's first version)
+- **Persisted portfolio**: `POST /leases` (single), `POST /leases/batch` (multi, per-file error recovery), `GET /leases`, `GET /leases/<id>`, `DELETE /leases/<id>`, `POST`/`GET /leases/<id>/amendments`, `GET /portfolio/summary`, `GET /portfolio/timeline`, `GET /portfolio/risks`, `GET /leases/<id>/risks`, `POST /qa`, `GET /leases/compare?ids=1,2,3`, `GET /leases/<id>/benchmark`, `GET /portfolio/rent-roll.csv`, `GET /portfolio/rent-roll.xlsx`, `GET /portfolio/report`
 
-**Request:**
-- Method: POST
-- Content-Type: multipart/form-data
-- Body: `file` field containing PDF (max 16MB)
-
-**Response:** one entry per field (`tenant`, `landlord`, `rent_amount`, `lease_start_date`, `lease_end_date`, `property_address`, `security_deposit`, `cam_charges`, `rent_escalation`, `renewal_options`, `permitted_use`, `exclusivity_clause`, `insurance_requirements`, `default_cure_period`), each shaped as:
+Every extracted field is shaped:
 ```json
 {
   "rent_amount": {
     "value": "$6,250.00",
-    "source": {
-      "page": 1,
-      "quote": "...base rent for the Premises the sum of $6,250.00 per month, payable..."
-    },
+    "source": { "page": 1, "quote": "...the sum of $6,250.00 per month, payable..." },
     "confidence": "high"
   }
 }
 ```
+Not-found fields have `value`, `source`, and `confidence` all `null`.
 
-Fields not found will have `"value": null`, `"source": null`, and `"confidence": null`.
-
-### GET /health
-
-Health check endpoint.
-
-**Response:**
+A risk flag:
 ```json
 {
-  "status": "healthy"
+  "severity": "high",
+  "category": "below_market_rent",
+  "field": "rent_amount",
+  "message": "Rent ($2,250/mo) is 34% below the portfolio average ($3,420/mo)",
+  "explanation": "Comparing on rent per square foot, this lease is at $1.50/sq ft/mo against a portfolio average of $2.29/sq ft/mo — 34.5% below. ..."
 }
 ```
 
-## Development
+A Q&A response:
+```json
+{
+  "answer": "2 of 10 lease(s) expire within the next 12 month(s)...",
+  "citations": [{"lease_id": 5, "filename": "casual_sublease.pdf", "field": "lease_end_date", "page": 1, "quote": "..."}],
+  "confidence": "answered",
+  "matched_intent": "list_expiring"
+}
+```
 
-### Adding New Fields
-
-To extract additional fields:
-
-1. Edit `backend/app/field_extractor.py`
-2. Add a new extraction method following the existing pattern (label-style + prose-style + confidence tier per strategy — see the module docstring)
-3. Add the field to the `extract_fields` method return dictionary
-4. Add the field to `FIELD_LABELS` and the appropriate group in `FIELD_GROUPS` in `frontend/app.js`
-
-### Extending the Frontend
-
-The frontend is intentionally simple and modular:
-- `index.html` - Markup structure
-- `app.js` - All JavaScript logic
-- `styles.css` - All styling with CSS variables for easy theming
-
-To customize:
-- Update CSS variables in `:root` for colors and spacing
-- Modify `FIELD_LABELS` / `FIELD_GROUPS` in `app.js` for field display names and grouping
-- Add new sections to `index.html` as needed
+### GET /health
+```json
+{ "status": "healthy" }
+```
 
 ## Testing
 
-`backend/tests/` contains the test suite and PDF fixtures:
-- `test_extraction.py` — validates all 14 fields against the residential (`sample_lease.pdf`) and commercial (`sample_lease_commercial.pdf`) fixtures
-- `test_synthetic_accuracy.py` — runs extraction against 5 documents (the 2 above plus 3 synthetic leases with deliberately different structure/phrasing/formatting/formality) and prints a field-by-field accuracy summary
-- `test_multipage_field.py` — confirms a field split across a page break is still found
-- `test_ocr_fallback.py` — confirms the OCR fallback trigger/success/failure logic (mocked, since this dev environment has no tesseract/poppler installed)
-- `create_sample_lease.py`, `create_commercial_lease.py`, `create_synthetic_leases.py` — regenerate the PDF fixtures
+`backend/tests/` — run everything with `python run_all_tests.py` (unit tests) or `python run_all_tests.py --live` (also runs the live-API integration suites; backend must already be running):
 
-Run any of them with `python <file>.py` from `backend/` (with the venv activated).
+- **Unit tests** (no server needed): `test_extraction.py`, `test_synthetic_accuracy.py` (field accuracy across all 10 PDF fixtures), `test_multipage_field.py`, `test_ocr_fallback.py`, `test_risk_analysis.py`, `test_qa_engine.py`, `test_portfolio.py`, `test_comparison.py`, `test_rent_roll_export.py`, `test_report.py`
+- **Live API integration** (backend must be running): `test_live_api.py`, `test_live_portfolio_api.py` (48 checks against the real HTTP layer — batch upload error recovery, amendments, all analysis endpoints, exports, error paths; self-cleaning, safe to re-run)
+- **Fixture generators**: `create_sample_lease.py`, `create_commercial_lease.py`, `create_synthetic_leases.py`, `create_red_flag_leases.py` (the last one builds 5 documents with deliberate risk-detection issues)
 
 ## Known Limitations
 
-- Regex-based extraction, not ML/NLP — accuracy depends on the pattern library covering the phrasing a given lease uses. See `PROGRESS.md` for current measured accuracy and known weak spots.
-- Returns the first (or best-scoring, for a few disambiguated fields) match only — doesn't handle a lease that legitimately has multiple values for the same field.
-- No authentication or user management
-- OCR fallback logic is verified with mocks, not a live run — this dev environment has no tesseract/poppler installed. Should be validated against a real scanned PDF in an environment with those binaries before relying on it in production.
+- Regex-based extraction, not ML/NLP — see `PROGRESS.md` for measured accuracy and known weak spots
+- Q&A only answers questions matching a known intent pattern (by design — see `DECISIONS.md` for why this trades coverage for zero-hallucination guarantees)
+- Risk thresholds are fixed constants, not yet tunable per portfolio
+- OCR fallback logic verified with mocks only — no tesseract/poppler in this dev environment
+- No authentication/multi-user support; SQLite is right-sized for single-user/local use, not a hosted multi-tenant deployment
 
 ## Future Enhancements
 
@@ -188,23 +152,11 @@ See the prioritized list in `PROGRESS.md`.
 
 ## Troubleshooting
 
-**Backend won't start:**
-- Ensure Python 3.8+ is installed
-- Install dependencies: `pip install -r requirements.txt`
-- Check port 5000 is not in use
-
-**Frontend shows CORS errors:**
-- Ensure backend is running
-- flask-cors should be installed (included in requirements.txt)
-
-**No text extracted:**
-- PDF may be image-based (requires OCR)
-- PDF may be corrupted or encrypted
-
-**Fields not found:**
-- Lease format may differ from expected patterns
-- Check backend logs for pattern matching details
-- Patterns can be adjusted in `field_extractor.py`
+**Backend won't start** — check Python 3.8+, `pip install -r requirements.txt`, port 5000 free
+**Frontend shows CORS/network errors** — confirm the backend is actually running (`curl http://localhost:5000/health`)
+**Upload fails** — PDF only, 16MB max per file; check the per-file error message in a batch, don't assume the whole batch failed
+**"I don't have a way to answer that yet"** — expected for questions outside the Q&A engine's supported intents, not a bug
+**No text extracted** — PDF may be image-based (needs OCR) or corrupted/encrypted
 
 ## Contributing
 
