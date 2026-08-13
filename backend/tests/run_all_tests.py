@@ -24,6 +24,7 @@ UNIT_TESTS = [
     "test_synthetic_accuracy.py",
     "test_multipage_field.py",
     "test_ocr_fallback.py",
+    "test_real_ocr.py",
     "test_risk_analysis.py",
     "test_qa_engine.py",
     "test_portfolio.py",
@@ -35,6 +36,7 @@ UNIT_TESTS = [
 LIVE_API_TESTS = [
     "test_live_api.py",
     "test_live_portfolio_api.py",
+    "test_security_hardening.py",
 ]
 
 

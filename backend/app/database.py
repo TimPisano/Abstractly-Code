@@ -125,6 +125,14 @@ def get_lease(lease_id: int) -> Optional[Dict[str, Any]]:
     try:
         row = conn.execute("SELECT * FROM leases WHERE id = ?", (lease_id,)).fetchone()
         return _row_to_dict(row) if row else None
+    except OverflowError:
+        # SQLite's INTEGER column is a signed 64-bit int; an id outside
+        # that range (e.g. from a malicious or malformed URL — Flask's
+        # <int:lease_id> converter accepts any Python int, unbounded)
+        # can never match a real row, so treat it the same as "not
+        # found" rather than letting the OverflowError propagate as a
+        # 500.
+        return None
     finally:
         conn.close()
 

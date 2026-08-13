@@ -18,6 +18,7 @@ Three layers of endpoints:
 
 from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
+import logging
 import os
 import tempfile
 
@@ -43,7 +44,58 @@ CORS(app)  # Enable CORS for frontend integration
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 MB max file size
 ALLOWED_EXTENSIONS = {'pdf'}
 
+logger = logging.getLogger(__name__)
+
 database.init_db()
+
+
+# ----------------------------------------------------------------------
+# Global error handlers
+#
+# Flask's interactive debugger (enabled by DEBUG=True) shows the full
+# traceback, source code, and file paths for any unhandled exception —
+# invaluable for local development, but exactly the "stack traces /
+# internal file paths exposed to the frontend" this hardening pass
+# checks for. These handlers return a clean, generic JSON error in
+# every case; the real exception is still logged server-side (visible
+# in the terminal running the server) so nothing is lost for debugging,
+# it just doesn't reach the client. They're registered unconditionally
+# — even with DEBUG on, a route-level 4xx (like our own 404/400 jsonify
+# calls) should look the same as the framework's, and any exception we
+# didn't anticipate should degrade the same way a handled one does.
+# ----------------------------------------------------------------------
+
+@app.errorhandler(400)
+def handle_bad_request(e):
+    return jsonify({"error": "Bad request"}), 400
+
+
+@app.errorhandler(404)
+def handle_not_found(e):
+    return jsonify({"error": "Not found"}), 404
+
+
+@app.errorhandler(413)
+def handle_too_large(e):
+    max_mb = app.config['MAX_CONTENT_LENGTH'] // (1024 * 1024)
+    return jsonify({"error": f"File too large. Maximum size is {max_mb}MB."}), 413
+
+
+@app.errorhandler(500)
+def handle_server_error(e):
+    logger.exception("Unhandled 500 error")
+    return jsonify({"error": "Internal server error"}), 500
+
+
+@app.errorhandler(Exception)
+def handle_unexpected_error(e):
+    # Catches anything not already turned into a proper HTTP error by
+    # Werkzeug/Flask (e.g. an OverflowError from a route converter, a
+    # database error) — without this, such an exception propagates past
+    # our own try/except blocks and, in debug mode, straight into the
+    # interactive debugger.
+    logger.exception("Unhandled exception")
+    return jsonify({"error": "Internal server error"}), 500
 
 
 def allowed_file(filename):
@@ -89,8 +141,12 @@ def _extract_fields_from_file_storage(file_storage):
         }
         return extracted_fields, date_candidates, None
 
-    except Exception as e:
-        return None, None, (f"Error processing PDF: {str(e)}", 500)
+    except Exception:
+        # The real exception (which can include the temp file's path,
+        # e.g. a FileNotFoundError) is logged server-side only — the
+        # client gets a generic message, never str(e) verbatim.
+        logger.exception("Error processing uploaded PDF")
+        return None, None, ("Error processing PDF. The file may be corrupted or unsupported.", 500)
 
     finally:
         if temp_path and os.path.exists(temp_path):
@@ -444,4 +500,16 @@ def health_check():
 if __name__ == '__main__':
     # Run Flask development server
     # Note: For production, use a proper WSGI server like gunicorn
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    #
+    # debug=True (Werkzeug's interactive debugger + auto-reload) is
+    # opt-in via FLASK_DEBUG, not the default — the debugger shows full
+    # tracebacks, source code, and file paths for any unhandled
+    # exception, which is invaluable when developing locally but must
+    # never be on for anything reachable by anyone else. The
+    # errorhandlers registered above return clean generic JSON errors
+    # either way, so turning this on for local debugging doesn't bring
+    # back the stack-trace leak this hardening pass closed — it only
+    # adds the debugger AS WELL AS the JSON handlers, for exceptions
+    # Flask decides to route to the debugger instead of a handler.
+    debug_mode = os.environ.get('FLASK_DEBUG', '').lower() in ('1', 'true', 'yes')
+    app.run(debug=debug_mode, host='0.0.0.0', port=5000)
