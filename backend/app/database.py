@@ -46,7 +46,7 @@ def get_connection() -> sqlite3.Connection:
 
 
 def init_db() -> None:
-    """Create the leases table if it doesn't already exist. Safe to call repeatedly."""
+    """Create tables if they don't already exist. Safe to call repeatedly."""
     conn = get_connection()
     try:
         conn.execute("""
@@ -61,16 +61,25 @@ def init_db() -> None:
                 FOREIGN KEY (base_lease_id) REFERENCES leases(id)
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS waitlist_signups (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT NOT NULL UNIQUE,
+                created_at TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending'
+            )
+        """)
         conn.commit()
     finally:
         conn.close()
 
 
 def reset_db() -> None:
-    """Drop and recreate the leases table. Used by tests for a clean slate."""
+    """Drop and recreate all tables. Used by tests for a clean slate."""
     conn = get_connection()
     try:
         conn.execute("DROP TABLE IF EXISTS leases")
+        conn.execute("DROP TABLE IF EXISTS waitlist_signups")
         conn.commit()
     finally:
         conn.close()
@@ -215,3 +224,52 @@ def get_effective_lease(lease_id: int) -> Optional[Dict[str, Any]]:
 def get_all_effective_leases() -> List[Dict[str, Any]]:
     """All base leases (not amendments) with their fields amendment-merged."""
     return [get_effective_lease(lease["id"]) for lease in get_all_leases(document_type="lease")]
+
+
+def insert_waitlist_signup(email: str) -> Dict[str, Any]:
+    """
+    Add an email to the waitlist. Returns {"status": "created", "id": ...}
+    on success, or {"status": "duplicate"} if the email is already on the
+    list — the caller should treat "duplicate" as a friendly no-op, not
+    an error, since re-submitting the same email is expected user behavior
+    (e.g. hitting submit twice), not bad input.
+    """
+    conn = get_connection()
+    try:
+        cur = conn.execute(
+            "INSERT INTO waitlist_signups (email, created_at, status) VALUES (?, ?, 'pending')",
+            (email, datetime.now(timezone.utc).isoformat()),
+        )
+        conn.commit()
+        return {"status": "created", "id": cur.lastrowid}
+    except sqlite3.IntegrityError:
+        return {"status": "duplicate"}
+    finally:
+        conn.close()
+
+
+def get_all_waitlist_signups() -> List[Dict[str, Any]]:
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM waitlist_signups ORDER BY created_at DESC"
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def approve_waitlist_signup(signup_id: int) -> bool:
+    """Flip a signup's status to 'approved'. Returns False if no such id."""
+    conn = get_connection()
+    try:
+        cur = conn.execute(
+            "UPDATE waitlist_signups SET status = 'approved' WHERE id = ?",
+            (signup_id,),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    except OverflowError:
+        return False
+    finally:
+        conn.close()

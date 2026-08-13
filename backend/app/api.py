@@ -20,6 +20,7 @@ from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
 import logging
 import os
+import re
 import tempfile
 
 from app.pdf_extractor import PDFExtractor
@@ -328,6 +329,52 @@ def list_amendments(lease_id):
         "id": a["id"], "filename": a["filename"], "uploaded_at": a["uploaded_at"],
         "extracted_fields": a["extracted_fields"],
     } for a in amendments]), 200
+
+
+# ----------------------------------------------------------------------
+# Waitlist (landing page gate)
+#
+# NOTE: /waitlist (GET) and /waitlist/<id>/approve are unauthenticated —
+# anyone who finds the admin URL can view every signup email and approve
+# accounts. This is acceptable for the current pre-launch stage (per
+# explicit product decision) but MUST be locked down behind real auth
+# before this goes live to real users.
+# ----------------------------------------------------------------------
+
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+@app.route('/waitlist', methods=['POST'])
+def join_waitlist():
+    """Body: {"email": str}. Adds the email to the waitlist as 'pending'."""
+    body = request.get_json(silent=True) or {}
+    email = (body.get("email") or "").strip()
+
+    if not email or not _EMAIL_RE.match(email):
+        return jsonify({"error": "Please enter a valid email address"}), 400
+
+    result = database.insert_waitlist_signup(email)
+    if result["status"] == "duplicate":
+        # Same UX either way — we don't want to reveal whether an email
+        # is already on the list to a third party probing addresses.
+        return jsonify({"message": "You're on the list, we'll email you when it's your turn"}), 200
+
+    return jsonify({"message": "You're on the list, we'll email you when it's your turn"}), 201
+
+
+@app.route('/waitlist', methods=['GET'])
+def list_waitlist():
+    """Admin-only (unauthenticated for now, see NOTE above). Lists every signup, newest first."""
+    return jsonify(database.get_all_waitlist_signups()), 200
+
+
+@app.route('/waitlist/<int:signup_id>/approve', methods=['POST'])
+def approve_waitlist(signup_id):
+    """Admin-only (unauthenticated for now, see NOTE above). Flips a signup's status to 'approved'."""
+    ok = database.approve_waitlist_signup(signup_id)
+    if not ok:
+        return jsonify({"error": "Signup not found"}), 404
+    return jsonify({"id": signup_id, "status": "approved"}), 200
 
 
 # ----------------------------------------------------------------------
