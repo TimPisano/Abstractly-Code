@@ -31,6 +31,8 @@ from app.qa_engine import answer_question
 from app.portfolio import (
     compute_portfolio_metrics,
     compute_expiration_timeline,
+    compute_attention_items,
+    compute_portfolio_health,
     portfolio_context_for_risk_analysis,
 )
 from app.comparison import compare_leases, benchmark_lease
@@ -228,6 +230,7 @@ def upload_lease():
         return jsonify({"error": message}), status
 
     lease_id = database.insert_lease(filename, extracted_fields, document_type="lease", date_candidates=date_candidates)
+    database.insert_activity("lease_uploaded", f"Uploaded {filename}", lease_id=lease_id)
     lease = database.get_effective_lease(lease_id)
     return jsonify(_lease_summary(lease)), 201
 
@@ -263,6 +266,13 @@ def upload_leases_batch():
         results.append({"filename": filename, "success": True, "lease": _lease_summary(lease)})
 
     succeeded = sum(1 for r in results if r["success"])
+    # One summary entry for the whole batch rather than one per file — a
+    # 20-file batch shouldn't push everything else out of a 10-item feed.
+    if succeeded == 1:
+        only = next(r for r in results if r["success"])
+        database.insert_activity("lease_uploaded", f"Uploaded {only['filename']}", lease_id=only["lease"]["id"])
+    elif succeeded > 1:
+        database.insert_activity("batch_upload", f"Uploaded a batch of {succeeded} leases")
     return jsonify({
         "total": len(results),
         "succeeded": succeeded,
@@ -292,6 +302,9 @@ def delete_lease(lease_id):
     if not lease:
         return jsonify({"error": "Lease not found"}), 404
     database.delete_lease(lease_id)
+    # Logged with lease_id=None (not lease_id) since the row this would
+    # reference no longer exists once delete_lease() returns.
+    database.insert_activity("lease_deleted", f"Deleted {lease['filename']}")
     return jsonify({"deleted": lease_id}), 200
 
 
@@ -315,6 +328,7 @@ def upload_amendment(lease_id):
         return jsonify({"error": message}), status
 
     database.insert_lease(filename, extracted_fields, document_type="amendment", base_lease_id=lease_id, date_candidates=date_candidates)
+    database.insert_activity("amendment_uploaded", f"Added amendment {filename} to {base_lease['filename']}", lease_id=lease_id)
     lease = database.get_effective_lease(lease_id)
     return jsonify(_lease_summary(lease)), 201
 
@@ -402,6 +416,27 @@ def portfolio_timeline():
     return jsonify(compute_expiration_timeline(leases)), 200
 
 
+@app.route('/portfolio/attention', methods=['GET'])
+def portfolio_attention():
+    """'What needs attention today' — expiring soon, missing data, unusual terms. See compute_attention_items for the exact definitions."""
+    leases = database.get_all_effective_leases()
+    return jsonify(compute_attention_items(leases)), 200
+
+
+@app.route('/portfolio/health', methods=['GET'])
+def portfolio_health():
+    """Morning-glance health strip: % verified, avg days to expiration, rent exposure expiring in 6/12 months."""
+    leases = database.get_all_effective_leases()
+    return jsonify(compute_portfolio_health(leases)), 200
+
+
+@app.route('/activity', methods=['GET'])
+def recent_activity():
+    """GET /activity?limit=10 — most recent account activity first."""
+    limit = request.args.get('limit', default=10, type=int) or 10
+    return jsonify(database.get_recent_activity(limit)), 200
+
+
 @app.route('/portfolio/risks', methods=['GET'])
 def portfolio_risks():
     """Risk flags for every lease in the portfolio, most-flagged-first isn't imposed here — callers sort/filter as needed."""
@@ -475,6 +510,7 @@ def leases_compare():
             return jsonify({"error": f"Lease {lease_id} not found"}), 404
         leases.append(lease)
 
+    database.insert_activity("comparison_run", f"Compared {len(leases)} leases")
     return jsonify(compare_leases(leases)), 200
 
 
@@ -496,6 +532,7 @@ def lease_benchmark(lease_id):
 def rent_roll_csv():
     leases = database.get_all_effective_leases()
     csv_text = generate_rent_roll_csv(leases)
+    database.insert_activity("rent_roll_exported", f"Exported rent roll as CSV ({len(leases)} leases)")
     return Response(
         csv_text,
         mimetype='text/csv',
@@ -507,6 +544,7 @@ def rent_roll_csv():
 def rent_roll_excel():
     leases = database.get_all_effective_leases()
     excel_bytes = generate_rent_roll_excel(leases)
+    database.insert_activity("rent_roll_exported", f"Exported rent roll as Excel ({len(leases)} leases)")
     return Response(
         excel_bytes,
         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -516,7 +554,19 @@ def rent_roll_excel():
 
 @app.route('/portfolio/report', methods=['GET'])
 def portfolio_report():
-    """Returns the printable portfolio summary as an HTML page (rendered directly, not downloaded, so the frontend can preview it before printing/saving)."""
+    """
+    Returns the printable portfolio summary as an HTML page (rendered
+    directly, not downloaded, so the frontend can preview it before
+    printing/saving).
+
+    Deliberately does NOT log an activity_log entry: report-view.js
+    calls this on every visit to the Report view (to refresh the
+    preview), not only when the user actually intends to produce a
+    report — logging here would mean switching tabs back and forth
+    floods "Recent Activity" with noise. The rent-roll CSV/Excel
+    endpoints below are real export actions with no such view-load
+    trigger, so those do log.
+    """
     leases = database.get_all_effective_leases()
     metrics = compute_portfolio_metrics(leases)
     timeline = compute_expiration_timeline(leases)

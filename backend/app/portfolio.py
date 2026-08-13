@@ -30,6 +30,7 @@ from .normalize import (
     parse_square_footage,
     rent_per_sqft,
 )
+from .risk_analysis import analyze_lease_risks
 
 
 # The full extracted-field set, in the extractor's own order. Kept as an
@@ -58,6 +59,17 @@ FIELD_NAMES = [
 # into "months remaining" for expiration bucketing — see
 # compute_expiration_timeline for why an approximation is the right call.
 DAYS_PER_MONTH = 30.4375
+
+# "Needs attention today" window: a lease expiring within this many days
+# is surfaced on the dashboard, not just somewhere in the full timeline.
+ATTENTION_EXPIRING_DAYS = 90
+
+# A lease missing any of these is flagged as incomplete/needing review —
+# these are the fields portfolio math and the dashboard depend on most;
+# a missing special clause is a smaller gap than a missing rent amount.
+CORE_FIELDS_FOR_COMPLETENESS = [
+    "tenant", "landlord", "rent_amount", "lease_start_date", "lease_end_date",
+]
 
 
 def field_value(lease: Dict[str, Any], field_name: str) -> Optional[str]:
@@ -297,3 +309,136 @@ def compute_expiration_timeline(
             entries.sort(key=_sort_key)
 
     return buckets
+
+
+def _attention_entry(lease: Dict[str, Any], **extra: Any) -> Dict[str, Any]:
+    """Common shape for an item in any of the three attention lists."""
+    return {
+        "lease_id": lease.get("id"),
+        "filename": lease.get("filename"),
+        "tenant": field_value(lease, "tenant"),
+        **extra,
+    }
+
+
+def compute_attention_items(
+    leases: List[Dict[str, Any]],
+    reference_date: Optional[date] = None,
+) -> Dict[str, List[Dict[str, Any]]]:
+    """
+    "What needs attention today" — the three reasons a lease would be
+    worth a human's time right now, computed fresh from the same data
+    every other view uses (no separate flag stored on the lease):
+
+      - expiring_soon: lease_end_date within ATTENTION_EXPIRING_DAYS days
+        (including already-due-today, excluding leases already expired —
+        those are a different problem, not a thing to plan for)
+      - missing_data: missing one or more of CORE_FIELDS_FOR_COMPLETENESS
+      - unusual_terms: has at least one medium/high severity risk flag
+        from the existing risk_analysis engine (below-market rent,
+        missing standard clauses, notice-period outliers, inconsistent
+        escalation schedules, date conflicts) — reused rather than
+        reimplemented, so "unusual" means the same thing here as it does
+        on the lease detail page's risk panel.
+
+    A lease can appear in more than one list; each list is independently
+    useful ("show me every incomplete lease" vs "show me every lease
+    expiring soon"), so no dedup is done across lists.
+    """
+    if reference_date is None:
+        reference_date = date.today()
+
+    expiring_soon = []
+    missing_data = []
+    unusual_terms = []
+
+    context = portfolio_context_for_risk_analysis(leases)
+
+    for lease in leases:
+        fields = lease.get("extracted_fields") or {}
+
+        end_date = parse_date(field_value(lease, "lease_end_date"))
+        if end_date is not None:
+            days_remaining = (end_date - reference_date).days
+            if 0 <= days_remaining <= ATTENTION_EXPIRING_DAYS:
+                expiring_soon.append(_attention_entry(
+                    lease,
+                    lease_end_date=field_value(lease, "lease_end_date"),
+                    days_remaining=days_remaining,
+                ))
+
+        missing_fields = [f for f in CORE_FIELDS_FOR_COMPLETENESS if field_value(lease, f) is None]
+        if missing_fields:
+            missing_data.append(_attention_entry(lease, missing_fields=missing_fields))
+
+        date_candidates = lease.get("date_candidates")
+        flags = analyze_lease_risks(fields, context, date_candidates)
+        notable_flags = [f for f in flags if f["severity"] in ("high", "medium")]
+        if notable_flags:
+            unusual_terms.append(_attention_entry(lease, flags=notable_flags))
+
+    expiring_soon.sort(key=lambda entry: entry["days_remaining"])
+
+    return {
+        "expiring_soon": expiring_soon,
+        "missing_data": missing_data,
+        "unusual_terms": unusual_terms,
+    }
+
+
+def compute_portfolio_health(
+    leases: List[Dict[str, Any]],
+    reference_date: Optional[date] = None,
+) -> Dict[str, Any]:
+    """
+    A morning-glance health strip: how much of the portfolio is in good
+    shape, how urgent the renewal picture is, and how much rent is on
+    the clock over the next two windows.
+
+    "Verified" here means a lease appears in neither compute_attention_
+    items' missing_data nor unusual_terms list — i.e. nothing about it
+    currently needs a human look. That is deliberately the same
+    computation as the attention panel, not a separate heuristic, so the
+    two can never disagree about which leases are fine.
+    """
+    if reference_date is None:
+        reference_date = date.today()
+
+    total = len(leases)
+    attention = compute_attention_items(leases, reference_date)
+    needs_review_ids = {item["lease_id"] for item in attention["missing_data"]}
+    needs_review_ids |= {item["lease_id"] for item in attention["unusual_terms"]}
+    needs_review = len(needs_review_ids)
+    fully_verified = total - needs_review
+
+    days_to_expiration: List[int] = []
+    rent_expiring_6mo: List[float] = []
+    rent_expiring_12mo: List[float] = []
+
+    for lease in leases:
+        end_date = parse_date(field_value(lease, "lease_end_date"))
+        if end_date is None:
+            continue
+        days = (end_date - reference_date).days
+        if days < 0:
+            continue  # already expired — not part of "time remaining"
+
+        days_to_expiration.append(days)
+
+        rent = parse_currency(field_value(lease, "rent_amount"))
+        if rent is None:
+            continue
+        if days <= 182:  # ~6 months
+            rent_expiring_6mo.append(rent)
+        if days <= 365:  # ~12 months
+            rent_expiring_12mo.append(rent)
+
+    return {
+        "total_leases": total,
+        "fully_verified_count": fully_verified,
+        "needs_review_count": needs_review,
+        "fully_verified_pct": round(fully_verified / total * 100, 1) if total else None,
+        "avg_days_to_expiration": _mean([float(d) for d in days_to_expiration], digits=0),
+        "monthly_rent_expiring_6mo": _total(rent_expiring_6mo),
+        "monthly_rent_expiring_12mo": _total(rent_expiring_12mo),
+    }

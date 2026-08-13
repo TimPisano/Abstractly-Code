@@ -31,12 +31,14 @@ UNIT_TESTS = [
     "test_comparison.py",
     "test_rent_roll_export.py",
     "test_report.py",
+    "test_dashboard_features.py",
 ]
 
 LIVE_API_TESTS = [
     "test_live_api.py",
     "test_live_portfolio_api.py",
     "test_security_hardening.py",
+    "test_live_dashboard_api.py",
 ]
 
 

@@ -69,6 +69,16 @@ def init_db() -> None:
                 status TEXT NOT NULL DEFAULT 'pending'
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS activity_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                action_type TEXT NOT NULL,
+                description TEXT NOT NULL,
+                lease_id INTEGER,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (lease_id) REFERENCES leases(id) ON DELETE SET NULL
+            )
+        """)
         conn.commit()
     finally:
         conn.close()
@@ -80,6 +90,7 @@ def reset_db() -> None:
     try:
         conn.execute("DROP TABLE IF EXISTS leases")
         conn.execute("DROP TABLE IF EXISTS waitlist_signups")
+        conn.execute("DROP TABLE IF EXISTS activity_log")
         conn.commit()
     finally:
         conn.close()
@@ -271,5 +282,44 @@ def approve_waitlist_signup(signup_id: int) -> bool:
         return cur.rowcount > 0
     except OverflowError:
         return False
+    finally:
+        conn.close()
+
+
+def insert_activity(action_type: str, description: str, lease_id: Optional[int] = None) -> int:
+    """
+    Records one entry in the account-wide activity feed. Called
+    directly from the API route handling an action (upload, delete,
+    comparison run, report generated, etc) — this module doesn't infer
+    activity from other state, it just persists what the caller tells it
+    happened. `lease_id` is set to NULL (not deleted) if that lease is
+    later removed — see the ON DELETE SET NULL on the FK in init_db —
+    so the activity entry (whose `description` already has the filename
+    baked in) survives as history rather than vanishing or blocking the
+    delete.
+    """
+    conn = get_connection()
+    try:
+        cur = conn.execute(
+            "INSERT INTO activity_log (action_type, description, lease_id, created_at) VALUES (?, ?, ?, ?)",
+            (action_type, description, lease_id, datetime.now(timezone.utc).isoformat()),
+        )
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def get_recent_activity(limit: int = 10) -> List[Dict[str, Any]]:
+    """Most recent activity first. `limit` is clamped to a sane range so an
+    unbounded/absurd query param can't force a full-table scan-and-return."""
+    limit = max(1, min(limit, 200))
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM activity_log ORDER BY created_at DESC, id DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+        return [dict(r) for r in rows]
     finally:
         conn.close()
