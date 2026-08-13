@@ -1,14 +1,23 @@
-# Lease PDF Extraction Backend
+# Lease Portfolio Backend
 
-A Python backend service for extracting key information from lease PDF documents using PyPDF2 and OCR fallback.
+A Python/Flask backend that extracts 15 structured fields from commercial
+lease PDFs (with source page/quote and a confidence level on every
+field), persists them in SQLite as a portfolio, and analyzes that
+portfolio: risk/anomaly detection, grounded natural-language Q&A,
+lease comparison and benchmarking, rent roll export, and a printable
+summary report. See the repo root `README.md` for the full picture;
+this file covers backend-specific setup and API detail.
 
 ## Features
 
-- Extracts tenant name, rent amount, lease start date, and lease end date
-- Supports both digital and scanned PDFs (with OCR fallback)
-- Returns source information (page number and quote) for each extracted field
-- RESTful API built with Flask
-- Handles "not found" cases gracefully
+- 15-field extraction (tenant, landlord, rent, dates, address, deposit, CAM, escalation, renewal, permitted use, exclusivity, insurance, default/cure, square footage) with per-field confidence and source page/quote
+- Digital + scanned PDFs (OCR fallback via pytesseract/pdf2image)
+- Persisted portfolio (SQLite): single or batch upload, amendments linked to a base lease
+- Risk/anomaly detection: below-market rent, missing clauses, notice-period outliers, one-sided terms, internal inconsistencies — rule-based, every flag cites real numbers
+- Deterministic (non-LLM) Q&A with citations grounded in real stored data
+- Portfolio metrics, expiration timeline, side-by-side comparison, benchmarking
+- CSV/Excel rent roll export, printable HTML portfolio report
+- RESTful Flask API, CORS enabled, graceful error handling throughout
 
 ## Requirements
 
@@ -69,63 +78,35 @@ The server will start at `http://localhost:5000`
 
 ## API Endpoints
 
-### POST /extract
+Full request/response JSON examples (extraction, risk flags, Q&A) are
+in the repo root `README.md`. Summary here:
 
-Extracts lease information from an uploaded PDF file.
+### Stateless extraction (no persistence)
 
-**Request:**
-- Method: POST
-- Content-Type: multipart/form-data
-- Body: Form data with a 'file' field containing the PDF
+- `POST /extract` — multipart `file` field, PDF only. Returns 15 fields, each `{"value", "source": {"page", "quote"}, "confidence"}`; not-found fields have all three `null`.
+  ```bash
+  curl -X POST -F "file=@path/to/lease.pdf" http://localhost:5000/extract
+  ```
 
-**Example using curl:**
-```bash
-curl -X POST -F "file=@path/to/lease.pdf" http://localhost:5000/extract
-```
+### Persisted leases (portfolio)
 
-**Response:**
-```json
-{
-  "tenant": {
-    "value": "John Smith",
-    "source": {
-      "page": 1,
-      "quote": "Landlord: Property Management LLC\nTenant: John Smith\n\nPROPERTY:"
-    }
-  },
-  "rent_amount": {
-    "value": "$2,500.00",
-    "source": {
-      "page": 1,
-      "quote": "RENT:\nMonthly Rent: $2,500.00\nPayment Due: 1st of each month"
-    }
-  },
-  "lease_start_date": {
-    "value": "January 15, 2024",
-    "source": {
-      "page": 1,
-      "quote": "LEASE TERMS:\nLease Start Date: January 15, 2024\nLease End Date: January 14, 2025"
-    }
-  },
-  "lease_end_date": {
-    "value": "January 14, 2025",
-    "source": {
-      "page": 1,
-      "quote": "Lease Start Date: January 15, 2024\nLease End Date: January 14, 2025\nTerm: 12 months"
-    }
-  }
-}
-```
+- `POST /leases` — upload + persist one PDF as a base lease
+- `POST /leases/batch` — multipart `files` field (repeat for each file); each processed independently, response includes a per-file success/error list
+- `GET /leases` / `GET /leases/<id>` — list / detail (amendment-merged "effective" fields)
+- `DELETE /leases/<id>` — also removes its amendments
+- `POST /leases/<id>/amendments` — upload a PDF and link it as an amendment; its fields override the base lease's in the effective view
+- `GET /leases/<id>/amendments` — list amendments for a lease
 
-**For fields not found:**
-```json
-{
-  "tenant": {
-    "value": null,
-    "source": null
-  }
-}
-```
+### Portfolio analysis
+
+- `GET /portfolio/summary` — totals/averages (rent, CAM, deposit, escalation, notice period, sq ft), per-field missing counts
+- `GET /portfolio/timeline` — leases bucketed by months-until-expiration
+- `GET /portfolio/risks` / `GET /leases/<id>/risks` — risk flags (portfolio-wide / one lease)
+- `POST /qa` — body `{"question": str, "lease_id": int (optional)}`; omit `lease_id` for a portfolio-wide question
+- `GET /leases/compare?ids=1,2,3` — side-by-side field values for 2+ leases
+- `GET /leases/<id>/benchmark` — one lease vs. every other lease in the portfolio
+- `GET /portfolio/rent-roll.csv` / `GET /portfolio/rent-roll.xlsx` — rent roll export
+- `GET /portfolio/report` — self-contained printable HTML portfolio summary
 
 ### GET /health
 
@@ -140,98 +121,75 @@ Health check endpoint.
 
 ## Testing
 
-### Create Sample Lease PDF
-
-Generate a sample lease PDF for testing:
-
+Run everything at once:
 ```bash
 cd tests
-python create_sample_lease.py
+python run_all_tests.py          # 10 unit tests, no server needed
+python run_all_tests.py --live   # + 2 live-API suites (backend must already be running)
 ```
 
-This creates `tests/sample_lease.pdf` with sample lease data.
+Or individually — `test_extraction.py` / `test_synthetic_accuracy.py` (extraction accuracy across all 10 fixture PDFs), `test_multipage_field.py`, `test_ocr_fallback.py`, `test_risk_analysis.py`, `test_qa_engine.py`, `test_portfolio.py`, `test_comparison.py`, `test_rent_roll_export.py`, `test_report.py`, `test_live_api.py`, `test_live_portfolio_api.py` (self-cleaning — safe to re-run against the dev DB).
 
-### Run Extraction Test
-
-Test the extraction pipeline:
-
-```bash
-cd tests
-python test_extraction.py
-```
-
-This will:
-1. Extract text from the sample PDF
-2. Extract all fields
-3. Display results in JSON format
-4. Validate extracted values against expected values
+Regenerate PDF fixtures: `python create_sample_lease.py`, `create_commercial_lease.py`, `create_synthetic_leases.py`, `create_red_flag_leases.py` (the last one builds 5 documents with deliberate risk-detection issues, for exercising `risk_analysis.py`).
 
 ## Project Structure
 
 ```
 backend/
 ├── app/
-│   ├── __init__.py          # Package initialization
-│   ├── api.py               # Flask API endpoints
-│   ├── pdf_extractor.py     # PDF text extraction (with OCR fallback)
-│   └── field_extractor.py   # Field extraction logic
-├── tests/
-│   ├── create_sample_lease.py  # Generate sample PDF
-│   ├── test_extraction.py      # Test extraction pipeline
-│   └── sample_lease.pdf        # Generated sample PDF (after running create script)
-├── requirements.txt         # Python dependencies
-└── README.md               # This file
+│   ├── api.py                  # Flask routes (extraction, leases, portfolio analysis)
+│   ├── pdf_extractor.py        # PDF text extraction (+ OCR fallback)
+│   ├── field_extractor.py      # 15-field regex extraction engine
+│   ├── database.py             # SQLite persistence, amendments
+│   ├── normalize.py            # Display-string -> real number/date parsing
+│   ├── risk_analysis.py        # Rule-based risk/anomaly detection
+│   ├── qa_engine.py            # Deterministic grounded Q&A
+│   ├── portfolio.py            # Portfolio metrics + expiration timeline
+│   ├── comparison.py           # Side-by-side compare + benchmarking
+│   ├── rent_roll_export.py     # CSV / Excel export
+│   └── report.py               # Printable HTML report
+├── tests/                      # Automated suite + PDF fixture generators (see Testing)
+├── requirements.txt
+├── run.py
+├── lease_portfolio.db          # SQLite (gitignored, created at runtime)
+└── README.md
 ```
 
 ## How It Works
 
 ### PDF Text Extraction
-
-1. **PyPDF2 (Digital PDFs):** First attempts to extract text using PyPDF2, which works for digitally-created PDFs
-2. **OCR Fallback (Scanned PDFs):** If PyPDF2 extraction yields poor results (< 100 characters), automatically falls back to OCR using pytesseract + pdf2image
+1. **PyPDF2** first, for digitally-created PDFs
+2. **OCR fallback** (pytesseract + pdf2image) if PyPDF2 yields under 100 characters — see `PROGRESS.md` for the "not live-verified in this dev environment" caveat
 
 ### Field Extraction
+Each of the 15 fields tries several regex strategies in priority order (explicit label → narrative prose → loose fallback), stopping at the first match, tagged with a confidence tier (high/medium/low) reflecting how directly the match was found. See `field_extractor.py`'s module docstring and `DECISIONS.md` for the full design rationale — this is the most load-bearing file in the project and worth reading before modifying.
 
-Uses regex patterns and keyword matching to find:
+### Portfolio Analysis
+`risk_analysis.py`, `qa_engine.py`, `portfolio.py`, and `comparison.py` all consume the same `extracted_fields` shape (via `normalize.py` for anything needing real numbers) and operate on lease records from `database.py`'s "effective" (amendment-merged) view — see `DECISIONS.md` for why each is rule-based rather than ML/LLM-based.
 
-- **Tenant Name:** Looks for patterns like "Tenant:", "Lessee:", "Tenant Name:"
-- **Rent Amount:** Looks for patterns like "Monthly Rent:", "Rent:", "Rental Amount:" followed by dollar amounts
-- **Start Date:** Looks for "Start Date:", "Commencement Date:", "Beginning Date:"
-- **End Date:** Looks for "End Date:", "Expiration Date:", "Termination Date:"
+## Limitations
 
-Each extraction includes:
-- The extracted value
-- Source page number
-- A quote showing the context (50 characters before and after the match)
-
-## Limitations & Future Improvements
-
-**Current Limitations:**
-- Uses simple regex patterns (no ML/NLP)
-- May struggle with non-standard lease formats
-- Date formats must match common patterns (MM/DD/YYYY or "Month DD, YYYY")
-
-**Potential Improvements:**
-- Add machine learning models for more robust extraction
-- Support more date formats
-- Extract additional fields (property address, landlord, etc.)
-- Add confidence scores for extractions
-- Implement caching for repeated extractions
-- Add batch processing for multiple PDFs
+- Regex-based extraction, not ML/NLP — see `PROGRESS.md` for current measured accuracy
+- Q&A only answers questions matching a known intent (deliberate — see `DECISIONS.md`)
+- Risk thresholds are fixed constants, not yet configurable
+- OCR fallback verified with mocks only, not a live scanned-PDF run
+- No authentication/multi-user support
 
 ## Error Handling
 
-- **Invalid file type:** Returns 400 error
-- **No file uploaded:** Returns 400 error
-- **PDF processing error:** Returns 500 error with details
-- **Field not found:** Returns null value with null source
+- **Invalid file type / no file uploaded:** 400
+- **Lease/amendment not found:** 404
+- **PDF processing error:** 500 with a clear message
+- **Field not found:** `value`/`source`/`confidence` all `null`, not an error
+- **Batch upload:** each file's success/failure is independent — one bad file doesn't fail the rest
 
 ## Configuration
 
-- **Max file size:** 16 MB (configurable in `app/api.py`)
+- **Max file size:** 16 MB per file (`app/api.py`)
 - **Allowed file types:** PDF only
-- **Server port:** 5000 (configurable in `app/api.py`)
-- **OCR threshold:** 100 characters (configurable in `app/pdf_extractor.py`)
+- **Server port:** 5000 (`app/api.py`)
+- **OCR threshold:** 100 characters (`app/pdf_extractor.py`)
+- **DB path:** `backend/lease_portfolio.db` (override via `database.configure()`, used by tests to isolate a temp DB)
 
 ## Troubleshooting
 
