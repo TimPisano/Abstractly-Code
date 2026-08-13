@@ -50,6 +50,26 @@
             <!-- Global toast/error banner -->
             <div class="toast-container" id="toastContainer"></div>
 
+            <!-- Quick Actions: present on every view, not just the dashboard -->
+            <div class="quick-actions-bar">
+                <button class="quick-action" data-goto="upload" type="button">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 7.5m0 0L7.5 12M12 7.5v9"/></svg>
+                    Upload Lease
+                </button>
+                <button class="quick-action" data-goto="comparison" type="button">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h18M16.5 3L21 7.5m0 0L16.5 12M21 7.5H3"/></svg>
+                    Run Comparison
+                </button>
+                <button class="quick-action" data-goto="report" type="button">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                    Generate Report
+                </button>
+                <button class="quick-action" data-goto="timeline" type="button">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                    View Expirations
+                </button>
+            </div>
+
             <!-- Session Stats Panel (overlay) -->
             <section class="stats-panel" id="statsPanel" style="display: none;">
                 <div class="stats-panel-header">
@@ -71,6 +91,17 @@
                     </div>
                     <button class="btn-primary" data-goto="upload" type="button">+ Upload Leases</button>
                 </div>
+
+                <!-- What Needs Attention Today -->
+                <div class="panel attention-panel" id="attentionPanel">
+                    <div class="panel-header">
+                        <h2>What Needs Attention Today</h2>
+                    </div>
+                    <div id="attentionContent"></div>
+                </div>
+
+                <!-- Portfolio health strip -->
+                <div class="health-strip" id="healthStrip"></div>
 
                 <div class="metrics-row" id="metricsRow"></div>
 
@@ -114,6 +145,14 @@
                         <span id="compareCount">0 selected</span>
                         <button class="btn-primary" id="compareGoBtn" type="button">Compare Selected</button>
                     </div>
+                </div>
+
+                <!-- Recent Activity -->
+                <div class="panel">
+                    <div class="panel-header">
+                        <h2>Recent Activity</h2>
+                    </div>
+                    <div id="activityFeed"></div>
                 </div>
             </section>
 

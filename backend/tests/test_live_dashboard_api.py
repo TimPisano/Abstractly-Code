@@ -134,11 +134,18 @@ def main():
         )
 
         # ---- Activity log reacts to real actions ----
-        status, before = _request("GET", "/activity?limit=50")
+        # Uses the freshest entries (small `limit`) and checks their
+        # action_type/order directly, rather than comparing total counts
+        # against a capped fetch — this dev DB accumulates activity
+        # across every test/manual run, so "did the count grow" against
+        # a `limit=N` snapshot stops being meaningful once the table has
+        # more than N rows in it. Checking "are the N most recent entries
+        # exactly what we expect" stays correct at any table size.
+        status, before = _request("GET", "/activity?limit=10")
         check("activity endpoint returns 200", status == 200, str(status))
-        before_count = len(before) if isinstance(before, list) else -1
 
-        # A single upload above should already have logged 2 "lease_uploaded" entries.
+        # The single upload above should already be the most recent
+        # "lease_uploaded" entries (uploads happened just before this).
         upload_entries = [a for a in before if a.get("action_type") == "lease_uploaded"]
         check("upload actions were logged", len(upload_entries) >= 2, f"found {len(upload_entries)}")
         check(
@@ -152,16 +159,22 @@ def main():
         status, _ = _request("GET", "/portfolio/rent-roll.csv")
         check("rent roll CSV export succeeded", status == 200, str(status))
 
-        status, after = _request("GET", "/activity?limit=50")
-        check("activity count grew after comparison + export", isinstance(after, list) and len(after) > before_count, f"before={before_count} after={len(after) if isinstance(after, list) else after}")
+        # The export ran last, then the comparison just before it — so
+        # the 2 most recent entries must be exactly these two, in order.
+        status, latest_two = _request("GET", "/activity?limit=2")
+        check(
+            "the 2 most recent activity entries are the export then the comparison",
+            status == 200 and isinstance(latest_two, list) and len(latest_two) == 2
+            and latest_two[0]["action_type"] == "rent_roll_exported"
+            and latest_two[1]["action_type"] == "comparison_run",
+            str(latest_two),
+        )
 
-        action_types_after = {a.get("action_type") for a in after}
-        check("comparison_run activity was logged", "comparison_run" in action_types_after)
-        check("rent_roll_exported activity was logged", "rent_roll_exported" in action_types_after)
-
+        status, after = _request("GET", "/activity?limit=10")
         check(
             "activity feed is sorted most-recent-first",
-            all(after[i]["created_at"] >= after[i + 1]["created_at"] for i in range(len(after) - 1)),
+            status == 200 and all(after[i]["created_at"] >= after[i + 1]["created_at"] for i in range(len(after) - 1)),
+            str(after),
         )
 
         status, limited = _request("GET", "/activity?limit=1")

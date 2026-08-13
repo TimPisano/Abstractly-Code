@@ -11,6 +11,10 @@ const Dashboard = {
 
     async load() {
         this.renderMetricsSkeleton();
+        this.renderAttentionSkeleton();
+        this.renderHealthSkeleton();
+        this.renderActivitySkeleton();
+
         try {
             const [leases, metrics, risks] = await Promise.all([
                 Api.listLeases(),
@@ -26,6 +30,143 @@ const Dashboard = {
         } catch (err) {
             showError(`Failed to load dashboard: ${err.message}`);
         }
+
+        // Independent of the block above and of each other — one
+        // panel's data being briefly unavailable shouldn't block or
+        // blank out the rest of the dashboard.
+        Api.portfolioAttention()
+            .then(a => this.renderAttention(a))
+            .catch(() => { document.getElementById('attentionContent').innerHTML = '<p class="error-text">Failed to load.</p>'; });
+        Api.portfolioHealth()
+            .then(h => this.renderHealth(h))
+            .catch(() => { document.getElementById('healthStrip').innerHTML = '<p class="error-text">Failed to load portfolio health.</p>'; });
+        Api.recentActivity(10)
+            .then(a => this.renderActivity(a))
+            .catch(() => { document.getElementById('activityFeed').innerHTML = '<p class="error-text">Failed to load activity.</p>'; });
+    },
+
+    renderAttentionSkeleton() {
+        document.getElementById('attentionContent').innerHTML = `
+            <div class="attention-skeleton">
+                <div class="skeleton skeleton-text-sm" style="width:40%;margin-bottom:0.75rem;"></div>
+                <div class="skeleton skeleton-text-sm" style="width:70%;margin-bottom:0.5rem;"></div>
+                <div class="skeleton skeleton-text-sm" style="width:55%;"></div>
+            </div>
+        `;
+    },
+
+    renderAttention(attention) {
+        const { expiring_soon, missing_data, unusual_terms } = attention;
+        const totalItems = expiring_soon.length + missing_data.length + unusual_terms.length;
+        const content = document.getElementById('attentionContent');
+
+        if (totalItems === 0) {
+            content.innerHTML = `
+                <div class="attention-clear">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    <span>Nothing needs your attention right now — the whole portfolio is in good shape.</span>
+                </div>
+            `;
+            return;
+        }
+
+        const groups = [
+            {
+                key: 'expiring_soon', label: 'Expiring Soon', items: expiring_soon,
+                render: e => `${escapeHtml(e.tenant || e.filename)} &mdash; ${e.days_remaining} day${e.days_remaining === 1 ? '' : 's'} left`,
+            },
+            {
+                key: 'missing_data', label: 'Missing Data', items: missing_data,
+                render: e => `${escapeHtml(e.tenant || e.filename)} &mdash; missing ${e.missing_fields.map(f => FIELD_LABELS[f] || f).join(', ')}`,
+            },
+            {
+                key: 'unusual_terms', label: 'Unusual Terms', items: unusual_terms,
+                render: e => `${escapeHtml(e.tenant || e.filename)} &mdash; ${escapeHtml(e.flags[0].message)}${e.flags.length > 1 ? ` (+${e.flags.length - 1} more)` : ''}`,
+            },
+        ];
+
+        content.innerHTML = groups.filter(g => g.items.length > 0).map(g => `
+            <div class="attention-group">
+                <h4 class="attention-group-title">${g.label} <span class="attention-count">${g.items.length}</span></h4>
+                <div class="attention-items">
+                    ${g.items.slice(0, 5).map(item => `
+                        <div class="attention-item" data-lease-id="${item.lease_id}">${g.render(item)}</div>
+                    `).join('')}
+                </div>
+                ${g.items.length > 5 ? `<p class="attention-more">+${g.items.length - 5} more</p>` : ''}
+            </div>
+        `).join('');
+
+        content.querySelectorAll('.attention-item[data-lease-id]').forEach(el => {
+            el.addEventListener('click', () => showLeaseDetail(parseInt(el.dataset.leaseId, 10)));
+        });
+    },
+
+    renderHealthSkeleton() {
+        const strip = document.getElementById('healthStrip');
+        const labels = ['Fully Verified', 'Avg. Days to Next Expiration', 'Rent Expiring in 6 Months', 'Rent Expiring in 12 Months'];
+        strip.innerHTML = labels.map(label => `
+            <div class="health-metric">
+                <div class="skeleton skeleton-text"></div>
+                <div class="health-metric-label">${label}</div>
+            </div>
+        `).join('');
+    },
+
+    renderHealth(health) {
+        const strip = document.getElementById('healthStrip');
+        const pct = health.fully_verified_pct;
+        const tiles = [
+            {
+                label: 'Fully Verified', value: pct != null ? `${pct}%` : '—',
+                sub: health.total_leases ? `${health.fully_verified_count} of ${health.total_leases} leases` : null,
+            },
+            {
+                label: 'Avg. Days to Next Expiration',
+                value: health.avg_days_to_expiration != null ? Math.round(health.avg_days_to_expiration) : '—',
+            },
+            {
+                label: 'Rent Expiring in 6 Months',
+                value: health.monthly_rent_expiring_6mo != null ? fmtMoney(health.monthly_rent_expiring_6mo) : '—',
+            },
+            {
+                label: 'Rent Expiring in 12 Months',
+                value: health.monthly_rent_expiring_12mo != null ? fmtMoney(health.monthly_rent_expiring_12mo) : '—',
+            },
+        ];
+        strip.innerHTML = tiles.map(t => `
+            <div class="health-metric">
+                <div class="health-metric-value">${t.value}</div>
+                <div class="health-metric-label">${t.label}</div>
+                ${t.sub ? `<div class="health-metric-sub">${escapeHtml(t.sub)}</div>` : ''}
+            </div>
+        `).join('');
+    },
+
+    renderActivitySkeleton() {
+        document.getElementById('activityFeed').innerHTML = '<p class="loading-inline"><span class="spinner-small"></span> Loading...</p>';
+    },
+
+    renderActivity(activity) {
+        const feed = document.getElementById('activityFeed');
+        if (!activity || activity.length === 0) {
+            feed.innerHTML = '<p class="empty-inline">No activity yet — uploads, comparisons, and exports will show up here.</p>';
+            return;
+        }
+        feed.innerHTML = `
+            <div class="activity-list">
+                ${activity.map(a => `
+                    <div class="activity-item ${a.lease_id ? 'clickable' : ''}" ${a.lease_id ? `data-lease-id="${a.lease_id}"` : ''}>
+                        <span class="activity-badge activity-badge-${escapeHtml(a.action_type)}">${activityTypeLabel(a.action_type)}</span>
+                        <span class="activity-desc">${escapeHtml(a.description)}</span>
+                        <span class="activity-time">${timeAgo(a.created_at)}</span>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+        feed.querySelectorAll('.activity-item.clickable').forEach(el => {
+            el.addEventListener('click', () => showLeaseDetail(parseInt(el.dataset.leaseId, 10)));
+        });
     },
 
     renderMetricsSkeleton() {
@@ -184,6 +325,19 @@ function parseMoney(str) {
 function fmtMoney(value) {
     if (value === null || value === undefined) return '—';
     return `$${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+const ACTIVITY_TYPE_LABELS = {
+    lease_uploaded: 'Upload',
+    batch_upload: 'Upload',
+    amendment_uploaded: 'Amendment',
+    lease_deleted: 'Delete',
+    comparison_run: 'Comparison',
+    rent_roll_exported: 'Export',
+};
+
+function activityTypeLabel(actionType) {
+    return ACTIVITY_TYPE_LABELS[actionType] || 'Activity';
 }
 
 function worstSeverity(flags) {

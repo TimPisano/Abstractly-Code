@@ -88,6 +88,18 @@ const Api = {
         return apiRequest('/portfolio/risks');
     },
 
+    portfolioAttention() {
+        return apiRequest('/portfolio/attention');
+    },
+
+    portfolioHealth() {
+        return apiRequest('/portfolio/health');
+    },
+
+    recentActivity(limit = 10) {
+        return apiRequest(`/activity?limit=${limit}`);
+    },
+
     leaseRisks(leaseId) {
         return apiRequest(`/leases/${leaseId}/risks`);
     },
