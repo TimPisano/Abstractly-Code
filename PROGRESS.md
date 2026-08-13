@@ -1,10 +1,75 @@
 # Progress Summary
 
-**Last updated**: 2026-08-12 (session 3 — portfolio intelligence expansion: multi-lease dashboard, risk detection, grounded Q&A, comparison/benchmarking, rent roll export, printable report, amendments, batch upload, full multi-view frontend rebuild)
+**Last updated**: session 4 — production-readiness hardening pass (real OCR verification, security/error-handling fixes, performance testing)
 
 ---
 
-## Completion Summary (read this first)
+## Session 4: Hardening Pass — honest status
+
+This was a focused ~1-hour pass, not a features session: real OCR verification, a security/input-validation review, and a performance check, fixing anything found rather than just reporting it. Every claim below was actually tested this session (commands shown), not assumed.
+
+### 1. OCR — now genuinely verified working (this closes a gap open since session 2)
+
+Previous sessions could only mock this (no tesseract/poppler available, no package manager). This time:
+
+- **Homebrew** (even to a user-owned prefix, avoiding the sudo requirement) still failed: no precompiled bottle exists for tesseract/poppler at a non-standard prefix on this OS/arch, so it fell back to building from source, which hit "Your Command Line Tools are too outdated" — fixable only via `sudo xcode-select --install` or interactive System Settings, neither available here.
+- **Conda-forge** (via Miniforge, a self-contained non-interactive installer — no sudo needed) worked: `tesseract 5.5.3` and `pdftoppm version 26.07.0` (poppler) both installed as precompiled binaries.
+- **Verified end-to-end** against a genuinely image-based PDF (rendered via Pillow, zero embedded text layer — confirmed 0 characters extractable via PyPDF2 before OCR even runs), through the real running API: PyPDF2 correctly detected sparse text → triggered the fallback → poppler rendered the page → tesseract OCR'd it → field extraction ran on the OCR output → **7/7 fields correct** (tenant, landlord, address, both dates, rent, deposit), all high confidence, in 1.4 seconds.
+- This is now a **permanent, portable regression test** (`test_real_ocr.py`): it skips cleanly when tesseract/poppler aren't on PATH (so the suite still runs anywhere) but exercises the real pipeline whenever they are. Both behaviors were verified directly.
+- **To get OCR working in a fresh environment**: install Miniforge (`curl -L -o miniforge.sh "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-arm64.sh" && bash miniforge.sh -b -p ~/.miniforge3`), then `~/.miniforge3/bin/conda install -y -c conda-forge tesseract poppler`, then make sure `~/.miniforge3/bin` is on `PATH` before starting the backend (see restart commands below). This is installed in this project's dev environment already — it should still be there next time, since it lives in the home directory, not the repo or a temp dir.
+
+### 2. Security — found and fixed a real stack-trace/path leak
+
+- **Confirmed live**: `GET /leases/<a 34-digit number>` threw `OverflowError: Python int too large to convert to SQLite INTEGER`, and because Flask was running with `debug=True` (hardcoded in both `run.py` and `api.py`), this returned Werkzeug's full interactive debugger page — real file paths (`.../backend/venv/lib/python3.9/site-packages/flask/app.py`), full source code, a traceback, and an embedded (if untrusted) Python console. This is exactly the "stack traces / internal file paths exposed to the frontend" risk this pass was checking for, and it was real.
+- **Fixed**: debug mode is now opt-in via `FLASK_DEBUG=1` (default off) in both entry points; global error handlers (400/404/413/500/`Exception`) always return clean generic JSON, logging the real exception server-side only. Verified this suppresses Werkzeug's debugger even with `FLASK_DEBUG=1` set, so local debugging still can't leak to a client.
+- **Fixed the actual root cause**, not just the symptom: `database.get_lease()` now catches `OverflowError` and returns `None` — every route built on it already handles "not found" as a clean 404, so this one fix covers `/leases/<id>` (get/delete), `/leases/<id>/risks`, `/leases/<id>/benchmark`, `/leases/<id>/amendments`, and `/leases/compare`.
+- **Also fixed**: an oversized (>16MB) upload previously returned Flask's raw HTML 413 page (which the frontend's JSON-only error parsing couldn't use) — now returns clean JSON with the actual size limit stated. A residual `str(e)` in the PDF-processing error path (which could have echoed a temp file's path for some exception types) now logs server-side only and returns a generic client message.
+- **Checked and found already correct** (no fix needed): every SQL query in `database.py` is parameterized — no injection risk. Every place extracted PDF text reaches the DOM in the frontend goes through `escapeHtml()` or `.textContent`, never raw `innerHTML` — verified empirically, not just by reading the code: uploaded a lease PDF with `<script>`/`<img onerror>`/`<svg onload>` payloads embedded in the tenant name and address fields through the real frontend (jsdom executing the actual app), confirmed no live script/img/svg element was ever created and `window.alert` was never invoked, while the payload text was still visible as inert escaped text.
+- **14 new regression checks** (`test_security_hardening.py`) re-create every failure found here against the live server, so none of it can silently regress.
+
+### 3. Performance — no bugs found, both checks clean
+
+- **Large document**: a genuine 40-page lease PDF (confirmed via PyPDF2 page count, not assumed) processed in **0.06 seconds**, correctly extracting fields from page 40 (proving the whole document was actually scanned, not just the first page). No hang, no timeout.
+- **Concurrency**: fired 8 concurrent uploads of 8 different leases, then 15 concurrent uploads of the *same* file, directly at the live server. Every response matched its own file correctly (zero state bleeding — no lease ever got another lease's data), every insert got a unique sequential ID with no collisions, and the server logged zero errors throughout. Final DB count was exactly right both times (8, then 23 after the second batch). No race-condition bug existed to fix — each request already creates its own extractor instances, its own uniquely-named temp file, and its own short-lived DB connection, which is why this held up cleanly.
+
+### What's NOT yet closed
+
+- **No literal browser click-through** — still jsdom-based verification (see session 3's notes); no browser automation tool available in this environment.
+- **Flask's dev server** is still explicitly a dev server (`app.run`), not a production WSGI server — fine for local/single-user use, called out in both READMEs, unchanged by this pass (out of scope — this pass hardened error handling and input validation, not deployment architecture).
+- **Risk thresholds remain fixed constants** (carried over from session 3) — not tuned by this pass.
+
+### Exact commands to restart both servers (updated — now includes OCR)
+
+```bash
+# Terminal 1 — backend (now with OCR support on PATH)
+cd backend
+export PATH="$HOME/.miniforge3/bin:$PATH"   # tesseract + poppler, installed this session
+source venv/bin/activate
+python run.py
+# Debug mode is off by default now (safe). For local debugging only:
+#   FLASK_DEBUG=1 python run.py
+# Confirm: curl http://localhost:5000/health
+
+# Terminal 2 — frontend
+cd frontend
+python3 -m http.server 8080
+# Open http://localhost:8080
+```
+
+Port already in use: `lsof -ti:5000 -ti:8080 | xargs kill -9`, then start again. The `backend/lease_portfolio.db` SQLite file (gitignored) currently holds test data from this session's verification runs — delete it (`rm backend/lease_portfolio.db`) for a clean empty portfolio, it'll be recreated automatically on next start.
+
+### Re-run everything yourself
+
+```bash
+cd backend/tests
+export PATH="$HOME/.miniforge3/bin:$PATH"    # so test_real_ocr.py exercises the real pipeline
+source ../venv/bin/activate
+python run_all_tests.py --live               # backend must be running for --live; 14/14 files pass
+```
+
+---
+
+## Session 3 Completion Summary
 
 ### Overall status: fully working
 
@@ -56,6 +121,8 @@ Run against real extracted data from the actual test PDFs (not fixtures written 
 - Every citation in every test traces back to a field's actual stored `source` — the Q&A engine's own test suite includes an explicit sweep asserting no citation is ever fabricated across all intents
 
 ### Known issue: OCR not live-verified (carried over from session 2, unchanged)
+
+**Resolved in session 4 — see the top of this file.** At the time this section was written, this development environment had no `tesseract`/`poppler` installed and no package manager available to install them; the OCR fallback logic was only verified with mocks. Session 4 got real binaries via conda-forge (Homebrew hit an outdated-Command-Line-Tools wall it couldn't get past without sudo/GUI access) and confirmed a real scanned PDF extracts correctly end-to-end. Leaving the original text below for the historical record of what was tried and why it didn't work at the time.
 
 This development environment still has no `tesseract`/`poppler` installed and no package manager available to install them. The OCR fallback logic is verified with mocks (trigger condition, success path, failure-degrades-gracefully path), not a live scanned-PDF run. To close: `brew install tesseract poppler`, then run `backend/tests/test_ocr_fallback.py` against a real scanned PDF or upload one through the UI.
 
@@ -117,21 +184,21 @@ Port already in use: `lsof -ti:5000 -ti:8080 | xargs kill -9`, then start again.
 - `upload-view.js`, `dashboard-view.js`, `detail-view.js`, `timeline-view.js`, `comparison-view.js`, `qa-view.js`, `report-view.js` — one file per view
 
 ### Tests (`backend/tests/`)
-- Unit tests (self-contained, no server needed): `test_extraction.py`, `test_synthetic_accuracy.py`, `test_multipage_field.py`, `test_ocr_fallback.py`, `test_risk_analysis.py`, `test_qa_engine.py`, `test_portfolio.py`, `test_comparison.py`, `test_rent_roll_export.py`, `test_report.py`
-- Live API integration (backend must be running): `test_live_api.py`, `test_live_portfolio_api.py`
+- Unit tests (self-contained, no server needed): `test_extraction.py`, `test_synthetic_accuracy.py`, `test_multipage_field.py`, `test_ocr_fallback.py` (mocked logic), `test_real_ocr.py` (real binaries, skips cleanly if unavailable), `test_risk_analysis.py`, `test_qa_engine.py`, `test_portfolio.py`, `test_comparison.py`, `test_rent_roll_export.py`, `test_report.py`
+- Live API integration (backend must be running): `test_live_api.py`, `test_live_portfolio_api.py`, `test_security_hardening.py`
 - `run_all_tests.py` — runs everything in one shot (`--live` to include the live API tests)
-- Fixture generators: `create_sample_lease.py`, `create_commercial_lease.py`, `create_synthetic_leases.py`, `create_red_flag_leases.py` (10 PDFs total)
+- Fixture generators: `create_sample_lease.py`, `create_commercial_lease.py`, `create_synthetic_leases.py`, `create_red_flag_leases.py`, `create_scanned_lease.py` (11 PDFs total)
 
 ## Current Limitations
 
 - **Extraction is still regex-based** — same caveat as session 2; accuracy depends on the pattern library covering a given lease's actual phrasing.
-- **OCR not live-verified** — see above, unchanged from session 2.
-- **No literal browser click-through this session** — see above.
+- **No literal browser click-through** — still jsdom-based verification; no browser automation tool available in this environment.
 - **Q&A coverage is intentionally bounded** — it answers questions matching a known intent (field lookup, sum/average, expiring-soon, count) and honestly says "I don't have a way to answer that yet" otherwise, rather than guessing. This is a deliberate tradeoff for the "not hallucinated" requirement, not an oversight — but it means genuinely open-ended questions aren't answerable.
 - **Risk thresholds are fixed constants** — e.g. "25% below average = high severity" isn't currently tunable per portfolio or property type.
 - **Single-value fields only** — unchanged from session 2; a lease with two legitimately different rent figures returns one.
 - **Amendment date-conflict detection uses only the base lease's stored date candidates** — an amendment that itself restates a conflicting date wouldn't be cross-checked against the base lease's dates. Real-world amendments rarely restate the original commencement date, so this is a minor edge case, but worth knowing.
-- **No production deployment setup** — Flask dev server, SQLite file, no auth — appropriate for local/single-user use, not for hosting.
+- **No production deployment setup** — Flask dev server, SQLite file, no auth — appropriate for local/single-user use, not for hosting. (Session 4 hardened *error handling* — no stack traces or file paths leak to the client — but did not change the underlying dev-server/no-auth architecture, which is a separate, bigger scope.)
+- **OCR depends on `~/.miniforge3` being on PATH** — this is outside the project repo (in the home directory) and outside `requirements.txt` (system binaries, not Python packages) since it's a machine-level install, not a project dependency. If this environment is ever reset, re-run the Miniforge install steps in the Session 4 section above.
 
 ## Next Steps (prioritized)
 

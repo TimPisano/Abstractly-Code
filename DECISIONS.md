@@ -1,5 +1,87 @@
 # Implementation Decisions
 
+## Production-Readiness Hardening (session 4)
+
+A focused ~1-hour pass: real OCR verification, security/input-validation
+review, performance testing. Full results in PROGRESS.md; this section
+covers the decisions, not the test output.
+
+### Debug mode: opt-in via FLASK_DEBUG, not hardcoded on
+**Status: done.** Both `run.py` and `api.py`'s `__main__` block
+previously hardcoded `app.run(debug=True, ...)`. Changed to read
+`FLASK_DEBUG` from the environment, defaulting to off.
+- **Reason**: confirmed live that Flask's interactive debugger (which
+  `debug=True` enables) shows a full traceback, real filesystem paths,
+  and an embedded Python console for any unhandled exception —
+  triggered by nothing more exotic than an oversized integer in a URL
+  path. That's fine for a developer debugging locally with the
+  terminal in front of them; it's a serious information-disclosure
+  risk for anything else. Making it opt-in (rather than removing it
+  entirely) keeps the debugger available for local development without
+  it being the default.
+
+### Global error handlers return clean JSON regardless of debug mode
+**Status: done.** Registered `@app.errorhandler` for 400/404/413/500
+and a catch-all `Exception` handler in `api.py`, all returning a
+generic `{"error": "..."}` body; the real exception is logged
+server-side via `logger.exception(...)` in every case.
+- **Reason**: Two problems needed one fix. First, several failure
+  modes returned Flask/Werkzeug's *default* HTML error pages (a raw
+  413 page for oversized uploads, a raw 404 page for unknown routes)
+  instead of JSON, which the frontend's JSON-only error parsing
+  couldn't use cleanly. Second, and more important: registering
+  `@app.errorhandler(Exception)` turns out to intercept an exception
+  *before* it reaches Werkzeug's interactive-debugger path, even with
+  `debug=True` — verified this directly, not assumed from
+  documentation. That means local `FLASK_DEBUG=1` debugging and
+  "never leak a traceback to a client" aren't actually in tension:
+  the handler catches it first either way, and only the terminal
+  running the server sees the real exception.
+
+### Oversized/out-of-range lease IDs are "not found," not a crash
+**Status: done.** `database.get_lease()` catches `OverflowError` and
+returns `None`.
+- **Reason**: this is the actual root cause of the debugger-leak
+  finding above (an id like `9` × 34 digits overflows SQLite's signed
+  64-bit `INTEGER` column). Fixing it at the single lowest layer
+  (`get_lease`, which `get_effective_lease` and therefore every route
+  built on it calls first) means every route that checks "does this
+  lease exist" before doing anything else — detail, delete, risks,
+  benchmark, amendments, compare — automatically returns a proper 404
+  instead of relying on the generic exception handler as a safety net.
+  Fixing the specific cause is more correct than only fixing the
+  generic symptom, even though the generic handler would have masked
+  it either way.
+
+### OCR binaries via conda-forge, not Homebrew
+**Status: done.** Got real `tesseract`/`poppler` working via a
+Miniforge (conda-forge) install to `~/.miniforge3`, after Homebrew —
+even installed to a user-owned prefix specifically to avoid needing
+sudo — failed.
+- **Reason**: Homebrew bottles (precompiled binaries) are built for
+  the *standard* prefix (`/opt/homebrew` on Apple Silicon); installing
+  to a non-standard user-owned prefix to dodge the sudo requirement for
+  creating `/opt/homebrew` meant Homebrew couldn't use those bottles
+  for at least poppler/tesseract's build chain, and fell back to
+  compiling from source — which then failed because this machine's
+  Xcode Command Line Tools are older than the build requires, and
+  updating them needs either sudo (`xcode-select --install`) or
+  interactive System Settings, neither available in this session.
+  Conda-forge packages are precompiled for a relocatable install
+  location by design (conda environments are *meant* to live anywhere,
+  unlike Homebrew's bottle system), so the same "can't use sudo, can't
+  use the GUI" constraint didn't block it. This is genuinely a
+  workaround for this specific machine's state (an outdated CLT
+  version), not a general statement that Homebrew is the wrong choice
+  — a machine with current Command Line Tools, or with sudo access,
+  would likely succeed with plain Homebrew.
+- **Consequence**: OCR now depends on `~/.miniforge3/bin` being on
+  `PATH` when the backend starts. This lives outside the repo (home
+  directory) and outside `requirements.txt` (it's system binaries, not
+  Python packages) since it's a machine-level install. See PROGRESS.md
+  for the exact restart commands and for how to reproduce this install
+  from scratch if the environment is ever reset.
+
 ## Portfolio Intelligence Expansion (2026-08-12, session 3)
 
 This section was updated live as work happened, not just at the end,
