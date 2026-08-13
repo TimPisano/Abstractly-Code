@@ -18,14 +18,24 @@ Three layers of endpoints:
 
 from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
+from dotenv import load_dotenv
 import logging
 import os
 import re
 import tempfile
 
+# Loads backend/.env (if present) into os.environ before anything below
+# reads an env var from it — real deployments can just set real
+# environment variables instead, load_dotenv() is a silent no-op if
+# there's no .env file to find. Must run before email_service is used
+# (it reads EMAIL_USER/EMAIL_APP_PASSWORD from os.environ), so this
+# happens before that import.
+load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
+
 from app.pdf_extractor import PDFExtractor
 from app.field_extractor import FieldExtractor
 from app import database
+from app import email_service
 from app.risk_analysis import analyze_lease_risks
 from app.qa_engine import answer_question
 from app.portfolio import (
@@ -358,6 +368,25 @@ def list_amendments(lease_id):
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
+def _send_email_best_effort(send_fn, *args):
+    """
+    Calls a send_* function from email_service.py and swallows ANY
+    exception it might raise. email_service.py's own functions already
+    catch everything internally and return False rather than raising —
+    this is a second, redundant layer at the call site itself, so a
+    future bug in email_service (or in whatever library it uses) can
+    never turn a successful waitlist signup/approval into a 500 response
+    for the person submitting or the admin approving. Belt and
+    suspenders, deliberately: the cost of the extra try/except is
+    trivial, and the failure mode it guards against — an email problem
+    blocking a real signup — is exactly what this feature must never do.
+    """
+    try:
+        send_fn(*args)
+    except Exception:
+        logger.exception("Unexpected error calling %s", getattr(send_fn, "__name__", send_fn))
+
+
 @app.route('/waitlist', methods=['POST'])
 def join_waitlist():
     """Body: {"email": str}. Adds the email to the waitlist as 'pending'."""
@@ -371,7 +400,16 @@ def join_waitlist():
     if result["status"] == "duplicate":
         # Same UX either way — we don't want to reveal whether an email
         # is already on the list to a third party probing addresses.
+        # No confirmation email here either, on purpose: it already went
+        # out on the real first signup, and re-sending on every repeat
+        # POST would let someone spam a stranger's inbox just by
+        # resubmitting their address.
         return jsonify({"message": "Your request has been received. If it's a fit, we'll be in touch."}), 200
+
+    # Best-effort — see _send_email_best_effort. The signup above is
+    # already committed to the database regardless of whether this
+    # send succeeds.
+    _send_email_best_effort(email_service.send_waitlist_confirmation_email, email)
 
     return jsonify({"message": "Your request has been received. If it's a fit, we'll be in touch."}), 201
 
@@ -385,9 +423,15 @@ def list_waitlist():
 @app.route('/waitlist/<int:signup_id>/approve', methods=['POST'])
 def approve_waitlist(signup_id):
     """Admin-only (unauthenticated for now, see NOTE above). Flips a signup's status to 'approved'."""
-    ok = database.approve_waitlist_signup(signup_id)
-    if not ok:
+    signup = database.get_waitlist_signup(signup_id)
+    if not signup:
         return jsonify({"error": "Signup not found"}), 404
+
+    database.approve_waitlist_signup(signup_id)
+    # Best-effort, same as the confirmation email above — never blocks
+    # or fails this response.
+    _send_email_best_effort(email_service.send_waitlist_approval_email, signup["email"])
+
     return jsonify({"id": signup_id, "status": "approved"}), 200
 
 

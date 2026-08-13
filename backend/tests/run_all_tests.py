@@ -32,6 +32,7 @@ UNIT_TESTS = [
     "test_rent_roll_export.py",
     "test_report.py",
     "test_dashboard_features.py",
+    "test_waitlist_email.py",
 ]
 
 LIVE_API_TESTS = [

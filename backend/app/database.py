@@ -270,6 +270,17 @@ def get_all_waitlist_signups() -> List[Dict[str, Any]]:
         conn.close()
 
 
+def get_waitlist_signup(signup_id: int) -> Optional[Dict[str, Any]]:
+    conn = get_connection()
+    try:
+        row = conn.execute("SELECT * FROM waitlist_signups WHERE id = ?", (signup_id,)).fetchone()
+        return dict(row) if row else None
+    except OverflowError:
+        return None
+    finally:
+        conn.close()
+
+
 def approve_waitlist_signup(signup_id: int) -> bool:
     """Flip a signup's status to 'approved'. Returns False if no such id."""
     conn = get_connection()
