@@ -26,29 +26,39 @@ portfolio of commercial leases — not just extracting one PDF at a time.
    ```
    Runs on `http://localhost:5000`. Confirm with `curl http://localhost:5000/health`.
 
-2. **A static file server for the frontend** — any of these work:
+2. **A static file server for the whole `frontend/` directory** — any of
+   these work:
    ```bash
    cd frontend
-   python3 -m http.server 8080
+   python3 -m http.server 8000
    ```
-   Then open `http://localhost:8080`.
+   This app now lives at `http://localhost:8000/app/` — the public
+   landing page + waitlist is at `http://localhost:8000/` and the
+   (unauthenticated, admin-only) waitlist approval view is at
+   `http://localhost:8000/admin/waitlist/`. See the repo root
+   `PROGRESS.md` (session 5) for details on those two.
 
 ## File Structure
 
 ```
 frontend/
-├── index.html            # App shell: sidebar nav + all view containers
-├── styles.css             # All styles (sidebar layout, tables, cards, Q&A, etc.)
-├── api.js                  # Fetch wrappers for every backend endpoint
-├── app.js                   # View router, shared state, toasts, session stats
-├── upload-view.js            # Single/batch upload
-├── dashboard-view.js          # Portfolio table + metrics
-├── detail-view.js              # Lease detail, inline editing, risk panel, amendments, Q&A
-├── timeline-view.js             # Expiration timeline
-├── comparison-view.js            # Side-by-side comparison + benchmarking
-├── qa-view.js                     # Portfolio-wide Q&A
-├── report-view.js                  # Printable report preview
-└── README.md                        # This file
+├── index.html                       # Public landing page (root /)
+├── landing.css, landing.js          # Landing page styles + waitlist form logic
+├── design-system.css                # Shared tokens (colors, type, shadows, radii) — used here, by app/, and by admin/
+├── admin/waitlist/                  # Unauthenticated admin view for approving waitlist signups
+└── app/                             # This app (served at /app/)
+    ├── index.html                   # App shell: sidebar nav + all view containers
+    ├── styles.css                   # App-specific styles; @imports ../design-system.css for tokens
+    ├── api.js                       # Fetch wrappers for every backend endpoint
+    ├── app.js                       # View router, shared state, toasts, session stats
+    ├── upload-view.js               # Single/batch upload
+    ├── dashboard-view.js            # Portfolio table + metrics
+    ├── detail-view.js               # Lease detail, inline editing, risk panel, amendments, Q&A
+    ├── timeline-view.js             # Expiration timeline
+    ├── comparison-view.js           # Side-by-side comparison + benchmarking
+    ├── qa-view.js                   # Portfolio-wide Q&A
+    ├── report-view.js               # Printable report preview
+    └── README.md                    # This file
 ```
 
 Loaded as plain `<script src>` tags in dependency order (no build step,

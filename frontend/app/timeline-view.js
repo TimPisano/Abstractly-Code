@@ -29,7 +29,11 @@ const Timeline = {
         if (totalLeases === 0) {
             document.getElementById('timelineContent').innerHTML = `
                 <div class="empty-state">
-                    <p>No leases uploaded yet.</p>
+                    <div class="empty-state-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    </div>
+                    <p class="empty-state-title">No leases uploaded yet</p>
+                    <p class="empty-state-hint">Once you've uploaded a few leases, this view will surface the ones expiring soonest.</p>
                     <button class="btn-primary" data-goto="upload" type="button">Upload your first lease</button>
                 </div>
             `;

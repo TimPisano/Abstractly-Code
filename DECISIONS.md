@@ -496,3 +496,58 @@ captured from `exportJSON()`.
   false confidence). It is still not a substitute for a literal browser
   click-through; that should be done manually — see `PROGRESS.md` for
   what to check.
+
+## Session 5: Visual redesign — landing page, waitlist, and app restyle
+
+### Routes via real directory structure, not client-side routing
+The frontend is still served by plain `python3 -m http.server`, with no
+server-side routing logic and no build step. To get real, bookmarkable
+URLs for `/`, `/app/`, and `/admin/waitlist/`, each is its own directory
+with its own `index.html` — `http.server`'s built-in behavior (serve a
+directory's `index.html`, 301-redirect a bare path to its trailing-slash
+form) does the rest. The old flat `frontend/*.js`/`styles.css` files
+moved into `frontend/app/` unchanged (only their CSS's token block was
+replaced with an `@import`), so nothing about how the app itself loads
+or runs changed — only where it lives.
+- **Reason**: Keeps the "no build step, no framework" decision from
+  session 1 intact rather than reaching for a JS router or a second dev
+  server just to get distinct URLs.
+
+### One shared token file, not three separate palettes
+`frontend/design-system.css` holds every color/typography/shadow/radius
+CSS custom property, plus a few truly shared components (buttons,
+loading spinner). The landing page and admin view link it directly;
+`frontend/app/styles.css` `@import`s it instead of redeclaring its own
+`:root` block. All existing component class names and CSS variable
+*names* in the app were preserved exactly — only their values changed —
+so `app.js` and every view module needed zero changes to pick up the
+new look.
+- **Reason**: A single source of truth was the only way to guarantee the
+  landing page and the app actually look like the same product, per the
+  explicit "one cohesive palette, used everywhere" requirement. Keeping
+  variable/class names stable avoided touching any JS (the task was
+  scoped to a visual pass, not a behavior change) and made every existing
+  jsdom-based test/verification pattern keep working unmodified.
+
+### Waitlist has no real auth yet — deliberate, and flagged loudly
+`GET /waitlist` and `POST /waitlist/<id>/approve` are open endpoints, and
+`/admin/waitlist/` has no login. This was an explicit instruction
+("no auth needed yet ... build the real auth gate later, don't block on
+it now"), not an oversight. It's called out in three places so it can't
+be missed later: a comment block directly above the routes in `api.py`,
+a comment block in the admin `index.html`, and here.
+- **Reason**: Matches the requested scope exactly — the task was to get
+  a working waitlist gate and admin approval flow shipped now, with real
+  authentication as explicitly deferred follow-up work, not something to
+  half-build or skip documenting.
+
+### Inter font via Google Fonts CDN, despite the "minimal dependencies" precedent
+`design-system.css` pulls Inter from `fonts.googleapis.com`. Earlier
+sessions' dependency choices (stdlib `sqlite3` over an ORM, no JS
+framework) favored minimal/offline-friendly dependencies. This is a
+narrow, deliberate exception: a system-font stack reads as a prototype,
+and "premium SaaS typography" was an explicit requirement Inter serves
+directly. If offline use becomes a requirement later, this is a single
+`@import` line to swap for a self-hosted font file — noted here so that
+tradeoff is visible, not buried.
+  what to check.

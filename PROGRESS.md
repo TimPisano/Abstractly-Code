@@ -1,6 +1,114 @@
 # Progress Summary
 
-**Last updated**: session 4 — production-readiness hardening pass (real OCR verification, security/error-handling fixes, performance testing)
+**Last updated**: session 5 — visual redesign: landing page + waitlist gate, and a full app restyle
+
+---
+
+## Session 5: Visual Redesign — landing page, waitlist, app restyle
+
+A frontend/design-only pass (per explicit scope) — no extraction logic,
+OCR pipeline, or hardening-pass security code was touched. All 14/14
+backend test files (62+ checks) still pass unchanged after this session.
+
+### What's new
+
+**Landing page** (`frontend/index.html`, now the root `/`):
+- Hero with headline, subheadline, and a single email waitlist form (no
+  pricing, no login) — submitting shows an inline confirmation state
+  ("You're on the list...") instead of navigating away
+- "How it works" section, 3 steps with icons (upload → AI extracts →
+  portfolio dashboard)
+- A stats strip with **placeholder metrics, explicitly commented as
+  placeholder** in `index.html` — swap these before real launch
+- Footer with placeholder/dead links (Privacy, Terms, Contact, About)
+
+**Waitlist backend** (`backend/app/database.py`, `backend/app/api.py`):
+- New `waitlist_signups` table (`id`, `email` UNIQUE, `created_at`,
+  `status` default `'pending'`)
+- `POST /waitlist` — join (validates email format; a duplicate email is
+  a friendly no-op, not an error)
+- `GET /waitlist`, `POST /waitlist/<id>/approve` — **unauthenticated**,
+  admin-facing. This is intentional for now (explicit instruction), but
+  is flagged in a comment block directly above the routes in `api.py`
+  and must be locked down before real users are on the list.
+
+**Admin waitlist view** (`frontend/admin/waitlist/`, at `/admin/waitlist/`):
+- Table of every signup (email, joined date, status) with a per-row
+  Approve button; a small stats strip (total/pending/approved)
+- No auth — same caveat as above, also noted directly in its `index.html`
+
+**Access to the app**: approved status isn't enforced yet — `/app/` is
+reachable directly by anyone, exactly as instructed ("build the real
+auth gate later, don't block on it now").
+
+**App restyle** (`frontend/app/`, moved from the old flat `frontend/`):
+- One shared design system (`frontend/design-system.css`): indigo/violet
+  brand palette, a refined slate neutral scale, Inter typography, a
+  layered shadow scale, and a consistent radius scale — used by the
+  landing page, admin view, and the app
+- Sidebar: gradient-badge brand icon, gradient active nav state with a
+  soft glow, subtle hover state
+- Dashboard: metric tiles now show shimmer loading skeletons while data
+  loads (instead of "—"), with hover lift; empty state ("No leases
+  uploaded yet") now has a circular icon badge, a real heading, and a
+  helper line instead of just an icon + button
+- Timeline view's empty state got the same treatment
+- Buttons, panels, and inputs now share the design system's shadows,
+  radii, and focus states everywhere
+
+**Verified this session** (see commands below to reproduce):
+- Full backend suite: **14/14 test files pass** (unit + live API +
+  security hardening) — no regressions from the redesign
+- Landing page waitlist submission end-to-end (jsdom driving the real
+  page against the real running backend, `window.fetch` bridged to
+  Node's native `fetch` since jsdom has none built in): confirmation
+  state renders correctly after a real `POST /waitlist`
+- Admin view end-to-end (jsdom): signups render in the table, clicking
+  Approve calls the real backend and updates the status pill
+- The existing app (`/app/`) still loads cleanly post-restyle: zero JS
+  errors, dashboard metrics render, sidebar nav intact (jsdom)
+- Static routing: `/`, `/app/` (and bare `/app` 301-redirecting to it),
+  and `/admin/waitlist/` all resolve correctly via `http.server`'s
+  built-in directory-index behavior — confirmed with `curl`
+
+No literal browser screenshots were taken — no browser automation tool
+is available in this environment (consistent with every prior session).
+Verification instead used jsdom driving the real, unmodified pages
+against the real backend, as described above. To see it visually: start
+both servers (commands below) and open `http://localhost:8000/`,
+`http://localhost:8000/app/`, and `http://localhost:8000/admin/waitlist/`.
+
+### What's NOT done / known gaps
+- **No real authentication** on `/admin/waitlist/` or on reaching
+  `/app/` — both explicitly deferred per instructions, flagged in code
+  comments in three places (see `DECISIONS.md`)
+- **Placeholder stats** on the landing page need real numbers before
+  launch (marked in a code comment)
+- Sidebar's "maybe a collapsed state" was treated as optional and not
+  built — the sidebar itself was restyled (gradient active state, icon
+  alignment, hover polish) but has no collapse toggle
+- Remaining app views (upload, lease detail, comparison, Q&A, report)
+  inherit the new design system automatically via the shared CSS
+  variables/component classes but weren't individually hand-tuned
+  beyond that systemic change
+
+### Exact commands to restart both servers + see the new routes
+
+```bash
+# Terminal 1 — backend
+cd backend
+export PATH="$HOME/.miniforge3/bin:$PATH"   # tesseract + poppler, for OCR
+source venv/bin/activate
+python run.py
+# Confirm: curl http://localhost:5000/health
+
+# Terminal 2 — frontend
+cd frontend
+python3 -m http.server 8000
+# Landing:      http://localhost:8000/
+# App:          http://localhost:8000/app/
+# Admin:        http://localhost:8000/admin/waitlist/
+```
 
 ---
 

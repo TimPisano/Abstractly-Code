@@ -1,0 +1,190 @@
+/**
+ * Shared design system — the single source of truth for color,
+ * typography, spacing, shadow, and radius tokens used across the
+ * landing page, the app (frontend/app/), and the admin waitlist view.
+ *
+ * Loaded directly by the landing page and admin view; the app's own
+ * styles.css @imports this file rather than duplicating tokens, so
+ * there is exactly one palette to change if it ever needs to shift.
+ */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+:root {
+    /* ---- Brand / accent (indigo -> violet) ---- */
+    --primary-color: #4f46e5;
+    --primary-hover: #4338ca;
+    --primary-light: #eef2ff;
+    --primary-dark: #3730a3;
+    --accent-color: #7c3aed;
+    --gradient-brand: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+
+    /* ---- Semantic colors ---- */
+    --success-color: #059669;
+    --success-light: #d1fae5;
+    --error-color: #dc2626;
+    --error-light: #fee2e2;
+    --warning-color: #d97706;
+    --warning-light: #fef3c7;
+
+    /* ---- Neutral / slate scale ---- */
+    --slate-950: #0b0e14;
+    --slate-900: #11141c;
+    --slate-800: #1a1f2b;
+    --slate-700: #2a3141;
+    --slate-600: #414a5f;
+    --slate-500: #626c82;
+    --slate-400: #8992a6;
+    --slate-300: #b3bac9;
+    --slate-200: #dde1e9;
+    --slate-100: #eceff4;
+    --slate-50: #f9fafb;
+
+    --text-dark: var(--slate-900);
+    --text-medium: var(--slate-500);
+    --text-light: var(--slate-400);
+    --border-color: var(--slate-200);
+    --background: var(--slate-50);
+    --white: #ffffff;
+
+    --sidebar-bg: var(--slate-950);
+    --sidebar-text: var(--slate-300);
+    --sidebar-text-active: #ffffff;
+
+    /* ---- Confidence colors (extraction certainty) ---- */
+    --confidence-high: #059669;
+    --confidence-high-bg: #d1fae5;
+    --confidence-medium: #b45309;
+    --confidence-medium-bg: #fef3c7;
+    --confidence-low: #b91c1c;
+    --confidence-low-bg: #fee2e2;
+    --confidence-none-bg: #e5e7eb;
+
+    /* ---- Severity colors (lease risk) — kept distinct from confidence
+       even though the high/medium/low mapping is similar, since they
+       describe different things ---- */
+    --severity-high: #b91c1c;
+    --severity-high-bg: #fee2e2;
+    --severity-medium: #b45309;
+    --severity-medium-bg: #fef3c7;
+    --severity-low: #6b7280;
+    --severity-low-bg: #f3f4f6;
+
+    /* ---- Elevation: soft, layered shadows instead of harsh drop-shadows ---- */
+    --shadow-sm: 0 1px 2px rgba(17, 20, 28, 0.04), 0 1px 1px rgba(17, 20, 28, 0.03);
+    --shadow-md: 0 4px 8px -2px rgba(17, 20, 28, 0.06), 0 2px 4px -2px rgba(17, 20, 28, 0.05);
+    --shadow-lg: 0 12px 24px -6px rgba(17, 20, 28, 0.10), 0 4px 8px -4px rgba(17, 20, 28, 0.06);
+    --shadow-xl: 0 24px 48px -12px rgba(17, 20, 28, 0.18), 0 8px 16px -8px rgba(17, 20, 28, 0.08);
+
+    /* ---- Radius scale ---- */
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 14px;
+    --radius-xl: 20px;
+    --radius-full: 9999px;
+
+    /* ---- Typography ---- */
+    --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto',
+        'Helvetica Neue', sans-serif;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background-color: var(--background);
+    color: var(--text-dark);
+    line-height: 1.5;
+}
+
+button, input {
+    font-family: inherit;
+}
+
+a {
+    color: inherit;
+}
+
+/* ===================== Shared buttons (landing + admin) ===================== */
+
+.btn-primary, .btn-secondary, .btn-danger {
+    padding: 0.625rem 1.25rem;
+    border-radius: var(--radius-md);
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.15s, border-color 0.15s, transform 0.15s, box-shadow 0.15s;
+    white-space: nowrap;
+}
+
+.btn-primary {
+    background: var(--gradient-brand);
+    color: var(--white);
+    border: 1px solid transparent;
+    box-shadow: var(--shadow-sm);
+}
+
+.btn-primary:hover {
+    box-shadow: var(--shadow-md);
+    transform: translateY(-1px);
+}
+
+.btn-primary:active {
+    transform: translateY(0);
+}
+
+.btn-secondary {
+    background-color: var(--white);
+    color: var(--text-dark);
+    border: 1px solid var(--border-color);
+}
+
+.btn-secondary:hover {
+    background-color: var(--background);
+    border-color: var(--slate-300);
+}
+
+.btn-danger {
+    background-color: var(--white);
+    color: var(--error-color);
+    border: 1px solid var(--error-light);
+}
+
+.btn-danger:hover {
+    background-color: var(--error-light);
+}
+
+.btn-block {
+    width: 100%;
+    margin-top: 0.75rem;
+}
+
+/* ===================== Shared loading affordances ===================== */
+
+.loading-inline {
+    color: var(--text-medium);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 1rem 0;
+}
+
+.spinner-small {
+    display: inline-block;
+    width: 1rem;
+    height: 1rem;
+    border: 2px solid var(--border-color);
+    border-top-color: var(--primary-color);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}

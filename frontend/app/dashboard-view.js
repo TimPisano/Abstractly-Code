@@ -10,6 +10,7 @@ const Dashboard = {
     risksByLeaseId: {},
 
     async load() {
+        this.renderMetricsSkeleton();
         try {
             const [leases, metrics, risks] = await Promise.all([
                 Api.listLeases(),
@@ -25,6 +26,17 @@ const Dashboard = {
         } catch (err) {
             showError(`Failed to load dashboard: ${err.message}`);
         }
+    },
+
+    renderMetricsSkeleton() {
+        const row = document.getElementById('metricsRow');
+        const labels = ['Leases', 'Total Monthly Rent', 'Avg. Monthly Rent', 'Avg. Rent / Sq Ft', 'Total CAM Exposure', 'Total Sq Ft'];
+        row.innerHTML = labels.map(label => `
+            <div class="metric-tile">
+                <div class="skeleton skeleton-text"></div>
+                <div class="metric-label">${label}</div>
+            </div>
+        `).join('');
     },
 
     renderMetrics(metrics) {
