@@ -73,9 +73,13 @@ def _upload_fixture(filename):
     with open(path, "rb") as f:
         content = f.read()
     body, content_type = _multipart_body([("file", filename, content)])
-    status, lease = _request("POST", "/leases", data=body, headers={"Content-Type": content_type})
-    assert status == 201, f"upload of {filename} failed: {status} {lease}"
-    return lease["id"]
+    status, result = _request("POST", "/leases", data=body, headers={"Content-Type": content_type})
+    assert status == 201, f"upload of {filename} failed: {status} {result}"
+    # POST /leases now returns {"leases": [...]} (a list, since one file
+    # can split into more than one lease) — every fixture used here is
+    # a genuine single lease, so this is always exactly 1 entry.
+    assert result["split_count"] == 1, f"{filename} unexpectedly split into {result['split_count']} leases"
+    return result["leases"][0]["id"]
 
 
 def main():

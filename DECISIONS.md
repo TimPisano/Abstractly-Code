@@ -741,3 +741,80 @@ raised. What is NOT verified: an actual real Google Sheet being
 created via a real API call, since no real credentials exist to test
 with — that step is on whoever sets up
 `GOOGLE_APPLICATION_CREDENTIALS`.
+
+### Multi-lease PDFs are now SPLIT, not rejected — supersedes the earlier "reject" decision
+
+The previous session's fix for multi-lease PDF field-bleed (see the
+"Multi-lease PDFs are rejected instead of silently merged" entry above)
+deliberately chose the smaller, safer scope: detect the situation and
+refuse the upload, rather than attempt real per-lease boundary
+detection, which that entry called "a substantially larger and riskier
+feature on its own." This session built that larger feature, on
+explicit request, after the smaller fix turned out not to be enough in
+practice — a real merged portfolio PDF a user actually tried to upload
+produced a risk-analysis flag listing 30+ "conflicting" start dates,
+because `date_candidates` were being collected from the whole 500-page
+document instead of kept separate per lease (the same underlying
+bleed the reject-based fix prevented at the *field* level, but not at
+the *risk-analysis* level, since risk analysis reads `date_candidates`
+independently of `extract_fields()`'s own single-best-match fields).
+
+**How boundary detection works**: `FieldExtractor.detect_lease_
+boundaries()` places a page boundary at the first page each distinct
+tenant OR distinct landlord is introduced on — the UNION of both
+signals (not just one, and not just whichever found more distinct
+parties, which was this feature's first, more conservative
+implementation before it was strengthened — see below). Verified safe
+against all 10 real single-lease fixtures before switching to the union
+approach: in every one, the lease's tenant and landlord are introduced
+on the *same* page (a lease's "parties" section names both together),
+so the union never adds a spurious mid-lease boundary. `extract_
+multiple_leases()` then runs the existing single-lease `extract_
+fields()` + `find_all_date_candidates()` independently on each
+boundary's own page range — never on the whole document — which is
+what actually fixes the 30-dates symptom: each split lease's
+`date_candidates` now only ever contains dates from its own 1-2 pages.
+
+**Verified, concretely, not just reasoned about**: every field of every
+split-out lease exactly matches what extracting that same source
+fixture completely standalone produces (not "close" — byte-for-byte
+equal), across 4 different real multi-file merges including a 4-way
+merge, plus a 10-fixture merge (all 10 real fixtures concatenated into
+one document) that correctly produced exactly 10 leases in 0.05
+seconds. The reported symptom itself was directly reproduced and
+confirmed fixed: a 5-fixture merge that showed 6 smeared "conflicting"
+start dates under the old whole-document approach now shows 1-2 dates
+per lease, with only the two fixtures that are genuinely internally
+inconsistent (by design, as test fixtures) still flagging.
+
+**Known, real, honestly-documented limitation**: if two genuinely
+different, non-adjacent leases in the same merged PDF happen to share
+BOTH the exact same tenant name AND the exact same landlord name, this
+heuristic (or any purely name-based one) cannot tell them apart, and
+they will incorrectly merge into one record — confirmed directly: a
+test merging `retail_lease.pdf` + `office_lease.pdf` + `retail_lease.
+pdf` again (so the same tenant AND landlord reappear on the third page)
+produces 2 detected leases, not the true 3, with the second result's
+fields bleeding between the office lease and the second copy of the
+retail lease. This is not fixed and was not silently assumed away. It
+was NOT possible to test against the user's actual real-world 500-page/
+250-lease PDF that originally surfaced this bug — the file itself
+wasn't recoverable (upload-time processing only ever kept a temporary
+copy, already deleted; it wasn't found in common locations on this
+machine either) — so this feature's accuracy against that *specific*
+document is unverified; everything above is verified against this
+project's own real fixture PDFs and real merges of them instead. This
+should be spot-checked against the real file when available.
+
+Not implemented, and deliberately out of scope: page-break heuristics
+and repeated "COMMERCIAL LEASE AGREEMENT"/"ARTICLE 1: PARTIES"-style
+structural title detection (both suggested as alternative signals).
+The tenant/landlord-identity signal was preferred because it was
+already built, already validated with zero false positives across
+every real fixture in this project, and is what the fields themselves
+are extracted from — a structural-title signal would need its own
+separate validation pass against real documents to avoid new false
+positives (e.g. a document that mentions "lease agreement" in a table
+of contents or definitions section without that being a real
+boundary), which there wasn't a real corpus available to validate
+against here.

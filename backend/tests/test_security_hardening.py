@@ -117,7 +117,8 @@ def main():
         check("lease with HTML/script-like content extracts without error", status == 200)
         check(
             "response is well-formed JSON (script content didn't break serialization)",
-            isinstance(body, dict) and "tenant" in body,
+            isinstance(body, dict) and isinstance(body.get("leases"), list) and len(body["leases"]) > 0
+            and "tenant" in body["leases"][0].get("fields", {}),
         )
     else:
         print("(skipping XSS round-trip check — fixture not present in this run)")

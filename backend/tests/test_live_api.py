@@ -58,7 +58,13 @@ def call_api(pdf_path):
         method="POST",
     )
     with urllib.request.urlopen(req, timeout=30) as resp:
-        return json.loads(resp.read().decode())
+        body = json.loads(resp.read().decode())
+        # /extract now returns {"leases": [...]} (a list, even for a
+        # single-lease PDF) so multi-lease PDFs can return more than
+        # one — every fixture here is a genuine single lease, so the
+        # first (only) entry's fields is what this test's assertions
+        # are written against.
+        return body["leases"][0]["fields"]
 
 
 def main():

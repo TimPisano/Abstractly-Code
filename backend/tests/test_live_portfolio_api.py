@@ -133,7 +133,11 @@ def main():
 
         for r in batch_result["results"]:
             if r["success"]:
-                created_lease_ids.append(r["lease"]["id"])
+                # Every fixture here is a genuine single lease, so
+                # each successful file result carries exactly one
+                # entry in its (now-plural) "leases" list.
+                check(f"{r['filename']} split into exactly 1 lease", r.get("split_count") == 1, str(r.get("split_count")))
+                created_lease_ids.append(r["leases"][0]["id"])
         check("collected 10 lease ids from successful uploads", len(created_lease_ids) == 10, str(len(created_lease_ids)))
 
         lease_by_filename = {}

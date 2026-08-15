@@ -124,21 +124,47 @@ def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
-def _extract_fields_from_file_storage(file_storage):
+def _default_lease_name(fields, filename, index, total):
     """
-    Shared pipeline: save an uploaded werkzeug FileStorage to a temp path,
-    run PDF text extraction + field extraction, clean up the temp file.
+    Auto-generated display name for a newly-created lease: "[Tenant] -
+    [Property Address]" when both were actually found, since that's
+    what someone scanning a list of leases wants to see at a glance.
+    Falls back to the source filename (with " - Lease N" appended only
+    when this lease was one of several split out of the same PDF — a
+    lone upload doesn't need a redundant "Lease 1" suffix) when tenant
+    or address extraction came up empty, so the name is never blank or
+    literally "None - None".
+    """
+    tenant = (fields.get("tenant") or {}).get("value")
+    address = (fields.get("property_address") or {}).get("value")
+    if tenant and address:
+        return f"{tenant} - {address}"
 
-    Also computes every start/end date candidate found in the document
-    (FieldExtractor.find_all_date_candidates) so it can be persisted
-    alongside the extracted fields — this is the only point where the
-    raw PDF text is available; once the temp file is cleaned up,
-    risk_analysis's cross-section date-conflict check would otherwise
-    have nothing to work from for a lease loaded back out of storage.
+    base_filename = filename.rsplit(".", 1)[0] if filename and "." in filename else (filename or "Untitled")
+    if total > 1:
+        return f"{base_filename} - Lease {index + 1}"
+    return base_filename
 
-    Returns (extracted_fields, date_candidates, None) on success, or
-    (None, None, (error_message, http_status)) on failure — callers turn
-    that into a JSON error response themselves, since batch endpoints
+
+def _extract_leases_from_file_storage(file_storage):
+    """
+    Shared pipeline: save an uploaded werkzeug FileStorage to a temp
+    path, run PDF text extraction, then FieldExtractor.
+    extract_multiple_leases() to split it into one or more per-lease
+    results — a genuine single-lease PDF always comes back as exactly
+    one result (same fields/confidence/citations extract_fields() alone
+    would have produced), so this replaced the old single-lease-only
+    _extract_fields_from_file_storage without changing behavior for the
+    common case. A real multi-lease PDF instead comes back as N
+    independent results, each extracted only from its own page range —
+    see DECISIONS.md for why that matters (fields and risk-relevant
+    date candidates used to bleed across the constituent leases).
+
+    Returns (leases, None) on success, where `leases` is a non-empty
+    list of dicts: {"fields": {...}, "date_candidates": {...},
+    "source_page_start": N, "source_page_end": M, "display_name": "..."}
+    — or (None, (error_message, http_status)) on failure. Callers turn
+    the error into a JSON response themselves, since batch endpoints
     need to report a per-file error without aborting the whole request.
     """
     temp_path = None
@@ -152,46 +178,29 @@ def _extract_fields_from_file_storage(file_storage):
             pages = pdf_extractor.extract_text(pdf_file, pdf_path=temp_path)
 
         if not pages or len(pages) == 0:
-            return None, None, ("Failed to extract text from PDF. The file may be corrupted or unsupported.", 500)
+            return None, ("Failed to extract text from PDF. The file may be corrupted or unsupported.", 500)
 
         field_extractor = FieldExtractor()
+        split_results = field_extractor.extract_multiple_leases(pages)
 
-        # Checked BEFORE trusting extract_fields()'s result: a PDF that
-        # actually bundles more than one lease (several tenants scanned/
-        # merged into one file) makes every field below independently
-        # "win" from whichever constituent lease happens to match
-        # first/best for that specific field — e.g. the tenant name from
-        # lease #2 paired with the rent amount from lease #1 — producing
-        # one persisted record that silently mixes data across
-        # documents. Confirmed empirically against a real merged PDF
-        # before this check was added; see DECISIONS.md. Refusing here
-        # (rather than persisting a guess) matches this project's
-        # existing "flag clearly, never guess silently" standard.
-        multi_lease = field_extractor.detect_multiple_leases(pages)
-        if multi_lease:
-            found = multi_lease.get("tenants") or multi_lease.get("landlords")
-            role = "tenants" if "tenants" in multi_lease else "landlords"
-            return None, None, (
-                f"This PDF appears to contain more than one lease — found {len(found)} different "
-                f"{role} ({', '.join(found)}). Please split it into separate PDFs, one lease "
-                "per file, and upload them individually so each lease's fields stay correctly "
-                "attributed to that lease.",
-                400,
-            )
-
-        extracted_fields = field_extractor.extract_fields(pages)
-        date_candidates = {
-            "start": field_extractor.find_all_date_candidates(pages, "start"),
-            "end": field_extractor.find_all_date_candidates(pages, "end"),
-        }
-        return extracted_fields, date_candidates, None
+        total = len(split_results)
+        leases = []
+        for index, result in enumerate(split_results):
+            leases.append({
+                "fields": result["fields"],
+                "date_candidates": result["date_candidates"],
+                "source_page_start": result["source_page_start"],
+                "source_page_end": result["source_page_end"],
+                "display_name": _default_lease_name(result["fields"], file_storage.filename, index, total),
+            })
+        return leases, None
 
     except Exception:
         # The real exception (which can include the temp file's path,
         # e.g. a FileNotFoundError) is logged server-side only — the
         # client gets a generic message, never str(e) verbatim.
         logger.exception("Error processing uploaded PDF")
-        return None, None, ("Error processing PDF. The file may be corrupted or unsupported.", 500)
+        return None, ("Error processing PDF. The file may be corrupted or unsupported.", 500)
 
     finally:
         if temp_path and os.path.exists(temp_path):
@@ -224,21 +233,25 @@ def extract_lease_data():
     Extract lease data from an uploaded PDF without persisting it.
 
     Expects: multipart form data with a 'file' field containing a PDF.
-    Returns: JSON with one entry per extracted field, each shaped as
-        {"value": ..., "source": {"page": N, "quote": "..."} | null,
-         "confidence": "high"|"medium"|"low" | null}
+    Returns: {"leases": [{"display_name":..., "source_page_start":...,
+    "source_page_end":..., "fields": {one entry per extracted field,
+    each shaped as {"value":..., "source": {"page":N, "quote":"..."} |
+    null, "confidence": "high"|"medium"|"low"|null}}}, ...]} — always a
+    list, even for a single-lease PDF (a list of one), so a caller never
+    needs two different response shapes depending on whether the file
+    turned out to contain more than one lease.
     Error responses: 400 (no/invalid file), 500 (extraction failure).
     """
     file, error = _validate_upload()
     if error:
         return error
 
-    extracted_fields, _date_candidates, error = _extract_fields_from_file_storage(file)
+    leases, error = _extract_leases_from_file_storage(file)
     if error:
         message, status = error
         return jsonify({"error": message}), status
 
-    return jsonify(extracted_fields), 200
+    return jsonify({"leases": leases}), 200
 
 
 # ----------------------------------------------------------------------
@@ -250,31 +263,70 @@ def _lease_summary(lease):
     return {
         "id": lease["id"],
         "filename": lease["filename"],
+        "display_name": lease.get("display_name") or lease["filename"],
         "uploaded_at": lease["uploaded_at"],
         "document_type": lease["document_type"],
         "base_lease_id": lease["base_lease_id"],
         "amendment_count": lease.get("amendment_count", 0),
         "extracted_fields": lease["extracted_fields"],
+        "source_page_start": lease.get("source_page_start"),
+        "source_page_end": lease.get("source_page_end"),
+        "tags": lease.get("tags", []),
     }
+
+
+def _persist_split_leases(filename, split_leases):
+    """
+    Persists every lease FieldExtractor.extract_multiple_leases()
+    produced from one uploaded file as its own independent leases row —
+    never merged or averaged together, regardless of whether there was
+    1 or 100 of them. Returns the list of full lease summaries (each
+    with tags attached — freshly inserted, so always empty). Does NOT
+    log activity itself — callers log their own single/batch-appropriate
+    entry, see upload_lease/upload_leases_batch.
+    """
+    created = []
+    for lease_data in split_leases:
+        lease_id = database.insert_lease(
+            filename,
+            lease_data["fields"],
+            document_type="lease",
+            date_candidates=lease_data["date_candidates"],
+            display_name=lease_data["display_name"],
+            source_page_start=lease_data["source_page_start"],
+            source_page_end=lease_data["source_page_end"],
+        )
+        lease = database.get_effective_lease(lease_id)
+        lease["tags"] = []
+        created.append(_lease_summary(lease))
+    return created
 
 
 @app.route('/leases', methods=['POST'])
 def upload_lease():
-    """Upload a single PDF, extract its fields, and persist it as a base lease."""
+    """
+    Upload a single PDF, extract its fields, and persist it as one or
+    more base leases — one PER LEASE actually found in the file (see
+    FieldExtractor.extract_multiple_leases). An ordinary single-lease
+    PDF still produces exactly one lease, same as before.
+    """
     file, error = _validate_upload()
     if error:
         return error
 
     filename = file.filename
-    extracted_fields, date_candidates, error = _extract_fields_from_file_storage(file)
+    split_leases, error = _extract_leases_from_file_storage(file)
     if error:
         message, status = error
         return jsonify({"error": message}), status
 
-    lease_id = database.insert_lease(filename, extracted_fields, document_type="lease", date_candidates=date_candidates)
-    database.insert_activity("lease_uploaded", f"Uploaded {filename}", lease_id=lease_id)
-    lease = database.get_effective_lease(lease_id)
-    return jsonify(_lease_summary(lease)), 201
+    created = _persist_split_leases(filename, split_leases)
+    if len(created) == 1:
+        database.insert_activity("lease_uploaded", f"Uploaded {filename}", lease_id=created[0]["id"])
+    else:
+        database.insert_activity("lease_split", f"Split {filename} into {len(created)} separate leases")
+
+    return jsonify({"leases": created, "split_count": len(created)}), 201
 
 
 @app.route('/leases/batch', methods=['POST'])
@@ -282,8 +334,11 @@ def upload_leases_batch():
     """
     Upload multiple PDFs in one request. Each file is processed
     independently — if one fails (corrupted, wrong type, extraction
-    error), the rest still process. Returns a per-file result list so
-    the caller can see exactly what succeeded and what didn't.
+    error), the rest still process. Any file that turns out to bundle
+    more than one lease is split into its own leases, same as
+    POST /leases — so one entry in `results` can carry several created
+    leases in its `leases` list. Returns a per-file result list so the
+    caller can see exactly what succeeded and what didn't.
     """
     files = request.files.getlist('files')
     if not files:
@@ -297,36 +352,56 @@ def upload_leases_batch():
                              "error": "Invalid file type. Only PDF files are allowed."})
             continue
 
-        extracted_fields, date_candidates, error = _extract_fields_from_file_storage(file_storage)
+        split_leases, error = _extract_leases_from_file_storage(file_storage)
         if error:
             message, _status = error
             results.append({"filename": filename, "success": False, "error": message})
             continue
 
-        lease_id = database.insert_lease(filename, extracted_fields, document_type="lease", date_candidates=date_candidates)
-        lease = database.get_effective_lease(lease_id)
-        results.append({"filename": filename, "success": True, "lease": _lease_summary(lease)})
+        created = _persist_split_leases(filename, split_leases)
+        results.append({"filename": filename, "success": True, "leases": created, "split_count": len(created)})
 
-    succeeded = sum(1 for r in results if r["success"])
-    # One summary entry for the whole batch rather than one per file — a
-    # 20-file batch shouldn't push everything else out of a 10-item feed.
-    if succeeded == 1:
+    succeeded_files = sum(1 for r in results if r["success"])
+    total_leases_created = sum(r["split_count"] for r in results if r["success"])
+    # One summary entry for the whole batch rather than one per file (or
+    # per split lease) — a 20-file batch shouldn't push everything else
+    # out of a 10-item activity feed.
+    if total_leases_created == 1:
         only = next(r for r in results if r["success"])
-        database.insert_activity("lease_uploaded", f"Uploaded {only['filename']}", lease_id=only["lease"]["id"])
-    elif succeeded > 1:
-        database.insert_activity("batch_upload", f"Uploaded a batch of {succeeded} leases")
+        database.insert_activity("lease_uploaded", f"Uploaded {only['filename']}", lease_id=only["leases"][0]["id"])
+    elif total_leases_created > 1:
+        database.insert_activity(
+            "batch_upload",
+            f"Uploaded a batch of {total_leases_created} leases from {succeeded_files} file(s)",
+        )
+
     return jsonify({
         "total": len(results),
-        "succeeded": succeeded,
-        "failed": len(results) - succeeded,
+        "succeeded": succeeded_files,
+        "failed": len(results) - succeeded_files,
+        "total_leases_created": total_leases_created,
         "results": results,
     }), 200
 
 
 @app.route('/leases', methods=['GET'])
 def list_leases():
-    """List all base leases (not amendments), with amendment-merged effective field values."""
+    """
+    List all base leases (not amendments), with amendment-merged
+    effective field values. Optional ?tag=X filters to leases carrying
+    that exact tag.
+    """
     leases = database.get_all_effective_leases()
+
+    tag_filter = request.args.get('tag')
+    if tag_filter:
+        allowed_ids = set(database.get_lease_ids_with_tag(tag_filter))
+        leases = [l for l in leases if l["id"] in allowed_ids]
+
+    tags_by_lease = database.get_tags_for_leases([l["id"] for l in leases])
+    for lease in leases:
+        lease["tags"] = tags_by_lease.get(lease["id"], [])
+
     return jsonify([_lease_summary(l) for l in leases]), 200
 
 
@@ -335,6 +410,7 @@ def get_lease_detail(lease_id):
     lease = database.get_effective_lease(lease_id)
     if not lease:
         return jsonify({"error": "Lease not found"}), 404
+    lease["tags"] = database.get_lease_tags(lease_id)
     return jsonify(_lease_summary(lease)), 200
 
 
@@ -364,14 +440,25 @@ def upload_amendment(lease_id):
         return error
 
     filename = file.filename
-    extracted_fields, date_candidates, error = _extract_fields_from_file_storage(file)
+    split_leases, error = _extract_leases_from_file_storage(file)
     if error:
         message, status = error
         return jsonify({"error": message}), status
 
-    database.insert_lease(filename, extracted_fields, document_type="amendment", base_lease_id=lease_id, date_candidates=date_candidates)
+    # An amendment attaches to exactly one base lease, so even if
+    # extract_multiple_leases() found more than one lease-shaped
+    # section in this file (unexpected for an amendment/addendum, which
+    # is normally a short single document), only the first is used —
+    # the rest are silently ignored rather than creating orphan
+    # amendment records with no clear base lease of their own.
+    amendment_data = split_leases[0]
+    database.insert_lease(
+        filename, amendment_data["fields"], document_type="amendment", base_lease_id=lease_id,
+        date_candidates=amendment_data["date_candidates"],
+    )
     database.insert_activity("amendment_uploaded", f"Added amendment {filename} to {base_lease['filename']}", lease_id=lease_id)
     lease = database.get_effective_lease(lease_id)
+    lease["tags"] = database.get_lease_tags(lease_id)
     return jsonify(_lease_summary(lease)), 201
 
 
@@ -385,6 +472,67 @@ def list_amendments(lease_id):
         "id": a["id"], "filename": a["filename"], "uploaded_at": a["uploaded_at"],
         "extracted_fields": a["extracted_fields"],
     } for a in amendments]), 200
+
+
+@app.route('/leases/<int:lease_id>', methods=['PATCH'])
+def rename_lease(lease_id):
+    """Body: {"display_name": str}. The only field this endpoint can change — renaming, not editing extracted fields (that's the inline-edit workflow on the detail page, unrelated to this)."""
+    lease = database.get_lease(lease_id)
+    if not lease:
+        return jsonify({"error": "Lease not found"}), 404
+
+    body = request.get_json(silent=True) or {}
+    display_name = (body.get("display_name") or "").strip()
+    if not display_name:
+        return jsonify({"error": "display_name is required and cannot be blank"}), 400
+    if len(display_name) > 200:
+        return jsonify({"error": "display_name must be 200 characters or fewer"}), 400
+
+    database.update_lease_display_name(lease_id, display_name)
+    updated = database.get_effective_lease(lease_id)
+    updated["tags"] = database.get_lease_tags(lease_id)
+    return jsonify(_lease_summary(updated)), 200
+
+
+@app.route('/leases/<int:lease_id>/tags', methods=['GET'])
+def list_lease_tags(lease_id):
+    lease = database.get_lease(lease_id)
+    if not lease:
+        return jsonify({"error": "Lease not found"}), 404
+    return jsonify(database.get_lease_tags(lease_id)), 200
+
+
+@app.route('/leases/<int:lease_id>/tags', methods=['POST'])
+def add_lease_tag_route(lease_id):
+    """Body: {"tag": str}."""
+    lease = database.get_lease(lease_id)
+    if not lease:
+        return jsonify({"error": "Lease not found"}), 404
+
+    body = request.get_json(silent=True) or {}
+    tag = (body.get("tag") or "").strip()
+    if not tag:
+        return jsonify({"error": "tag is required and cannot be blank"}), 400
+    if len(tag) > 60:
+        return jsonify({"error": "tag must be 60 characters or fewer"}), 400
+
+    database.add_lease_tag(lease_id, tag)
+    return jsonify(database.get_lease_tags(lease_id)), 200
+
+
+@app.route('/leases/<int:lease_id>/tags/<path:tag>', methods=['DELETE'])
+def remove_lease_tag_route(lease_id, tag):
+    lease = database.get_lease(lease_id)
+    if not lease:
+        return jsonify({"error": "Lease not found"}), 404
+    database.remove_lease_tag(lease_id, tag)
+    return jsonify(database.get_lease_tags(lease_id)), 200
+
+
+@app.route('/tags', methods=['GET'])
+def list_all_tags():
+    """Every distinct tag currently in use across the whole portfolio — for filter dropdowns and tag-input autocomplete."""
+    return jsonify(database.get_all_tags()), 200
 
 
 # ----------------------------------------------------------------------

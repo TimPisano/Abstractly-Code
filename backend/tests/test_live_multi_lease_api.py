@@ -1,9 +1,10 @@
 """
-Live API regression test for the multi-lease-PDF rejection added to
-_extract_fields_from_file_storage in api.py — confirms /extract,
-/leases, and /leases/batch all reject a real merged multi-lease PDF
-with a clear 400 (never persisting a mixed-data record), while a normal
-single-lease upload is unaffected.
+Live API regression test for multi-lease PDF splitting — confirms
+/extract, /leases, and /leases/batch all correctly split a real merged
+multi-lease PDF into individually-accurate lease records (never a
+single merged/mixed record, and never a rejection — that was an earlier
+iteration of this fix; see DECISIONS.md), with a normal single-lease
+upload completely unaffected.
 
 Requires the backend already running at API_BASE_URL. Builds the merged
 PDF at runtime from this repo's own real fixture PDFs via PyPDF2 — a
@@ -53,9 +54,9 @@ def _multipart_body(files):
     return b"".join(parts), f"multipart/form-data; boundary={boundary}"
 
 
-def _build_merged_pdf():
+def _merged_pdf_bytes(*filenames):
     writer = PdfWriter()
-    for filename in ("retail_lease.pdf", "office_lease.pdf"):
+    for filename in filenames:
         reader = PdfReader(os.path.join(FIXTURES_DIR, filename))
         for page in reader.pages:
             writer.add_page(page)
@@ -86,52 +87,88 @@ def main():
     status, health = _request("GET", "/health")
     check("server is reachable", status == 200 and health.get("status") == "healthy")
 
-    merged_pdf_bytes = _build_merged_pdf()
+    merged_two = _merged_pdf_bytes("retail_lease.pdf", "office_lease.pdf")
     created_lease_ids = []
 
     try:
         clear_all_leases()
 
-        # ---- /extract (stateless) ----
-        body, content_type = _multipart_body([("file", "merged.pdf", merged_pdf_bytes)])
+        # ---- /extract (stateless): must return a list, split correctly ----
+        body, content_type = _multipart_body([("file", "merged.pdf", merged_two)])
         status, resp = _request("POST", "/extract", data=body, headers={"Content-Type": content_type})
-        check("/extract rejects a merged multi-lease PDF with 400", status == 400, str(status))
-        check("/extract error message names the field that triggered it", isinstance(resp, dict) and "more than one lease" in resp.get("error", ""), str(resp))
+        check("/extract on a merged PDF returns 200 (not a rejection)", status == 200, str(status))
+        check("/extract returns a 'leases' list with 2 entries", isinstance(resp, dict) and len(resp.get("leases", [])) == 2, str(resp))
+        if isinstance(resp, dict) and len(resp.get("leases", [])) == 2:
+            tenants = {r["fields"]["tenant"]["value"] for r in resp["leases"]}
+            check("/extract's 2 leases have the correct, distinct tenants", tenants == {"Cascade Apparel Co.", "Vertex Analytics LLC"}, str(tenants))
+        check("/extract did not persist anything (still stateless)", _request("GET", "/leases")[1] == [])
 
-        # ---- POST /leases (persisted single upload) ----
-        body, content_type = _multipart_body([("file", "merged.pdf", merged_pdf_bytes)])
+        # ---- POST /leases (persisted): splits into 2 separate lease rows ----
+        body, content_type = _multipart_body([("file", "merged.pdf", merged_two)])
         status, resp = _request("POST", "/leases", data=body, headers={"Content-Type": content_type})
-        check("POST /leases rejects a merged multi-lease PDF with 400", status == 400, str(status))
+        check("POST /leases on a merged PDF returns 201", status == 201, str(status))
+        check("split_count is 2", resp.get("split_count") == 2, str(resp))
+        check("response carries a 'leases' list with 2 entries", len(resp.get("leases", [])) == 2, str(resp))
 
-        status, leases = _request("GET", "/leases")
-        check("rejected merged PDF was never persisted", status == 200 and leases == [], f"{len(leases) if isinstance(leases, list) else leases} leases found")
+        if len(resp.get("leases", [])) == 2:
+            for lease in resp["leases"]:
+                created_lease_ids.append(lease["id"])
+            by_tenant = {l["extracted_fields"]["tenant"]["value"]: l for l in resp["leases"]}
+            check("both distinct tenants are present as separate leases", set(by_tenant) == {"Cascade Apparel Co.", "Vertex Analytics LLC"}, str(set(by_tenant)))
 
-        # ---- POST /leases/batch (one good file + one merged file) ----
+            retail = by_tenant.get("Cascade Apparel Co.")
+            office = by_tenant.get("Vertex Analytics LLC")
+            if retail and office:
+                check("split lease #1 has its OWN rent, not the other lease's", retail["extracted_fields"]["rent_amount"]["value"] == "$6,000.00", retail["extracted_fields"]["rent_amount"]["value"])
+                check("split lease #2 has its OWN rent, not the other lease's", office["extracted_fields"]["rent_amount"]["value"] == "$9,500.00", office["extracted_fields"]["rent_amount"]["value"])
+                check("split lease #1 has its own auto-generated display_name", "Cascade Apparel Co." in retail["display_name"] and "Riverside Plaza" in retail["display_name"], retail["display_name"])
+                check("split lease #2 has its own auto-generated display_name", "Vertex Analytics LLC" in office["display_name"] and "Wilshire" in office["display_name"], office["display_name"])
+                check("split leases record distinct, non-overlapping source page ranges", retail["source_page_start"] != office["source_page_start"], f"{retail['source_page_start']} vs {office['source_page_start']}")
+
+        # ---- Each split lease is independently persisted and independently queryable ----
+        status, all_leases = _request("GET", "/leases")
+        check("both split leases are independently listed", status == 200 and len(all_leases) == 2, str(len(all_leases) if isinstance(all_leases, list) else all_leases))
+
+        if len(created_lease_ids) == 2:
+            for lease_id in created_lease_ids:
+                status, risks = _request("GET", f"/leases/{lease_id}/risks")
+                date_conflict_flags = [f for f in risks if f.get("category") == "date_inconsistency"] if isinstance(risks, list) else None
+                check(
+                    f"lease {lease_id} has no spurious date-conflict flag (the original bug: 30+ smeared dates)",
+                    date_conflict_flags == [],
+                    str(date_conflict_flags),
+                )
+
+        # ---- POST /leases/batch: one good single-lease file + one merged (2-lease) file ----
+        clear_all_leases()
+        created_lease_ids.clear()
+
         with open(os.path.join(FIXTURES_DIR, "sample_lease.pdf"), "rb") as f:
             good_bytes = f.read()
+        merged_three = _merged_pdf_bytes("retail_lease.pdf", "office_lease.pdf", "sample_lease_commercial.pdf")
         body, content_type = _multipart_body([
             ("files", "sample_lease.pdf", good_bytes),
-            ("files", "merged.pdf", merged_pdf_bytes),
+            ("files", "merged3.pdf", merged_three),
         ])
         status, resp = _request("POST", "/leases/batch", data=body, headers={"Content-Type": content_type})
-        check("batch upload with one good + one merged file returns 200 overall", status == 200, str(status))
-        check("batch reports 1 succeeded, 1 failed", isinstance(resp, dict) and resp.get("succeeded") == 1 and resp.get("failed") == 1, str(resp))
-        merged_result = next((r for r in resp.get("results", []) if r["filename"] == "merged.pdf"), None)
-        check("the merged file's batch result carries the clear rejection message", merged_result is not None and "more than one lease" in merged_result.get("error", ""), str(merged_result))
-        good_result = next((r for r in resp.get("results", []) if r["filename"] == "sample_lease.pdf"), None)
-        check("the good file in the same batch still succeeded", good_result is not None and good_result.get("success") is True, str(good_result))
-        if good_result and good_result.get("success"):
-            created_lease_ids.append(good_result["lease"]["id"])
+        check("batch upload with one single-lease + one 3-lease-merged file returns 200", status == 200, str(status))
+        check("batch reports 2 files succeeded (both files processed, no rejection)", resp.get("succeeded") == 2, str(resp))
+        check("batch reports total_leases_created == 4 (1 + 3)", resp.get("total_leases_created") == 4, str(resp))
 
-        # ---- Sanity: a normal single-lease upload is completely unaffected ----
-        with open(os.path.join(FIXTURES_DIR, "office_lease.pdf"), "rb") as f:
-            office_bytes = f.read()
-        body, content_type = _multipart_body([("file", "office_lease.pdf", office_bytes)])
-        status, resp = _request("POST", "/leases", data=body, headers={"Content-Type": content_type})
-        check("a normal single-lease upload still succeeds", status == 201, str(status))
-        if status == 201:
-            created_lease_ids.append(resp["id"])
-            check("its tenant field extracted correctly", resp["extracted_fields"]["tenant"]["value"] == "Vertex Analytics LLC", str(resp["extracted_fields"]["tenant"]))
+        merged_result = next((r for r in resp.get("results", []) if r["filename"] == "merged3.pdf"), None)
+        check("the merged file's batch result split into 3 leases", merged_result is not None and merged_result.get("split_count") == 3, str(merged_result))
+        good_result = next((r for r in resp.get("results", []) if r["filename"] == "sample_lease.pdf"), None)
+        check("the single-lease file's batch result split into 1 lease", good_result is not None and good_result.get("split_count") == 1, str(good_result))
+
+        for r in resp.get("results", []):
+            if r.get("success"):
+                created_lease_ids.extend(l["id"] for l in r["leases"])
+
+        status, all_leases = _request("GET", "/leases")
+        check("dashboard-level GET /leases reflects all 4 individual leases", status == 200 and len(all_leases) == 4, str(len(all_leases) if isinstance(all_leases, list) else all_leases))
+
+        status, summary = _request("GET", "/portfolio/summary")
+        check("portfolio summary lease_count reflects individual (post-split) leases, not the 2 uploaded files", summary.get("lease_count") == 4, str(summary))
 
     finally:
         print("\nCleaning up test data...")

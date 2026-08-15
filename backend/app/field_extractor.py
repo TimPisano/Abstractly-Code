@@ -30,7 +30,7 @@ Fields that were not found have confidence None.
 """
 
 import re
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Tuple
 
 
 MONTHS_FULL = (r"January|February|March|April|May|June|July|August|September"
@@ -285,6 +285,38 @@ class FieldExtractor:
 
         return _not_found()
 
+    def _find_all_party_occurrences(
+        self,
+        pages: List[Dict[str, Any]],
+        role: str,
+        label_patterns: List[str],
+    ) -> List[Tuple[str, int]]:
+        """
+        Scans the WHOLE document for every match of the party-name
+        patterns (not just the first, unlike _extract_defined_party),
+        each paired with the page it was found on. Applies the same
+        value cleanup _extract_defined_party uses, so two matches of the
+        *same* name with different trailing punctuation or boilerplate
+        don't get miscounted as two different parties later. Returns
+        raw occurrences in document order — see _dedupe_party_occurrences
+        for how these get collapsed into distinct parties.
+        """
+        full_text, page_for_offset = _concat_pages(pages)
+
+        occurrences: List[Tuple[str, int]] = []
+        for match in re.finditer(self._defined_term_pattern(role), full_text):
+            value = self._clean_defined_term_value(_clean_value(match.group(1)))
+            if value:
+                occurrences.append((value, page_for_offset(match.start())))
+
+        for pattern in label_patterns:
+            for match in re.finditer(pattern, full_text):
+                value = self._clean_label_style_value(_clean_value(match.group(1)))
+                if value:
+                    occurrences.append((value, page_for_offset(match.start())))
+
+        return occurrences
+
     def _find_all_party_values(
         self,
         pages: List[Dict[str, Any]],
@@ -292,40 +324,22 @@ class FieldExtractor:
         label_patterns: List[str],
     ) -> List[str]:
         """
-        Scans the WHOLE document for every match of the party-name
-        patterns (not just the first, unlike _extract_defined_party) —
-        used by detect_multiple_leases to check whether the document
-        defines more than one distinct tenant/landlord, which is strong
-        evidence that several separate leases were concatenated into one
-        PDF rather than this genuinely being a single lease. Applies the
-        same value cleanup _extract_defined_party uses, so two matches
-        of the *same* name with different trailing punctuation or
-        boilerplate don't get miscounted as two different parties.
-
-        Returns distinct values, in document order — see
-        _dedupe_party_values for what counts as "distinct".
+        Distinct party values only (see _find_all_party_occurrences and
+        _dedupe_party_occurrences) — used by detect_multiple_leases to
+        check whether the document defines more than one distinct
+        tenant/landlord, which is strong evidence that several separate
+        leases were concatenated into one PDF rather than this genuinely
+        being a single lease. Returns distinct values in document order.
         """
-        full_text, _ = _concat_pages(pages)
-
-        raw_values = []
-        for match in re.finditer(self._defined_term_pattern(role), full_text):
-            value = self._clean_defined_term_value(_clean_value(match.group(1)))
-            if value:
-                raw_values.append(value)
-
-        for pattern in label_patterns:
-            for match in re.finditer(pattern, full_text):
-                value = self._clean_label_style_value(_clean_value(match.group(1)))
-                if value:
-                    raw_values.append(value)
-
-        return self._dedupe_party_values(raw_values)
+        occurrences = self._find_all_party_occurrences(pages, role, label_patterns)
+        return [value for value, _page in self._dedupe_party_occurrences(occurrences)]
 
     @staticmethod
-    def _dedupe_party_values(values: List[str]) -> List[str]:
+    def _dedupe_party_occurrences(occurrences: List[Tuple[str, int]]) -> List[Tuple[str, int]]:
         """
-        Merges near-duplicate party names, not just exact ones. The same
-        real-world mention routinely surfaces as slightly different
+        Merges near-duplicate party names, not just exact ones, keeping
+        the EARLIEST page each surviving name was first seen on. The
+        same real-world mention routinely surfaces as slightly different
         strings across the label/defined-term patterns and their two
         capture strategies (a tight word-boundary pattern and a looser
         to-end-of-line one) — e.g. a company referenced once with its
@@ -338,27 +352,39 @@ class FieldExtractor:
         whichever form is shorter, since the longer one is either
         boilerplate-suffixed or over-captured) is what keeps
         detect_multiple_leases from false-positiving on a real single
-        lease that just refers to its own parties more than once.
-        Verified against every existing single-lease fixture; see
-        DECISIONS.md.
+        lease that just refers to its own parties more than once, and
+        what keeps detect_lease_boundaries from placing a spurious extra
+        boundary at that same party's second mention. Verified against
+        every existing single-lease fixture; see DECISIONS.md.
+
+        The "first page seen" this returns per surviving name is exactly
+        what detect_lease_boundaries uses as that lease's start page —
+        the earliest mention, not a later one, since a defined-term
+        introduction typically appears at or near the top of its lease
+        and a later signature-block repeat would place the boundary too
+        far into the document.
         """
-        kept: List[str] = []
-        for value in values:
+        kept: List[List[Any]] = []  # each: [value, first_page]
+        for value, page in occurrences:
             value_lower = value.lower()
             merged = False
-            for i, existing in enumerate(kept):
-                existing_lower = existing.lower()
-                if value_lower == existing_lower:
-                    merged = True
-                    break
-                if value_lower.startswith(existing_lower) or existing_lower.startswith(value_lower):
-                    if len(value) < len(existing):
-                        kept[i] = value
+            for entry in kept:
+                existing_lower = entry[0].lower()
+                if value_lower == existing_lower or value_lower.startswith(existing_lower) or existing_lower.startswith(value_lower):
+                    if len(value) < len(entry[0]):
+                        entry[0] = value
+                    entry[1] = min(entry[1], page)
                     merged = True
                     break
             if not merged:
-                kept.append(value)
-        return kept
+                kept.append([value, page])
+        return [(value, page) for value, page in kept]
+
+    @staticmethod
+    def _dedupe_party_values(values: List[str]) -> List[str]:
+        """Plain-string convenience wrapper around _dedupe_party_occurrences, for callers (and tests) that don't need page positions."""
+        occurrences = [(value, 0) for value in values]
+        return [value for value, _page in FieldExtractor._dedupe_party_occurrences(occurrences)]
 
     def detect_multiple_leases(self, pages: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
         """
@@ -367,18 +393,13 @@ class FieldExtractor:
         scanned or merged into a single file) rather than being one
         lease document.
 
-        extract_fields() above always treats the WHOLE document as one
-        lease and returns its single best match per field — across a
-        genuinely multi-lease PDF, that means each field can
-        independently "win" from a different constituent lease (e.g. the
-        tenant name from lease #2 paired with the rent amount from lease
-        #1), producing one extracted record that silently mixes data
-        across documents with no indication anything is wrong. This
-        method doesn't attempt to split or fix that — it only detects
-        the situation so a caller can refuse to trust the result rather
-        than silently persisting a mismatched record. See DECISIONS.md
-        for how this was verified against a real merged PDF before
-        being wired into the upload path.
+        This is the lower-level detection primitive detect_lease_
+        boundaries (below) builds on — extract_multiple_leases is what
+        the upload path actually calls now, splitting a flagged document
+        into per-lease page ranges instead of refusing it. This function
+        stays useful on its own for a quick "is this multi-lease, and
+        which parties triggered that" answer without doing the full
+        boundary/page-range computation.
 
         Signal: the document defines more than one DISTINCT tenant, or
         more than one distinct landlord (via the same patterns
@@ -386,7 +407,8 @@ class FieldExtractor:
         defines exactly one of each, even when that one name is repeated
         verbatim many times through the document — two or more
         *different* names is strong, low-false-positive evidence of
-        multiple concatenated leases, not just repetition.
+        multiple concatenated leases, not just repetition. See
+        DECISIONS.md for how this was verified against real merged PDFs.
 
         Returns None if nothing suspicious was found, or a dict with
         only the field(s) that triggered it (each a list of the 2+
@@ -407,6 +429,111 @@ class FieldExtractor:
             result["landlords"] = landlords
 
         return result or None
+
+    def detect_lease_boundaries(self, pages: List[Dict[str, Any]]) -> List[Tuple[int, int]]:
+        """
+        Determines page ranges for each lease detected in the document.
+        Reuses the exact same distinct-tenant/landlord detection as
+        detect_multiple_leases, so a document that function would flag
+        always splits into the same number of leases here, and a
+        document it wouldn't flag always comes back as a single range
+        covering the whole document.
+
+        A boundary is placed at the first page each distinct tenant OR
+        distinct landlord is defined on — the UNION of both signals, not
+        just whichever set is larger. This catches more real cases than
+        either signal alone: a chain tenant leasing several locations
+        from DIFFERENT landlords (same tenant name repeated, so tenant
+        boundaries alone would under-split, but each location's own
+        distinct landlord still marks it) and the mirror case (one
+        landlord's portfolio leased to many different tenants). Verified
+        safe against every real single-lease fixture in this repo before
+        switching to this: in each one, the tenant and landlord are
+        introduced on the SAME page (a lease's own "parties" section
+        names both together), so the union never adds a spurious
+        mid-lease boundary — see test_multi_lease_detection.py.
+
+        Known limitation, not fixed by this or any name-based heuristic:
+        if two genuinely different, non-adjacent leases in the same
+        merged PDF happen to share BOTH the exact same tenant name AND
+        the exact same landlord name, they can't be told apart this way
+        and will incorrectly merge. Confirmed and documented in
+        DECISIONS.md rather than silently assumed away.
+
+        Returns a list of (start_page, end_page) INCLUSIVE ranges,
+        covering the whole document with no gaps or overlaps, ordered by
+        start_page. Always at least one range — an empty document
+        returns an empty list, everything else returns at least
+        [(first_page, last_page)].
+        """
+        if not pages:
+            return []
+
+        tenant_occurrences = self._find_all_party_occurrences(
+            pages, "Tenant", self._party_label_patterns("tenant", "lessee", "renter")
+        )
+        landlord_occurrences = self._find_all_party_occurrences(
+            pages, "Landlord", self._party_label_patterns("landlord", "lessor")
+        )
+        tenant_pages = {page for _value, page in self._dedupe_party_occurrences(tenant_occurrences)}
+        landlord_pages = {page for _value, page in self._dedupe_party_occurrences(landlord_occurrences)}
+
+        boundary_pages = tenant_pages | landlord_pages
+
+        doc_first_page = pages[0]["page"]
+        doc_last_page = pages[-1]["page"]
+
+        if len(set(boundary_pages)) < 2:
+            return [(doc_first_page, doc_last_page)]
+
+        starts = sorted(set(boundary_pages))
+        # The document's actual first page always starts the first
+        # lease, even if some leading content (e.g. a cover page) comes
+        # before the first party is defined — otherwise that leading
+        # content would belong to no lease at all.
+        starts[0] = min(starts[0], doc_first_page)
+
+        ranges = []
+        for i, start in enumerate(starts):
+            end = (starts[i + 1] - 1) if i + 1 < len(starts) else doc_last_page
+            ranges.append((start, end))
+        return ranges
+
+    def extract_multiple_leases(self, pages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Splits the document into per-lease page ranges
+        (detect_lease_boundaries) and runs extract_fields() +
+        find_all_date_candidates() independently on each range's own
+        pages — never on the whole document — so fields and
+        risk-relevant date candidates can never bleed across leases the
+        way they did before this existed (see DECISIONS.md: a merged
+        PDF produced one record mixing tenant/rent/dates from different
+        constituent leases, and a risk flag listing 30+ "conflicting"
+        start dates that were really just every date in the whole
+        document rather than one lease's own).
+
+        Always returns at least one entry, even for a genuine single
+        lease (in which case it's equivalent to calling extract_fields()
+        directly on the whole document — same fields, same confidence,
+        same source citations).
+
+        Each entry: {"fields": {...}, "date_candidates": {...},
+        "source_page_start": N, "source_page_end": M}.
+        """
+        boundaries = self.detect_lease_boundaries(pages)
+        results = []
+        for start_page, end_page in boundaries:
+            sub_pages = [p for p in pages if start_page <= p["page"] <= end_page]
+            results.append({
+                "fields": self.extract_fields(sub_pages),
+                "date_candidates": {
+                    "start": self.find_all_date_candidates(sub_pages, "start"),
+                    "end": self.find_all_date_candidates(sub_pages, "end"),
+                },
+                "source_page_start": start_page,
+                "source_page_end": end_page,
+            })
+        return results
 
     # ------------------------------------------------------------------
     # Financial terms
