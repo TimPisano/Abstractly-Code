@@ -65,6 +65,38 @@ const Api = {
         return apiRequest(`/leases/${leaseId}`, { method: 'DELETE' });
     },
 
+    renameLease(leaseId, displayName) {
+        return apiRequest(`/leases/${leaseId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ display_name: displayName }),
+        });
+    },
+
+    listLeaseTags(leaseId) {
+        return apiRequest(`/leases/${leaseId}/tags`);
+    },
+
+    addLeaseTag(leaseId, tag) {
+        return apiRequest(`/leases/${leaseId}/tags`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tag }),
+        });
+    },
+
+    removeLeaseTag(leaseId, tag) {
+        return apiRequest(`/leases/${leaseId}/tags/${encodeURIComponent(tag)}`, { method: 'DELETE' });
+    },
+
+    listAllTags() {
+        return apiRequest('/tags');
+    },
+
+    listLeasesByTag(tag) {
+        return apiRequest(`/leases?tag=${encodeURIComponent(tag)}`);
+    },
+
     uploadAmendment(leaseId, file) {
         const formData = new FormData();
         formData.append('file', file);

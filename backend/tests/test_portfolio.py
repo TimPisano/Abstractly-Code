@@ -400,10 +400,13 @@ def test_timeline_entry_shape():
     entry = timeline["expiring_0_6_months"][0]
 
     assert set(entry.keys()) == {
-        "lease_id", "filename", "tenant", "lease_end_date", "months_remaining"
+        "lease_id", "filename", "display_name", "tenant", "lease_end_date", "months_remaining"
     }
     assert entry["lease_id"] == 1
     assert entry["filename"] == "retail_lease.pdf"
+    # LEASE_RETAIL's fixture never sets display_name, so it must fall
+    # back to the filename -- same rule _timeline_entry itself applies.
+    assert entry["display_name"] == "retail_lease.pdf"
     assert entry["tenant"] == "Blue Sky Coffee Roasters, Inc."
     assert entry["lease_end_date"] == "March 31, 2026"
 

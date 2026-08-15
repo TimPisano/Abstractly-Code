@@ -31,7 +31,7 @@ const Comparison = {
         picker.innerHTML = AppState.leases.map(lease => `
             <label class="comparison-picker-item">
                 <input type="checkbox" value="${lease.id}" ${this.selected.has(lease.id) ? 'checked' : ''}>
-                ${escapeHtml(fieldValue(lease, 'tenant') || lease_filename(lease))}
+                ${escapeHtml(lease.display_name || lease_filename(lease))}
             </label>
         `).join('');
 
@@ -70,7 +70,7 @@ const Comparison = {
         const benchmarkableFields = { rent_amount: 'rent_amount', cam_charges: 'cam_charges', security_deposit: 'security_deposit' };
 
         let html = `<div class="panel"><div class="table-scroll"><table class="data-table comparison-table">`;
-        html += `<thead><tr><th>Field</th>${comparison.filenames.map(f => `<th>${escapeHtml(f)}</th>`).join('')}</tr></thead><tbody>`;
+        html += `<thead><tr><th>Field</th>${comparison.display_names.map(n => `<th>${escapeHtml(n)}</th>`).join('')}</tr></thead><tbody>`;
 
         rows.forEach(field => {
             const values = comparison.fields[field] || [];

@@ -238,6 +238,7 @@ def _timeline_entry(
     return {
         "lease_id": lease.get("id"),
         "filename": lease.get("filename"),
+        "display_name": lease.get("display_name") or lease.get("filename"),
         "tenant": field_value(lease, "tenant"),
         "lease_end_date": field_value(lease, "lease_end_date"),
         "months_remaining": months_remaining,
@@ -316,6 +317,7 @@ def _attention_entry(lease: Dict[str, Any], **extra: Any) -> Dict[str, Any]:
     return {
         "lease_id": lease.get("id"),
         "filename": lease.get("filename"),
+        "display_name": lease.get("display_name") or lease.get("filename"),
         "tenant": field_value(lease, "tenant"),
         **extra,
     }

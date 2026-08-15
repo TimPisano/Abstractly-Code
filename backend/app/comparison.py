@@ -56,6 +56,7 @@ def compare_leases(leases: List[Dict[str, Any]]) -> Dict[str, Any]:
     return {
         "lease_ids": [lease.get("id") for lease in leases],
         "filenames": [lease.get("filename") for lease in leases],
+        "display_names": [lease.get("display_name") or lease.get("filename") for lease in leases],
         "fields": {
             name: [field_value(lease, name) for lease in leases]
             for name in FIELD_NAMES

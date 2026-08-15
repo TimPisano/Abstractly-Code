@@ -134,9 +134,9 @@
 
                 <div class="panel">
                     <div class="panel-header">
-                        <h2>Leases</h2>
+                        <h2>Lease Library</h2>
                         <div class="table-controls">
-                            <input type="text" id="dashboardFilter" class="text-input" placeholder="Filter by tenant, landlord, address...">
+                            <input type="text" id="dashboardFilter" class="text-input" placeholder="Filter by name, tenant, landlord, address, or tag...">
                             <label class="checkbox-label">
                                 <input type="checkbox" id="compareModeToggle"> Select to compare
                             </label>
@@ -147,11 +147,10 @@
                             <thead>
                                 <tr>
                                     <th class="compare-col" style="display:none;"></th>
-                                    <th data-sort="filename">Document</th>
+                                    <th data-sort="name">Name</th>
                                     <th data-sort="tenant">Tenant</th>
-                                    <th data-sort="landlord">Landlord</th>
+                                    <th data-sort="address">Property Address</th>
                                     <th data-sort="rent">Monthly Rent</th>
-                                    <th data-sort="sqft">Sq Ft</th>
                                     <th data-sort="end_date">Expires</th>
                                     <th data-sort="risk">Risk</th>
                                     <th></th>
@@ -220,7 +219,7 @@
                 <div class="view-header">
                     <div>
                         <button class="btn-text" data-goto="dashboard" type="button">&larr; Back to Dashboard</button>
-                        <h1 id="detailTitle">Lease Detail</h1>
+                        <h1><span class="detail-title-name editable-name" id="detailTitle" title="Click to rename">Lease Detail</span></h1>
                         <p class="view-subtitle" id="detailSubtitle"></p>
                     </div>
                     <div class="detail-actions">

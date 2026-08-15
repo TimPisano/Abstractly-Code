@@ -11,10 +11,17 @@ const LeaseDetail = {
         if (!leaseId) return;
         try {
             this.lease = await Api.getLease(leaseId);
-            document.getElementById('detailTitle').textContent = lease_filename(this.lease);
+            document.getElementById('detailTitle').textContent = this.lease.display_name || lease_filename(this.lease);
             const tenant = fieldValue(this.lease, 'tenant') || 'Tenant not found';
             const landlord = fieldValue(this.lease, 'landlord') || 'Landlord not found';
-            document.getElementById('detailSubtitle').textContent = `${tenant} — ${landlord}`;
+            let subtitle = `${tenant} — ${landlord}`;
+            subtitle += ` · from ${lease_filename(this.lease)}`;
+            if (this.lease.source_page_start != null) {
+                subtitle += this.lease.source_page_start === this.lease.source_page_end
+                    ? ` (page ${this.lease.source_page_start})`
+                    : ` (pages ${this.lease.source_page_start}–${this.lease.source_page_end})`;
+            }
+            document.getElementById('detailSubtitle').textContent = subtitle;
 
             this.renderFields();
             document.getElementById('detailQaHistory').innerHTML = '';
@@ -192,6 +199,44 @@ const LeaseDetail = {
         URL.revokeObjectURL(url);
     },
 
+    startRenameTitle() {
+        const titleEl = document.getElementById('detailTitle');
+        if (!this.lease || titleEl.querySelector('input')) return;
+        const currentValue = titleEl.textContent.trim();
+
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'detail-title-input';
+        input.value = currentValue;
+        titleEl.textContent = '';
+        titleEl.appendChild(input);
+        input.focus();
+        input.select();
+
+        const commit = async () => {
+            const newValue = input.value.trim();
+            if (!newValue || newValue === currentValue) {
+                titleEl.textContent = currentValue;
+                return;
+            }
+            try {
+                const updated = await Api.renameLease(this.lease.id, newValue);
+                this.lease.display_name = updated.display_name;
+                titleEl.textContent = updated.display_name;
+                showToast('Lease renamed.', 'success');
+            } catch (err) {
+                titleEl.textContent = currentValue;
+                showError(`Failed to rename: ${err.message}`);
+            }
+        };
+
+        input.addEventListener('blur', commit);
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+            else if (e.key === 'Escape') { e.preventDefault(); input.value = currentValue; input.blur(); }
+        });
+    },
+
     async deleteLease() {
         if (!this.lease) return;
         if (!confirm(`Delete ${lease_filename(this.lease)}? This also removes any amendments linked to it.`)) return;
@@ -245,6 +290,7 @@ registerView('detail', LeaseDetail);
 function _initDetailViewBindings() {
     document.getElementById('detailExportBtn').addEventListener('click', () => LeaseDetail.exportJson());
     document.getElementById('detailDeleteBtn').addEventListener('click', () => LeaseDetail.deleteLease());
+    document.getElementById('detailTitle').addEventListener('click', () => LeaseDetail.startRenameTitle());
 
     const amendmentInput = document.getElementById('amendmentFileInput');
     document.getElementById('addAmendmentBtn').addEventListener('click', () => amendmentInput.click());

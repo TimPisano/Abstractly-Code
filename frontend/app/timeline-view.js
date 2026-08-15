@@ -51,8 +51,8 @@ const Timeline = {
                         ${entries.map(e => `
                             <div class="timeline-entry" data-lease-id="${e.lease_id}">
                                 <div class="timeline-entry-main">
-                                    <span class="timeline-entry-tenant">${escapeHtml(e.tenant || 'Tenant not found')}</span>
-                                    <span class="timeline-entry-file">${escapeHtml(e.filename)}</span>
+                                    <span class="timeline-entry-tenant">${escapeHtml(e.display_name || e.filename)}</span>
+                                    <span class="timeline-entry-file">${escapeHtml(e.tenant || 'Tenant not found')}</span>
                                 </div>
                                 <div class="timeline-entry-date">
                                     ${e.lease_end_date ? escapeHtml(e.lease_end_date) : 'No date on file'}

@@ -5,7 +5,7 @@
  */
 
 const Dashboard = {
-    sortKey: 'filename',
+    sortKey: 'name',
     sortDir: 1,
     risksByLeaseId: {},
 
@@ -73,15 +73,15 @@ const Dashboard = {
         const groups = [
             {
                 key: 'expiring_soon', label: 'Expiring Soon', items: expiring_soon,
-                render: e => `${escapeHtml(e.tenant || e.filename)} &mdash; ${e.days_remaining} day${e.days_remaining === 1 ? '' : 's'} left`,
+                render: e => `${escapeHtml(e.display_name || e.filename)} &mdash; ${e.days_remaining} day${e.days_remaining === 1 ? '' : 's'} left`,
             },
             {
                 key: 'missing_data', label: 'Missing Data', items: missing_data,
-                render: e => `${escapeHtml(e.tenant || e.filename)} &mdash; missing ${e.missing_fields.map(f => FIELD_LABELS[f] || f).join(', ')}`,
+                render: e => `${escapeHtml(e.display_name || e.filename)} &mdash; missing ${e.missing_fields.map(f => FIELD_LABELS[f] || f).join(', ')}`,
             },
             {
                 key: 'unusual_terms', label: 'Unusual Terms', items: unusual_terms,
-                render: e => `${escapeHtml(e.tenant || e.filename)} &mdash; ${escapeHtml(e.flags[0].message)}${e.flags.length > 1 ? ` (+${e.flags.length - 1} more)` : ''}`,
+                render: e => `${escapeHtml(e.display_name || e.filename)} &mdash; ${escapeHtml(e.flags[0].message)}${e.flags.length > 1 ? ` (+${e.flags.length - 1} more)` : ''}`,
             },
         ];
 
@@ -215,20 +215,24 @@ const Dashboard = {
 
         let rows = leases.map(lease => ({
             lease,
+            name: lease.display_name || lease_filename(lease),
             tenant: fieldValue(lease, 'tenant') || '',
             landlord: fieldValue(lease, 'landlord') || '',
             address: fieldValue(lease, 'property_address') || '',
             rent: fieldValue(lease, 'rent_amount'),
             sqft: fieldValue(lease, 'square_footage'),
             endDate: fieldValue(lease, 'lease_end_date'),
+            tags: lease.tags || [],
             risks: this.risksByLeaseId[lease.id] || [],
         }));
 
         if (filterText) {
             rows = rows.filter(r =>
+                r.name.toLowerCase().includes(filterText) ||
                 r.tenant.toLowerCase().includes(filterText) ||
                 r.landlord.toLowerCase().includes(filterText) ||
                 r.address.toLowerCase().includes(filterText) ||
+                r.tags.some(tag => tag.toLowerCase().includes(filterText)) ||
                 lease_filename(r.lease).toLowerCase().includes(filterText)
             );
         }
@@ -246,11 +250,13 @@ const Dashboard = {
                         <input type="checkbox" class="compare-checkbox" data-id="${r.lease.id}"
                             ${AppState.compareSelection.has(r.lease.id) ? 'checked' : ''}>
                     </td>
-                    <td class="filename-cell">${escapeHtml(lease_filename(r.lease))}</td>
+                    <td class="lease-name-cell">
+                        <span class="lease-name-text editable-name" data-id="${r.lease.id}" title="Click to rename">${escapeHtml(r.name)}</span>
+                        ${r.tags.length ? `<div class="lease-name-tags">${r.tags.map(t => `<span class="tag-chip-mini">${escapeHtml(t)}</span>`).join('')}</div>` : ''}
+                    </td>
                     <td>${escapeHtml(r.tenant) || '<span class="muted">Not found</span>'}</td>
-                    <td>${escapeHtml(r.landlord) || '<span class="muted">Not found</span>'}</td>
+                    <td>${escapeHtml(r.address) || '<span class="muted">Not found</span>'}</td>
                     <td>${escapeHtml(r.rent) || '<span class="muted">—</span>'}</td>
-                    <td>${escapeHtml(r.sqft) || '<span class="muted">—</span>'}</td>
                     <td>${escapeHtml(r.endDate) || '<span class="muted">—</span>'}</td>
                     <td>${riskCellHtml(r.risks, highestSeverity)}</td>
                     <td><button class="btn-text view-lease-btn" data-id="${r.lease.id}">View →</button></td>
@@ -263,7 +269,7 @@ const Dashboard = {
         });
         tbody.querySelectorAll('tr[data-lease-id]').forEach(tr => {
             tr.addEventListener('click', (e) => {
-                if (e.target.closest('.compare-checkbox') || e.target.closest('.view-lease-btn')) return;
+                if (e.target.closest('.compare-checkbox') || e.target.closest('.view-lease-btn') || e.target.closest('.editable-name')) return;
                 showLeaseDetail(parseInt(tr.dataset.leaseId, 10));
             });
         });
@@ -276,6 +282,51 @@ const Dashboard = {
                 Dashboard.updateCompareBar();
             });
         });
+        tbody.querySelectorAll('.editable-name').forEach(el => {
+            el.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.startRenameInline(el, parseInt(el.dataset.id, 10));
+            });
+        });
+    },
+
+    startRenameInline(nameEl, leaseId) {
+        if (nameEl.querySelector('input')) return;
+        const currentValue = nameEl.textContent.trim();
+
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'lease-name-input';
+        input.value = currentValue;
+        nameEl.textContent = '';
+        nameEl.appendChild(input);
+        input.focus();
+        input.select();
+
+        const commit = async () => {
+            const newValue = input.value.trim();
+            if (!newValue || newValue === currentValue) {
+                nameEl.textContent = currentValue;
+                return;
+            }
+            try {
+                await Api.renameLease(leaseId, newValue);
+                const cached = AppState.leases.find(l => l.id === leaseId);
+                if (cached) cached.display_name = newValue;
+                nameEl.textContent = newValue;
+                showToast('Lease renamed.', 'success');
+            } catch (err) {
+                nameEl.textContent = currentValue;
+                showError(`Failed to rename: ${err.message}`);
+            }
+        };
+
+        input.addEventListener('click', (e) => e.stopPropagation());
+        input.addEventListener('blur', commit);
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+            else if (e.key === 'Escape') { e.preventDefault(); input.value = currentValue; input.blur(); }
+        });
     },
 
     sortRows(rows) {
@@ -283,11 +334,10 @@ const Dashboard = {
         const dir = this.sortDir;
         return rows.sort((a, b) => {
             let av, bv;
-            if (key === 'filename') { av = lease_filename(a.lease); bv = lease_filename(b.lease); }
+            if (key === 'name') { av = a.name; bv = b.name; }
             else if (key === 'tenant') { av = a.tenant; bv = b.tenant; }
-            else if (key === 'landlord') { av = a.landlord; bv = b.landlord; }
+            else if (key === 'address') { av = a.address; bv = b.address; }
             else if (key === 'rent') { av = parseMoney(a.rent); bv = parseMoney(b.rent); }
-            else if (key === 'sqft') { av = parseFloat((a.sqft || '').replace(/[^\d.]/g, '')) || 0; bv = parseFloat((b.sqft || '').replace(/[^\d.]/g, '')) || 0; }
             else if (key === 'end_date') { av = a.endDate || ''; bv = b.endDate || ''; }
             else if (key === 'risk') { av = a.risks.length; bv = b.risks.length; }
             else { av = ''; bv = ''; }
