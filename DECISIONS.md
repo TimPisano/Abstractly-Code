@@ -818,3 +818,28 @@ positives (e.g. a document that mentions "lease agreement" in a table
 of contents or definitions section without that being a real
 boundary), which there wasn't a real corpus available to validate
 against here.
+
+### Organization: tags, not folders
+
+Chose a simple flat tag system (a lease can carry any number of tags;
+a new `lease_tags` table, `id, lease_id, tag`, `UNIQUE(lease_id, tag)`,
+`ON DELETE CASCADE` so deleting a lease can't leave orphaned tag rows)
+over a folder hierarchy.
+- **Reason**: a folder model forces a choice this project's own users
+  explicitly don't have to make up front — "by property, portfolio, or
+  however I want to organize them" was the actual request, and a real
+  lease often belongs to more than one useful grouping at once (e.g.
+  both "Downtown Portfolio" and "Expiring 2026" simultaneously) — a
+  strict one-parent-folder model can't represent that without either
+  duplicating the lease or picking one grouping arbitrarily over the
+  other. Tags don't have that limitation, and they're a smaller,
+  simpler addition to the existing relational schema (one small table,
+  no tree/parent-child logic, no move/reparent operations to build).
+- **Trade-off, stated plainly**: a folder view gives a stronger sense
+  of "this lease lives in exactly one place," which some users may
+  prefer conceptually. If that turns out to matter later, it's still
+  buildable on top of this — a "primary folder" could just be
+  "the first tag," or a genuine parent-child folder table added
+  alongside tags without displacing them. Not built now because
+  nothing in the request required it and it would have been guessing
+  at a UI model rather than building the one actually asked for.

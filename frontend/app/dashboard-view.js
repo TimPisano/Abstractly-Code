@@ -252,7 +252,7 @@ const Dashboard = {
                     </td>
                     <td class="lease-name-cell">
                         <span class="lease-name-text editable-name" data-id="${r.lease.id}" title="Click to rename">${escapeHtml(r.name)}</span>
-                        ${r.tags.length ? `<div class="lease-name-tags">${r.tags.map(t => `<span class="tag-chip-mini">${escapeHtml(t)}</span>`).join('')}</div>` : ''}
+                        ${r.tags.length ? `<div class="lease-name-tags">${r.tags.map(t => `<span class="tag-chip-mini tag-chip-filter" data-tag="${escapeHtml(t)}" title="Filter by this tag">${escapeHtml(t)}</span>`).join('')}</div>` : ''}
                     </td>
                     <td>${escapeHtml(r.tenant) || '<span class="muted">Not found</span>'}</td>
                     <td>${escapeHtml(r.address) || '<span class="muted">Not found</span>'}</td>
@@ -269,8 +269,17 @@ const Dashboard = {
         });
         tbody.querySelectorAll('tr[data-lease-id]').forEach(tr => {
             tr.addEventListener('click', (e) => {
-                if (e.target.closest('.compare-checkbox') || e.target.closest('.view-lease-btn') || e.target.closest('.editable-name')) return;
+                if (e.target.closest('.compare-checkbox') || e.target.closest('.view-lease-btn')
+                    || e.target.closest('.editable-name') || e.target.closest('.tag-chip-filter')) return;
                 showLeaseDetail(parseInt(tr.dataset.leaseId, 10));
+            });
+        });
+        tbody.querySelectorAll('.tag-chip-filter').forEach(chip => {
+            chip.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const filterInput = document.getElementById('dashboardFilter');
+                filterInput.value = chip.dataset.tag;
+                filterInput.dispatchEvent(new Event('input'));
             });
         });
         tbody.querySelectorAll('.compare-checkbox').forEach(cb => {

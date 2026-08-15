@@ -24,6 +24,7 @@ const LeaseDetail = {
             document.getElementById('detailSubtitle').textContent = subtitle;
 
             this.renderFields();
+            this.renderTags(this.lease.tags || []);
             document.getElementById('detailQaHistory').innerHTML = '';
 
             const [risks, amendments] = await Promise.all([
@@ -32,6 +33,10 @@ const LeaseDetail = {
             ]);
             this.renderRisks(risks);
             this.renderAmendments(amendments);
+
+            // Best-effort: powers the tag-input autocomplete, not
+            // essential to the page working if it fails.
+            Api.listAllTags().then(populateTagDatalist).catch(() => {});
         } catch (err) {
             showError(`Failed to load lease: ${err.message}`);
         }
@@ -199,6 +204,45 @@ const LeaseDetail = {
         URL.revokeObjectURL(url);
     },
 
+    renderTags(tags) {
+        const list = document.getElementById('detailTagsList');
+        if (!tags || tags.length === 0) {
+            list.innerHTML = '<p class="empty-inline">No tags yet.</p>';
+            return;
+        }
+        list.innerHTML = tags.map(tag => `
+            <span class="tag-chip">
+                ${escapeHtml(tag)}
+                <button type="button" class="tag-chip-remove" data-tag="${escapeHtml(tag)}" title="Remove tag" aria-label="Remove tag ${escapeHtml(tag)}">&times;</button>
+            </span>
+        `).join('');
+        list.querySelectorAll('.tag-chip-remove').forEach(btn => {
+            btn.addEventListener('click', () => this.removeTag(btn.dataset.tag));
+        });
+    },
+
+    async addTag(tag) {
+        if (!tag || !this.lease) return;
+        try {
+            const updatedTags = await Api.addLeaseTag(this.lease.id, tag);
+            this.lease.tags = updatedTags;
+            this.renderTags(updatedTags);
+        } catch (err) {
+            showError(`Failed to add tag: ${err.message}`);
+        }
+    },
+
+    async removeTag(tag) {
+        if (!this.lease) return;
+        try {
+            const updatedTags = await Api.removeLeaseTag(this.lease.id, tag);
+            this.lease.tags = updatedTags;
+            this.renderTags(updatedTags);
+        } catch (err) {
+            showError(`Failed to remove tag: ${err.message}`);
+        }
+    },
+
     startRenameTitle() {
         const titleEl = document.getElementById('detailTitle');
         if (!this.lease || titleEl.querySelector('input')) return;
@@ -269,6 +313,12 @@ const LeaseDetail = {
     },
 };
 
+function populateTagDatalist(allTags) {
+    const datalist = document.getElementById('allTagsList');
+    if (!datalist) return;
+    datalist.innerHTML = allTags.map(tag => `<option value="${escapeHtml(tag)}"></option>`).join('');
+}
+
 function qaAnswerHtml(result) {
     const confidenceClass = result.confidence === 'answered' ? 'answered' : (result.confidence === 'partial' ? 'partial' : 'unsupported');
     let html = `<div class="qa-answer qa-answer-${confidenceClass}">${escapeHtml(result.answer).replace(/\n/g, '<br>')}</div>`;
@@ -291,6 +341,16 @@ function _initDetailViewBindings() {
     document.getElementById('detailExportBtn').addEventListener('click', () => LeaseDetail.exportJson());
     document.getElementById('detailDeleteBtn').addEventListener('click', () => LeaseDetail.deleteLease());
     document.getElementById('detailTitle').addEventListener('click', () => LeaseDetail.startRenameTitle());
+
+    const tagInput = document.getElementById('detailTagInput');
+    const addTag = () => {
+        const tag = tagInput.value.trim();
+        if (!tag) return;
+        LeaseDetail.addTag(tag);
+        tagInput.value = '';
+    };
+    document.getElementById('detailAddTagBtn').addEventListener('click', addTag);
+    tagInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addTag(); } });
 
     const amendmentInput = document.getElementById('amendmentFileInput');
     document.getElementById('addAmendmentBtn').addEventListener('click', () => amendmentInput.click());

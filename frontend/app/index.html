@@ -236,6 +236,15 @@
                     </div>
                     <div class="detail-sidebar">
                         <div class="panel">
+                            <h3>Tags</h3>
+                            <div id="detailTagsList" class="detail-tags-list"></div>
+                            <div class="detail-tags-add-row">
+                                <input type="text" id="detailTagInput" class="text-input" placeholder="e.g. Downtown Portfolio" list="allTagsList">
+                                <button class="btn-secondary" id="detailAddTagBtn" type="button">Add</button>
+                            </div>
+                            <datalist id="allTagsList"></datalist>
+                        </div>
+                        <div class="panel">
                             <h3>Amendments</h3>
                             <div id="amendmentsList"></div>
                             <button class="btn-secondary btn-block" id="addAmendmentBtn" type="button">+ Add Amendment</button>

@@ -36,6 +36,7 @@ UNIT_TESTS = [
     "test_access_gate.py",
     "test_multi_lease_detection.py",
     "test_sheets_export.py",
+    "test_lease_naming_and_tags.py",
 ]
 
 LIVE_API_TESTS = [
