@@ -619,3 +619,66 @@ without blocking).
   function directly if the page has already finished loading — a small,
   general fix that also makes each file correct if loaded late for any
   other reason in the future, not just this one.
+
+### Multi-lease PDFs are rejected at upload, not silently merged into one record
+
+A merged/bundled PDF — several distinct leases scanned or concatenated
+into a single file — was silently persisted as ONE lease record.
+`extract_fields()` treats the whole document as one continuous text
+block and returns each field's single best match anywhere in it, so
+across a genuinely multi-lease PDF, different fields independently
+"win" from different constituent leases: the tenant name from lease #2
+paired with the rent amount from lease #1, with nothing to indicate the
+record is a mix.
+
+**This was verified empirically, not assumed**: concatenating two real
+fixture PDFs (`retail_lease.pdf` + `office_lease.pdf`) via PyPDF2 and
+running the real extraction pipeline against the result produced tenant
+`"Vertex Analytics LLC"` (from page 2 / office_lease) paired with rent
+`"$6,000.00"` and dates from page 1 / retail_lease — a real Frankenstein
+record. The same investigation also found a live example already in
+this project's dev database: a pre-existing `Sample_500_Page_Lease_
+Portfolio.pdf` upload (from before this fix existed) had been persisted
+as a single lease with an implausible `$262,131.87` monthly rent and no
+end date found — consistent with the same bleed, at much larger scale.
+
+**Fix**: `FieldExtractor.detect_multiple_leases()` scans the whole
+document for every match of the tenant/landlord party-name patterns
+(reusing the same patterns `extract_fields()` itself uses, via a new
+`_find_all_party_values()`, rather than inventing separate detection
+logic) and checks whether more than one *distinct* tenant or landlord
+is defined. A genuine single lease defines exactly one of each, even
+when that name is repeated verbatim many times through the document —
+2+ different names is a strong, low-false-positive signal that more
+than one lease is present. `_extract_fields_from_file_storage()` in
+`api.py` calls this before trusting `extract_fields()`'s result and
+returns a 400 (not a 500 — this is a client-actionable "wrong kind of
+file" situation, not a server error) with a message naming the
+conflicting parties found, telling the uploader to split the PDF and
+upload each lease separately. Applies uniformly to `/extract`,
+`POST /leases`, `POST /leases/batch` (per-file, without failing the
+rest of the batch), and amendment uploads, since they all share this
+one pipeline function.
+
+This does NOT attempt to automatically split a multi-lease PDF into its
+constituent leases — that would need real per-lease boundary detection
+(which page ranges belong to which lease) and is a substantially larger
+feature with its own accuracy risks. Refusing and telling the human
+what's wrong was the deliberately smaller, safer scope, consistent with
+this project's existing "flag clearly, never guess silently" standard
+(see the original quality-bar requirement in the root CLAUDE.md).
+
+**False positives found and fixed before shipping this**: an early
+version flagged 2 of the 10 existing single-lease fixtures incorrectly.
+Both were the same root cause — the same real party mentioned twice
+surfaces as two slightly different strings (once via the tight
+word-boundary label pattern, once via the looser to-end-of-line one, or
+once with a corporate suffix like ", Inc." and once without it in a
+later reference) — not two different parties. Fixed with
+`_dedupe_party_values()`, which merges values where one is a
+case-insensitive prefix of the other before counting distinct parties.
+Verified against all 10 real single-lease fixtures individually (zero
+false positives) and 4 different real multi-file merges, including one
+combining the two fixtures that had triggered the false positives (to
+confirm the fix didn't just suppress detection entirely) — see
+`test_multi_lease_detection.py`.

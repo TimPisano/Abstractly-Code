@@ -154,6 +154,30 @@ def _extract_fields_from_file_storage(file_storage):
             return None, None, ("Failed to extract text from PDF. The file may be corrupted or unsupported.", 500)
 
         field_extractor = FieldExtractor()
+
+        # Checked BEFORE trusting extract_fields()'s result: a PDF that
+        # actually bundles more than one lease (several tenants scanned/
+        # merged into one file) makes every field below independently
+        # "win" from whichever constituent lease happens to match
+        # first/best for that specific field — e.g. the tenant name from
+        # lease #2 paired with the rent amount from lease #1 — producing
+        # one persisted record that silently mixes data across
+        # documents. Confirmed empirically against a real merged PDF
+        # before this check was added; see DECISIONS.md. Refusing here
+        # (rather than persisting a guess) matches this project's
+        # existing "flag clearly, never guess silently" standard.
+        multi_lease = field_extractor.detect_multiple_leases(pages)
+        if multi_lease:
+            found = multi_lease.get("tenants") or multi_lease.get("landlords")
+            role = "tenants" if "tenants" in multi_lease else "landlords"
+            return None, None, (
+                f"This PDF appears to contain more than one lease — found {len(found)} different "
+                f"{role} ({', '.join(found)}). Please split it into separate PDFs, one lease "
+                "per file, and upload them individually so each lease's fields stay correctly "
+                "attributed to that lease.",
+                400,
+            )
+
         extracted_fields = field_extractor.extract_fields(pages)
         date_candidates = {
             "start": field_extractor.find_all_date_candidates(pages, "start"),

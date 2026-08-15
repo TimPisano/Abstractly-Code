@@ -34,6 +34,7 @@ UNIT_TESTS = [
     "test_dashboard_features.py",
     "test_waitlist_email.py",
     "test_access_gate.py",
+    "test_multi_lease_detection.py",
 ]
 
 LIVE_API_TESTS = [
@@ -41,6 +42,7 @@ LIVE_API_TESTS = [
     "test_live_portfolio_api.py",
     "test_security_hardening.py",
     "test_live_dashboard_api.py",
+    "test_live_multi_lease_api.py",
 ]
 
 

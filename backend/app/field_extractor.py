@@ -230,6 +230,35 @@ class FieldExtractor:
             rf"(?i:{keyword_group}){connector}([A-Z][\w&,\.\'\-\s]+?)(?:\n|$)",
         ]
 
+    def _defined_term_pattern(self, role: str) -> str:
+        return rf"([A-Z][A-Za-z0-9&,\.\'\-\s]{{2,80}}?)\s*\(\s*{QUOTE_OPEN}(?i:{role}){QUOTE_CLOSE}\s*\)"
+
+    def _clean_defined_term_value(self, value: str) -> str:
+        """Shared cleanup for a defined-term-style party match (e.g. '...Some Company, LLC ("Tenant")')."""
+        # Strip leading connector words swept in by the broad name charclass
+        value = re.sub(
+            r"^(?:.*\bby\s+and\s+between\s+|.*\band\s+)", "", value, flags=re.IGNORECASE
+        )
+        # Strip trailing entity-type boilerplate, e.g. ", a Delaware corporation"
+        value = re.sub(
+            r",?\s+an?\s+[A-Za-z\s]+?"
+            r"(?:corporation|company|partnership|LLC|L\.L\.C\.|LLP|L\.L\.P\.|entity)\.?$",
+            "", value, flags=re.IGNORECASE
+        )
+        return value.strip().rstrip(",")
+
+    def _clean_label_style_value(self, value: str) -> str:
+        """Shared cleanup for a label-style party match (e.g. 'Tenant: John Smith')."""
+        # A trailing period is only meaningful if it's a real
+        # abbreviation ("Co.", "Inc."); otherwise it's just the
+        # sentence's own end punctuation swept in by the optional
+        # per-word period in the pattern, so strip it.
+        if value.endswith("."):
+            last_word = value[:-1].rsplit(" ", 1)[-1].lower()
+            if last_word not in ("co", "inc", "corp", "ltd", "llp", "lp", "llc"):
+                value = value[:-1]
+        return value
+
     def _extract_defined_party(
         self,
         pages: List[Dict[str, Any]],
@@ -244,41 +273,140 @@ class FieldExtractor:
         Both run case-sensitive (flags=0) with keywords scoped
         case-insensitive via (?i:...) — see _party_label_patterns.
         """
-        defined_term_pattern = (
-            rf"([A-Z][A-Za-z0-9&,\.\'\-\s]{{2,80}}?)\s*\(\s*{QUOTE_OPEN}(?i:{role}){QUOTE_CLOSE}\s*\)"
-        )
-
-        result = self._search_ordered(pages, [defined_term_pattern], ["high"], flags=0)
+        result = self._search_ordered(pages, [self._defined_term_pattern(role)], ["high"], flags=0)
         if result:
-            value = result["value"]
-            # Strip leading connector words swept in by the broad name charclass
-            value = re.sub(
-                r"^(?:.*\bby\s+and\s+between\s+|.*\band\s+)", "", value, flags=re.IGNORECASE
-            )
-            # Strip trailing entity-type boilerplate, e.g. ", a Delaware corporation"
-            value = re.sub(
-                r",?\s+an?\s+[A-Za-z\s]+?"
-                r"(?:corporation|company|partnership|LLC|L\.L\.C\.|LLP|L\.L\.P\.|entity)\.?$",
-                "", value, flags=re.IGNORECASE
-            )
-            result["value"] = value.strip().rstrip(",")
+            result["value"] = self._clean_defined_term_value(result["value"])
             return result
 
         result = self._search_ordered(pages, label_patterns, ["high", "high"], flags=0)
         if result:
-            # A trailing period is only meaningful if it's a real
-            # abbreviation ("Co.", "Inc."); otherwise it's just the
-            # sentence's own end punctuation swept in by the optional
-            # per-word period in the pattern, so strip it.
-            value = result["value"]
-            if value.endswith("."):
-                last_word = value[:-1].rsplit(" ", 1)[-1].lower()
-                if last_word not in ("co", "inc", "corp", "ltd", "llp", "lp", "llc"):
-                    value = value[:-1]
-            result["value"] = value
+            result["value"] = self._clean_label_style_value(result["value"])
             return result
 
         return _not_found()
+
+    def _find_all_party_values(
+        self,
+        pages: List[Dict[str, Any]],
+        role: str,
+        label_patterns: List[str],
+    ) -> List[str]:
+        """
+        Scans the WHOLE document for every match of the party-name
+        patterns (not just the first, unlike _extract_defined_party) —
+        used by detect_multiple_leases to check whether the document
+        defines more than one distinct tenant/landlord, which is strong
+        evidence that several separate leases were concatenated into one
+        PDF rather than this genuinely being a single lease. Applies the
+        same value cleanup _extract_defined_party uses, so two matches
+        of the *same* name with different trailing punctuation or
+        boilerplate don't get miscounted as two different parties.
+
+        Returns distinct values, in document order — see
+        _dedupe_party_values for what counts as "distinct".
+        """
+        full_text, _ = _concat_pages(pages)
+
+        raw_values = []
+        for match in re.finditer(self._defined_term_pattern(role), full_text):
+            value = self._clean_defined_term_value(_clean_value(match.group(1)))
+            if value:
+                raw_values.append(value)
+
+        for pattern in label_patterns:
+            for match in re.finditer(pattern, full_text):
+                value = self._clean_label_style_value(_clean_value(match.group(1)))
+                if value:
+                    raw_values.append(value)
+
+        return self._dedupe_party_values(raw_values)
+
+    @staticmethod
+    def _dedupe_party_values(values: List[str]) -> List[str]:
+        """
+        Merges near-duplicate party names, not just exact ones. The same
+        real-world mention routinely surfaces as slightly different
+        strings across the label/defined-term patterns and their two
+        capture strategies (a tight word-boundary pattern and a looser
+        to-end-of-line one) — e.g. a company referenced once with its
+        corporate suffix ("Blue Sky Coffee Roasters, Inc.") and once
+        without it ("Blue Sky Coffee Roasters" in a later signature
+        block), or the loose pattern over-capturing trailing unrelated
+        text on a casual one-line lease ("Jordan Blake" vs "Jordan Blake
+        and the tenant is Alex Chen"). Both are a prefix relationship,
+        case-insensitive — treating those as the same party (keeping
+        whichever form is shorter, since the longer one is either
+        boilerplate-suffixed or over-captured) is what keeps
+        detect_multiple_leases from false-positiving on a real single
+        lease that just refers to its own parties more than once.
+        Verified against every existing single-lease fixture; see
+        DECISIONS.md.
+        """
+        kept: List[str] = []
+        for value in values:
+            value_lower = value.lower()
+            merged = False
+            for i, existing in enumerate(kept):
+                existing_lower = existing.lower()
+                if value_lower == existing_lower:
+                    merged = True
+                    break
+                if value_lower.startswith(existing_lower) or existing_lower.startswith(value_lower):
+                    if len(value) < len(existing):
+                        kept[i] = value
+                    merged = True
+                    break
+            if not merged:
+                kept.append(value)
+        return kept
+
+    def detect_multiple_leases(self, pages: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        """
+        Heuristic check for whether this PDF actually bundles more than
+        one distinct lease together (e.g. several tenants' leases
+        scanned or merged into a single file) rather than being one
+        lease document.
+
+        extract_fields() above always treats the WHOLE document as one
+        lease and returns its single best match per field — across a
+        genuinely multi-lease PDF, that means each field can
+        independently "win" from a different constituent lease (e.g. the
+        tenant name from lease #2 paired with the rent amount from lease
+        #1), producing one extracted record that silently mixes data
+        across documents with no indication anything is wrong. This
+        method doesn't attempt to split or fix that — it only detects
+        the situation so a caller can refuse to trust the result rather
+        than silently persisting a mismatched record. See DECISIONS.md
+        for how this was verified against a real merged PDF before
+        being wired into the upload path.
+
+        Signal: the document defines more than one DISTINCT tenant, or
+        more than one distinct landlord (via the same patterns
+        extract_fields itself uses to find them). A genuine single lease
+        defines exactly one of each, even when that one name is repeated
+        verbatim many times through the document — two or more
+        *different* names is strong, low-false-positive evidence of
+        multiple concatenated leases, not just repetition.
+
+        Returns None if nothing suspicious was found, or a dict with
+        only the field(s) that triggered it (each a list of the 2+
+        distinct values found) — e.g. {"tenants": [...]},
+        {"landlords": [...]}, or both.
+        """
+        tenants = self._find_all_party_values(
+            pages, "Tenant", self._party_label_patterns("tenant", "lessee", "renter")
+        )
+        landlords = self._find_all_party_values(
+            pages, "Landlord", self._party_label_patterns("landlord", "lessor")
+        )
+
+        result: Dict[str, Any] = {}
+        if len(tenants) >= 2:
+            result["tenants"] = tenants
+        if len(landlords) >= 2:
+            result["landlords"] = landlords
+
+        return result or None
 
     # ------------------------------------------------------------------
     # Financial terms
