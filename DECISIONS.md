@@ -1080,3 +1080,28 @@ throughout; no leftover indigo/violet found anywhere (confirmed by
 grepping the fully-resolved stylesheet text for the old hex/rgba
 values, in addition to eyeballing every screenshot). All test leases
 created for these screenshots were deleted afterward.
+
+### Follow-up: the printable portfolio report had its own, separate palette — missed on the first pass
+
+Screenshotting every remaining screen (Upload, Ask a Question, and the
+in-app Report view) turned up one the design-token audit couldn't have
+caught: `report.py`'s printable summary report builds a fully
+self-contained HTML document with one inline `<style>` block, by
+deliberate design (it's the only output meant to be saved/printed/
+emailed with no network dependency — see that module's own docstring).
+Being self-contained means it was never wired to `design-system.css`
+at all, on the old palette or the new one — its severity badges used
+their own independent red/amber (`#b3261e`/`#8a5a00`) that happened to
+be close to, but not the same as, the app's old tokens. Viewed inside
+the in-app Report screen (in an iframe, right next to the new
+palette's buttons and cards), the mismatch was obvious.
+
+Fixed by hand-aligning the report's badge/border/text colors to the
+same values now used everywhere else (`#9a3b3b`/`#a6741f`/`#2f6b4f`
+for high/medium/low, the same warm neutral grays), without touching
+its structure, layout, or print rules — it's still a light-background,
+ink-restrained, `@media print`-tuned document, just one that now uses
+the same specific colors as the rest of the product instead of a
+similar-looking but independently-chosen set. `test_report.py` doesn't
+assert exact hex values (it asserts structure/content), so no test
+changes were needed; all 11 report tests still pass.
