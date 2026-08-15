@@ -843,3 +843,73 @@ over a folder hierarchy.
   alongside tags without displacing them. Not built now because
   nothing in the request required it and it would have been guessing
   at a UI model rather than building the one actually asked for.
+
+## Session 7 (continued): Part 2 — accuracy verified at scale (2026-08-15)
+
+### Tested small/medium/large sizes; found zero app bugs, one test-tooling bug
+
+Requirement: confirm extraction accuracy holds at small (1-5pg),
+medium (30-50pg), and large (500pg, multi-lease) PDF sizes, not just
+small ones — and fix any accuracy issues found, not just report them.
+
+The real user-uploaded ~500-page/250-lease PDF that originally
+surfaced the multi-lease bleed issue could not be recovered (it was
+never persisted past the delete-after-processing temp file; Downloads/
+Desktop/Documents were searched again this session, still not found —
+this is unchanged from the prior session's finding, restated here for
+honesty rather than silently re-asserted). In its place:
+- **Small**: the existing 10 real fixture PDFs (1-2 pages each,
+  `backend/tests/*.pdf`) — already covered by `test_live_api.py` and
+  `test_multi_lease_detection.py`, both passing (22/22 test files,
+  including live-API tests against a running server).
+- **Medium**: a new 35-page synthetic single lease (real terms on
+  page 1, 34 pages of realistic exhibit/boilerplate after, generated
+  with explicit `showPage()` calls). Verified 100% field accuracy and
+  confirmed `detect_lease_boundaries()` correctly returns one
+  unsplit range for the whole document — a long document full of
+  boilerplate doesn't fool the boundary detector into over-splitting.
+- **Large**: a new 60-page synthetic multi-lease document, 60
+  genuinely distinct tenants/landlords/terms (no real 500-page file
+  was available, so this is explicitly a scale proxy, not the same
+  as the original file). Uploaded through the live running API (not
+  just the extraction pipeline directly), confirmed: 60/60 leases
+  split into 60 separate DB records (no stacking/merging), 0/60
+  field-value mismatches against ground truth, 0 anomalies in
+  source-page citation or confidence across all ~900 found-field
+  checks (15 fields × 60 leases).
+
+**A real bug was found and fixed, but it was in the throwaway test
+generator script, not the application**: the first attempt at the
+60-lease fixture wrote each single-lease PDF to a reused temp filename
+(`_tmp_lease_{i}.pdf`), read it with `PyPDF2.PdfReader`, then deleted
+the file immediately before the next loop iteration. `PdfReader` reads
+page content lazily rather than eagerly, so by the time
+`PdfWriter.write()` actually serialized the merged document (once, at
+the very end, after all 60 "adds"), several of the per-lease source
+files had already been deleted and their filename reused by a later
+iteration — silently corrupting the merged PDF (page 5 ended up a
+byte-for-byte duplicate of page 2's content) with no error raised
+anywhere. `detect_lease_boundaries()` was directly verified to behave
+correctly given that corrupted input (deduping the duplicated page 5
+into page 2's boundary was the right call given what was actually on
+the page) — confirming the fault was upstream, in the generator, not
+in `field_extractor.py`. Fixed by giving every temp file a unique name
+and keeping every `PdfReader` reference alive until after the final
+`write()`. This fixture-generation script is scratch tooling only,
+not part of the repo, so there's no application diff for this fix —
+it's recorded here because the debugging process (and the discipline
+of checking raw page text before assuming the app was at fault) is
+exactly the kind of thing this file exists to capture.
+
+**Also directly re-confirmed** (not just assumed from the prior
+session): merging two real fixture PDFs and uploading via the live
+API still produces zero field bleed between the resulting leases —
+the specific regression this project has previously flagged as
+"a known issue" remains fixed.
+
+No application code changes were needed for Part 2 — extraction
+accuracy, boundary detection, confidence levels, and source citations
+all held correctly at every size tested, including under live-API
+upload (not just direct pipeline calls). All 22 test files (17
+non-live + 5 live-API) pass with the backend/frontend dev servers
+running.
