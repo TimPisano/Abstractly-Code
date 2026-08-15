@@ -551,3 +551,71 @@ directly. If offline use becomes a requirement later, this is a single
 `@import` line to swap for a self-hosted font file — noted here so that
 tradeoff is visible, not buried.
   what to check.
+
+## Session 6: /app access gate + local dev bypass (2026-08-15)
+
+### Access gate uses self-reported email, not real auth
+`/app` previously had zero enforcement — anyone with the URL landed
+straight in the dashboard (see Session 5's "no auth yet" note above,
+which was specifically about the admin waitlist endpoints but was true
+of `/app` too). It's now gated: a visitor must enter an email with
+`status = 'approved'` in `waitlist_signups`, checked via the new
+`POST /waitlist/check` endpoint (`frontend/app/access-gate.js`).
+
+This is explicitly **not** real authentication. There's no password, no
+session token tied to a verified identity, and nothing stopping someone
+from typing in an email they don't own if they can guess or find an
+approved one. What it does do: stops a stranger who just has the URL
+(the actual problem this session was scoped to solve) from reaching the
+dashboard, while staying consistent with the project's "no accounts /
+no login system" architecture so far — adding real password/session
+auth would be a materially bigger scope (user table, password hashing,
+session or token management, login UI) than what was asked for here.
+- **Reason**: Matches the requested scope — "build the real auth gate"
+  in context meant "stop unapproved visitors from reaching /app," not
+  "build a full accounts system." The gap between this and real auth is
+  called out here and in `api.py` directly above the route so it isn't
+  mistaken for more than it is. Real auth (accounts, passwords/OAuth,
+  sessions) remains a Next Steps item, now split out from the admin-panel
+  auth gap tracked in the Session 5 entry above — the two are separate
+  problems (who can reach `/app` vs. who can approve signups /
+  see everyone's email) and don't need to ship together.
+
+### LOCAL_DEV_MODE: a server-side, env-only bypass — not a client-side one
+The gate can be skipped locally via `LOCAL_DEV_MODE=true` in
+`backend/.env`. The frontend never decides this for itself — it asks the
+backend via `GET /config`, and the backend only reports what's already
+in its own environment at process start (`os.environ`, loaded once
+before any request is handled). A client can't set or influence this
+value through any request path.
+- **Reason**: The alternative — a client-side flag (URL param, hardcoded
+  `true` in JS, a build-time toggle) — would ship the same bypass to
+  production by accident the moment that code path is reachable there,
+  since there's no build step to strip it out (Session 1's "no build
+  tooling" decision, still in effect). Routing it through an
+  environment variable the *server* controls means the real/default
+  gate is what ships everywhere by default, and the bypass only exists
+  on whichever machine's `.env` explicitly turns it on — which is also
+  why `backend/.env` (gitignored, per Session 1) is the only place this
+  is ever set to `true`; `.env.example` documents the variable but
+  defaults it to `false`.
+
+### App scripts now load dynamically, after the gate — not statically in the HTML
+`frontend/app/index.html` no longer lists `api.js`/`app.js`/the view
+modules as static `<script>` tags. `access-gate.js` is the only
+statically-loaded script; it injects the rest only after access is
+confirmed (`script.async = false` on each, to preserve load order
+without blocking).
+- **Reason**: Without this, every view module's API calls (dashboard
+  metrics, lease list, etc.) would fire immediately on page load
+  regardless of whether the visitor is allowed in — the gate would only
+  be hiding the DOM, not actually stopping the underlying requests. This
+  also surfaced a latent bug worth noting: `app.js` and all six view
+  modules bootstrap via `document.addEventListener('DOMContentLoaded',
+  ...)`, which never fires for a script injected after that event
+  already happened (true even on the `LOCAL_DEV_MODE` bypass path, since
+  the `/config` fetch that decides that is itself async). Each of those
+  seven files now checks `document.readyState` first and calls its init
+  function directly if the page has already finished loading — a small,
+  general fix that also makes each file correct if loaded late for any
+  other reason in the future, not just this one.

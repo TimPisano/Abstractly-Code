@@ -96,6 +96,14 @@ function benchmarkBadge(benchmark) {
 
 registerView('comparison', Comparison);
 
-document.addEventListener('DOMContentLoaded', () => {
+// Loaded dynamically by access-gate.js after the gate passes, well after
+// DOMContentLoaded already fired -- see the comment in app.js for why a
+// readyState check is needed here instead of a plain addEventListener.
+function _initComparisonViewBindings() {
     document.getElementById('runComparisonBtn').addEventListener('click', () => Comparison.runComparison());
-});
+}
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', _initComparisonViewBindings);
+} else {
+    _initComparisonViewBindings();
+}

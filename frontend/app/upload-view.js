@@ -98,7 +98,10 @@ const Upload = {
 
 registerView('upload', Upload);
 
-document.addEventListener('DOMContentLoaded', () => {
+// Loaded dynamically by access-gate.js after the gate passes, well after
+// DOMContentLoaded already fired -- see the comment in app.js for why a
+// readyState check is needed here instead of a plain addEventListener.
+function _initUploadViewBindings() {
     const uploadBox = document.getElementById('uploadBox');
     const fileInput = document.getElementById('fileInput');
 
@@ -120,4 +123,9 @@ document.addEventListener('DOMContentLoaded', () => {
         uploadBox.classList.remove('dragover');
         if (e.dataTransfer.files.length > 0) Upload.handleFiles(e.dataTransfer.files);
     });
-});
+}
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', _initUploadViewBindings);
+} else {
+    _initUploadViewBindings();
+}

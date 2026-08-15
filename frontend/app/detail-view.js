@@ -239,7 +239,10 @@ function qaAnswerHtml(result) {
 
 registerView('detail', LeaseDetail);
 
-document.addEventListener('DOMContentLoaded', () => {
+// Loaded dynamically by access-gate.js after the gate passes, well after
+// DOMContentLoaded already fired -- see the comment in app.js for why a
+// readyState check is needed here instead of a plain addEventListener.
+function _initDetailViewBindings() {
     document.getElementById('detailExportBtn').addEventListener('click', () => LeaseDetail.exportJson());
     document.getElementById('detailDeleteBtn').addEventListener('click', () => LeaseDetail.deleteLease());
 
@@ -269,4 +272,9 @@ document.addEventListener('DOMContentLoaded', () => {
     };
     askBtn.addEventListener('click', ask);
     qaInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') ask(); });
-});
+}
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', _initDetailViewBindings);
+} else {
+    _initDetailViewBindings();
+}

@@ -42,7 +42,15 @@ const ReportView = {
 
 registerView('report', ReportView);
 
-document.addEventListener('DOMContentLoaded', () => {
+// Loaded dynamically by access-gate.js after the gate passes, well after
+// DOMContentLoaded already fired -- see the comment in app.js for why a
+// readyState check is needed here instead of a plain addEventListener.
+function _initReportViewBindings() {
     document.getElementById('printReportBtn').addEventListener('click', () => ReportView.print());
     document.getElementById('downloadReportBtn').addEventListener('click', () => ReportView.download());
-});
+}
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', _initReportViewBindings);
+} else {
+    _initReportViewBindings();
+}

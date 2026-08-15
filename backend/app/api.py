@@ -57,6 +57,13 @@ CORS(app)  # Enable CORS for frontend integration
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 MB max file size
 ALLOWED_EXTENSIONS = {'pdf'}
 
+# Local-only bypass for the /app access gate (see frontend/app/access-gate.js).
+# Read once at process start from backend/.env (or a real env var in any
+# other environment) — never from a request, so a client can't set this
+# itself. Defaults to False/off, so any environment that doesn't
+# explicitly set it (including a real deployment) gets the real gate.
+LOCAL_DEV_MODE = os.environ.get('LOCAL_DEV_MODE', '').strip().lower() in ('1', 'true', 'yes')
+
 logger = logging.getLogger(__name__)
 
 database.init_db()
@@ -363,6 +370,16 @@ def list_amendments(lease_id):
 # accounts. This is acceptable for the current pre-launch stage (per
 # explicit product decision) but MUST be locked down behind real auth
 # before this goes live to real users.
+#
+# /waitlist/check (below) is DELIBERATELY public too, but that's a
+# separate, narrower decision: it only ever answers "is this one email
+# approved?" for the email the caller already supplies — it never
+# returns the signup list, other people's emails, or anything the caller
+# doesn't already know. This is what /app's access gate calls (see
+# frontend/app/access-gate.js). It is not real authentication — there is
+# no password and no proof the caller actually owns the email address,
+# only a self-reported match against the waitlist's approval status. See
+# DECISIONS.md "Access gate uses self-reported email, not real auth".
 # ----------------------------------------------------------------------
 
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -433,6 +450,25 @@ def approve_waitlist(signup_id):
     _send_email_best_effort(email_service.send_waitlist_approval_email, signup["email"])
 
     return jsonify({"id": signup_id, "status": "approved"}), 200
+
+
+@app.route('/waitlist/check', methods=['POST'])
+def check_waitlist_access():
+    """Body: {"email": str}. Used by /app's access gate to decide whether
+    to let a visitor in. Returns only {"approved": bool, "found": bool} —
+    see the NOTE above this section for why this narrow shape is fine to
+    leave unauthenticated while /waitlist (GET) is not."""
+    body = request.get_json(silent=True) or {}
+    email = (body.get("email") or "").strip()
+
+    if not email or not _EMAIL_RE.match(email):
+        return jsonify({"error": "Please enter a valid email address"}), 400
+
+    signup = database.get_waitlist_signup_by_email(email)
+    if not signup:
+        return jsonify({"approved": False, "found": False}), 200
+
+    return jsonify({"approved": signup["status"] == "approved", "found": True}), 200
 
 
 # ----------------------------------------------------------------------
@@ -636,6 +672,16 @@ def portfolio_report():
 def health_check():
     """Simple health check endpoint."""
     return jsonify({"status": "healthy"}), 200
+
+
+@app.route('/config', methods=['GET'])
+def get_config():
+    """Public, read-only flags the frontend needs before it can decide how
+    to render — currently just local_dev_mode, which lets /app's access
+    gate (frontend/app/access-gate.js) know whether to skip itself. Keep
+    this endpoint to flags that are safe for anyone to read; never put a
+    secret or anything env-specific-but-sensitive here."""
+    return jsonify({"local_dev_mode": LOCAL_DEV_MODE}), 200
 
 
 if __name__ == '__main__':

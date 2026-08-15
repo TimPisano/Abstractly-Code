@@ -281,6 +281,20 @@ def get_waitlist_signup(signup_id: int) -> Optional[Dict[str, Any]]:
         conn.close()
 
 
+def get_waitlist_signup_by_email(email: str) -> Optional[Dict[str, Any]]:
+    """Case-insensitive lookup, since the email a visitor types into the
+    access gate won't necessarily match the casing they originally signed
+    up with."""
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT * FROM waitlist_signups WHERE lower(email) = lower(?)", (email,)
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
 def approve_waitlist_signup(signup_id: int) -> bool:
     """Flip a signup's status to 'approved'. Returns False if no such id."""
     conn = get_connection()

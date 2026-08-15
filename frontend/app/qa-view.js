@@ -36,7 +36,10 @@ const QaView = {
 
 registerView('qa', QaView);
 
-document.addEventListener('DOMContentLoaded', () => {
+// Loaded dynamically by access-gate.js after the gate passes, well after
+// DOMContentLoaded already fired -- see the comment in app.js for why a
+// readyState check is needed here instead of a plain addEventListener.
+function _initQaViewBindings() {
     const askBtn = document.getElementById('qaBtn');
     const qaInput = document.getElementById('qaInput');
     const ask = () => {
@@ -54,4 +57,9 @@ document.addEventListener('DOMContentLoaded', () => {
             ask();
         });
     });
-});
+}
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', _initQaViewBindings);
+} else {
+    _initQaViewBindings();
+}

@@ -271,4 +271,32 @@ function init() {
     showView('dashboard');
 }
 
-document.addEventListener('DOMContentLoaded', init);
+// init() is deliberately NOT self-invoked here (no DOMContentLoaded
+// listener, no immediate call). It's called by access-gate.js's
+// loadAppScripts() instead, only after every script in APP_SCRIPTS has
+// finished loading -- including dashboard-view.js, upload-view.js, etc.
+//
+// Why that matters: init() calls showView('dashboard'), which looks up
+// VIEW_HANDLERS.dashboard -- populated by dashboard-view.js calling
+// registerView('dashboard', Dashboard) as a side effect of that script
+// merely being loaded. app.js loads *before* dashboard-view.js in
+// APP_SCRIPTS (view modules need `registerView`/`AppState`/etc. to
+// already exist when THEY load). If init() ran as soon as app.js itself
+// finished executing -- e.g. via a readyState check at the bottom of
+// this file, which is what used to be here -- it would call
+// showView('dashboard') before dashboard-view.js had registered
+// anything, VIEW_HANDLERS.dashboard would be undefined, and the lookup
+// would silently no-op: Dashboard.load() never runs, so metrics/
+// attention/health/activity stay empty and the empty-state ("No leases
+// uploaded yet" + its Upload button) never appears either, since even
+// that is toggled by Dashboard.renderTable(). The page isn't broken,
+// exactly -- the header "+ Upload Leases" button, the quick-actions
+// bar's "Upload Lease" button, and the sidebar's "Upload Leases" nav
+// item are all still present and clickable (they're wired earlier in
+// this same init() call, against static HTML that doesn't depend on
+// any other script) -- but the dashboard itself renders permanently
+// blank until the user happens to navigate away and back, at which
+// point every script has long since loaded and it works fine. This was
+// exactly the LOCAL_DEV_MODE bug: real, not hypothetical, confirmed via
+// jsdom against the live app before this fix.
+window.init = init;

@@ -1,8 +1,78 @@
 # Progress Summary
 
-**Last updated**: session 7 — daily-use feature expansion, Phase 1 of 6 complete and verified (Phases 2-6 not started)
+**Last updated**: session 8 — `/app` access gate (waitlist-approved email required) plus a `LOCAL_DEV_MODE` bypass for local testing; admin panel and real auth untouched
 
 ---
+
+## Session 8: /app access gate + local dev bypass
+
+**What this was**: `/app` had no access control at all — reachable
+directly by anyone (see Session 5's note below, and DECISIONS.md). This
+session added a real (if lightweight) gate, plus a way to skip it when
+testing locally so that doesn't mean re-doing the waitlist signup/approve
+flow on every restart.
+
+**Backend** (`backend/app/api.py`, `backend/app/database.py`):
+- `LOCAL_DEV_MODE` — read once from the environment at process start
+  (`backend/.env`, loaded via the existing `load_dotenv()` call). Not
+  settable by any request.
+- `GET /config` — returns `{"local_dev_mode": bool}`, the only thing the
+  frontend needs to decide whether to skip the gate.
+- `POST /waitlist/check` — body `{"email"}`, returns `{"approved",
+  "found"}` only. Deliberately public (like `POST /waitlist` itself),
+  but unlike `GET /waitlist` it never returns the signup list or anyone
+  else's email — see the comment block above it in `api.py`.
+- `database.get_waitlist_signup_by_email()` — case-insensitive lookup.
+- **Does not touch** `insert_waitlist_signup`, `get_all_waitlist_signups`,
+  `approve_waitlist_signup`, or the `waitlist_signups` schema — verified
+  by test (`test_waitlist_signup_and_admin_approval_flow_unaffected` in
+  the new `test_access_gate.py`).
+
+**Frontend** (`frontend/app/`):
+- `access-gate.js` (new) — on load, asks `/config`; if
+  `local_dev_mode` is true, lets the visitor straight in. Otherwise
+  checks a cached email in `localStorage` (re-verified against the
+  backend every load, so a revoked approval takes effect immediately),
+  or shows a small gate screen (email input → `/waitlist/check`) if
+  there's no cached email or it's no longer approved.
+- `index.html` — `.app-shell` is now hidden by default; the gate markup
+  sits above it. The app's scripts (`api.js`, `app.js`, all seven view
+  modules) are no longer static `<script>` tags — `access-gate.js` loads
+  them dynamically, only after access is confirmed, so none of their API
+  calls fire before the gate passes.
+- `styles.css` — new `.access-gate*` rules, reusing existing design
+  tokens/classes (`.text-input`, `.btn-primary`, `.brand`) rather than
+  introducing new ones.
+
+**Bug found and fixed along the way**: `app.js` and all six view modules
+bootstrap via `document.addEventListener('DOMContentLoaded', ...)`. That
+event has always already fired by the time these scripts get loaded
+dynamically post-gate (true even on the instant `LOCAL_DEV_MODE` path,
+since the `/config` fetch is async) — so none of them would have
+initialized, silently, no console error. Each of the seven files now
+checks `document.readyState` first and calls its init function directly
+if the page already finished loading. See DECISIONS.md for the full
+writeup.
+
+**Verified this session**:
+- New `tests/test_access_gate.py` (9 tests): `/config` on/off,
+  `/waitlist/check` for unknown/pending/approved/case-mismatched emails,
+  invalid-email rejection, response shape never leaks other signups, and
+  the existing signup+admin-approve flow still works unchanged end to
+  end through the real routes.
+- Full backend suite: **14/14 test files pass**, no regressions.
+- Manual verification of both flows (`LOCAL_DEV_MODE=true` reaching
+  `/app` directly, and the real gate + waitlist + admin approval flow
+  with it off) — see the verification note further down this session's
+  entry for exact commands and results.
+
+**What this is not**: real authentication. No password, no session
+token, no proof the visitor typing an email owns it — just a
+self-reported match against the waitlist's approval status. The admin
+waitlist endpoints (`GET /waitlist`, `POST /waitlist/<id>/approve`,
+`/admin/waitlist/`) remain exactly as unauthenticated as before — this
+session didn't touch that. See DECISIONS.md "Access gate uses
+self-reported email, not real auth" and the updated Next Steps below.
 
 ## Session 7: Daily-Use Expansion — Phase 1 Complete, Phases 2-6 Not Started
 
@@ -266,6 +336,11 @@ backend test files (62+ checks) still pass unchanged after this session.
 **Access to the app**: approved status isn't enforced yet — `/app/` is
 reachable directly by anyone, exactly as instructed ("build the real
 auth gate later, don't block on it now").
+
+> **Superseded in Session 6** (below): `/app` is now gated on waitlist
+> approval status. This is a lightweight email-check, not real
+> auth/accounts — see DECISIONS.md "Access gate uses self-reported
+> email, not real auth" for exactly what changed and what didn't.
 
 **App restyle** (`frontend/app/`, moved from the old flat `frontend/`):
 - One shared design system (`frontend/design-system.css`): indigo/violet
@@ -531,7 +606,7 @@ Port already in use: `lsof -ti:5000 -ti:8080 | xargs kill -9`, then start again.
 - **Risk thresholds are fixed constants** — e.g. "25% below average = high severity" isn't currently tunable per portfolio or property type.
 - **Single-value fields only** — unchanged from session 2; a lease with two legitimately different rent figures returns one.
 - **Amendment date-conflict detection uses only the base lease's stored date candidates** — an amendment that itself restates a conflicting date wouldn't be cross-checked against the base lease's dates. Real-world amendments rarely restate the original commencement date, so this is a minor edge case, but worth knowing.
-- **No production deployment setup** — Flask dev server, SQLite file, no auth — appropriate for local/single-user use, not for hosting. (Session 4 hardened *error handling* — no stack traces or file paths leak to the client — but did not change the underlying dev-server/no-auth architecture, which is a separate, bigger scope.)
+- **No production deployment setup** — Flask dev server, SQLite file, no accounts/session auth — appropriate for local/single-user use, not for hosting. (Session 4 hardened *error handling* — no stack traces or file paths leak to the client. Session 6 added a lightweight email-check gate on `/app` — see below — but that's still not real auth, and the admin waitlist endpoints remain intentionally unauthenticated. The dev-server/no-accounts architecture itself is unchanged, which is a separate, bigger scope.)
 - **OCR depends on `~/.miniforge3` being on PATH** — this is outside the project repo (in the home directory) and outside `requirements.txt` (system binaries, not Python packages) since it's a machine-level install, not a project dependency. If this environment is ever reset, re-run the Miniforge install steps in the Session 4 section above.
 
 ## Next Steps (prioritized)
@@ -549,7 +624,7 @@ Port already in use: `lsof -ti:5000 -ti:8080 | xargs kill -9`, then start again.
 
 ### Low Priority / Nice to Have
 8. Deployment setup (Docker, production WSGI server, a real database if usage grows past SQLite's comfortable range).
-9. User accounts / multi-user support / access control on the portfolio.
+9. Real authentication: user accounts, passwords/OAuth, and sessions — for both `/app` (which as of Session 6 only has a lightweight self-reported-email gate, not real auth) and `/admin/waitlist/` + its endpoints (still fully unauthenticated). Multi-user support / per-user portfolio access control is a further step beyond that.
 10. Configurable/brandable portfolio name and report letterhead (currently a placeholder in `report.py`).
 
 ## Dependencies

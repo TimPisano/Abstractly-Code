@@ -356,7 +356,10 @@ function riskCellHtml(flags, worst) {
 
 registerView('dashboard', Dashboard);
 
-document.addEventListener('DOMContentLoaded', () => {
+// Loaded dynamically by access-gate.js after the gate passes, well after
+// DOMContentLoaded already fired -- see the comment in app.js for why a
+// readyState check is needed here instead of a plain addEventListener.
+function _initDashboardViewBindings() {
     document.getElementById('dashboardFilter').addEventListener('input', () => {
         Dashboard.renderTable(AppState.leases);
     });
@@ -383,4 +386,9 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('compareGoBtn').addEventListener('click', () => {
         showView('comparison', { preselect: Array.from(AppState.compareSelection) });
     });
-});
+}
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', _initDashboardViewBindings);
+} else {
+    _initDashboardViewBindings();
+}

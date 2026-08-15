@@ -1422,3 +1422,71 @@
         flex-direction: column;
     }
 }
+
+/* ---- Access gate (frontend/app/access-gate.js) ---- */
+.access-gate {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--background);
+    padding: 1.5rem;
+}
+
+.access-gate-card {
+    width: 100%;
+    max-width: 380px;
+    background: var(--white);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-md);
+    padding: 2rem;
+    text-align: center;
+}
+
+.access-gate-card .brand {
+    justify-content: center;
+    margin-bottom: 1.25rem;
+}
+
+.access-gate-card h1 {
+    font-size: 1.25rem;
+    color: var(--text-dark);
+    margin: 0 0 0.5rem;
+}
+
+.access-gate-subtitle {
+    color: var(--text-medium);
+    font-size: 0.9rem;
+    line-height: 1.5;
+    margin: 0 0 1.5rem;
+}
+
+#accessGateForm {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.access-gate-message {
+    min-height: 1.2em;
+    font-size: 0.85rem;
+    color: var(--text-medium);
+    margin: 0.75rem 0 0;
+}
+
+.access-gate-message.is-error {
+    color: var(--error-color);
+}
+
+.access-gate-link {
+    display: inline-block;
+    margin-top: 1.25rem;
+    font-size: 0.85rem;
+    color: var(--primary-color);
+    text-decoration: none;
+}
+
+.access-gate-link:hover {
+    text-decoration: underline;
+}

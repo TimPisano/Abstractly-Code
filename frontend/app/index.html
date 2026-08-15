@@ -7,7 +7,34 @@
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <div class="app-shell">
+    <!--
+      Access gate: hidden until access-gate.js confirms either
+      LOCAL_DEV_MODE (local testing only, see backend/.env) or an
+      approved waitlist email. Kept as its own top-level section (not
+      inside .app-shell) so it can be shown while .app-shell stays
+      hidden below. See DECISIONS.md "Access gate uses self-reported
+      email, not real auth" for what this is and isn't.
+    -->
+    <div class="access-gate" id="accessGate" style="display:none;">
+        <div class="access-gate-card">
+            <div class="brand">
+                <svg class="brand-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5" />
+                </svg>
+                <span>Lease Portfolio</span>
+            </div>
+            <h1>Enter your approved email</h1>
+            <p class="access-gate-subtitle">This app is invite-only right now. If you've been approved from the waitlist, enter the same email you signed up with.</p>
+            <form id="accessGateForm">
+                <input type="email" id="accessGateEmail" class="text-input" placeholder="you@company.com" required autocomplete="email">
+                <button type="submit" class="btn-primary" id="accessGateSubmitBtn">Continue</button>
+            </form>
+            <p class="access-gate-message" id="accessGateMessage"></p>
+            <a href="/" class="access-gate-link">&larr; Not on the list yet? Join the waitlist</a>
+        </div>
+    </div>
+
+    <div class="app-shell" id="appShell" style="display:none;">
         <!-- Sidebar Navigation -->
         <nav class="sidebar">
             <div class="brand">
@@ -296,14 +323,12 @@
         </main>
     </div>
 
-    <script src="api.js"></script>
-    <script src="app.js"></script>
-    <script src="upload-view.js"></script>
-    <script src="dashboard-view.js"></script>
-    <script src="detail-view.js"></script>
-    <script src="timeline-view.js"></script>
-    <script src="comparison-view.js"></script>
-    <script src="qa-view.js"></script>
-    <script src="report-view.js"></script>
+    <!--
+      access-gate.js is the only script loaded unconditionally. It
+      decides whether this visitor gets in, then dynamically loads the
+      rest of the app's scripts (in order) only after that's settled —
+      so no dashboard/API calls ever fire before the gate passes.
+    -->
+    <script src="access-gate.js"></script>
 </body>
 </html>
