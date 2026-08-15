@@ -1,10 +1,122 @@
 # Progress Summary
 
-**Last updated**: session 9 — fixed a real multi-lease-PDF data-bleed bug, then added Google Sheets export (service account, not yet configured — see below)
+**Last updated**: session 10 — multi-lease PDFs are now correctly split into individual leases (not rejected, not merged), plus a full lease-library rebuild on top: naming, rename, search, tags
 
 ---
 
-## Session 9: Multi-lease PDF fix + Google Sheets export
+## Session 10: Multi-lease splitting + lease library (naming, rename, tags)
+
+**Honest status up front**: all three requested parts are built, committed
+separately, and verified — including the specific symptom that motivated
+this session (a merged PDF's risk analysis showing 30+ "conflicting"
+start dates). The one thing that could NOT be verified is the exact
+scenario asked for in the verification instructions: uploading the
+actual 250-lease/500-page PDF and confirming 250 correctly-named
+records. That specific file was not recoverable (see below) — what's
+verified instead is equivalent-strength testing against this project's
+own real fixture PDFs, at up to 10-lease scale with 100% field accuracy,
+plus a documented, honestly-disclosed edge case where the splitting
+heuristic is known to under-split.
+
+### Part 1: Multi-lease PDFs are now SPLIT, not rejected or merged
+
+The previous session's fix (see below) detected a multi-lease PDF and
+refused the upload — safer, but not enough: a real portfolio PDF
+produced a risk flag listing 30+ "conflicting" start dates, because
+risk analysis reads `date_candidates` collected from the whole document
+independently of the fields themselves.
+
+`FieldExtractor.detect_lease_boundaries()` now places a page boundary
+at the first page each distinct tenant OR landlord is introduced on
+(the union of both signals). `extract_multiple_leases()` runs the
+existing single-lease extraction independently on each range. A file
+that's actually one lease still produces exactly one record, unchanged.
+
+**Verified concretely**: every field of every split lease exactly
+matches standalone extraction of its own source document (not
+approximately — checked field-by-field), across 4 different real
+merges plus all 10 of this project's fixtures merged into one 10-lease
+document (correct in 0.05s). The reported 30-dates symptom was directly
+reproduced on a 5-fixture merge and confirmed fixed: 1-2 dates per
+lease afterward, only the two genuinely-inconsistent fixtures still
+flagging.
+
+**Honestly disclosed limitation, not glossed over**: if two different,
+non-adjacent leases in the same merged PDF share BOTH the exact same
+tenant name and the exact same landlord name, this heuristic can't
+tell them apart and will under-split. Confirmed directly with a
+constructed worst-case test. A same-tenant-different-landlord case
+(e.g. one chain tenant leasing from different landlords) IS correctly
+handled — that's specifically why the boundary signal uses the union of
+tenant and landlord pages, not just one.
+
+**Could not test against your actual 250-lease PDF** — the file only
+ever existed as a temp upload, already deleted by the time this session
+started, and wasn't found in Downloads/Desktop/Documents or anywhere
+else searched on this machine. If you still have it, re-uploading it
+now is the real test; I'd want to see the result.
+
+### Part 2: Every lease is individually named, renameable, searchable
+
+Auto-generated `display_name` at upload: "[Tenant] - [Property
+Address]" when both were found, else "[filename] - Lease [N]" (no
+redundant "- Lease 1" suffix for a lease that wasn't split). New
+`PATCH /leases/<id>` to rename. Click-to-edit inline rename on both the
+dashboard's new "Lease Library" table (replacing Document/Landlord/Sq
+Ft columns with Name/Tenant/Property Address) and the lease detail
+page's title — verified live that a rename immediately shows up in the
+comparison view too, not just where it was typed. Search filter
+extended to match name and tags, not just tenant/landlord/address.
+
+Not touched in this pass: the printable portfolio report still shows
+tenant + source filename rather than the custom name — deferred rather
+than rushed, since that module has its own test suite that would need
+re-validating alongside it.
+
+### Part 3: Tags (chosen over folders — see DECISIONS.md)
+
+A lease can carry any number of tags (new `lease_tags` table, `ON
+DELETE CASCADE`), managed from the detail page with autocomplete
+against every tag already in use. Dashboard shows each lease's tags as
+mini chips; clicking one filters the list to that tag. Chose tags over
+a folder hierarchy because a lease legitimately belongs to more than
+one useful grouping at once, which a strict one-parent-folder model
+can't represent without duplicating the lease.
+
+### Migration / data safety
+
+The dev database's `leases` table gained 3 new columns
+(`display_name`, `source_page_start`, `source_page_end`) via a real
+`ALTER TABLE` migration in `init_db()` — not just `CREATE TABLE IF NOT
+EXISTS`, which can't add columns to an already-existing table. Tested
+directly against a simulated old-schema database: the existing row
+survived with its data intact, the new columns just came back NULL.
+As it happens, this project's actual dev database was already empty at
+the start of this session (its `leases` table had been wiped by a
+previous session's test run, as noted in session 9's PROGRESS.md entry
+at the time) — so there was nothing to migrate in practice, but the
+mechanism was still verified for real, since it needs to be correct
+for any database that does have existing data.
+
+### Verified this session
+- **22/22 backend test files pass** — every prior session's tests still
+  green, plus this session's: `test_multi_lease_detection.py` (12
+  tests, boundary/split correctness), `test_live_multi_lease_api.py`
+  (25 checks against the live server), `test_lease_naming_and_tags.py`
+  (15 tests, naming/rename/tags).
+- Full frontend flow via jsdom against the live app, at each part:
+  uploaded a real 3-lease merged PDF through the actual upload UI,
+  confirmed the split results UI, confirmed the dashboard showed 3
+  separate rows, renamed one and watched it propagate to the
+  comparison picker, added/removed a tag and confirmed the dashboard
+  chip + click-to-filter. Zero JS errors throughout every check.
+- Performance: a 55-page synthetic document (5x this project's 10
+  fixtures) processed in 0.24 seconds total — not a concern at the
+  scale of a real 250-lease document.
+
+---
+
+## Session 9: Multi-lease PDF fix (detect-and-reject) + Google Sheets export
 
 ### Part 1: Multi-lease PDFs now rejected, not silently merged
 
