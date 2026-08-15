@@ -12,12 +12,12 @@ const ReportView = {
         document.getElementById('exportStatus').innerHTML = '';
 
         const frame = document.getElementById('reportFrame');
-        frame.srcdoc = '<p style="font-family: sans-serif; padding: 2rem; color: #6b7280;">Loading report...</p>';
+        frame.srcdoc = '<p style="font-family: sans-serif; padding: 2rem; color: #8b8779;">Loading report...</p>';
         try {
             this.lastHtml = await Api.portfolioReportHtml();
             frame.srcdoc = this.lastHtml;
         } catch (err) {
-            frame.srcdoc = `<p style="font-family: sans-serif; padding: 2rem; color: #b3261e;">Failed to load report: ${escapeHtml(err.message)}</p>`;
+            frame.srcdoc = `<p style="font-family: sans-serif; padding: 2rem; color: #9a3b3b;">Failed to load report: ${escapeHtml(err.message)}</p>`;
         }
     },
 
