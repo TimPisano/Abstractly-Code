@@ -14,6 +14,8 @@ const Dashboard = {
         this.renderAttentionSkeleton();
         this.renderHealthSkeleton();
         this.renderActivitySkeleton();
+        document.getElementById('dashboardExportExcelBtn').href = Api.rentRollExcelUrl();
+        document.getElementById('dashboardExportStatus').innerHTML = '';
 
         try {
             const [leases, metrics, risks] = await Promise.all([
@@ -381,6 +383,34 @@ const Dashboard = {
         bar.style.display = 'flex';
         document.getElementById('compareCount').textContent = `${count} selected`;
     },
+
+    async exportToGoogleSheets() {
+        const btn = document.getElementById('dashboardExportSheetsBtn');
+        const status = document.getElementById('dashboardExportStatus');
+        btn.disabled = true;
+        btn.textContent = 'Exporting...';
+        status.innerHTML = '';
+
+        try {
+            const result = await Api.exportToGoogleSheets();
+            status.innerHTML = `
+                <div class="export-status export-status-success">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    <span>Exported to Google Sheets. <a href="${escapeHtml(result.url)}" target="_blank" rel="noopener noreferrer">Open the sheet &rarr;</a></span>
+                </div>
+            `;
+        } catch (err) {
+            status.innerHTML = `
+                <div class="export-status export-status-error">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"/></svg>
+                    <span>${escapeHtml(err.message)}</span>
+                </div>
+            `;
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Export to Google Sheets';
+        }
+    },
 };
 
 function lease_filename(lease) {
@@ -454,6 +484,8 @@ function _initDashboardViewBindings() {
             Dashboard.renderTable(AppState.leases);
         });
     });
+
+    document.getElementById('dashboardExportSheetsBtn').addEventListener('click', () => Dashboard.exportToGoogleSheets());
 
     document.getElementById('compareGoBtn').addEventListener('click', () => {
         showView('comparison', { preselect: Array.from(AppState.compareSelection) });

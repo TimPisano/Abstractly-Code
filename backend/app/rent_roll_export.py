@@ -50,6 +50,10 @@ COLUMNS = [
     "Lease End",
     "Renewal Options",
     "Months Until Expiration",
+    "Permitted Use",
+    "Exclusivity Clause",
+    "Insurance Requirements",
+    "Default/Cure Period",
 ]
 
 # Column -> extracted_fields key, for the columns that are a straight
@@ -66,6 +70,10 @@ _FIELD_FOR_COLUMN = {
     "Lease Start": "lease_start_date",
     "Lease End": "lease_end_date",
     "Renewal Options": "renewal_options",
+    "Permitted Use": "permitted_use",
+    "Exclusivity Clause": "exclusivity_clause",
+    "Insurance Requirements": "insurance_requirements",
+    "Default/Cure Period": "default_cure_period",
 }
 
 # openpyxl has no auto-fit, so widths are set explicitly. These are tuned for
@@ -86,6 +94,10 @@ _COLUMN_WIDTHS = {
     "Lease End": 16,
     "Renewal Options": 46,
     "Months Until Expiration": 14,
+    "Permitted Use": 34,
+    "Exclusivity Clause": 40,
+    "Insurance Requirements": 40,
+    "Default/Cure Period": 30,
 }
 
 _CURRENCY_FORMAT = "$#,##0.00"

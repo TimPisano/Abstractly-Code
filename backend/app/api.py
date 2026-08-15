@@ -828,6 +828,44 @@ def portfolio_export_google_sheets():
     return jsonify(result), 200
 
 
+@app.route('/leases/<int:lease_id>/export.xlsx', methods=['GET'])
+def lease_export_excel(lease_id):
+    """Same formatted workbook as the portfolio-wide export, scoped to one lease (a single data row)."""
+    lease = database.get_effective_lease(lease_id)
+    if not lease:
+        return jsonify({"error": "Lease not found"}), 404
+
+    excel_bytes = generate_rent_roll_excel([lease])
+    display_name = lease.get("display_name") or lease.get("filename") or f"lease_{lease_id}"
+    database.insert_activity("rent_roll_exported", f"Exported {display_name} as Excel")
+    safe_name = re.sub(r'[^A-Za-z0-9_.-]', '_', display_name)
+    return Response(
+        excel_bytes,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        headers={"Content-Disposition": f"attachment; filename={safe_name}.xlsx"},
+    )
+
+
+@app.route('/leases/<int:lease_id>/export/google-sheets', methods=['POST'])
+def lease_export_google_sheets(lease_id):
+    """Same Google Sheets export as the portfolio-wide one, scoped to one lease (a single data row)."""
+    lease = database.get_effective_lease(lease_id)
+    if not lease:
+        return jsonify({"error": "Lease not found"}), 404
+
+    try:
+        result = export_to_google_sheets([lease])
+    except SheetsExportError as e:
+        return jsonify({"error": str(e)}), 502
+
+    display_name = lease.get("display_name") or lease.get("filename") or f"lease_{lease_id}"
+    database.insert_activity(
+        "google_sheets_exported",
+        f"Exported {display_name} to Google Sheets",
+    )
+    return jsonify(result), 200
+
+
 @app.route('/portfolio/report', methods=['GET'])
 def portfolio_report():
     """

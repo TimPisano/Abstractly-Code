@@ -22,6 +22,8 @@ const LeaseDetail = {
                     : ` (pages ${this.lease.source_page_start}–${this.lease.source_page_end})`;
             }
             document.getElementById('detailSubtitle').textContent = subtitle;
+            document.getElementById('detailExportExcelBtn').href = Api.leaseExportExcelUrl(this.lease.id);
+            document.getElementById('detailExportStatus').innerHTML = '';
 
             this.renderFields();
             this.renderTags(this.lease.tags || []);
@@ -204,6 +206,35 @@ const LeaseDetail = {
         URL.revokeObjectURL(url);
     },
 
+    async exportToGoogleSheets() {
+        if (!this.lease) return;
+        const btn = document.getElementById('detailExportSheetsBtn');
+        const status = document.getElementById('detailExportStatus');
+        btn.disabled = true;
+        btn.textContent = 'Exporting...';
+        status.innerHTML = '';
+
+        try {
+            const result = await Api.exportLeaseToGoogleSheets(this.lease.id);
+            status.innerHTML = `
+                <div class="export-status export-status-success">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    <span>Exported to Google Sheets. <a href="${escapeHtml(result.url)}" target="_blank" rel="noopener noreferrer">Open the sheet &rarr;</a></span>
+                </div>
+            `;
+        } catch (err) {
+            status.innerHTML = `
+                <div class="export-status export-status-error">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"/></svg>
+                    <span>${escapeHtml(err.message)}</span>
+                </div>
+            `;
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Export to Google Sheets';
+        }
+    },
+
     renderTags(tags) {
         const list = document.getElementById('detailTagsList');
         if (!tags || tags.length === 0) {
@@ -339,6 +370,7 @@ registerView('detail', LeaseDetail);
 // readyState check is needed here instead of a plain addEventListener.
 function _initDetailViewBindings() {
     document.getElementById('detailExportBtn').addEventListener('click', () => LeaseDetail.exportJson());
+    document.getElementById('detailExportSheetsBtn').addEventListener('click', () => LeaseDetail.exportToGoogleSheets());
     document.getElementById('detailDeleteBtn').addEventListener('click', () => LeaseDetail.deleteLease());
     document.getElementById('detailTitle').addEventListener('click', () => LeaseDetail.startRenameTitle());
 

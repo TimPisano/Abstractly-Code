@@ -170,6 +170,14 @@ const Api = {
         return apiRequest('/portfolio/export/google-sheets', { method: 'POST' });
     },
 
+    leaseExportExcelUrl(leaseId) {
+        return `${API_BASE_URL}/leases/${leaseId}/export.xlsx`;
+    },
+
+    exportLeaseToGoogleSheets(leaseId) {
+        return apiRequest(`/leases/${leaseId}/export/google-sheets`, { method: 'POST' });
+    },
+
     async portfolioReportHtml() {
         const response = await apiRequest('/portfolio/report');
         return response.text();

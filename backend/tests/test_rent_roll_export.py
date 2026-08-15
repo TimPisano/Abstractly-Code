@@ -71,6 +71,10 @@ def make_leases():
             cam_charges="$850.00",
             rent_escalation="3% annually",
             renewal_options="2 option(s) of 5 year(s) each; 180 days notice; renewal rent based on then-prevailing fair market rate",
+            permitted_use="Retail coffee shop and cafe, including on-site roasting",
+            exclusivity_clause="Landlord shall not lease other space in the shopping center to a coffee shop or cafe",
+            insurance_requirements="$1,000,000 commercial general liability per occurrence",
+            default_cure_period="10 days after written notice",
             square_footage="2,400 sq ft",
         ),
         # Sparse record: no square footage, deposit, CAM, escalation, or renewal.
@@ -113,9 +117,9 @@ def test_csv_headers_and_row_count():
     rows = _read_csv(generate_rent_roll_csv(make_leases(), today=TODAY))
 
     assert rows[0] == COLUMNS, f"unexpected header row: {rows[0]}"
-    assert rows[0][0] == "Filename" and rows[0][-1] == "Months Until Expiration"
+    assert rows[0][0] == "Filename" and rows[0][-1] == "Default/Cure Period"
     assert len(rows) == 5, f"expected 1 header + 4 lease rows, got {len(rows)}"
-    assert all(len(row) == 14 for row in rows), "every row must have 14 columns"
+    assert all(len(row) == 18 for row in rows), "every row must have 18 columns"
     print("✓ test_csv_headers_and_row_count: PASS")
 
 
@@ -132,6 +136,10 @@ def test_csv_cell_values():
     assert cell["Square Footage"] == "2,400 sq ft"
     assert cell["Lease Start"] == "April 1, 2025"
     assert cell["Rent Escalation"] == "3% annually"
+    assert cell["Permitted Use"] == "Retail coffee shop and cafe, including on-site roasting"
+    assert cell["Exclusivity Clause"] == "Landlord shall not lease other space in the shopping center to a coffee shop or cafe"
+    assert cell["Insurance Requirements"] == "$1,000,000 commercial general liability per occurrence"
+    assert cell["Default/Cure Period"] == "10 days after written notice"
     print("✓ test_csv_cell_values: PASS")
 
 
@@ -164,7 +172,9 @@ def test_csv_missing_fields_render_empty_not_none():
     sparse = dict(zip(rows[0], rows[2]))
     assert sparse["Filename"] == "northgate_dental.pdf"
     for column in ("Square Footage", "Security Deposit", "CAM Charges",
-                   "Rent Escalation", "Renewal Options", "Rent/SqFt"):
+                   "Rent Escalation", "Renewal Options", "Rent/SqFt",
+                   "Permitted Use", "Exclusivity Clause",
+                   "Insurance Requirements", "Default/Cure Period"):
         assert sparse[column] == "", f"{column} should be an empty cell, got {sparse[column]!r}"
     print("✓ test_csv_missing_fields_render_empty_not_none: PASS")
 
@@ -185,18 +195,18 @@ def test_excel_structure_and_headers():
     sheet = _load_sheet(make_leases())
 
     assert sheet.max_row == 5, f"expected 1 header + 4 lease rows, got {sheet.max_row}"
-    assert sheet.max_column == 14, f"expected 14 columns, got {sheet.max_column}"
-    headers = [sheet.cell(row=1, column=i).value for i in range(1, 15)]
+    assert sheet.max_column == 18, f"expected 18 columns, got {sheet.max_column}"
+    headers = [sheet.cell(row=1, column=i).value for i in range(1, 19)]
     assert headers == COLUMNS, f"unexpected header row: {headers}"
     assert sheet.freeze_panes == "A2", "header row should be frozen"
-    assert sheet.column_dimensions["A"].width and sheet.column_dimensions["N"].width, \
+    assert sheet.column_dimensions["A"].width and sheet.column_dimensions["R"].width, \
         "column widths should be set explicitly (openpyxl has no auto-fit)"
     print("✓ test_excel_structure_and_headers: PASS")
 
 
 def test_excel_header_is_bold():
     sheet = _load_sheet(make_leases())
-    assert all(sheet.cell(row=1, column=i).font.bold for i in range(1, 15)), \
+    assert all(sheet.cell(row=1, column=i).font.bold for i in range(1, 19)), \
         "every header cell should be bold"
     assert not sheet.cell(row=2, column=1).font.bold, "data cells should not be bold"
     print("✓ test_excel_header_is_bold: PASS")
@@ -268,12 +278,16 @@ def test_round_trip_integrity_full_row():
             "renewal rent based on then-prevailing fair market rate"
         ),
         "Months Until Expiration": "19",
+        "Permitted Use": "Retail coffee shop and cafe, including on-site roasting",
+        "Exclusivity Clause": "Landlord shall not lease other space in the shopping center to a coffee shop or cafe",
+        "Insurance Requirements": "$1,000,000 commercial general liability per occurrence",
+        "Default/Cure Period": "10 days after written notice",
     }
     assert csv_row == expected_csv, f"CSV round-trip mismatch: {csv_row}"
 
     sheet = _load_sheet(leases)
     xlsx_row = {
-        COLUMNS[i - 1]: sheet.cell(row=2, column=i).value for i in range(1, 15)
+        COLUMNS[i - 1]: sheet.cell(row=2, column=i).value for i in range(1, 19)
     }
     # Same row, with the unambiguous numeric columns typed as numbers.
     for column, value in expected_csv.items():
@@ -292,7 +306,7 @@ def test_round_trip_integrity_full_row():
 def test_excel_empty_portfolio():
     sheet = _load_sheet([])
     assert sheet.max_row == 1, "an empty portfolio should still produce the header row"
-    assert [sheet.cell(row=1, column=i).value for i in range(1, 15)] == COLUMNS
+    assert [sheet.cell(row=1, column=i).value for i in range(1, 19)] == COLUMNS
     print("✓ test_excel_empty_portfolio: PASS")
 
 

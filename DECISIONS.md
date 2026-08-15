@@ -913,3 +913,81 @@ all held correctly at every size tested, including under live-API
 upload (not just direct pipeline calls). All 22 test files (17
 non-live + 5 live-API) pass with the backend/frontend dev servers
 running.
+
+## Session 7 (continued): Part 3 — Excel/Google Sheets export, wired to both views
+
+### Found and fixed a real accuracy gap: the Excel/CSV export was missing 4 of 15 fields
+
+`rent_roll_export.py`'s `COLUMNS` (used by both the CSV and Excel
+exporters) only ever covered 11 of the 15 extracted fields — Permitted
+Use, Exclusivity Clause, Insurance Requirements, and Default/Cure
+Period were silently absent from every rent-roll export, even though
+`sheets_export.py`'s Google Sheets export already included all 15.
+This was caught by directly comparing the two exporters' `COLUMNS`
+lists against each other and against `field_extractor.py`'s actual
+15-field output, not by assuming either exporter was complete because
+it had tests. Fixed by adding all 4 to `COLUMNS`/`_FIELD_FOR_COLUMN`/
+`_COLUMN_WIDTHS`; `_cell_value`'s existing pass-through logic needed no
+changes since it was already generic over the field-key mapping. CSV
+and Excel now carry all 15 extracted fields (18 columns total, with
+the 3 derived: Rent/SqFt, Months Until Expiration, and the Filename
+identifier). `test_rent_roll_export.py` updated to assert 18 columns
+and to give one fixture lease real values for all 4 previously-missing
+fields, so blank-cell-vs-value behavior is actually exercised for them
+too, not just implied by symmetry with the other 11.
+
+### Single-lease export: new routes, not a special-cased exporter
+
+Added `GET /leases/<id>/export.xlsx` and
+`POST /leases/<id>/export/google-sheets` rather than writing a
+separate single-lease rendering path. Both just call the existing
+`generate_rent_roll_excel([lease])` / `export_to_google_sheets([lease])`
+with a one-item list — the portfolio exporters were already written to
+take a list of leases with no assumption about its length, so scoping
+to one lease needed zero changes to either exporter module, only two
+thin routes in `api.py`. The Excel route names the downloaded file
+after the lease's own display name (sanitized to safe filename
+characters) rather than the generic `rent_roll.xlsx`, since a
+single-lease download landing in a Downloads folder named
+`rent_roll.xlsx` next to five other identically-named files would be
+useless.
+
+### Export controls added to the Dashboard (list view) and Lease Detail view specifically
+
+The Report view already had portfolio-wide CSV + Google Sheets export
+(built in an earlier session) — that was left as-is. This part's ask
+was specifically an Export option on the Lease Library (Dashboard) and
+the individual Lease Detail view, so two new UI locations were wired,
+matching the "choice between Google Sheets or .xlsx" framing exactly
+(a Download Excel link plus an Export to Google Sheets button, not a
+CSV option, in both new locations) rather than duplicating the Report
+view's CSV-inclusive pattern.
+
+### Verified end-to-end, including the exact standard requested: exported data matches the app
+
+For the single-lease Excel route: uploaded a real fixture via the live
+API, downloaded the resulting `.xlsx` via the live route, then
+compared every one of its 18 cells against that same lease's
+`extracted_fields` as returned by `GET /leases/<id>` — zero
+mismatches. For the portfolio-wide route: same check at the header
+level, confirming all 18 columns are present in a real download, not
+just in a unit test with hand-built fixtures. For both Google Sheets
+routes (portfolio and single-lease): confirmed the failure path is
+clean and actionable — `GOOGLE_APPLICATION_CREDENTIALS` is not
+configured in this environment's `backend/.env` (consistent with the
+prior session's explicit instruction not to invent or guess
+credentials), and both routes correctly return the same
+already-existing, safe-to-display "Google Sheets export isn't set up
+yet... see backend/.env.example" message rather than a stack trace or
+a silent failure — verified both via direct `curl` against the live
+API and via the actual rendered UI (jsdom against the real running
+app: clicking each Export to Google Sheets button surfaces that exact
+message in the page, with zero JS errors). The success path for
+Google Sheets itself (a real spreadsheet actually getting created) is
+still only verified via `test_sheets_export.py`'s mocks, same as the
+prior session — this remains the one piece of Part 3 that needs the
+user's own Google Cloud service account credentials to verify for
+real; instructions are already in `backend/.env.example`.
+
+22/22 backend test files pass. All test leases created during this
+verification were deleted afterward; the dev DB is empty again.
