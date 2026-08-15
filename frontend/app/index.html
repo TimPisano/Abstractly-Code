@@ -316,6 +316,19 @@
                         <button class="btn-primary" id="downloadReportBtn" type="button">Download HTML</button>
                     </div>
                 </div>
+
+                <!-- Export Portfolio Data: the raw dataset, not the printable report above -->
+                <div class="panel export-panel">
+                    <div class="panel-header">
+                        <h2>Export Portfolio Data</h2>
+                    </div>
+                    <div class="export-actions">
+                        <a class="btn-secondary" id="exportCsvBtn" href="#" download>Download CSV</a>
+                        <button class="btn-secondary" id="exportSheetsBtn" type="button">Export to Google Sheets</button>
+                    </div>
+                    <div id="exportStatus"></div>
+                </div>
+
                 <div class="report-frame-container">
                     <iframe id="reportFrame" title="Portfolio Report"></iframe>
                 </div>

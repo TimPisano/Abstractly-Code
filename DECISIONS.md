@@ -682,3 +682,62 @@ false positives) and 4 different real multi-file merges, including one
 combining the two fixtures that had triggered the false positives (to
 confirm the fix didn't just suppress detection entirely) — see
 `test_multi_lease_detection.py`.
+
+### Google Sheets export: service account, not OAuth; new sheet every time
+
+`sheets_export.py` uses a Google **service account** key
+(`GOOGLE_APPLICATION_CREDENTIALS`, a JSON file path — the standard env
+var name Google's own libraries look for) rather than per-user OAuth.
+- **Reason**: this is a backend-triggered export action (click a
+  button, get a sheet), not a "sign in with Google" login flow — there
+  is no per-user Google identity anywhere else in this app to hang
+  OAuth off of, and a service account is the credential type meant for
+  exactly this shape of server-to-server access.
+
+Every export **creates a brand-new Sheet** (never updates one persistent
+sheet), named `"Lease Portfolio Export - <date>"`.
+- **Reason**: asked directly rather than assumed — see the
+  AskUserQuestion exchange in this session. A fresh sheet per export
+  also has no "which format does the existing sheet expect" compatibility
+  concern to maintain over time, unlike updating a fixed sheet would.
+
+The created sheet is shared **"anyone with the link can view"** (via
+the Drive API, since Sheets API alone can't set sharing) rather than
+shared with a specific person's email.
+- **Reason**: a service-account-created file isn't visible to anyone
+  else by default, and there's no single "current user" account
+  anywhere in this app (no real per-user auth exists yet — see the
+  access-gate entry above) to share it with individually instead.
+  Link-shareable is the only option that guarantees the URL handed back
+  actually opens for whoever clicked the button. This does mean anyone
+  who obtains that exact (unguessable, but not access-controlled) link
+  could view that export's data — documented explicitly in
+  `backend/.env.example` as the same tradeoff the existing CSV/report
+  exports already have, not a new regression introduced by this
+  feature.
+
+Column formatting (which fields become real numbers vs. stay as
+extracted display strings, blank-not-"Not Found" for missing fields)
+deliberately mirrors `rent_roll_export.py`'s existing philosophy rather
+than inventing a third convention for a third export format — see that
+module's docstring and `sheets_export.py`'s docstring for the shared
+reasoning. Annual Rent and Rent per Square Foot are computed via
+`app.normalize`, the same module every other aggregate in this project
+uses, so a number in the exported sheet can't quietly disagree with the
+same figure shown on the dashboard.
+
+Verified as far as possible without real Google credentials (none are
+configured in this environment, by design — nothing was invented or
+guessed): every failure path (unset env var, missing file, invalid key
+file, a mocked Google API 403/401/other error) raises a clean,
+actionable `SheetsExportError`, confirmed live against the running
+server with `curl`. The full happy path — creating a sheet, writing the
+correct rows, setting sharing — is verified with `googleapiclient.
+discovery.build` and `service_account.Credentials.from_service_account_
+file` mocked out (`test_sheets_export.py`), asserting on the actual
+data passed to the mocked Sheets API calls (header row, per-lease rows
+in order, the sharing permission body), not just that no exception was
+raised. What is NOT verified: an actual real Google Sheet being
+created via a real API call, since no real credentials exist to test
+with — that step is on whoever sets up
+`GOOGLE_APPLICATION_CREDENTIALS`.

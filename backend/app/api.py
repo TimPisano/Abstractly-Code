@@ -48,6 +48,7 @@ from app.portfolio import (
 from app.comparison import compare_leases, benchmark_lease
 from app.rent_roll_export import generate_rent_roll_csv, generate_rent_roll_excel
 from app.report import generate_portfolio_report_html
+from app.sheets_export import export_to_google_sheets, SheetsExportError
 
 
 app = Flask(__name__)
@@ -654,6 +655,29 @@ def rent_roll_excel():
         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         headers={"Content-Disposition": "attachment; filename=rent_roll.xlsx"},
     )
+
+
+@app.route('/portfolio/export/google-sheets', methods=['POST'])
+def portfolio_export_google_sheets():
+    """
+    Creates a brand-new Google Sheet with the current lease dataset and
+    returns a link to it. Requires GOOGLE_APPLICATION_CREDENTIALS to be
+    configured (see backend/.env.example) — SheetsExportError's message
+    is always safe to return directly to the client (see its docstring
+    in sheets_export.py); any other exception falls through to the
+    global error handler like everywhere else in this file.
+    """
+    leases = database.get_all_effective_leases()
+    try:
+        result = export_to_google_sheets(leases)
+    except SheetsExportError as e:
+        return jsonify({"error": str(e)}), 502
+
+    database.insert_activity(
+        "google_sheets_exported",
+        f"Exported {len(leases)} lease(s) to Google Sheets",
+    )
+    return jsonify(result), 200
 
 
 @app.route('/portfolio/report', methods=['GET'])

@@ -334,6 +334,7 @@ const ACTIVITY_TYPE_LABELS = {
     lease_deleted: 'Delete',
     comparison_run: 'Comparison',
     rent_roll_exported: 'Export',
+    google_sheets_exported: 'Export',
 };
 
 function activityTypeLabel(actionType) {

@@ -605,7 +605,7 @@
 .activity-badge-amendment_uploaded { background-color: var(--warning-light); color: var(--warning-color); }
 .activity-badge-lease_deleted { background-color: var(--error-light); color: var(--error-color); }
 .activity-badge-comparison_run { background-color: var(--primary-light); color: var(--primary-color); }
-.activity-badge-rent_roll_exported { background-color: var(--confidence-none-bg); color: var(--text-medium); }
+.activity-badge-rent_roll_exported, .activity-badge-google_sheets_exported { background-color: var(--confidence-none-bg); color: var(--text-medium); }
 
 .activity-desc {
     flex: 1;
@@ -1354,6 +1354,63 @@
     padding: 0.0625rem 0.5rem;
     font-size: 0.6875rem;
     font-weight: 600;
+}
+
+/* ===================== Export panel (Report view) ===================== */
+
+.export-panel {
+    margin-bottom: 1.5rem;
+}
+
+.export-actions {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.export-status {
+    margin-top: 1rem;
+}
+
+.export-status-success, .export-status-error {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.625rem;
+    padding: 0.75rem 1rem;
+    border-radius: var(--radius-md);
+    font-size: 0.875rem;
+    line-height: 1.5;
+}
+
+.export-status-success {
+    background-color: var(--success-light);
+    color: #065f46;
+}
+
+.export-status-success svg {
+    color: var(--success-color);
+}
+
+.export-status-error {
+    background-color: var(--error-light);
+    color: #991b1b;
+}
+
+.export-status-error svg {
+    color: var(--error-color);
+}
+
+.export-status svg {
+    width: 1.25rem;
+    height: 1.25rem;
+    flex-shrink: 0;
+    margin-top: 0.0625rem;
+}
+
+.export-status a {
+    color: inherit;
+    font-weight: 600;
+    text-decoration: underline;
 }
 
 /* ===================== Report ===================== */

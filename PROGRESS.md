@@ -1,6 +1,131 @@
 # Progress Summary
 
-**Last updated**: session 8 — `/app` access gate (waitlist-approved email required) plus a `LOCAL_DEV_MODE` bypass for local testing; admin panel and real auth untouched
+**Last updated**: session 9 — fixed a real multi-lease-PDF data-bleed bug, then added Google Sheets export (service account, not yet configured — see below)
+
+---
+
+## Session 9: Multi-lease PDF fix + Google Sheets export
+
+### Part 1: Multi-lease PDFs now rejected, not silently merged
+
+Before building any export, verified (per explicit instruction, not
+assumed) whether a PDF containing more than one lease was handled
+correctly. **It was not.** Concatenating two real fixture PDFs and
+running the actual extraction pipeline against the result produced a
+single record mixing both leases: tenant from lease #2, rent and dates
+from lease #1. Also found a real example already sitting in this
+project's dev database from before this fix existed — a
+`Sample_500_Page_Lease_Portfolio.pdf` upload persisted as ONE lease
+with a $262,131.87 monthly rent and no end date found.
+
+**Fixed**: `FieldExtractor.detect_multiple_leases()` (in
+`field_extractor.py`) detects when a document defines more than one
+distinct tenant or landlord — strong, low-false-positive evidence of
+multiple concatenated leases, reusing the same party-name patterns
+`extract_fields()` already uses rather than new detection logic. Wired
+into the shared upload pipeline (`_extract_fields_from_file_storage` in
+`api.py`), so `/extract`, `POST /leases`, `POST /leases/batch`
+(per-file, without failing the rest of the batch), and amendment
+uploads all now reject a multi-lease PDF with a clear 400 explaining
+what's wrong and telling the uploader to split the file. Does **not**
+attempt automatic per-lease splitting — that's a substantially larger,
+separate feature; refusing and flagging clearly was the deliberately
+smaller, safer scope, consistent with this project's "flag clearly,
+never guess silently" standard.
+
+Two false positives found and fixed before shipping (both were the
+same real party matched twice by different regex patterns, not two
+different parties) — see DECISIONS.md for the full detail. Verified
+against all 10 existing single-lease fixtures individually (zero false
+positives after the fix) and 4 different real multi-file merges.
+
+**Action for you**: this project's dev database had 2 pre-existing
+`Sample_500_Page_Lease_Portfolio.pdf` records with the bleed described
+above. Running this session's full test suite wipes the dev database's
+`leases` table as a normal, documented side effect (every live test in
+this suite has always done this — see e.g. `test_live_portfolio_api.py`'s
+own docstring), so those two records are already gone. If you still
+have the original 500-page PDF, it will now be correctly rejected on
+re-upload with a clear message — you'd need to split it into individual
+lease files first.
+
+### Part 2: Google Sheets export
+
+New "Export to Google Sheets" button (Portfolio Report view), plus a
+"Download CSV" button that — turns out — didn't exist anywhere in the
+UI before this session either (the backend endpoint was already there,
+just never wired to a button).
+
+- **Backend** (`backend/app/sheets_export.py`, new): uses a Google
+  service account (not OAuth login — this is a backend export action,
+  not a per-user sign-in flow). Every export creates a **brand-new
+  sheet** named "Lease Portfolio Export - [date]" (confirmed this
+  behavior with you directly rather than assuming) and shares it
+  "anyone with the link can view" so the returned link always opens —
+  see DECISIONS.md for the privacy tradeoff that implies (same as the
+  existing CSV/report exports, not a new one).
+- **New endpoint**: `POST /portfolio/export/google-sheets`.
+- **Columns** (one row per lease): Tenant Name, Landlord Name, Property
+  Address, Monthly Rent, Annual Rent, Rent per Square Foot, Security
+  Deposit, Rent Escalation, Lease Start/End Date, Renewal Options,
+  Default/Cure Period, Permitted Use, Exclusivity Clause, Insurance
+  Requirements, CAM Charges, Square Footage. Annual Rent and Rent/SqFt
+  are computed via `app.normalize`, same as every other aggregate in
+  this project. A field that wasn't found is a **blank cell**, never
+  the text "Not Found".
+- **Frontend**: both buttons live in a new "Export Portfolio Data"
+  panel on the Report view. A failed export shows a clear, specific
+  error message in place (never a silent failure, never crashes
+  anything else); a successful one shows a clickable link that opens
+  the new sheet in a new tab.
+
+### What you need to do to finish setup
+
+Nothing works yet — **no Google credentials are configured**, and none
+were invented or guessed. Exact steps (also in
+`backend/.env.example`, which has the full walkthrough inline):
+
+1. Go to console.cloud.google.com, create or pick a project.
+2. Enable **both** the Google Sheets API and the Google Drive API
+   (Drive API is what makes the created sheet's link actually open —
+   Sheets API alone can't set sharing).
+3. Create a Service Account, generate a JSON key for it.
+4. Save that key file at `backend/credentials/google-service-account.json`
+   (that whole directory's `.json` files are gitignored — see
+   `backend/credentials/README.md`).
+5. Set `GOOGLE_APPLICATION_CREDENTIALS=backend/credentials/google-service-account.json`
+   in `backend/.env`.
+
+Nothing needs to be individually shared with the service account for
+this specific feature, since a new sheet is created fresh each time
+(that step *would* matter if this were updating one persistent sheet
+instead — it isn't, by your choice).
+
+### Verified this session (honestly — what was and wasn't tested)
+- **21/21 backend test files pass**, including everything from every
+  prior session — re-run after each change, not just once at the end.
+- Multi-lease detection: 7 unit tests (real PDFs merged at runtime via
+  PyPDF2) + 12 live-API checks against the running server.
+- Sheets export: 15 tests — every credential-failure path exercised for
+  real (no credentials set, file missing, file invalid), the full
+  happy path verified with the Google API client mocked out (asserting
+  on the actual header/row data and sharing-permission call sent, not
+  just "no exception"), and the API route's activity-logging behavior
+  (logs only on success, never on failure).
+- Live, with no credentials configured (the real current state of this
+  environment): confirmed via `curl` that `POST /portfolio/export/
+  google-sheets` returns a clean 502 with an actionable message, not a
+  crash or a 500.
+- Full frontend flow via jsdom against the live app: navigated to the
+  Report view, confirmed the CSV button now has a working link
+  (previously wired to nothing), clicked "Export to Google Sheets" and
+  confirmed the clear in-UI error state renders correctly and the rest
+  of the app (navigating back to the dashboard) still works afterward.
+  Also verified the success-state UI (clickable link, opens in a new
+  tab) with a mocked successful backend response, since no real
+  credentials exist to test an actual Google API call end-to-end —
+  that step is honestly untested against the real Google API and is on
+  you once credentials are in place.
 
 ---
 

@@ -36,3 +36,8 @@ tests/sample_lease.pdf
 # Real secrets (Gmail App Password, etc) — see .env.example for the
 # variable names this project expects. Never commit the real file.
 .env
+
+# Google service account key (Sheets/Drive API export) — a real key
+# file here would grant whoever has it write access to Google Sheets as
+# this app. See .env.example for the exact env var / expected path.
+credentials/*.json

@@ -134,6 +134,10 @@ const Api = {
         return `${API_BASE_URL}/portfolio/report`;
     },
 
+    exportToGoogleSheets() {
+        return apiRequest('/portfolio/export/google-sheets', { method: 'POST' });
+    },
+
     async portfolioReportHtml() {
         const response = await apiRequest('/portfolio/report');
         return response.text();

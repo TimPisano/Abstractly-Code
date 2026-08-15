@@ -8,6 +8,9 @@ const ReportView = {
     lastHtml: null,
 
     async load() {
+        document.getElementById('exportCsvBtn').href = Api.rentRollCsvUrl();
+        document.getElementById('exportStatus').innerHTML = '';
+
         const frame = document.getElementById('reportFrame');
         frame.srcdoc = '<p style="font-family: sans-serif; padding: 2rem; color: #6b7280;">Loading report...</p>';
         try {
@@ -15,6 +18,34 @@ const ReportView = {
             frame.srcdoc = this.lastHtml;
         } catch (err) {
             frame.srcdoc = `<p style="font-family: sans-serif; padding: 2rem; color: #b3261e;">Failed to load report: ${escapeHtml(err.message)}</p>`;
+        }
+    },
+
+    async exportToGoogleSheets() {
+        const btn = document.getElementById('exportSheetsBtn');
+        const status = document.getElementById('exportStatus');
+        btn.disabled = true;
+        btn.textContent = 'Exporting...';
+        status.innerHTML = '';
+
+        try {
+            const result = await Api.exportToGoogleSheets();
+            status.innerHTML = `
+                <div class="export-status export-status-success">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    <span>Exported to Google Sheets. <a href="${escapeHtml(result.url)}" target="_blank" rel="noopener noreferrer">Open the sheet &rarr;</a></span>
+                </div>
+            `;
+        } catch (err) {
+            status.innerHTML = `
+                <div class="export-status export-status-error">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"/></svg>
+                    <span>${escapeHtml(err.message)}</span>
+                </div>
+            `;
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Export to Google Sheets';
         }
     },
 
@@ -48,6 +79,7 @@ registerView('report', ReportView);
 function _initReportViewBindings() {
     document.getElementById('printReportBtn').addEventListener('click', () => ReportView.print());
     document.getElementById('downloadReportBtn').addEventListener('click', () => ReportView.download());
+    document.getElementById('exportSheetsBtn').addEventListener('click', () => ReportView.exportToGoogleSheets());
 }
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', _initReportViewBindings);
