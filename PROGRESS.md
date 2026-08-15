@@ -1,6 +1,124 @@
 # Progress Summary
 
-**Last updated**: session 10 — multi-lease PDFs are now correctly split into individual leases (not rejected, not merged), plus a full lease-library rebuild on top: naming, rename, search, tags
+**Last updated**: session 11 — a 4-part polish/reliability pass: verified organization end-to-end (and fixed a real date-sort bug), verified extraction accuracy holds at small/medium/large PDF scale, added Excel/Google Sheets export to both the detail and list views (and fixed a real field-coverage gap in the Excel exporter), and unified the app's color palette with the landing page's premium redesign
+
+---
+
+## Session 11: Organization/accuracy verification + Excel export + one shared palette
+
+**Honest status up front**: all four parts are built, committed
+separately (4 commits: one per part), and verified against the real
+running app — not just unit tests. Nothing was reported as done
+without being tested first. Two real bugs were found and fixed along
+the way (a frontend date-sort bug, and a backend Excel/CSV export
+missing 4 of 15 fields); a third apparent bug (60-lease PDF under-
+splitting) was root-caused to throwaway test-generator tooling, not
+the app, after direct inspection of raw page content. The one thing
+genuinely **not** verified end to end is a real Google Sheets export
+actually creating a spreadsheet — this environment has no
+`GOOGLE_APPLICATION_CREDENTIALS` configured (same open item as the
+session that first built Sheets export), and per explicit standing
+instruction this was never worked around by inventing credentials.
+Everything else below was tested, not assumed.
+
+### Part 1: Verified lease organization end-to-end, found and fixed a real sort bug
+
+Uploaded a real 3-lease merged PDF through the live app (via a jsdom
+harness executing the actual `<script>` tags against the real running
+backend, not a mocked/simulated request) and confirmed: the split into
+3 separate, independently renameable records; the lease detail view
+rendering all 15 field cards with a source citation and confidence
+badge on every found field; rename persisting; the search/filter box
+narrowing correctly. While testing table sorting, found that the
+"Expires" column sorted lease end dates as plain strings, not
+chronologically — confirmed directly (3 real leases sorted as
+`['03/31/2035', 'December 31, 2035', 'March 31, 2030']`, alphabetical
+by first character). Fixed with a `parseLeaseDate()` helper in
+`app.js` that mirrors the server's own date-format handling, so
+client-side sorting can't disagree with how the server interprets the
+same strings. Re-verified the fix on the same live data.
+
+### Part 2: Verified extraction accuracy at small, medium, and large PDF scale
+
+The original ~500-page/250-lease PDF that first surfaced the multi-
+lease bleed issue remains unrecoverable (never persisted past its
+temp-upload lifecycle, confirmed again this session). In its place:
+the existing 10 real small fixtures (already covered by the live test
+suite), a new 35-page medium single-lease document (real terms on
+page 1, 34 pages of exhibit boilerplate after — confirmed the
+extraction engine isn't fooled into over-splitting a long document),
+and a new 60-lease large synthetic document, uploaded through the live
+running API. Result: 60/60 leases split into 60 separate records, 0
+field-value mismatches against ground truth, 0 citation/confidence
+anomalies across ~900 checks. Also re-confirmed live that the
+previously-fixed multi-lease field-bleed issue stays fixed. The one
+bug found here was in the test-fixture generator itself (a PDF-merge
+temp-file reuse bug caused silent page-content duplication) — root-
+caused by inspecting raw page text before assuming the app was at
+fault, then fixed in the (non-repo) generator script. No application
+code needed to change for this part.
+
+### Part 3: Excel and Google Sheets export added to both the detail and list views
+
+Found a real accuracy gap while cross-checking the two exporters
+against each other: the CSV/Excel rent-roll export only covered 11 of
+the 15 extracted fields, silently dropping Permitted Use, Exclusivity
+Clause, Insurance Requirements, and Default/Cure Period, even though
+the Google Sheets exporter already had all 15. Fixed — both now export
+every field (18 columns total with the derived/identifier columns).
+Added single-lease export routes (`GET /leases/<id>/export.xlsx`,
+`POST /leases/<id>/export/google-sheets`) that reuse the existing
+portfolio exporters with a one-lease list, and wired "Download Excel"
++ "Export to Google Sheets" controls onto the Lease Detail view and
+the Dashboard/Lease Library view. Verified end to end: uploaded a real
+lease via the live API, downloaded its `.xlsx`, and diffed all 18
+cells against that same lease's own API response — zero mismatches.
+Confirmed via the real rendered UI that both new Google Sheets buttons
+correctly show a clear "not configured" message (this environment has
+no Google credentials set) rather than failing silently or crashing.
+
+### Part 4: One shared color palette across landing, app, and admin
+
+The session 5 landing redesign introduced a premium deep-charcoal/
+brass/ivory palette, but only as a `landing.css` override —
+`design-system.css` itself still defaulted to the original indigo/
+violet, so `/app/` and `/admin/` never actually inherited it despite
+that file's own comment already claiming a shared palette was the
+goal. Opening the app showed exactly the default-SaaS indigo/violet
+look the landing redesign was built to avoid. Fixed by promoting the
+palette to the shared token file so every page gets it by default,
+found and fixed 8 additional hardcoded off-palette colors in
+`styles.css` that bypassed the token system entirely, and deepened the
+confidence/risk badge colors toward a more premium jewel-tone register
+while keeping the red/amber/green semantic mapping exactly as-is
+(breaking that convention would trade usability for looks). No
+Playwright/Puppeteer is available in this environment, but real
+screenshots were still taken and looked at — via Chrome's own
+`--headless --screenshot` flag and a small hand-rolled DevTools
+Protocol client — covering the dashboard, a lease detail view (both
+with confidence badges and with real risk flags), the comparison
+table, the timeline, and the admin page. All read as one cohesive
+product with good contrast; zero leftover indigo/violet found by
+grepping the fully-resolved stylesheet output.
+
+### What still needs your input
+
+- **Google Sheets export, the real success path**: both the portfolio-
+  wide and single-lease export routes correctly show a clear
+  "GOOGLE_APPLICATION_CREDENTIALS isn't set" error in this environment
+  (verified), but nobody has watched a real spreadsheet actually get
+  created and populated, since that requires your own Google Cloud
+  service account credentials. Setup steps are in
+  `backend/.env.example`. Once configured, worth a real click-through.
+- **The original 500-page/250-lease PDF**: still unrecoverable. If you
+  still have that file anywhere, re-uploading it would be the closest
+  thing to a real test of Part 2's large-scale claim — the 60-lease
+  synthetic document used instead is a scale proxy, not the same file.
+- **A visual sign-off**: the color redesign was verified with real
+  screenshots this session (a first for this project — no browser
+  automation tool had been available in prior sessions), but a human
+  eye on the actual running app is still worth 5 minutes before
+  calling the look "done."
 
 ---
 
