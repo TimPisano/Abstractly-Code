@@ -1,42 +1,26 @@
 /**
  * Landing page styles.
  *
- * design-system.css (loaded before this file) provides the shared
- * app-wide tokens/components used by /app/ and /admin/. This page
- * overrides several of those custom properties below — a heavier,
- * restrained luxury palette in place of the SaaS indigo/violet — but
- * that override only takes effect on documents that load THIS
- * stylesheet, i.e. the landing page alone. /app/ and /admin/ never
- * load landing.css, so they're unaffected. Shared component classes
- * (.btn-primary, etc.) are reused here rather than redefined, so they
- * automatically pick up this page's palette via the custom properties.
+ * design-system.css (loaded before this file) now defines this same
+ * deep-charcoal/brass/ivory palette as the SHARED default (promoted
+ * there in the "polish and reliability" pass that redesigned the app
+ * screens to match this page, rather than leaving the app on the old
+ * indigo/violet default and only this page opting out of it) — so the
+ * :root block below no longer needs to redeclare --primary-color,
+ * --text-dark, --background, etc. What's left here is genuinely
+ * landing-specific: --lux-line-dark (a hairline border color only this
+ * page uses), and a more dramatic shadow/radius treatment than the
+ * app's data-dense screens want (deeper shadows, sharper near-square
+ * corners) — both deliberate, not oversights.
  */
 
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@900&display=swap');
 
 :root {
-    /* ---- Luxury palette: deep charcoal/black, warm brass accent, ivory ---- */
-    --lux-black: #0a0a0b;
-    --lux-charcoal: #17171a;
-    --lux-charcoal-2: #202024;
-    --lux-ivory: #f6f3ec;
     --lux-line-dark: rgba(246, 243, 236, 0.12);
-    --lux-accent: #b68a4e;
-    --lux-accent-hover: #a37a41;
-    --lux-accent-tint: #f2e9d8;
 
-    /* Override the shared tokens so every reused component (.btn-primary,
-       .empty-state, etc.) renders in this page's palette instead of the
-       app's indigo/violet — no default SaaS blues/purples here. */
-    --primary-color: var(--lux-accent);
-    --primary-hover: var(--lux-accent-hover);
-    --primary-light: var(--lux-accent-tint);
-    --gradient-brand: var(--lux-accent);
-    --text-dark: #161512;
-    --text-medium: #58554d;
-    --text-light: #8b8779;
-    --border-color: #e6e0d2;
-    --background: var(--lux-ivory);
+    /* Deeper shadows and sharper corners than the shared app default —
+       intentional for this page's more editorial, less data-dense feel. */
     --shadow-sm: 0 1px 2px rgba(10, 10, 11, 0.05);
     --shadow-md: 0 8px 20px -6px rgba(10, 10, 11, 0.12);
     --shadow-lg: 0 20px 40px -12px rgba(10, 10, 11, 0.22);

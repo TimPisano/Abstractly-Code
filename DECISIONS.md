@@ -991,3 +991,92 @@ real; instructions are already in `backend/.env.example`.
 
 22/22 backend test files pass. All test leases created during this
 verification were deleted afterward; the dev DB is empty again.
+
+## Session 7 (continued): Part 4 — one shared palette, actually shared this time
+
+### The app screens were never actually on the landing page's palette — fixed at the token level
+
+Session 5 introduced the deep-charcoal/brass/ivory palette but only as
+a `landing.css` override — `design-system.css`'s own `:root` still
+defaulted to indigo/violet (`#4f46e5`/`#7c3aed`), and that file's
+comment already claimed "one cohesive palette, used everywhere" as the
+goal without actually achieving it, since `/app/` never loads
+`landing.css`. This session's request ("redesign the app screens to
+match the landing page's premium feel, not just the landing page")
+made that gap concrete: opening `/app/` showed the exact default-SaaS
+indigo/violet gradient the landing redesign was built to avoid.
+
+Fixed by promoting the palette values themselves — `--primary-color`,
+`--text-dark`, `--background`, the whole neutral scale, `--sidebar-bg`
+— into `design-system.css`'s shared `:root`, so `/app/`, `/admin/`,
+and the landing page all render one palette by default with zero
+per-page override needed. `landing.css`'s own `:root` block was
+trimmed to only what's genuinely still landing-specific: a hairline
+border color no other page uses, and a deliberately more dramatic
+shadow/sharper-radius treatment suited to an editorial marketing page
+rather than the app's data-dense screens. Confirmed via computed
+`getComputedStyle` values (not just reading the CSS) that `/app/` and
+`/` now resolve every checked token — primary, text, background,
+sidebar, success/error/warning, confidence, severity — to identical
+values.
+
+### Radius left unchanged — this was scoped as a color pass, not a shape pass
+
+Every app component's padding was tuned against the existing 6/10/14/
+20px radius scale. Changing radius alongside color would risk visual
+regressions with no screenshot-based way to catch them ahead of time
+in a pass this size. Kept the radius scale exactly as it was and
+scoped this session's changes to color only, per the literal ask
+("redesign the color palette").
+
+### Semantic colors deepened toward a jewel-tone register, not hue-shifted
+
+Confidence (high/medium/low) and risk severity (high/medium/low) keep
+their red/amber/green mapping exactly — that convention is load-
+bearing for scanning a portfolio at a glance, and breaking it would
+trade usability for looks, which the request explicitly ruled out.
+What changed is saturation and warmth: the old colors were flat,
+bright Tailwind-default green/amber/red (`#059669`/`#d97706`/`#dc2626`)
+on cool blue-gray tints; the new ones are deeper, more muted jewel
+tones (`#2f6b4f`/`#a6741f`/`#9a3b3b`) on warm ivory-tinted backgrounds,
+so a risk flag or confidence badge reads as part of the same premium
+product instead of a bolted-on default component-library color.
+
+### Six hardcoded off-palette colors found and fixed outside the token file
+
+Auditing `styles.css` directly (not just trusting that token changes
+would cascade everywhere) turned up 8 colors that bypassed the design
+tokens entirely and would have stayed indigo/violet/default-blue no
+matter what the tokens said: the sidebar's radial-gradient glow and
+three box-shadow glows (`rgba(124, 58, 237, ...)` / `rgba(79, 70, 229,
+...)`, replaced with the brass accent's rgb equivalent), a violet
+gradient stop on the empty-state icon (`#f3eeff`, simplified to a flat
+`var(--primary-light)` fill — also removes a diagonal-gradient look
+the request specifically flagged as templated), a default-blue chip
+hover (`#dbeafe`, replaced with a deepened brass tint), and two
+hardcoded dark green/red export-status text colors that were
+redundant with the (now-deepened) `--success-color`/`--error-color`
+tokens and simplified to reference them directly.
+
+### Verified with real screenshots, not just computed-style checks
+
+No Playwright/Puppeteer is available in this environment (a limitation
+disclosed in prior sessions too), but this machine does have Google
+Chrome installed, and its `--headless --screenshot` CLI flag needs
+neither — used directly for the landing page, and a small ~40-line
+Chrome DevTools Protocol client (Node's native `WebSocket` and
+`fetch`, no npm packages) to drive an already-launched headless Chrome
+instance for the app screens that need in-page interaction first
+(opening a lease detail view, running a multi-lease comparison) before
+the screenshot. Actually looked at, not just asserted: the dashboard
+(empty and with real uploaded leases, including risk-flag badges), a
+lease detail view with all confidence badges, a lease detail view with
+real MEDIUM-severity risk flags, the expiration timeline, the
+multi-lease comparison table (explicitly called out as a data-heavy
+screen needing careful contrast — confirmed the above-average/below-
+average benchmark badges are clearly legible), and the admin waitlist
+page. All read as one cohesive, premium product with good contrast
+throughout; no leftover indigo/violet found anywhere (confirmed by
+grepping the fully-resolved stylesheet text for the old hex/rgba
+values, in addition to eyeballing every screenshot). All test leases
+created for these screenshots were deleted afterward.

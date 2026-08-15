@@ -11,72 +11,102 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
 :root {
-    /* ---- Brand / accent (indigo -> violet) ---- */
-    --primary-color: #4f46e5;
-    --primary-hover: #4338ca;
-    --primary-light: #eef2ff;
-    --primary-dark: #3730a3;
-    --accent-color: #7c3aed;
-    --gradient-brand: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+    /* ---- Brand / accent: the same deep-charcoal-and-brass palette the
+       landing page introduced, now promoted to the shared default so
+       every screen (app, admin, landing) renders one cohesive palette
+       instead of the landing page being the only one that opted out of
+       a default indigo/violet SaaS look. One accent color, used flat
+       (never as a gradient) — a flat warm metal reads as considered and
+       editorial; a diagonal two-stop gradient is the templated-SaaS
+       tell this palette exists to avoid. ---- */
+    --lux-black: #0a0a0b;
+    --lux-charcoal: #17171a;
+    --lux-charcoal-2: #202024;
+    --lux-ivory: #f6f3ec;
+    --lux-accent: #b68a4e;
+    --lux-accent-hover: #a37a41;
+    --lux-accent-tint: #f2e9d8;
 
-    /* ---- Semantic colors ---- */
-    --success-color: #059669;
-    --success-light: #d1fae5;
-    --error-color: #dc2626;
-    --error-light: #fee2e2;
-    --warning-color: #d97706;
-    --warning-light: #fef3c7;
+    --primary-color: var(--lux-accent);
+    --primary-hover: var(--lux-accent-hover);
+    --primary-light: var(--lux-accent-tint);
+    --primary-dark: #8f6c3a;
+    --accent-color: var(--lux-accent);
+    --gradient-brand: var(--lux-accent);
 
-    /* ---- Neutral / slate scale ---- */
-    --slate-950: #0b0e14;
-    --slate-900: #11141c;
-    --slate-800: #1a1f2b;
-    --slate-700: #2a3141;
-    --slate-600: #414a5f;
-    --slate-500: #626c82;
-    --slate-400: #8992a6;
-    --slate-300: #b3bac9;
-    --slate-200: #dde1e9;
-    --slate-100: #eceff4;
-    --slate-50: #f9fafb;
+    /* ---- Semantic colors: kept clearly red/amber/green (that mapping
+       is load-bearing for scanning risk flags and confidence at a
+       glance — this redesign doesn't get to break it), but deepened
+       toward a jewel-tone register rather than flat/bright SaaS
+       success-green and error-red, and warmed to sit comfortably next
+       to the ivory background instead of the cooler blue-grays this
+       app used before. ---- */
+    --success-color: #2f6b4f;
+    --success-light: #e3ede6;
+    --error-color: #9a3b3b;
+    --error-light: #f3e3e1;
+    --warning-color: #a6741f;
+    --warning-light: #f3e7d2;
 
-    --text-dark: var(--slate-900);
-    --text-medium: var(--slate-500);
+    /* ---- Neutral scale: warm charcoal/ivory, replacing the cool slate
+       scale this app used before the landing redesign. Kept as a named
+       scale (not just single tokens) since a couple of components still
+       need in-between steps (borders, hover states). ---- */
+    --slate-950: #0a0a0b;
+    --slate-900: #17171a;
+    --slate-800: #202024;
+    --slate-700: #3a3833;
+    --slate-600: #58554d;
+    --slate-500: #6f6c62;
+    --slate-400: #8b8779;
+    --slate-300: #b3ada0;
+    --slate-200: #e6e0d2;
+    --slate-100: #efeade;
+    --slate-50: #f6f3ec;
+
+    --text-dark: #161512;
+    --text-medium: var(--slate-600);
     --text-light: var(--slate-400);
     --border-color: var(--slate-200);
-    --background: var(--slate-50);
+    --background: var(--lux-ivory);
     --white: #ffffff;
 
-    --sidebar-bg: var(--slate-950);
+    --sidebar-bg: var(--lux-charcoal);
     --sidebar-text: var(--slate-300);
-    --sidebar-text-active: #ffffff;
+    --sidebar-text-active: var(--lux-ivory);
 
-    /* ---- Confidence colors (extraction certainty) ---- */
-    --confidence-high: #059669;
-    --confidence-high-bg: #d1fae5;
-    --confidence-medium: #b45309;
-    --confidence-medium-bg: #fef3c7;
-    --confidence-low: #b91c1c;
-    --confidence-low-bg: #fee2e2;
-    --confidence-none-bg: #e5e7eb;
+    /* ---- Confidence colors (extraction certainty) — same values as
+       the semantic success/warning/error colors above; kept as their
+       own tokens (not aliased) since confidence and severity describe
+       different things and have needed to diverge before. ---- */
+    --confidence-high: #2f6b4f;
+    --confidence-high-bg: #e3ede6;
+    --confidence-medium: #a6741f;
+    --confidence-medium-bg: #f3e7d2;
+    --confidence-low: #9a3b3b;
+    --confidence-low-bg: #f3e3e1;
+    --confidence-none-bg: #eae6db;
 
     /* ---- Severity colors (lease risk) — kept distinct from confidence
        even though the high/medium/low mapping is similar, since they
        describe different things ---- */
-    --severity-high: #b91c1c;
-    --severity-high-bg: #fee2e2;
-    --severity-medium: #b45309;
-    --severity-medium-bg: #fef3c7;
-    --severity-low: #6b7280;
-    --severity-low-bg: #f3f4f6;
+    --severity-high: #9a3b3b;
+    --severity-high-bg: #f3e3e1;
+    --severity-medium: #a6741f;
+    --severity-medium-bg: #f3e7d2;
+    --severity-low: #6f6c62;
+    --severity-low-bg: #efeade;
 
     /* ---- Elevation: soft, layered shadows instead of harsh drop-shadows ---- */
-    --shadow-sm: 0 1px 2px rgba(17, 20, 28, 0.04), 0 1px 1px rgba(17, 20, 28, 0.03);
-    --shadow-md: 0 4px 8px -2px rgba(17, 20, 28, 0.06), 0 2px 4px -2px rgba(17, 20, 28, 0.05);
-    --shadow-lg: 0 12px 24px -6px rgba(17, 20, 28, 0.10), 0 4px 8px -4px rgba(17, 20, 28, 0.06);
-    --shadow-xl: 0 24px 48px -12px rgba(17, 20, 28, 0.18), 0 8px 16px -8px rgba(17, 20, 28, 0.08);
+    --shadow-sm: 0 1px 2px rgba(10, 10, 11, 0.05), 0 1px 1px rgba(10, 10, 11, 0.03);
+    --shadow-md: 0 4px 8px -2px rgba(10, 10, 11, 0.08), 0 2px 4px -2px rgba(10, 10, 11, 0.05);
+    --shadow-lg: 0 12px 24px -6px rgba(10, 10, 11, 0.12), 0 4px 8px -4px rgba(10, 10, 11, 0.06);
+    --shadow-xl: 0 24px 48px -12px rgba(10, 10, 11, 0.20), 0 8px 16px -8px rgba(10, 10, 11, 0.08);
 
-    /* ---- Radius scale ---- */
+    /* ---- Radius scale: left unchanged — this pass is a color
+       redesign, and every app component's padding/sizing was tuned
+       against these existing radii, so changing them risks visual
+       regressions this project has no way to screenshot-verify. ---- */
     --radius-sm: 6px;
     --radius-md: 10px;
     --radius-lg: 14px;
