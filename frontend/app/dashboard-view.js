@@ -347,7 +347,19 @@ const Dashboard = {
             else if (key === 'tenant') { av = a.tenant; bv = b.tenant; }
             else if (key === 'address') { av = a.address; bv = b.address; }
             else if (key === 'rent') { av = parseMoney(a.rent); bv = parseMoney(b.rent); }
-            else if (key === 'end_date') { av = a.endDate || ''; bv = b.endDate || ''; }
+            else if (key === 'end_date') {
+                // A missing/unparseable date sorts to the end
+                // regardless of direction -- "unknown" isn't
+                // meaningfully "before" or "after" anything, and
+                // shouldn't jump to the top just because the sort was
+                // reversed.
+                const at = parseLeaseDate(a.endDate);
+                const bt = parseLeaseDate(b.endDate);
+                if (at === null && bt === null) return 0;
+                if (at === null) return 1;
+                if (bt === null) return -1;
+                return (at - bt) * dir;
+            }
             else if (key === 'risk') { av = a.risks.length; bv = b.risks.length; }
             else { av = ''; bv = ''; }
 

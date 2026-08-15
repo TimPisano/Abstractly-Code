@@ -233,6 +233,58 @@ function timeAgo(isoString) {
     return formatDate(isoString);
 }
 
+const MONTHS_MAP = {
+    jan: 0, january: 0, feb: 1, february: 1, mar: 2, march: 2, apr: 3, april: 3,
+    may: 4, jun: 5, june: 5, jul: 6, july: 6, aug: 7, august: 7,
+    sep: 8, sept: 8, september: 8, oct: 9, october: 9, nov: 10, november: 10, dec: 11, december: 11,
+};
+
+/**
+ * Parses the date display strings the extraction engine can produce
+ * ("04/01/2025", "April 1, 2025", "1st day of January, 2026" — see
+ * field_extractor.py's DATE_REGEX / normalize.py's parse_date, which
+ * this deliberately mirrors so client-side sorting agrees with the
+ * server's own date handling) into a millisecond timestamp usable for
+ * comparison. Returns null for anything it can't parse, so a missing
+ * or unrecognized date sorts as "unknown" rather than crashing the
+ * sort or silently landing at an arbitrary position.
+ */
+function parseLeaseDate(value) {
+    if (!value) return null;
+    const str = value.trim();
+
+    let m = str.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/);
+    if (m) {
+        let [, month, day, year] = m;
+        month = parseInt(month, 10); day = parseInt(day, 10); year = parseInt(year, 10);
+        if (year < 100) year += year < 70 ? 2000 : 1900;
+        const d = new Date(year, month - 1, day);
+        return Number.isNaN(d.getTime()) ? null : d.getTime();
+    }
+
+    m = str.match(/^(\d{1,2})(?:st|nd|rd|th)?\s+day\s+of\s+([A-Za-z]+\.?),?\s+(\d{4})$/i);
+    if (m) {
+        const day = parseInt(m[1], 10);
+        const month = MONTHS_MAP[m[2].toLowerCase().replace(/\.$/, '')];
+        const year = parseInt(m[3], 10);
+        if (month === undefined) return null;
+        const d = new Date(year, month, day);
+        return Number.isNaN(d.getTime()) ? null : d.getTime();
+    }
+
+    m = str.match(/^([A-Za-z]+\.?)\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})$/i);
+    if (m) {
+        const month = MONTHS_MAP[m[1].toLowerCase().replace(/\.$/, '')];
+        const day = parseInt(m[2], 10);
+        const year = parseInt(m[3], 10);
+        if (month === undefined) return null;
+        const d = new Date(year, month, day);
+        return Number.isNaN(d.getTime()) ? null : d.getTime();
+    }
+
+    return null;
+}
+
 function fieldValue(lease, fieldKey) {
     const field = lease.extracted_fields && lease.extracted_fields[fieldKey];
     return field ? field.value : null;
