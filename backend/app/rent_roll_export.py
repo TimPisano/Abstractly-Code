@@ -165,9 +165,56 @@ def generate_rent_roll_excel(leases: List[Dict[str, Any]], today: Optional[date]
     # Keeps the header visible while scrolling a long portfolio.
     sheet.freeze_panes = "A2"
 
+    _add_portfolio_summary_sheet(workbook, leases)
+
     buffer = io.BytesIO()
     workbook.save(buffer)
     return buffer.getvalue()
+
+
+_SUMMARY_CURRENCY_COLUMNS = {"Monthly Rent", "Rent/SqFt"}
+_SUMMARY_INTEGER_COLUMNS = {"Square Footage"}
+
+
+def _add_portfolio_summary_sheet(workbook: Workbook, leases: List[Dict[str, Any]]) -> None:
+    """
+    Adds a "Portfolio Summary" tab with the rollup table and totals row,
+    kept as its own sheet rather than appended to "Rent Roll" so the
+    per-lease detail rows and the aggregate totals are never mixed in
+    the same table (a totals row sitting among per-lease rows is a
+    classic rent-roll mistake -- it silently gets swept into SUM/AVERAGE
+    ranges the next person adds).
+    """
+    header, rows, totals_row = portfolio_summary_table(leases)
+
+    sheet = workbook.create_sheet(title="Portfolio Summary")
+    header_font = Font(bold=True)
+    for index, column in enumerate(header, start=1):
+        cell = sheet.cell(row=1, column=index, value=column)
+        cell.font = header_font
+        cell.alignment = Alignment(vertical="center", wrap_text=True)
+        sheet.column_dimensions[get_column_letter(index)].width = _COLUMN_WIDTHS.get(column, 22)
+
+    row_index = 2
+    for row in rows:
+        for column_index, (column, value) in enumerate(zip(header, row), start=1):
+            cell = sheet.cell(row=row_index, column=column_index, value=value)
+            if column in _SUMMARY_CURRENCY_COLUMNS and value is not None:
+                cell.number_format = _CURRENCY_FORMAT
+            elif column in _SUMMARY_INTEGER_COLUMNS and value is not None:
+                cell.number_format = _INTEGER_FORMAT
+        row_index += 1
+
+    total_font = Font(bold=True)
+    for column_index, (column, value) in enumerate(zip(header, totals_row), start=1):
+        cell = sheet.cell(row=row_index, column=column_index, value=value)
+        cell.font = total_font
+        if column in _SUMMARY_CURRENCY_COLUMNS and value is not None:
+            cell.number_format = _CURRENCY_FORMAT
+        elif column in _SUMMARY_INTEGER_COLUMNS and value is not None:
+            cell.number_format = _INTEGER_FORMAT
+
+    sheet.freeze_panes = "A2"
 
 
 def _cell_text(lease: Dict[str, Any], column: str, today: date) -> str:
@@ -248,6 +295,75 @@ def _numeric_or_text(value: str, column: str):
         if parsed is not None:
             return parsed, _INTEGER_FORMAT
     return text, None
+
+
+SUMMARY_COLUMNS = [
+    "Unit/Tenant",
+    "Property Address",
+    "Square Footage",
+    "Monthly Rent",
+    "Rent/SqFt",
+    "Lease Start",
+    "Lease End",
+]
+
+
+def portfolio_summary_table(leases: List[Dict[str, Any]]):
+    """
+    The portfolio rent-roll rollup: one row per lease (tenant, address,
+    sq ft, rent, rent/sqft, start/end dates) plus a totals row (unit
+    count, total sq ft, total rent, and a sq-ft-weighted average
+    rent/sqft).
+
+    The weighted average is sum(rent)/sum(sqft) across leases that have
+    both values, not a plain mean of each lease's own rate -- a mean
+    would let a 500 sq ft unit's rate move the portfolio figure exactly
+    as much as a 50,000 sq ft unit's, which isn't what "portfolio
+    average rent/sqft" means to a property manager or lender reading a
+    rent roll.
+
+    Returns (header, rows, totals_row) as real numbers/strings so each
+    caller (Excel, Google Sheets) can apply its own native number
+    formatting. Both exports call this one function so the rollup can
+    never disagree between them.
+    """
+    rows = []
+    total_sqft = 0.0
+    total_rent = 0.0
+    weighted_rent = 0.0
+    weighted_sqft = 0.0
+
+    for lease in leases:
+        tenant = _field_value(lease, "tenant") or lease.get("display_name") or lease.get("filename") or "Unknown"
+        address = _field_value(lease, "property_address")
+        sqft = parse_square_footage(_field_value(lease, "square_footage"))
+        rent = parse_currency(_field_value(lease, "rent_amount"))
+        psf = rent_per_sqft(_field_value(lease, "rent_amount"), _field_value(lease, "square_footage"))
+        start = _field_value(lease, "lease_start_date")
+        end = _field_value(lease, "lease_end_date")
+
+        rows.append([tenant, address, sqft, rent, psf, start, end])
+
+        if sqft is not None:
+            total_sqft += sqft
+        if rent is not None:
+            total_rent += rent
+        if sqft is not None and rent is not None:
+            weighted_sqft += sqft
+            weighted_rent += rent
+
+    weighted_avg_psf = round(weighted_rent / weighted_sqft, 2) if weighted_sqft > 0 else None
+    unit_label = f"TOTAL ({len(leases)} unit{'' if len(leases) == 1 else 's'})"
+    totals_row = [
+        unit_label,
+        None,
+        total_sqft if total_sqft > 0 else None,
+        total_rent if total_rent > 0 else None,
+        weighted_avg_psf,
+        None,
+        None,
+    ]
+    return SUMMARY_COLUMNS, rows, totals_row
 
 
 def _months_until(end_date_value: Optional[str], today: date) -> Optional[int]:

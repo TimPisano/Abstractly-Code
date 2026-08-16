@@ -32,7 +32,7 @@
     // that depend on their globals (Api, AppState, registerView, etc).
     const APP_SCRIPTS = [
         'api.js', 'app.js', 'upload-view.js', 'dashboard-view.js',
-        'detail-view.js', 'timeline-view.js', 'comparison-view.js',
+        'detail-view.js', 'timeline-view.js', 'rentroll-view.js', 'comparison-view.js',
         'qa-view.js', 'report-view.js',
     ];
 

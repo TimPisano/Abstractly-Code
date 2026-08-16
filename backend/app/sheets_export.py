@@ -35,6 +35,7 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
 from .normalize import parse_currency, parse_square_footage, rent_per_sqft
+from .rent_roll_export import portfolio_summary_table
 
 logger = logging.getLogger(__name__)
 
@@ -126,6 +127,14 @@ def _lease_row(lease: Dict[str, Any]) -> List[Any]:
     return row
 
 
+def _normalize_row(row: List[Any]) -> List[Any]:
+    """None -> "" for a blank cell, same convention _lease_row already
+    uses -- the Sheets API expects JSON-serializable values, and a
+    blank string reads as "no data" the same way an empty xlsx cell
+    does, rather than the literal text "None"."""
+    return ["" if v is None else v for v in row]
+
+
 def _load_credentials():
     creds_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
     if not creds_path:
@@ -172,18 +181,37 @@ def export_to_google_sheets(leases: List[Dict[str, Any]]) -> Dict[str, str]:
 
         title = f"Lease Portfolio Export - {date.today().isoformat()}"
         spreadsheet = sheets_service.spreadsheets().create(
-            body={"properties": {"title": title}}
+            body={
+                "properties": {"title": title},
+                "sheets": [
+                    {"properties": {"title": "Lease Data"}},
+                    {"properties": {"title": "Portfolio Summary"}},
+                ],
+            }
         ).execute()
         spreadsheet_id = spreadsheet["spreadsheetId"]
 
         header = [label for label, _ in COLUMNS]
-        values = [header] + [_lease_row(lease) for lease in leases]
+        lease_values = [header] + [_lease_row(lease) for lease in leases]
 
-        sheets_service.spreadsheets().values().update(
+        # Portfolio Summary is its own tab, not appended below the
+        # per-lease rows -- same reasoning as the Excel export's
+        # separate sheet: a totals row living among per-lease rows
+        # silently gets swept into the next SUM/AVERAGE range someone
+        # adds. Both exports call the same portfolio_summary_table() so
+        # the totals can't disagree between Excel and Sheets.
+        summary_header, summary_rows, summary_totals = portfolio_summary_table(leases)
+        summary_values = [summary_header] + [_normalize_row(row) for row in summary_rows] + [_normalize_row(summary_totals)]
+
+        sheets_service.spreadsheets().values().batchUpdate(
             spreadsheetId=spreadsheet_id,
-            range="A1",
-            valueInputOption="RAW",
-            body={"values": values},
+            body={
+                "valueInputOption": "RAW",
+                "data": [
+                    {"range": "'Lease Data'!A1", "values": lease_values},
+                    {"range": "'Portfolio Summary'!A1", "values": summary_values},
+                ],
+            },
         ).execute()
 
         drive_service.permissions().create(

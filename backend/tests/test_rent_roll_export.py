@@ -23,7 +23,10 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 from openpyxl import load_workbook
 
-from app.rent_roll_export import COLUMNS, generate_rent_roll_csv, generate_rent_roll_excel
+from app.rent_roll_export import (
+    COLUMNS, SUMMARY_COLUMNS, generate_rent_roll_csv, generate_rent_roll_excel,
+    portfolio_summary_table,
+)
 
 
 # Fixed so the Months Until Expiration assertions don't rot as time passes.
@@ -310,6 +313,93 @@ def test_excel_empty_portfolio():
     print("✓ test_excel_empty_portfolio: PASS")
 
 
+def test_portfolio_summary_table_rows_and_totals():
+    header, rows, totals = portfolio_summary_table(make_leases())
+
+    assert header == SUMMARY_COLUMNS
+    assert len(rows) == 4
+
+    by_tenant = {row[0]: row for row in rows}
+    blue_sky = by_tenant["Blue Sky Coffee Roasters, Inc."]
+    assert blue_sky[2] == 2400.0   # Square Footage
+    assert blue_sky[3] == 6250.0   # Monthly Rent
+    assert round(blue_sky[4], 2) == 2.60  # Rent/SqFt
+    assert blue_sky[5] == "April 1, 2025"
+    assert blue_sky[6] == "March 31, 2028"
+
+    # Northgate Dental has no square footage -- its row's Sq Ft and
+    # Rent/SqFt must be None, not 0 or a guessed number, and it must
+    # not silently drop out of the totals for the field it DOES have.
+    northgate = by_tenant["Northgate Dental Group, P.C."]
+    assert northgate[2] is None
+    assert northgate[3] == 4100.0
+    assert northgate[4] is None
+
+    # Total sq ft: only the 3 leases that reported it (2400 + 1500 + 7000).
+    assert totals[2] == 10900.0, f"total sq ft: {totals[2]}"
+    # Total rent: all 4 leases (6250 + 4100 + 3000 + 9800).
+    assert totals[3] == 23150.0, f"total rent: {totals[3]}"
+    # Weighted avg rent/sqft: sum(rent)/sum(sqft) over the leases with
+    # BOTH values (Northgate is excluded from this one, unlike total rent
+    # above) = (6250+3000+9800) / (2400+1500+7000) = 19050/10900 = 1.75.
+    assert totals[4] == 1.75, f"weighted avg rent/sqft: {totals[4]}"
+    assert totals[0] == "TOTAL (4 units)"
+    assert totals[1] is None and totals[5] is None and totals[6] is None
+    print("✓ test_portfolio_summary_table_rows_and_totals: PASS")
+
+
+def test_portfolio_summary_table_weighted_avg_differs_from_plain_mean():
+    """
+    A plain mean of each lease's own rate would let a tiny unit's rate
+    move the portfolio figure as much as a huge one. Two leases -- a
+    500 sq ft unit at $10/sqft and a 10,000 sq ft unit at $2/sqft --
+    have a plain mean of $6.00 but a sq-ft-weighted average of
+    ($5,000 + $20,000) / 10,500 = $2.38, which is what a lender or
+    broker actually means by "portfolio average rent/sqft."
+    """
+    leases = [
+        _lease(1, "small_unit.pdf", rent_amount="$5,000.00", square_footage="500 sq ft"),
+        _lease(2, "big_unit.pdf", rent_amount="$20,000.00", square_footage="10,000 sq ft"),
+    ]
+    _, _, totals = portfolio_summary_table(leases)
+    plain_mean = (10.0 + 2.0) / 2
+    assert totals[4] != plain_mean
+    assert totals[4] == round(25000 / 10500, 2)
+    print("✓ test_portfolio_summary_table_weighted_avg_differs_from_plain_mean: PASS")
+
+
+def test_portfolio_summary_table_empty_portfolio():
+    header, rows, totals = portfolio_summary_table([])
+    assert header == SUMMARY_COLUMNS
+    assert rows == []
+    assert totals == ["TOTAL (0 units)", None, None, None, None, None, None]
+    print("✓ test_portfolio_summary_table_empty_portfolio: PASS")
+
+
+def test_excel_has_portfolio_summary_sheet_with_totals_row():
+    data = generate_rent_roll_excel(make_leases(), today=TODAY)
+    workbook = load_workbook(io.BytesIO(data))
+
+    assert "Portfolio Summary" in workbook.sheetnames
+    # The detailed per-lease sheet must still be the active/default one
+    # -- the rollup is an addition, not a replacement.
+    assert workbook.active.title == "Rent Roll"
+
+    summary = workbook["Portfolio Summary"]
+    assert [summary.cell(row=1, column=i).value for i in range(1, 8)] == SUMMARY_COLUMNS
+    assert summary.max_row == 6, "1 header + 4 lease rows + 1 totals row"
+
+    totals_row = [summary.cell(row=6, column=i).value for i in range(1, 8)]
+    assert totals_row[0] == "TOTAL (4 units)"
+    assert totals_row[2] == 10900.0
+    assert totals_row[3] == 23150.0
+    assert totals_row[4] == 1.75
+    # The totals row must be visually bold -- it's easy to miss a
+    # totals row that looks like just another data row in a spreadsheet.
+    assert summary.cell(row=6, column=1).font.bold is True
+    print("✓ test_excel_has_portfolio_summary_sheet_with_totals_row: PASS")
+
+
 if __name__ == "__main__":
     test_csv_headers_and_row_count()
     test_csv_cell_values()
@@ -322,4 +412,8 @@ if __name__ == "__main__":
     test_excel_missing_fields_are_blank_not_none_text()
     test_round_trip_integrity_full_row()
     test_excel_empty_portfolio()
+    test_portfolio_summary_table_rows_and_totals()
+    test_portfolio_summary_table_weighted_avg_differs_from_plain_mean()
+    test_portfolio_summary_table_empty_portfolio()
+    test_excel_has_portfolio_summary_sheet_with_totals_row()
     print("\nAll rent roll export tests passed.")

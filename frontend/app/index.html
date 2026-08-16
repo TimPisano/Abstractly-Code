@@ -99,6 +99,10 @@
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
                 Expirations
             </button>
+            <button class="nav-item" data-view="rentroll" type="button">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18M7 6h10a2 2 0 012 2v8a2 2 0 01-2 2H7a2 2 0 01-2-2V8a2 2 0 012-2z"/></svg>
+                Rent Roll
+            </button>
             <button class="nav-item" data-view="comparison" type="button">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17V9m0 8H5a2 2 0 01-2-2V9a2 2 0 012-2h4m0 10h6m-6 0V5a2 2 0 012-2h2a2 2 0 012 2v12m0 0h4a2 2 0 002-2V11a2 2 0 00-2-2h-4"/></svg>
                 Compare
@@ -342,6 +346,47 @@
                     </div>
                 </div>
                 <div id="timelineContent"></div>
+            </section>
+
+            <!-- RENT ROLL VIEW -->
+            <section class="view" id="view-rentroll">
+                <div class="view-header">
+                    <div>
+                        <h1>Portfolio Rent Roll</h1>
+                        <p class="view-subtitle">Every lease aggregated into one rollup table, with portfolio totals</p>
+                    </div>
+                    <div class="table-controls">
+                        <a class="btn-secondary" id="rentRollExportExcelBtn" href="#" download>Download Excel</a>
+                        <button class="btn-secondary" id="rentRollExportSheetsBtn" type="button">Export to Google Sheets</button>
+                    </div>
+                </div>
+                <p class="accuracy-note">Exports include this rollup as its own "Portfolio Summary" tab alongside the detailed per-lease data — never mixed into the same table as the individual lease rows.</p>
+                <div id="rentRollExportStatus"></div>
+                <div class="table-scroll">
+                    <table class="data-table" id="rentRollTable">
+                        <thead>
+                            <tr>
+                                <th>Unit / Tenant</th>
+                                <th>Property Address</th>
+                                <th>Square Footage</th>
+                                <th>Monthly Rent</th>
+                                <th>Rent / SqFt</th>
+                                <th>Lease Start</th>
+                                <th>Lease End</th>
+                            </tr>
+                        </thead>
+                        <tbody id="rentRollTableBody"></tbody>
+                        <tfoot id="rentRollTableFoot"></tfoot>
+                    </table>
+                </div>
+                <div class="empty-state" id="rentRollEmptyState" style="display:none;">
+                    <div class="empty-state-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 10h18M3 14h18M7 6h10a2 2 0 012 2v8a2 2 0 01-2 2H7a2 2 0 01-2-2V8a2 2 0 012-2z"/></svg>
+                    </div>
+                    <p class="empty-state-title">No leases uploaded yet</p>
+                    <p class="empty-state-hint">Once you've uploaded leases, they'll roll up here into one portfolio-wide table.</p>
+                    <button class="btn-primary" data-goto="upload" type="button">Upload your first lease</button>
+                </div>
             </section>
 
             <!-- COMPARISON VIEW -->

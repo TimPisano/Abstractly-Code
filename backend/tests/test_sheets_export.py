@@ -209,14 +209,26 @@ def test_happy_path_creates_sheet_and_returns_url():
             "url": "https://docs.google.com/spreadsheets/d/abc123XYZ/edit",
         }, result
 
-        # Confirm the data actually written matches what was requested: header + 2 lease rows.
-        update_call = mock_sheets_service.spreadsheets.return_value.values.return_value.update
-        assert update_call.called
-        written_values = update_call.call_args.kwargs["body"]["values"]
+        # Confirm the data actually written matches what was requested: header + 2 lease
+        # rows on the "Lease Data" tab, plus a "Portfolio Summary" tab with its own
+        # header + 2 rows + a totals row.
+        batch_call = mock_sheets_service.spreadsheets.return_value.values.return_value.batchUpdate
+        assert batch_call.called
+        data = batch_call.call_args.kwargs["body"]["data"]
+        assert len(data) == 2
+
+        lease_tab = next(d for d in data if d["range"] == "'Lease Data'!A1")
+        written_values = lease_tab["values"]
         assert len(written_values) == 3, "1 header row + 2 lease rows"
         assert written_values[0][0] == "Tenant Name"
         assert written_values[1][0] == "Blue Sky Coffee Roasters, Inc."
         assert written_values[2][0] == "Alex Chen"
+
+        summary_tab = next(d for d in data if d["range"] == "'Portfolio Summary'!A1")
+        summary_values = summary_tab["values"]
+        assert len(summary_values) == 4, "1 header row + 2 lease rows + 1 totals row"
+        assert summary_values[0][0] == "Unit/Tenant"
+        assert summary_values[3][0] == "TOTAL (2 units)"
 
         # Confirm sharing was actually requested (this is what makes the link usable).
         permissions_call = mock_drive_service.permissions.return_value.create

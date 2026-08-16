@@ -708,6 +708,20 @@
     font-size: 0.8125rem;
 }
 
+/* Rent Roll table headers aren't sortable, unlike the Dashboard's --
+   don't inherit the pointer cursor .data-table th sets for that. */
+#rentRollTable th {
+    cursor: default;
+}
+
+.rent-roll-totals-row td {
+    font-weight: 700;
+    color: var(--text-dark);
+    border-top: 2px solid var(--border-color);
+    border-bottom: none;
+    background-color: var(--primary-light);
+}
+
 /* ---- Lease Library name cell: click-to-rename + mini tag chips ---- */
 
 .lease-name-cell {
