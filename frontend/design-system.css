@@ -8,7 +8,15 @@
  * there is exactly one palette to change if it ever needs to shift.
  */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+/* Inter is loaded via a real <link rel="stylesheet"> (with
+   preconnect) in each page's <head> — see index.html — not a CSS
+   @import here. @import forces the browser to fetch and parse this
+   stylesheet first before it even discovers the font request, which
+   measurably delays when Inter becomes available and risks a visible
+   reflow on large text (the landing hero's h1 in particular) once the
+   fallback font swaps to Inter. A <link> in the HTML source is
+   discovered by the preload scanner immediately, in parallel with
+   everything else. */
 
 :root {
     /* ---- Brand / accent: the same deep-charcoal-and-brass palette the

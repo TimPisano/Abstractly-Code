@@ -14,7 +14,11 @@
  * corners) — both deliberate, not oversights.
  */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@900&display=swap');
+/* Weight 900 is requested together with the rest of Inter's weights
+   via the <link rel="stylesheet"> in index.html's <head>, not a
+   separate @import here — see the note in design-system.css. Two
+   separate font requests would mean two round trips to Google Fonts
+   before this page's headline can render in its real weight. */
 
 :root {
     --lux-line-dark: rgba(246, 243, 236, 0.12);
@@ -403,6 +407,52 @@ html {
     line-height: 1.55;
 }
 
+/* ===================== How It Works (3-step flow) ===================== */
+
+.how-it-works {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 6rem 1.5rem 0;
+}
+
+.steps-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 2.5rem;
+}
+
+.step-card {
+    text-align: center;
+    padding: 0 1rem;
+}
+
+.step-number {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.75rem;
+    height: 2.75rem;
+    margin: 0 auto 1.25rem;
+    border-radius: var(--radius-full);
+    background: var(--lux-accent);
+    color: var(--white);
+    font-size: 1.125rem;
+    font-weight: 800;
+}
+
+.step-card h3 {
+    font-size: 1.0625rem;
+    font-weight: 700;
+    color: var(--text-dark);
+    margin-bottom: 0.625rem;
+}
+
+.step-card p {
+    font-size: 0.9375rem;
+    color: var(--text-medium);
+    line-height: 1.55;
+}
+
 /* ===================== Dark statement section ===================== */
 
 .statement {
@@ -497,6 +547,13 @@ html {
 @media (max-width: 860px) {
     .badge-grid {
         grid-template-columns: repeat(2, 1fr);
+    }
+
+    .steps-grid {
+        grid-template-columns: 1fr;
+        gap: 2.5rem;
+        max-width: 420px;
+        margin: 0 auto;
     }
 
     .waitlist-form {

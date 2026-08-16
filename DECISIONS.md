@@ -1330,3 +1330,86 @@ with no CSS changes needed.
 No code changes were required for Phase 5 — the audit confirmed the
 Phase 2-4 work was already consistent with the established design
 system rather than finding drift to fix.
+
+## Session 9: Trust-and-polish pass, Part 1 — first-impression trust signals
+
+### Google Fonts moved from CSS @import to a real <link>, with preconnect
+
+Found a genuine "could cause a visible reflow on the hero" issue while
+auditing for load-time layout shift: Inter was loaded via `@import
+url(...)` split across two files (`design-system.css` for weights
+400-800, `landing.css` for weight 900 alone), and for `/app/` and
+`/admin/`, that import was itself one more hop deep (`styles.css`
+`@import`s `design-system.css`, which `@import`s the font). `@import`
+inside a stylesheet is only discovered once that stylesheet has
+already been fetched and parsed — the browser's HTML preload scanner
+can't see it during initial page parse the way it can see a `<link>`
+tag — so the font request starts later than it needs to, and two
+separate font requests (one per weight range) doubled that delay
+further. A large `h1` rendering first in a fallback system font and
+then re-flowing once Inter 900 finally arrives is exactly the kind of
+shift the request called out.
+
+Fixed by removing both `@import`s and adding `<link rel="preconnect">`
+(googleapis.com + gstatic.com) plus a single combined `<link
+rel="stylesheet">` requesting all six weights (400-900) in one request,
+directly in the `<head>` of all three HTML entry points (landing,
+`/app/`, `/admin/waitlist/`) — discovered immediately by the preload
+scanner, in parallel with everything else, and shared across pages via
+one cache entry instead of three separate ones.
+
+### Added a 3-step "How It Works" section (didn't exist before)
+
+Nothing on the landing page walked a first-time visitor through
+upload → extract → review/export before this — the page went straight
+from the hero to a 6-item capabilities grid, which explains *what* the
+product does but not *how a session actually goes*. Added a 3-card
+"From PDF To Portfolio Clarity In Three Steps" section between the
+hero and capabilities (Upload → We extract every term, with confidence
++ citations named explicitly → Review, compare, export), reusing the
+same `.section-heading` pattern as capabilities so it doesn't read as
+a bolted-on afterthought, but visually distinct (filled numbered
+circles vs. capabilities' outlined icon circles) so it doesn't get
+confused with the feature list right below it.
+
+### Removed the footer's placeholder links instead of leaving them dead
+
+The footer had `<a href="#">Privacy</a>`, `Terms`, `About` — already
+self-documented in a comment as "placeholders (dead links) until those
+pages exist." Per this pass's explicit instruction to remove sections
+with nothing honest to put there rather than leave a placeholder: since
+no real Privacy/Terms/About pages exist yet, removed the links
+entirely rather than inventing fake destinations or leaving `#`
+anchors a visitor could click and get nowhere. The real contact line
+(email + phone, already genuine) and copyright stay. Worth revisiting
+once real policy pages exist.
+
+### No fake stats or testimonials found — nothing to remove there
+
+Read the full landing page looking specifically for fabricated social
+proof (customer counts, logos, quotes) since that was named explicitly
+in the request. Found none — the existing copy already only describes
+real product capabilities, not invented traction numbers. Confirmed
+via a full-page grep for "lorem", "TODO", "TBD", "coming soon", and
+similar markers too — none found anywhere in the landing page, gate,
+or admin view's HTML/JS.
+
+### Verified zero console errors and zero visible broken links, live
+
+Wrote a jsdom harness with a custom `VirtualConsole` capturing
+`jsdomError`/`console.error`/`window error`/`unhandledrejection`
+across five real scenarios: landing page load, landing waitlist
+submission, gate sign-in with an unknown email, the new request-access
+-> pending flow, and the admin waitlist page. Zero errors in all five.
+A literal-DOM-query pass also flagged 3 `href="#"` anchors on the gate
+page — traced each one to its ancestor chain and confirmed all three
+sit inside `display:none` containers (the hidden `.app-shell` and its
+not-yet-loaded dashboard/detail/report views) at every level, so
+they're not actually visible or clickable while a visitor is on the
+gate; this is the existing, deliberate "real href gets set by that
+view's own `load()`, once it loads" pattern from the export-button
+work, not a bug. All test waitlist signups created during this
+verification were deleted from the dev DB afterward.
+
+22/22 backend test files pass (this part touched only frontend
+HTML/CSS, no backend changes).
