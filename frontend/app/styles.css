@@ -1034,6 +1034,42 @@
     border-bottom: none;
 }
 
+/* ---- Per-file upload status: each row moves through pending ->
+   processing -> done/error independently, as its own upload request
+   resolves, not all at once when the whole batch finishes. ---- */
+
+.upload-progress-status-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.25rem;
+    height: 1.25rem;
+    flex-shrink: 0;
+}
+
+.upload-progress-status-icon svg {
+    width: 1.125rem;
+    height: 1.125rem;
+}
+
+.upload-progress-item.done .upload-progress-status-icon { color: var(--success-color); }
+.upload-progress-item.error .upload-progress-status-icon { color: var(--error-color); }
+
+.upload-progress-name {
+    font-weight: 600;
+    flex-shrink: 0;
+}
+
+.upload-progress-status-text {
+    color: var(--text-medium);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.upload-progress-item.pending .upload-progress-status-text { color: var(--text-light); }
+.upload-progress-item.error .upload-progress-status-text { color: var(--error-color); }
+
 .upload-result-icon {
     font-weight: 700;
     width: 1.25rem;

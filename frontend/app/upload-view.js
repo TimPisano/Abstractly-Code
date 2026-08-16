@@ -1,16 +1,25 @@
 /**
  * Upload View: drag-and-drop or click-to-browse upload of one or more
- * PDF leases. Single file uses POST /leases; multiple files use
- * POST /leases/batch, which processes each independently so one
- * corrupted file in a batch doesn't fail the rest.
+ * PDF leases.
  *
- * One uploaded FILE can now produce more than one persisted LEASE — if
- * the backend detects the file bundles several distinct leases, it
+ * Files are uploaded one at a time (POST /leases per file, sequential,
+ * not the /leases/batch endpoint) specifically so each file's own
+ * progress row can flip from "Processing..." to done/error as soon as
+ * THAT file's extraction finishes, instead of every row sitting on a
+ * spinner until the slowest file in the batch is done too. A large
+ * multi-page PDF next to several small ones would otherwise make the
+ * small ones look stuck even though they finished in a second — this
+ * way the UI reflects what's actually happening, file by file, and
+ * never blocks on the whole set before showing anything. One file
+ * failing (corrupted, wrong type, extraction error) doesn't stop the
+ * rest from continuing to upload, same guarantee /leases/batch made.
+ *
+ * One uploaded FILE can still produce more than one persisted LEASE —
+ * if the backend detects the file bundles several distinct leases, it
  * splits them into separate, individually-accurate records instead of
- * one merged one (see DECISIONS.md). Both /leases and /leases/batch
- * responses reflect that: a successful file result always carries a
- * `leases` array (length 1 for an ordinary single-lease file), not a
- * single `lease` object.
+ * one merged one (see DECISIONS.md). A successful file result always
+ * carries a `leases` array (length 1 for an ordinary single-lease
+ * file), not a single `lease` object.
  */
 
 const Upload = {
@@ -44,35 +53,57 @@ const Upload = {
         document.getElementById('uploadResults').style.display = 'none';
         document.getElementById('uploadProgress').style.display = 'block';
         const progressList = document.getElementById('uploadProgressList');
-        progressList.innerHTML = validFiles.map(f => `
-            <div class="upload-progress-item" data-file="${escapeHtml(f.name)}">
-                <span class="spinner-small"></span> ${escapeHtml(f.name)}
+        progressList.innerHTML = validFiles.map((f, i) => `
+            <div class="upload-progress-item pending" data-file="${escapeHtml(f.name)}" id="uploadProgressItem-${i}">
+                <span class="upload-progress-status-icon"><span class="spinner-small"></span></span>
+                <span class="upload-progress-name">${escapeHtml(f.name)}</span>
+                <span class="upload-progress-status-text">Waiting&hellip;</span>
             </div>
         `).join('');
 
-        try {
-            let fileResults;
-            if (validFiles.length === 1) {
-                try {
-                    const response = await Api.uploadLease(validFiles[0]);
-                    response.leases.forEach(lease => recordStats(validFiles[0].name, lease.extracted_fields));
-                    fileResults = [{ filename: validFiles[0].name, success: true, leases: response.leases, split_count: response.split_count }];
-                } catch (err) {
-                    fileResults = [{ filename: validFiles[0].name, success: false, error: err.message }];
-                }
-            } else {
-                const batchResult = await Api.uploadLeasesBatch(validFiles);
-                fileResults = batchResult.results;
-                fileResults.forEach(r => {
-                    if (r.success) r.leases.forEach(lease => recordStats(r.filename, lease.extracted_fields));
-                });
-            }
+        const fileResults = [];
+        for (let i = 0; i < validFiles.length; i++) {
+            const file = validFiles[i];
+            const itemEl = document.getElementById(`uploadProgressItem-${i}`);
+            this.setProgressItemProcessing(itemEl);
 
-            document.getElementById('uploadProgress').style.display = 'none';
-            this.showResults(fileResults);
-        } catch (err) {
-            document.getElementById('uploadProgress').style.display = 'none';
-            showError(`Upload failed: ${err.message}`);
+            let result;
+            try {
+                const response = await Api.uploadLease(file);
+                response.leases.forEach(lease => recordStats(file.name, lease.extracted_fields));
+                result = { filename: file.name, success: true, leases: response.leases, split_count: response.split_count };
+            } catch (err) {
+                result = { filename: file.name, success: false, error: err.message };
+            }
+            fileResults.push(result);
+            this.setProgressItemDone(itemEl, result);
+        }
+
+        this.showResults(fileResults);
+    },
+
+    setProgressItemProcessing(itemEl) {
+        if (!itemEl) return;
+        itemEl.classList.remove('pending');
+        itemEl.classList.add('processing');
+        itemEl.querySelector('.upload-progress-status-text').textContent = 'Processing (running OCR / extracting fields)…';
+    },
+
+    setProgressItemDone(itemEl, result) {
+        if (!itemEl) return;
+        itemEl.classList.remove('pending', 'processing');
+        const iconEl = itemEl.querySelector('.upload-progress-status-icon');
+        const textEl = itemEl.querySelector('.upload-progress-status-text');
+
+        if (result.success) {
+            itemEl.classList.add('done');
+            iconEl.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4.5 12.75l6 6 9-13.5"/></svg>';
+            const count = result.split_count || result.leases.length;
+            textEl.textContent = count > 1 ? `Done — split into ${count} leases` : 'Done';
+        } else {
+            itemEl.classList.add('error');
+            iconEl.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/></svg>';
+            textEl.textContent = result.error;
         }
     },
 

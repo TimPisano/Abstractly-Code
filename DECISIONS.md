@@ -1231,3 +1231,61 @@ populated dashboard to confirm the new filter row and the selection
 summary panel render correctly, consistent with the existing tile
 style. 22/22 backend test files pass; all test leases created for
 verification were deleted afterward.
+
+## Session 8 (continued), Phase 4 — genuinely per-file upload status
+
+### Found the real gap: every progress row updated together, at the end, not live
+
+Before this phase, a multi-file upload showed a spinner next to every
+selected file immediately, then flipped ALL of them to done/error
+simultaneously — only once the entire batch finished, because the
+frontend sent one `POST /leases/batch` request and waited for the
+single combined response. A 3-file batch with one large, slow file and
+two small, fast ones would leave the two fast files' rows sitting on a
+spinner for as long as the slow one took, giving no true indication
+that they'd actually already finished. This matched the letter of
+"show extraction status per file" (each file did have its own row) but
+not the substance of it (the status shown wasn't actually live).
+
+### Switched to sequential per-file requests, not a new backend endpoint
+
+Rather than building server-sent events or WebSockets for real push
+updates — a large jump in complexity for what's fundamentally "update
+a DOM element as each of N sequential awaits resolves" — `upload-
+view.js` now calls `POST /leases` once per file in a `for` loop with
+`await`, updating that file's own row immediately when its request
+resolves, before moving to the next file. This is still sequential
+over the network (file 2 doesn't start until file 1's response comes
+back), but it does not block the browser's UI thread — `await` yields
+control back to the event loop between requests — and critically, each
+row's displayed status now reflects reality the moment it's true,
+instead of waiting for the slowest file in the set.
+- **Reason for sequential over parallel**: predictable load on the
+  extraction pipeline (each upload can trigger real OCR work) and
+  simpler, easier-to-reason-about error isolation, matching what
+  `/leases/batch`'s server-side `for` loop already did — this is the
+  same processing order, just with the status now surfaced after each
+  step instead of all at once at the end. The existing `/leases/batch`
+  endpoint and its tests are untouched and still valid; the frontend
+  just no longer calls it for the drag-and-drop flow, since real
+  per-file live status isn't achievable through one combined response
+  no matter how the request is shaped.
+
+### Verified the staggering is real, not just structurally plausible
+
+Uploaded 3 real fixtures (one of them the 35-page medium document from
+the earlier accuracy-verification phase, deliberately included because
+it takes measurably longer than the small ones) and polled the DOM
+every 15ms during the upload. The captured transitions show file 1
+reaching "processing" at t=15ms while files 2 and 3 are still
+"pending," file 1 finishing and file 2 starting at t=45ms while file 3
+is still waiting, and file 3 finally starting only once file 2 is
+done — direct proof the rows update independently and in true upload
+order, not cosmetically. Separately verified the error path with a
+genuinely corrupted PDF mixed into a batch of valid ones: the bad file
+gets its own clear error row and detail message, the two valid files
+still complete and get created normally, and the summary count
+correctly reads 2 succeeded / 1 failed. Screenshotted all four visual
+states (pending / processing / done / error) together. 22/22 backend
+test files pass (backend was unmodified — this phase was frontend-
+only); all leases created during verification were deleted afterward.
