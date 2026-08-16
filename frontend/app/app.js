@@ -297,6 +297,63 @@ function confidenceBadgeHtml(confidence, found) {
     return `<span class="confidence-badge confidence-${level}">${label} Confidence</span>`;
 }
 
+/**
+ * Shared confidence-summary panel markup, used on both the dashboard
+ * (portfolio-wide) and the lease detail page (per-lease) so the two
+ * can't visually drift apart -- same tiers, same bar, same legend,
+ * built from whatever shape compute_lease_confidence_summary /
+ * compute_portfolio_confidence_summary returned. `flaggedList` is an
+ * optional array of human-readable field labels (only the per-lease
+ * caller has a specific field list to show; the portfolio-wide summary
+ * only has a count, not names, since a flagged field belongs to one
+ * particular lease).
+ */
+function confidenceSummaryPanelHtml(summary, title, flaggedList) {
+    if (!summary || summary.total_fields === 0) {
+        return `
+            <div class="panel-header"><h2>${escapeHtml(title)}</h2></div>
+            <p class="empty-inline">No fields to summarize yet.</p>
+        `;
+    }
+
+    const tiers = [
+        { key: 'high', label: 'High' },
+        { key: 'medium', label: 'Medium' },
+        { key: 'low', label: 'Low' },
+        { key: 'not_found', label: 'Not Found' },
+    ];
+
+    return `
+        <div class="panel-header">
+            <h2>${escapeHtml(title)}</h2>
+        </div>
+        <p class="confidence-summary-headline">
+            <strong>${summary.high} of ${summary.total_fields}</strong> fields high-confidence
+            ${summary.flagged_for_review > 0
+                ? `&mdash; <strong class="confidence-summary-flagged">${summary.flagged_for_review} flagged for review</strong>`
+                : '&mdash; nothing flagged for review'}
+        </p>
+        <div class="confidence-summary-bar">
+            ${tiers.map(t => t.key === 'not_found' || summary[t.key] === 0 ? '' : `
+                <div class="confidence-summary-segment confidence-summary-segment-${t.key}"
+                     style="width:${(summary[t.key] / summary.total_fields) * 100}%"
+                     title="${summary[t.key]} ${t.label}"></div>
+            `).join('')}
+        </div>
+        <div class="confidence-summary-legend">
+            ${tiers.map(t => `
+                <span class="confidence-summary-legend-item">
+                    <span class="confidence-summary-swatch confidence-summary-segment-${t.key}"></span>
+                    ${summary[t.key]} ${t.label}
+                </span>
+            `).join('')}
+        </div>
+        ${flaggedList && flaggedList.length > 0 ? `
+            <p class="confidence-summary-flagged-list">Flagged: ${flaggedList.map(escapeHtml).join(', ')}</p>
+        ` : ''}
+    `;
+}
+
 function severityBadgeHtml(severity) {
     const label = severity.charAt(0).toUpperCase() + severity.slice(1);
     return `<span class="severity-badge severity-${severity}">${label}</span>`;

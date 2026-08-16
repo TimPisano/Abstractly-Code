@@ -15,6 +15,7 @@ const Dashboard = {
         this.renderExpirationAlertsSkeleton();
         this.renderHealthSkeleton();
         this.renderActivitySkeleton();
+        document.getElementById('portfolioConfidenceSummaryPanel').innerHTML = '<p class="loading-inline"><span class="spinner-small"></span> Loading...</p>';
         document.getElementById('dashboardExportExcelBtn').href = Api.rentRollExcelUrl();
         document.getElementById('dashboardExportStatus').innerHTML = '';
 
@@ -43,6 +44,9 @@ const Dashboard = {
         Api.portfolioExpirationAlerts()
             .then(a => this.renderExpirationAlerts(a))
             .catch(() => { document.getElementById('expirationAlertsContent').innerHTML = '<p class="error-text">Failed to load.</p>'; });
+        Api.portfolioConfidenceSummary()
+            .then(s => { document.getElementById('portfolioConfidenceSummaryPanel').innerHTML = confidenceSummaryPanelHtml(s, 'Portfolio Confidence'); })
+            .catch(() => { document.getElementById('portfolioConfidenceSummaryPanel').innerHTML = '<p class="error-text">Failed to load confidence summary.</p>'; });
         Api.portfolioHealth()
             .then(h => this.renderHealth(h))
             .catch(() => { document.getElementById('healthStrip').innerHTML = '<p class="error-text">Failed to load portfolio health.</p>'; });

@@ -29,6 +29,8 @@ from app.portfolio import (
     compute_cross_lease_mismatches,
     compute_expiration_alerts,
     compute_expiration_timeline,
+    compute_lease_confidence_summary,
+    compute_portfolio_confidence_summary,
     compute_portfolio_metrics,
     portfolio_context_for_risk_analysis,
 )
@@ -552,6 +554,70 @@ def test_lease_can_appear_in_both_expiring_and_renewal_deadlines():
     print("✓ test_lease_can_appear_in_both_expiring_and_renewal_deadlines: PASS")
 
 
+def test_lease_confidence_summary_counts_every_tier():
+    import copy
+    # LEASE_RETAIL has all 15 fields populated, confidence "high" throughout
+    # (the _field() default) -- deep-copied and mutated so each tier,
+    # not_found, and a validation_note can each be driven deliberately.
+    lease = copy.deepcopy(LEASE_RETAIL)
+    lease["extracted_fields"]["landlord"]["confidence"] = "medium"
+    lease["extracted_fields"]["cam_charges"]["confidence"] = "low"
+    lease["extracted_fields"]["rent_amount"]["validation_note"] = "Rent amount of $5,000.00 is outside the expected range."
+    lease["extracted_fields"]["lease_start_date"] = {"value": None, "source": None, "confidence": None}
+
+    summary = compute_lease_confidence_summary(lease)
+
+    assert summary["total_fields"] == 15
+    assert summary["medium"] == 1
+    assert summary["low"] == 1
+    assert summary["not_found"] == 1
+    assert summary["high"] == 12
+    assert summary["flagged_for_review"] == 1
+    assert summary["flagged_fields"] == ["rent_amount"]
+    print("✓ test_lease_confidence_summary_counts_every_tier: PASS")
+
+
+def test_lease_confidence_summary_all_not_found():
+    lease = _lease(61, "blank.pdf")  # no field values passed -- every field defaults to not-found
+    summary = compute_lease_confidence_summary(lease)
+    assert summary["not_found"] == 15
+    assert summary["high"] == 0 and summary["medium"] == 0 and summary["low"] == 0
+    assert summary["flagged_for_review"] == 0
+    print("✓ test_lease_confidence_summary_all_not_found: PASS")
+
+
+def test_portfolio_confidence_summary_aggregates_across_leases():
+    import copy
+    lease_a = copy.deepcopy(LEASE_RETAIL)
+    lease_a["id"] = 62
+    lease_a["extracted_fields"]["landlord"]["confidence"] = "medium"
+
+    lease_b = copy.deepcopy(LEASE_RETAIL)
+    lease_b["id"] = 63
+    lease_b["extracted_fields"]["cam_charges"]["confidence"] = "low"
+    lease_b["extracted_fields"]["rent_amount"]["validation_note"] = "outside expected range"
+
+    summary = compute_portfolio_confidence_summary([lease_a, lease_b])
+
+    assert summary["lease_count"] == 2
+    assert summary["total_fields"] == 30
+    assert summary["medium"] == 1
+    assert summary["low"] == 1
+    assert summary["high"] == 28
+    assert summary["flagged_for_review"] == 1
+    assert summary["extracted_fields"] == 30, "both fixtures have every field found -- none should be not_found"
+    assert summary["high_confidence_pct"] == round(28 / 30 * 100, 1)
+    print("✓ test_portfolio_confidence_summary_aggregates_across_leases: PASS")
+
+
+def test_portfolio_confidence_summary_empty_portfolio_does_not_crash():
+    summary = compute_portfolio_confidence_summary([])
+    assert summary["lease_count"] == 0
+    assert summary["total_fields"] == 0
+    assert summary["high_confidence_pct"] is None, "0/0 must report unknown, not a fabricated 0% or 100%"
+    print("✓ test_portfolio_confidence_summary_empty_portfolio_does_not_crash: PASS")
+
+
 def test_cross_lease_mismatch_flags_both_leases_at_same_address():
     lease_a = _lease(
         40, "unit_a.pdf", tenant="Alpha Retail LLC",
@@ -661,4 +727,8 @@ if __name__ == "__main__":
     test_cross_lease_mismatch_address_normalization_matches_formatting_variants()
     test_cross_lease_mismatch_lease_with_no_address_excluded_without_crashing()
     test_cross_lease_mismatch_three_leases_same_address_pairwise()
+    test_lease_confidence_summary_counts_every_tier()
+    test_lease_confidence_summary_all_not_found()
+    test_portfolio_confidence_summary_aggregates_across_leases()
+    test_portfolio_confidence_summary_empty_portfolio_does_not_crash()
     print("\nAll portfolio tests passed.")

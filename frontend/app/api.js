@@ -148,6 +148,10 @@ const Api = {
         return apiRequest('/portfolio/expiration-alerts');
     },
 
+    portfolioConfidenceSummary() {
+        return apiRequest('/portfolio/confidence-summary');
+    },
+
     recentActivity(limit = 10) {
         return apiRequest(`/activity?limit=${limit}`);
     },

@@ -376,6 +376,71 @@ def compute_cross_lease_mismatches(leases: List[Dict[str, Any]]) -> Dict[int, Li
     return mismatches
 
 
+def compute_lease_confidence_summary(lease: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Tallies this lease's 15 extracted fields by confidence tier, plus how
+    many were flagged during validation (field_extractor.py's format/
+    range/OCR-clarity checks -- see _apply_confidence_validation there).
+    This is the trust mechanism a premium tier's pricing depends on: a
+    real, computed count grounded in what was actually found and
+    checked, not a decorative badge.
+
+    "not_found" fields (confidence None, never extracted at all) are
+    counted separately from "low" -- a field the extractor genuinely
+    couldn't find is a different, more complete kind of gap than one it
+    found but isn't sure about.
+    """
+    fields = lease.get("extracted_fields") or {}
+    counts = {"high": 0, "medium": 0, "low": 0, "not_found": 0}
+    flagged_fields: List[str] = []
+
+    for name in FIELD_NAMES:
+        entry = fields.get(name) or {}
+        confidence = entry.get("confidence")
+        if confidence in counts:
+            counts[confidence] += 1
+        else:
+            counts["not_found"] += 1
+        if entry.get("validation_note"):
+            flagged_fields.append(name)
+
+    return {
+        "total_fields": len(FIELD_NAMES),
+        "high": counts["high"],
+        "medium": counts["medium"],
+        "low": counts["low"],
+        "not_found": counts["not_found"],
+        "flagged_for_review": len(flagged_fields),
+        "flagged_fields": flagged_fields,
+    }
+
+
+def compute_portfolio_confidence_summary(leases: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Aggregates compute_lease_confidence_summary across the whole
+    portfolio -- the "47 of 50 fields high-confidence, 3 flagged for
+    review" number a buyer actually sees, computed fresh from the same
+    per-lease summaries the lease detail page shows, not a separate
+    parallel calculation that could silently disagree with it.
+    """
+    totals = {"total_fields": 0, "high": 0, "medium": 0, "low": 0, "not_found": 0, "flagged_for_review": 0}
+    for lease in leases:
+        summary = compute_lease_confidence_summary(lease)
+        for key in totals:
+            totals[key] += summary[key]
+
+    high_confidence_pct = (
+        round((totals["high"] / totals["total_fields"]) * 100, 1) if totals["total_fields"] else None
+    )
+
+    return {
+        "lease_count": len(leases),
+        **totals,
+        "extracted_fields": totals["high"] + totals["medium"] + totals["low"],
+        "high_confidence_pct": high_confidence_pct,
+    }
+
+
 def _timeline_entry(
     lease: Dict[str, Any],
     months_remaining: Optional[float],

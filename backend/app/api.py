@@ -46,6 +46,8 @@ from app.portfolio import (
     compute_expiration_alerts,
     compute_portfolio_health,
     compute_cross_lease_mismatches,
+    compute_lease_confidence_summary,
+    compute_portfolio_confidence_summary,
     portfolio_context_for_risk_analysis,
 )
 from app.comparison import compare_leases, benchmark_lease
@@ -313,6 +315,7 @@ def _lease_summary(lease):
         "amendment_count": lease.get("amendment_count", 0),
         "extracted_fields": lease["extracted_fields"],
         "looks_like_lease": _looks_like_lease(lease["extracted_fields"]),
+        "confidence_summary": compute_lease_confidence_summary(lease),
         "source_page_start": lease.get("source_page_start"),
         "source_page_end": lease.get("source_page_end"),
         "tags": lease.get("tags", []),
@@ -793,6 +796,13 @@ def portfolio_health():
     """Morning-glance health strip: % verified, avg days to expiration, rent exposure expiring in 6/12 months."""
     leases = database.get_all_effective_leases()
     return jsonify(compute_portfolio_health(leases)), 200
+
+
+@app.route('/portfolio/confidence-summary', methods=['GET'])
+def portfolio_confidence_summary():
+    """The trust-mechanism number: field counts by confidence tier across the whole portfolio, plus how many were flagged for review during validation. See compute_portfolio_confidence_summary."""
+    leases = database.get_all_effective_leases()
+    return jsonify(compute_portfolio_confidence_summary(leases)), 200
 
 
 @app.route('/activity', methods=['GET'])

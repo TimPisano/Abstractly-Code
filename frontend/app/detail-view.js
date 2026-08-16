@@ -31,6 +31,7 @@ const LeaseDetail = {
                 </div>
             ` : '';
 
+            this.renderConfidenceSummary(this.lease.confidence_summary);
             this.renderFields();
             this.renderTags(this.lease.tags || []);
             document.getElementById('detailQaHistory').innerHTML = '';
@@ -73,6 +74,14 @@ const LeaseDetail = {
                 `).join('')}
             </div>
         `;
+    },
+
+    renderConfidenceSummary(summary) {
+        const panel = document.getElementById('detailConfidenceSummaryPanel');
+        const flaggedList = summary && summary.flagged_fields && summary.flagged_fields.length > 0
+            ? summary.flagged_fields.map(f => FIELD_LABELS[f] || f)
+            : null;
+        panel.innerHTML = confidenceSummaryPanelHtml(summary, 'Confidence Summary', flaggedList);
     },
 
     renderFields() {
@@ -144,6 +153,16 @@ const LeaseDetail = {
                 <div class="source-quote">"${escapeHtml(fieldData.source.quote)}"</div>
             `;
             body.appendChild(sourceDiv);
+        }
+
+        if (fieldData.validation_note) {
+            const noteDiv = document.createElement('div');
+            noteDiv.className = 'field-validation-note';
+            noteDiv.innerHTML = `
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/></svg>
+                <span>${escapeHtml(fieldData.validation_note)}</span>
+            `;
+            body.appendChild(noteDiv);
         }
 
         card.appendChild(body);
