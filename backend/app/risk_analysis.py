@@ -96,6 +96,7 @@ def analyze_lease_risks(
     lease_fields: Dict[str, Any],
     portfolio_context: Optional[Dict[str, Any]] = None,
     date_candidates: Optional[Dict[str, Any]] = None,
+    cross_lease_flags: Optional[List[Dict[str, Any]]] = None,
 ) -> List[Dict[str, Any]]:
     """
     Runs every risk check against one lease and returns the flags raised,
@@ -109,6 +110,14 @@ def analyze_lease_risks(
     `FieldExtractor.find_all_date_candidates`) and enables the
     cross-section conflict check; without it that one check is skipped.
 
+    `cross_lease_flags` is pre-computed by portfolio.py's
+    compute_cross_lease_mismatches() (it needs the whole portfolio's
+    leases to find pairs, which this function -- given only one lease's
+    fields -- has no way to do itself) and passed in already in the
+    standard flag shape; this function just merges them in and sorts
+    them alongside everything else rather than treating them as a
+    separate category the caller has to display differently.
+
     Each flag: {"severity", "category", "field", "message", "explanation"}.
     """
     fields = lease_fields or {}
@@ -121,6 +130,7 @@ def analyze_lease_risks(
     flags.extend(_check_escalation_consistency(fields))
     flags.extend(_check_date_range(fields))
     flags.extend(_check_date_candidate_conflicts(date_candidates))
+    flags.extend(cross_lease_flags or [])
 
     return sorted(flags, key=lambda flag: SEVERITY_ORDER.get(flag["severity"], 99))
 

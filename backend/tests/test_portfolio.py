@@ -26,6 +26,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 from app.portfolio import (
     FIELD_NAMES,
+    compute_cross_lease_mismatches,
     compute_expiration_alerts,
     compute_expiration_timeline,
     compute_portfolio_metrics,
@@ -551,6 +552,89 @@ def test_lease_can_appear_in_both_expiring_and_renewal_deadlines():
     print("✓ test_lease_can_appear_in_both_expiring_and_renewal_deadlines: PASS")
 
 
+def test_cross_lease_mismatch_flags_both_leases_at_same_address():
+    lease_a = _lease(
+        40, "unit_a.pdf", tenant="Alpha Retail LLC",
+        property_address="100 Main Street, Suite 100",
+        rent_amount="$5,000.00", square_footage="2,000 sq ft",  # $2.50/sqft
+    )
+    lease_b = _lease(
+        41, "unit_b.pdf", tenant="Beta Goods Inc.",
+        property_address="100 Main Street, Suite 100",
+        rent_amount="$8,000.00", square_footage="2,000 sq ft",  # $4.00/sqft, 60% higher
+    )
+    mismatches = compute_cross_lease_mismatches([lease_a, lease_b])
+
+    assert 40 in mismatches and 41 in mismatches
+    flag_a = mismatches[40][0]
+    flag_b = mismatches[41][0]
+    assert flag_a["category"] == "cross_lease_mismatch"
+    assert flag_a["severity"] == "high"
+    assert flag_a["other_lease_id"] == 41
+    assert "unit_b.pdf" in flag_a["message"]
+    assert flag_b["other_lease_id"] == 40
+    assert "unit_a.pdf" in flag_b["message"]
+    print("✓ test_cross_lease_mismatch_flags_both_leases_at_same_address: PASS")
+
+
+def test_cross_lease_mismatch_not_flagged_within_normal_variation():
+    lease_a = _lease(
+        42, "unit_c.pdf", property_address="200 Oak Avenue",
+        rent_amount="$5,000.00", square_footage="2,000 sq ft",  # $2.50/sqft
+    )
+    lease_b = _lease(
+        43, "unit_d.pdf", property_address="200 Oak Avenue",
+        rent_amount="$5,150.00", square_footage="2,000 sq ft",  # $2.575/sqft, 3% higher
+    )
+    mismatches = compute_cross_lease_mismatches([lease_a, lease_b])
+    assert mismatches == {}
+    print("✓ test_cross_lease_mismatch_not_flagged_within_normal_variation: PASS")
+
+
+def test_cross_lease_mismatch_ignores_different_addresses():
+    lease_a = _lease(
+        44, "unit_e.pdf", property_address="1 First Street",
+        rent_amount="$5,000.00", square_footage="1,000 sq ft",  # $5.00/sqft
+    )
+    lease_b = _lease(
+        45, "unit_f.pdf", property_address="2 Second Street",
+        rent_amount="$50,000.00", square_footage="1,000 sq ft",  # $50.00/sqft -- wildly different, different building
+    )
+    mismatches = compute_cross_lease_mismatches([lease_a, lease_b])
+    assert mismatches == {}, "different addresses must never be compared, no matter how different the numbers"
+    print("✓ test_cross_lease_mismatch_ignores_different_addresses: PASS")
+
+
+def test_cross_lease_mismatch_address_normalization_matches_formatting_variants():
+    lease_a = _lease(46, "unit_g.pdf", property_address="100 MAIN STREET, Suite 100.", rent_amount="$5,000.00", square_footage="2,000 sq ft")
+    lease_b = _lease(47, "unit_h.pdf", property_address="100 main street suite 100", rent_amount="$9,000.00", square_footage="2,000 sq ft")
+    mismatches = compute_cross_lease_mismatches([lease_a, lease_b])
+    assert 46 in mismatches and 47 in mismatches
+    print("✓ test_cross_lease_mismatch_address_normalization_matches_formatting_variants: PASS")
+
+
+def test_cross_lease_mismatch_lease_with_no_address_excluded_without_crashing():
+    lease_a = _lease(48, "unit_i.pdf", property_address=None, rent_amount="$5,000.00", square_footage="1,000 sq ft")
+    lease_b = _lease(49, "unit_j.pdf", property_address="300 Elm Street", rent_amount="$5,000.00", square_footage="1,000 sq ft")
+    mismatches = compute_cross_lease_mismatches([lease_a, lease_b])
+    assert mismatches == {}
+    print("✓ test_cross_lease_mismatch_lease_with_no_address_excluded_without_crashing: PASS")
+
+
+def test_cross_lease_mismatch_three_leases_same_address_pairwise():
+    """3 leases at the same address: only the pair that actually disagrees should produce flags."""
+    matched = _lease(50, "unit_k.pdf", property_address="400 Pine Street", rent_amount="$5,000.00", square_footage="2,000 sq ft")
+    also_matched = _lease(51, "unit_l.pdf", property_address="400 Pine Street", rent_amount="$5,100.00", square_footage="2,000 sq ft")
+    outlier = _lease(52, "unit_m.pdf", property_address="400 Pine Street", rent_amount="$20,000.00", square_footage="2,000 sq ft")
+
+    mismatches = compute_cross_lease_mismatches([matched, also_matched, outlier])
+
+    assert 52 in mismatches, "the outlier must be flagged against both other leases"
+    assert len(mismatches[52]) == 2
+    assert 50 in mismatches and 51 in mismatches
+    print("✓ test_cross_lease_mismatch_three_leases_same_address_pairwise: PASS")
+
+
 if __name__ == "__main__":
     test_portfolio_totals_and_averages()
     test_year_table_escalation_contributes_a_derived_rate()
@@ -571,4 +655,10 @@ if __name__ == "__main__":
     test_expired_lease_excluded_from_renewal_deadlines_even_if_notice_unparsed_would_match()
     test_renewal_options_with_no_parseable_notice_days_excluded_silently()
     test_lease_can_appear_in_both_expiring_and_renewal_deadlines()
+    test_cross_lease_mismatch_flags_both_leases_at_same_address()
+    test_cross_lease_mismatch_not_flagged_within_normal_variation()
+    test_cross_lease_mismatch_ignores_different_addresses()
+    test_cross_lease_mismatch_address_normalization_matches_formatting_variants()
+    test_cross_lease_mismatch_lease_with_no_address_excluded_without_crashing()
+    test_cross_lease_mismatch_three_leases_same_address_pairwise()
     print("\nAll portfolio tests passed.")

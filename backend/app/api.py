@@ -45,6 +45,7 @@ from app.portfolio import (
     compute_attention_items,
     compute_expiration_alerts,
     compute_portfolio_health,
+    compute_cross_lease_mismatches,
     portfolio_context_for_risk_analysis,
 )
 from app.comparison import compare_leases, benchmark_lease
@@ -752,11 +753,12 @@ def check_waitlist_access():
 # ----------------------------------------------------------------------
 
 def _lease_risks(lease):
-    """Risk flags for one effective lease, using its own stored date_candidates and the current portfolio average as context."""
+    """Risk flags for one effective lease, using its own stored date_candidates, the current portfolio average, and any cross-lease mismatches with other leases at the same property as context."""
     all_leases = database.get_all_effective_leases()
     context = portfolio_context_for_risk_analysis(all_leases)
     date_candidates = lease.get("date_candidates")
-    flags = analyze_lease_risks(lease["extracted_fields"], context, date_candidates)
+    cross_lease_flags = compute_cross_lease_mismatches(all_leases).get(lease["id"], [])
+    flags = analyze_lease_risks(lease["extracted_fields"], context, date_candidates, cross_lease_flags)
     return flags
 
 
@@ -805,11 +807,13 @@ def portfolio_risks():
     """Risk flags for every lease in the portfolio, most-flagged-first isn't imposed here — callers sort/filter as needed."""
     leases = database.get_all_effective_leases()
     context = portfolio_context_for_risk_analysis(leases)
+    cross_lease_mismatches = compute_cross_lease_mismatches(leases)
 
     results = []
     for lease in leases:
         date_candidates = lease.get("date_candidates")
-        flags = analyze_lease_risks(lease["extracted_fields"], context, date_candidates)
+        cross_lease_flags = cross_lease_mismatches.get(lease["id"], [])
+        flags = analyze_lease_risks(lease["extracted_fields"], context, date_candidates, cross_lease_flags)
         results.append({
             "lease_id": lease["id"],
             "filename": lease["filename"],
@@ -1102,11 +1106,13 @@ def portfolio_report():
     metrics = compute_portfolio_metrics(leases)
     timeline = compute_expiration_timeline(leases)
     context = portfolio_context_for_risk_analysis(leases)
+    cross_lease_mismatches = compute_cross_lease_mismatches(leases)
 
     all_risks = []
     for lease in leases:
         date_candidates = lease.get("date_candidates")
-        flags = analyze_lease_risks(lease["extracted_fields"], context, date_candidates)
+        cross_lease_flags = cross_lease_mismatches.get(lease["id"], [])
+        flags = analyze_lease_risks(lease["extracted_fields"], context, date_candidates, cross_lease_flags)
         if flags:
             all_risks.append({
                 "lease_id": lease["id"],

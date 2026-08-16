@@ -18,6 +18,7 @@ parsed, and a metric with no parseable inputs at all reports None ("we
 don't know") rather than 0.0 ("we know it's zero").
 """
 
+import re
 from datetime import date, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -230,6 +231,151 @@ def portfolio_context_for_risk_analysis(leases: List[Dict[str, Any]]) -> Dict[st
     }
 
 
+# Rent/sqft and square-footage disagreement thresholds between two leases
+# that claim the same property address -- wider than the below-market-
+# rent thresholds in risk_analysis.py, since this is comparing two
+# specific figures directly rather than one figure against a portfolio
+# mean, and ordinary unit-to-unit variation within one building is
+# itself real and shouldn't be flagged.
+_CROSS_LEASE_RENT_PSF_HIGH_PCT = 25.0
+_CROSS_LEASE_RENT_PSF_MEDIUM_PCT = 10.0
+_CROSS_LEASE_SQFT_HIGH_PCT = 15.0
+_CROSS_LEASE_SQFT_MEDIUM_PCT = 5.0
+
+
+def _normalize_address(address: Optional[str]) -> Optional[str]:
+    """
+    Loose matching for "same property" across independently-uploaded
+    leases -- lowercased, punctuation stripped, whitespace collapsed.
+    Not a real address-parsing/geocoding solution, just enough to catch
+    the common case of the exact same address typed the same way in two
+    lease documents. Deliberately conservative: this will miss a real
+    match typed two different ways ("Suite 200" vs "Ste. 200"), but
+    will not incorrectly match two genuinely different addresses -- a
+    missed opportunity to flag something is a far smaller problem than
+    an actively misleading false match.
+    """
+    if not address:
+        return None
+    normalized = re.sub(r"[^\w\s]", "", address.lower())
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+    return normalized or None
+
+
+def _lease_label(lease: Dict[str, Any]) -> str:
+    return lease.get("display_name") or lease.get("filename") or f"lease #{lease.get('id')}"
+
+
+def _cross_lease_flag_pair(
+    lease_a: Dict[str, Any], lease_b: Dict[str, Any],
+    field: str, basis: str, display_a: str, display_b: str,
+    diff_pct: float, severity: str,
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """One mismatch, phrased twice -- once from each lease's own perspective, naming the other lease it disagrees with. Same flag shape risk_analysis.py's other checks produce, so these merge directly into a lease's existing risk-flags list."""
+    label_a, label_b = _lease_label(lease_a), _lease_label(lease_b)
+    address = field_value(lease_a, "property_address")
+
+    def _flag(this_label, other_label, this_display, other_display, other_id):
+        return {
+            "severity": severity,
+            "category": "cross_lease_mismatch",
+            "field": field,
+            "message": f"{basis.capitalize()} ({this_display}) disagrees with \"{other_label}\" ({other_display}) at the same property by {diff_pct:.0f}%",
+            "explanation": (
+                f"Both this lease and \"{other_label}\" list the property address as "
+                f"\"{address}\", but their {basis} figures disagree by {diff_pct:.0f}% "
+                f"({this_display} vs {other_display}). This could mean one of the two "
+                "figures was misextracted, or that these are actually different units "
+                "within the same building -- worth confirming against both source "
+                "documents before relying on either."
+            ),
+            "other_lease_id": other_id,
+            "other_lease_name": other_label,
+        }
+
+    return (
+        _flag(label_a, label_b, display_a, display_b, lease_b.get("id")),
+        _flag(label_b, label_a, display_b, display_a, lease_a.get("id")),
+    )
+
+
+def _compare_lease_pair(lease_a: Dict[str, Any], lease_b: Dict[str, Any]) -> List[Tuple[Dict[str, Any], Dict[str, Any]]]:
+    """Every mismatch found between two leases that share a (normalized) property address."""
+    pairs = []
+
+    psf_a = rent_per_sqft(field_value(lease_a, "rent_amount"), field_value(lease_a, "square_footage"))
+    psf_b = rent_per_sqft(field_value(lease_b, "rent_amount"), field_value(lease_b, "square_footage"))
+    if psf_a and psf_b:
+        diff_pct = abs(psf_a - psf_b) / max(psf_a, psf_b) * 100
+        severity = (
+            "high" if diff_pct >= _CROSS_LEASE_RENT_PSF_HIGH_PCT
+            else "medium" if diff_pct >= _CROSS_LEASE_RENT_PSF_MEDIUM_PCT
+            else None
+        )
+        if severity:
+            pairs.append(_cross_lease_flag_pair(
+                lease_a, lease_b, "rent_amount", "rent per square foot",
+                f"${psf_a:,.2f}/sq ft/mo", f"${psf_b:,.2f}/sq ft/mo", diff_pct, severity,
+            ))
+
+    sqft_a = parse_square_footage(field_value(lease_a, "square_footage"))
+    sqft_b = parse_square_footage(field_value(lease_b, "square_footage"))
+    if sqft_a and sqft_b:
+        diff_pct = abs(sqft_a - sqft_b) / max(sqft_a, sqft_b) * 100
+        severity = (
+            "high" if diff_pct >= _CROSS_LEASE_SQFT_HIGH_PCT
+            else "medium" if diff_pct >= _CROSS_LEASE_SQFT_MEDIUM_PCT
+            else None
+        )
+        if severity:
+            pairs.append(_cross_lease_flag_pair(
+                lease_a, lease_b, "square_footage", "square footage",
+                f"{sqft_a:,.0f} sq ft", f"{sqft_b:,.0f} sq ft", diff_pct, severity,
+            ))
+
+    return pairs
+
+
+def compute_cross_lease_mismatches(leases: List[Dict[str, Any]]) -> Dict[int, List[Dict[str, Any]]]:
+    """
+    Compares leases sharing the same (normalized) property address and
+    flags when their rent-per-square-foot or square footage figures
+    disagree more than ordinary unit-to-unit variation would explain --
+    two independently-uploaded leases for the same address with wildly
+    different numbers usually means one of them was misextracted, or
+    that they're actually different units at a multi-tenant property.
+    Either way, worth a human's second look before either number is
+    trusted; this is the "flag mismatches between two already-uploaded
+    sources" half of the confidence story, alongside the single-lease
+    format/range validation in field_extractor.py.
+
+    Returns {lease_id: [flag, ...]}, each flag already in risk_analysis.
+    py's standard {severity, category, field, message, explanation}
+    shape and phrased from that lease's own perspective -- ready to
+    merge directly into that lease's own risk-flags list. A lease with
+    no address, or no property-address match to any other lease, simply
+    doesn't appear as a key.
+    """
+    groups: Dict[str, List[Dict[str, Any]]] = {}
+    for lease in leases:
+        address = _normalize_address(field_value(lease, "property_address"))
+        if address is None:
+            continue
+        groups.setdefault(address, []).append(lease)
+
+    mismatches: Dict[int, List[Dict[str, Any]]] = {}
+    for group in groups.values():
+        if len(group) < 2:
+            continue
+        for i in range(len(group)):
+            for j in range(i + 1, len(group)):
+                for flag_a, flag_b in _compare_lease_pair(group[i], group[j]):
+                    mismatches.setdefault(group[i]["id"], []).append(flag_a)
+                    mismatches.setdefault(group[j]["id"], []).append(flag_b)
+
+    return mismatches
+
+
 def _timeline_entry(
     lease: Dict[str, Any],
     months_remaining: Optional[float],
@@ -355,6 +501,7 @@ def compute_attention_items(
     unusual_terms = []
 
     context = portfolio_context_for_risk_analysis(leases)
+    cross_lease_mismatches = compute_cross_lease_mismatches(leases)
 
     for lease in leases:
         fields = lease.get("extracted_fields") or {}
@@ -374,7 +521,8 @@ def compute_attention_items(
             missing_data.append(_attention_entry(lease, missing_fields=missing_fields))
 
         date_candidates = lease.get("date_candidates")
-        flags = analyze_lease_risks(fields, context, date_candidates)
+        cross_lease_flags = cross_lease_mismatches.get(lease["id"], [])
+        flags = analyze_lease_risks(fields, context, date_candidates, cross_lease_flags)
         notable_flags = [f for f in flags if f["severity"] in ("high", "medium")]
         if notable_flags:
             unusual_terms.append(_attention_entry(lease, flags=notable_flags))
