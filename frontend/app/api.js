@@ -174,6 +174,34 @@ const Api = {
         return apiRequest(`/leases/selection-summary?ids=${leaseIds.join(',')}`);
     },
 
+    bulkExportExcelUrl(leaseIds) {
+        return `${API_BASE_URL}/leases/export.xlsx?ids=${leaseIds.join(',')}`;
+    },
+
+    bulkExportGoogleSheets(leaseIds) {
+        return apiRequest('/leases/export/google-sheets', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ids: leaseIds }),
+        });
+    },
+
+    bulkTagLeases(leaseIds, tag) {
+        return apiRequest('/leases/bulk-tag', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ids: leaseIds, tag }),
+        });
+    },
+
+    bulkDeleteLeases(leaseIds) {
+        return apiRequest('/leases/bulk-delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ids: leaseIds }),
+        });
+    },
+
     leaseBenchmark(leaseId) {
         return apiRequest(`/leases/${leaseId}/benchmark`);
     },

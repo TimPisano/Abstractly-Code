@@ -291,6 +291,89 @@ def main():
         report_text = report_html.decode() if isinstance(report_html, bytes) else report_html
         check("report contains lease filenames", all(name in report_text for name in ALL_FIXTURES))
 
+        # ---- Bulk actions (checkbox multi-select: export, tag, delete) ----
+        print("\n--- Bulk actions ---")
+
+        status, bulk_excel_bytes = _request("GET", f"/leases/export.xlsx?ids={commercial_id},{underpriced_id}")
+        check("bulk export.xlsx returns 200", status == 200, str(status))
+        _bulk_wb = _openpyxl.load_workbook(io.BytesIO(bulk_excel_bytes))
+        check(
+            "bulk export.xlsx has exactly 1 header + 2 data rows, scoped to just the selected leases",
+            _bulk_wb.active.max_row == 3,
+            f"got {_bulk_wb.active.max_row} rows",
+        )
+        check(
+            "bulk export.xlsx also includes the Portfolio Summary tab",
+            "Portfolio Summary" in _bulk_wb.sheetnames,
+            str(_bulk_wb.sheetnames),
+        )
+
+        status, err = _request("GET", "/leases/export.xlsx?ids=")
+        check("bulk export.xlsx with no ids returns 400", status == 400, str(status))
+        status, err = _request("GET", "/leases/export.xlsx?ids=999999")
+        check("bulk export.xlsx with a nonexistent id returns 404", status == 404, str(status))
+
+        status, sheets_err = _request("POST", "/leases/export/google-sheets", json_body={"ids": [commercial_id]})
+        check(
+            "bulk Google Sheets export fails cleanly (unconfigured) rather than crashing",
+            status == 502 and "error" in sheets_err,
+            f"{status} {sheets_err}",
+        )
+        status, err = _request("POST", "/leases/export/google-sheets", json_body={"ids": []})
+        check("bulk Sheets export with empty ids returns 400", status == 400, str(status))
+
+        status, tag_result = _request("POST", "/leases/bulk-tag", json_body={"ids": [commercial_id, underpriced_id], "tag": "Q3 Review"})
+        check("bulk-tag returns 200", status == 200, str(status))
+        check("bulk-tag tagged both requested ids", sorted(tag_result.get("tagged", [])) == sorted([commercial_id, underpriced_id]), json.dumps(tag_result))
+        status, tags_after = _request("GET", f"/leases/{commercial_id}/tags")
+        check("bulk-tag's tag actually landed on the lease", "Q3 Review" in tags_after, str(tags_after))
+
+        status, tag_result = _request("POST", "/leases/bulk-tag", json_body={"ids": [commercial_id, 999999], "tag": "Q3 Review"})
+        check(
+            "bulk-tag partially succeeds when one id doesn't exist, reporting it separately rather than failing the whole request",
+            status == 200 and tag_result.get("tagged") == [commercial_id] and tag_result.get("not_found") == [999999],
+            json.dumps(tag_result),
+        )
+
+        status, err = _request("POST", "/leases/bulk-tag", json_body={"ids": [commercial_id], "tag": ""})
+        check("bulk-tag with a blank tag returns 400", status == 400, str(status))
+
+        # Bulk delete gets its own dedicated leases (not commercial_id/underpriced_id,
+        # which later checks below still depend on being present).
+        bulk_delete_ids = []
+        for filename in ("reversed_dates.pdf", "inconsistent_escalation.pdf"):
+            with open(os.path.join(FIXTURES_DIR, filename), "rb") as f:
+                content = f.read()
+            body, content_type = _multipart_body({}, [("file", filename, content)])
+            status, resp = _request("POST", "/leases", data=body, headers={"Content-Type": content_type})
+            bulk_delete_ids.append(resp["leases"][0]["id"])
+        # Already counted in created_lease_ids' 10 above? No -- these are
+        # SECOND uploads of files already uploaded once, so they're brand
+        # new lease rows with new ids; track them so cleanup can't miss
+        # them if the bulk-delete assertions below somehow fail first.
+        created_lease_ids.extend(bulk_delete_ids)
+
+        status, del_result = _request("POST", "/leases/bulk-delete", json_body={"ids": bulk_delete_ids})
+        check("bulk-delete returns 200", status == 200, str(status))
+        check("bulk-delete deleted both ids", sorted(del_result.get("deleted", [])) == sorted(bulk_delete_ids), json.dumps(del_result))
+
+        status, gone = _request("GET", f"/leases/{bulk_delete_ids[0]}")
+        check("a bulk-deleted lease is actually gone", status == 404, str(status))
+
+        status, del_result = _request("POST", "/leases/bulk-delete", json_body={"ids": [commercial_id, 999999]})
+        check(
+            "bulk-delete partially succeeds when one id doesn't exist, reporting it separately",
+            status == 200 and del_result.get("deleted") == [commercial_id] and del_result.get("not_found") == [999999],
+            json.dumps(del_result),
+        )
+        # commercial_id is gone now -- remove it from created_lease_ids'
+        # implicit dependency for later checks in this file (there are
+        # none after this point that need it) and let final cleanup skip
+        # it harmlessly (DELETE on an already-gone id is tolerated there).
+
+        status, err = _request("POST", "/leases/bulk-delete", json_body={"ids": "not-a-list"})
+        check("bulk-delete with a non-list ids returns 400", status == 400, str(status))
+
         # ---- Error paths ----
         print("\n--- Error paths ---")
         status, err = _request("GET", "/leases/999999")

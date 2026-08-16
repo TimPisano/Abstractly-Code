@@ -457,13 +457,76 @@ const Dashboard = {
 
     updateCompareBar() {
         const bar = document.getElementById('compareBar');
-        const count = AppState.compareSelection.size;
-        if (count === 0) {
+        const ids = Array.from(AppState.compareSelection);
+        if (ids.length === 0) {
             bar.style.display = 'none';
             return;
         }
         bar.style.display = 'flex';
-        document.getElementById('compareCount').textContent = `${count} selected`;
+        document.getElementById('compareCount').textContent = `${ids.length} selected`;
+        document.getElementById('bulkExportExcelBtn').href = Api.bulkExportExcelUrl(ids);
+    },
+
+    async bulkExportToGoogleSheets() {
+        const ids = Array.from(AppState.compareSelection);
+        if (ids.length === 0) return;
+        const btn = document.getElementById('bulkExportSheetsBtn');
+        const status = document.getElementById('bulkActionStatus');
+        btn.disabled = true;
+        btn.textContent = 'Exporting...';
+        status.innerHTML = '';
+
+        try {
+            const result = await Api.bulkExportGoogleSheets(ids);
+            status.innerHTML = `
+                <div class="export-status export-status-success">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    <span>Exported ${ids.length} selected lease${ids.length === 1 ? '' : 's'} to Google Sheets. <a href="${escapeHtml(result.url)}" target="_blank" rel="noopener noreferrer">Open the sheet &rarr;</a></span>
+                </div>
+            `;
+        } catch (err) {
+            status.innerHTML = `
+                <div class="export-status export-status-error">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"/></svg>
+                    <span>${escapeHtml(err.message)}</span>
+                </div>
+            `;
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Export to Google Sheets';
+        }
+    },
+
+    async bulkTagSelected() {
+        const ids = Array.from(AppState.compareSelection);
+        if (ids.length === 0) return;
+        const tag = (prompt(`Add a tag to ${ids.length} selected lease${ids.length === 1 ? '' : 's'}:`) || '').trim();
+        if (!tag) return;
+
+        try {
+            const result = await Api.bulkTagLeases(ids, tag);
+            showToast(`Tagged ${result.tagged.length} lease${result.tagged.length === 1 ? '' : 's'} "${tag}".`, 'success');
+            this.load();
+        } catch (err) {
+            showError(`Failed to tag selected leases: ${err.message}`);
+        }
+    },
+
+    async bulkDeleteSelected() {
+        const ids = Array.from(AppState.compareSelection);
+        if (ids.length === 0) return;
+        if (!confirm(`Delete ${ids.length} selected lease${ids.length === 1 ? '' : 's'}? This can't be undone.`)) return;
+
+        try {
+            const result = await Api.bulkDeleteLeases(ids);
+            AppState.compareSelection.clear();
+            this.updateCompareBar();
+            this.updateSelectionSummary();
+            showToast(`Deleted ${result.deleted.length} lease${result.deleted.length === 1 ? '' : 's'}.`, 'success');
+            this.load();
+        } catch (err) {
+            showError(`Failed to delete selected leases: ${err.message}`);
+        }
     },
 
     _selectionSummaryToken: 0,
@@ -657,6 +720,10 @@ function _initDashboardViewBindings() {
     document.getElementById('compareGoBtn').addEventListener('click', () => {
         showView('comparison', { preselect: Array.from(AppState.compareSelection) });
     });
+
+    document.getElementById('bulkExportSheetsBtn').addEventListener('click', () => Dashboard.bulkExportToGoogleSheets());
+    document.getElementById('bulkTagBtn').addEventListener('click', () => Dashboard.bulkTagSelected());
+    document.getElementById('bulkDeleteBtn').addEventListener('click', () => Dashboard.bulkDeleteSelected());
 }
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', _initDashboardViewBindings);

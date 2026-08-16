@@ -206,7 +206,7 @@
                                 <input type="date" id="dashboardDateTo" class="text-input date-input">
                             </label>
                             <label class="checkbox-label">
-                                <input type="checkbox" id="compareModeToggle"> Select to compare
+                                <input type="checkbox" id="compareModeToggle"> Select multiple
                             </label>
                             <a class="btn-secondary" id="dashboardExportExcelBtn" href="#" download>Download Excel</a>
                             <button class="btn-secondary" id="dashboardExportSheetsBtn" type="button">Export to Google Sheets</button>
@@ -247,7 +247,12 @@
                     <div class="compare-bar" id="compareBar" style="display:none;">
                         <span id="compareCount">0 selected</span>
                         <button class="btn-primary" id="compareGoBtn" type="button">Compare Selected</button>
+                        <a class="btn-secondary" id="bulkExportExcelBtn" href="#" download>Download Excel</a>
+                        <button class="btn-secondary" id="bulkExportSheetsBtn" type="button">Export to Google Sheets</button>
+                        <button class="btn-secondary" id="bulkTagBtn" type="button">Tag Selected</button>
+                        <button class="btn-danger" id="bulkDeleteBtn" type="button">Delete Selected</button>
                     </div>
+                    <div id="bulkActionStatus"></div>
                 </div>
 
                 <!-- Recent Activity -->

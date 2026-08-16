@@ -427,6 +427,39 @@ def delete_lease(lease_id):
     return jsonify({"deleted": lease_id}), 200
 
 
+@app.route('/leases/bulk-delete', methods=['POST'])
+def bulk_delete_leases():
+    """
+    Body: {"ids": [1, 2, 3]}.
+
+    Each id is deleted independently and the request never fails as a
+    whole -- one already-deleted or bad id (a double-click, a stale
+    selection from a second browser tab) shouldn't block deleting the
+    rest of a real selection, same "loop + collect results, no
+    all-or-nothing" philosophy as POST /leases/batch's upload side.
+    Confirmation is the frontend's job (this route trusts its caller
+    the same way single-lease DELETE does); this endpoint just needs to
+    report exactly what happened to each id.
+    """
+    body = request.get_json(silent=True) or {}
+    ids = body.get("ids")
+    if not isinstance(ids, list) or not ids or not all(isinstance(i, int) for i in ids):
+        return jsonify({"error": "Provide a non-empty 'ids' list of integers"}), 400
+
+    deleted = []
+    not_found = []
+    for lease_id in ids:
+        lease = database.get_lease(lease_id)
+        if not lease:
+            not_found.append(lease_id)
+            continue
+        database.delete_lease(lease_id)
+        database.insert_activity("lease_deleted", f"Deleted {lease['filename']}")
+        deleted.append(lease_id)
+
+    return jsonify({"deleted": deleted, "not_found": not_found}), 200
+
+
 @app.route('/leases/<int:lease_id>/amendments', methods=['POST'])
 def upload_amendment(lease_id):
     """Upload a PDF (amendment/addendum) and link it to an existing base lease."""
@@ -534,6 +567,33 @@ def remove_lease_tag_route(lease_id, tag):
 def list_all_tags():
     """Every distinct tag currently in use across the whole portfolio — for filter dropdowns and tag-input autocomplete."""
     return jsonify(database.get_all_tags()), 200
+
+
+@app.route('/leases/bulk-tag', methods=['POST'])
+def bulk_tag_leases():
+    """Body: {"ids": [1, 2, 3], "tag": "Downtown Portfolio"}. Applies one tag to every id independently -- same loop-and-report shape as bulk-delete, and reuses the single-lease tag validation/dedup already in database.add_lease_tag."""
+    body = request.get_json(silent=True) or {}
+    ids = body.get("ids")
+    tag = (body.get("tag") or "").strip()
+
+    if not isinstance(ids, list) or not ids or not all(isinstance(i, int) for i in ids):
+        return jsonify({"error": "Provide a non-empty 'ids' list of integers"}), 400
+    if not tag:
+        return jsonify({"error": "tag is required and cannot be blank"}), 400
+    if len(tag) > 60:
+        return jsonify({"error": "tag must be 60 characters or fewer"}), 400
+
+    tagged = []
+    not_found = []
+    for lease_id in ids:
+        lease = database.get_lease(lease_id)
+        if not lease:
+            not_found.append(lease_id)
+            continue
+        database.add_lease_tag(lease_id, tag)
+        tagged.append(lease_id)
+
+    return jsonify({"tagged": tagged, "not_found": not_found}), 200
 
 
 # ----------------------------------------------------------------------
@@ -910,6 +970,73 @@ def lease_export_google_sheets(lease_id):
     database.insert_activity(
         "google_sheets_exported",
         f"Exported {display_name} to Google Sheets",
+    )
+    return jsonify(result), 200
+
+
+def _leases_for_ids(ids):
+    """Fetches each id's effective (amendment-merged) lease record, or returns a (response, status) error tuple for the first id not found -- same shape callers already check for from other route helpers in this file."""
+    leases = []
+    for lease_id in ids:
+        lease = database.get_effective_lease(lease_id)
+        if not lease:
+            return None, (jsonify({"error": f"Lease {lease_id} not found"}), 404)
+        leases.append(lease)
+    return leases, None
+
+
+@app.route('/leases/export.xlsx', methods=['GET'])
+def leases_bulk_export_excel():
+    """
+    GET /leases/export.xlsx?ids=1,2,3
+
+    Same formatted workbook (with its Portfolio Summary tab) as the
+    portfolio-wide and single-lease exports, scoped to an arbitrary
+    selection -- the dashboard's checkbox multi-select, not "all
+    leases" and not just one. Same ids-parsing convention as
+    /leases/selection-summary.
+    """
+    ids_param = request.args.get('ids', '')
+    try:
+        ids = [int(i) for i in ids_param.split(',') if i.strip()]
+    except ValueError:
+        return jsonify({"error": "ids must be a comma-separated list of integers"}), 400
+    if not ids:
+        return jsonify({"error": "Provide at least 1 lease id (e.g. ?ids=1,2)"}), 400
+
+    leases, error = _leases_for_ids(ids)
+    if error:
+        return error
+
+    excel_bytes = generate_rent_roll_excel(leases)
+    database.insert_activity("rent_roll_exported", f"Exported {len(leases)} selected lease(s) as Excel")
+    return Response(
+        excel_bytes,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        headers={"Content-Disposition": "attachment; filename=selected_leases.xlsx"},
+    )
+
+
+@app.route('/leases/export/google-sheets', methods=['POST'])
+def leases_bulk_export_google_sheets():
+    """Body: {"ids": [1, 2, 3]}. Same Google Sheets export as the portfolio-wide and single-lease routes, scoped to an arbitrary selection."""
+    body = request.get_json(silent=True) or {}
+    ids = body.get("ids")
+    if not isinstance(ids, list) or not ids or not all(isinstance(i, int) for i in ids):
+        return jsonify({"error": "Provide a non-empty 'ids' list of integers"}), 400
+
+    leases, error = _leases_for_ids(ids)
+    if error:
+        return error
+
+    try:
+        result = export_to_google_sheets(leases)
+    except SheetsExportError as e:
+        return jsonify({"error": str(e)}), 502
+
+    database.insert_activity(
+        "google_sheets_exported",
+        f"Exported {len(leases)} selected lease(s) to Google Sheets",
     )
     return jsonify(result), 200
 

@@ -852,11 +852,19 @@
 
 .compare-bar {
     display: flex;
-    justify-content: space-between;
+    flex-wrap: wrap;
+    justify-content: flex-start;
     align-items: center;
+    gap: 0.75rem;
     margin-top: 1rem;
     padding-top: 1rem;
     border-top: 1px solid var(--border-color);
+}
+
+#compareCount {
+    margin-right: 0.25rem;
+    color: var(--text-medium);
+    font-weight: 600;
 }
 
 /* ---- Filter controls: status dropdown + expiration date range,
