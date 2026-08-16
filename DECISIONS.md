@@ -1789,3 +1789,65 @@ of this section; both are real pre-launch items.
 22/22 test files, 555/555 checks, unchanged from Part 1 (no test
 counts should change from a pure code-quality pass — confirmed they
 didn't). Dev DB confirmed empty after the live verification above.
+
+## Session 10 (continued), Part 3 — security re-verification
+
+This part is mostly re-verification, not new code — recorded here for
+the trail, with the actual recommendation in the final sale-readiness
+report.
+
+### Input validation: re-verified, solid, no new gaps
+
+Covered by Part 1's expanded `test_security_hardening.py` (19/19):
+oversized files (413), corrupted PDFs (500, clean message), a genuine
+empty 0-page PDF (500, clean message), malformed lease IDs (404, not a
+500/traceback), unknown routes (JSON 404), and script-tag content in
+extracted fields (round-trips as inert JSON, confirmed via the
+`permitted_use` field specifically, since the party-name fields'
+character class can't even match it).
+
+### No secrets anywhere — checked content, not just filenames
+
+`backend/.gitignore` (found on the second look — the *repository
+root* `.gitignore` only covers `.claude/`, but `backend/.gitignore` is
+thorough: `.env`, `*.db`, `credentials/*.json`, `venv/`, all present
+with clear comments naming exactly what each protects, e.g. "Real
+secrets (Gmail App Password, etc)"). Confirmed `.env` has never been
+tracked. Went further than a filename check: grepped the full `git log
+--all -p` history for common API-key shapes (`AIza...`, `sk-...`),
+PEM private-key headers, and credential-looking assignments. One hit,
+inspected in context: a private key string in a test fixture — literal
+text `"-----BEGIN PRIVATE KEY-----\nfake\n-----END PRIVATE KEY-----\n"`,
+explicitly documented in its own docstring as "a syntactically-
+plausible (but fake) service account key... never sent anywhere real
+since google.auth itself is mocked." Not a leak.
+
+### The admin waitlist route has no real authorization — confirmed live, not assumed
+
+This is not a new finding — `api.py` already carries an explicit
+comment block above these routes stating plainly that `/waitlist`
+(GET, lists every signup's email) and `/waitlist/<id>/approve` (POST)
+are unauthenticated by deliberate current-stage product decision, and
+"MUST be locked down behind real auth before this goes live to real
+users." Re-verified it's actually true right now, not just documented
+as a past decision: `curl -s http://localhost:5000/waitlist` with zero
+headers, zero credentials, returns `200` and the full signup list.
+**Per the explicit instruction not to downplay this: this is a real
+blocker for selling to companies**, not a nice-to-have. Anyone who
+discovers the admin URL can read every prospective client's email and
+grant themselves (or anyone) access to the product. Full assessment
+and recommendation in the final report — this section's job was to
+confirm the gap is real and current, which it is.
+
+### No rate limiting anywhere — confirmed absent, flagged as a gap (not built here)
+
+No rate-limiting library (Flask-Limiter or equivalent) is in
+`requirements.txt` or referenced anywhere in `app/`. Every route,
+including the PDF-processing upload endpoints (CPU/memory-intensive,
+especially the OCR fallback path) and the unauthenticated waitlist
+routes, has no request-volume protection at all — a single caller
+could hit `/leases` or `/extract` in a tight loop, or hammer
+`/waitlist` to enumerate/spam-approve. Per the request's own framing
+("if none exists, flag it as a gap") this section's job was
+confirmation, not implementation — recorded as a real gap for the
+sale-readiness report, not silently built without being asked.
