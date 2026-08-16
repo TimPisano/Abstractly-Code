@@ -25,7 +25,7 @@
  * before the gate passes.
  */
 (function () {
-    const API_BASE_URL = 'http://localhost:5000';
+    // API_BASE_URL comes from ../config.js, loaded before this script.
     const STORAGE_KEY = 'leaseAbstractionApprovedEmail';
 
     // Order matters: api.js and app.js must load before the view modules

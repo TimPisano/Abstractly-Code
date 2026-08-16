@@ -416,7 +416,14 @@
     </div>
 
     <!--
-      access-gate.js is the only script loaded unconditionally. It
+      config.js must load before access-gate.js -- both it and every
+      dynamically-loaded script below (api.js in particular) read
+      API_BASE_URL from it.
+    -->
+    <script src="../config.js"></script>
+
+    <!--
+      access-gate.js is the only other script loaded unconditionally. It
       decides whether this visitor gets in, then dynamically loads the
       rest of the app's scripts (in order) only after that's settled —
       so no dashboard/API calls ever fire before the gate passes.

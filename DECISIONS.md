@@ -1684,3 +1684,108 @@ by default in a new environment.
 
 22/22 test files, 555/555 checks. Dev DB confirmed empty throughout
 (all route tests clean up after themselves or use isolated temp DBs).
+
+## Session 10 (continued), Part 2 — code quality pass
+
+### What was already solid — said so, didn't redo it
+
+Swept for TODO/FIXME/XXX markers, `console.log`/`console.debug` in the
+frontend, and dead code across the whole repo: **found none**. The
+lease-splitting/extraction logic (`detect_lease_boundaries`,
+`extract_multiple_leases` in `field_extractor.py`) already has
+extensive inline reasoning — why the union-of-tenant-and-landlord
+signal was chosen over either alone, the exact known limitation where
+it can't tell apart two leases sharing both party names, and pointers
+to the tests and DECISIONS.md entries that verify each claim. Backend
+normalization logic (`parse_currency`, `parse_date`,
+`parse_square_footage`, `rent_per_sqft`) exists in exactly one place
+(`normalize.py`), reused everywhere rather than reimplemented.
+Error handling for all three external service integrations (OCR,
+email, Google Sheets) is already consistent and genuinely
+defensive — email in particular has two deliberate, documented layers
+(`email_service.py` catches internally and returns `False`;
+`api.py`'s `_send_email_best_effort` catches again at the call site,
+explicitly "belt and suspenders" so a future bug in the email path can
+never turn a successful signup into a 500). Nothing needed fixing in
+any of this.
+
+### Fixed: raw `print()` instead of the established `logging` convention
+
+`pdf_extractor.py` was the one file still using bare `print()` for
+diagnostics and error reporting, while `api.py`, `email_service.py`,
+and `sheets_export.py` all consistently use Python's `logging` module
+(`logger.exception(...)` for real errors, so a full traceback lands in
+server logs without ever reaching a client response). Switched all 4
+call sites to `logger.info`/`logger.warning`/`logger.exception` to
+match. Re-ran the OCR test suite (including real, non-mocked OCR) to
+confirm the behavior itself didn't change, only where the diagnostic
+output goes.
+
+### Fixed: a genuinely significant hardcoded value — `API_BASE_URL` in four separate files
+
+`landing.js`, `app/access-gate.js`, `app/api.js`, and
+`admin/waitlist/admin.js` each independently declared their own
+`const API_BASE_URL = 'http://localhost:5000'` — four copies of the
+same value, with no way to point this frontend at a real deployed
+backend without editing all four and risking missing one (a real
+pre-launch deployment blocker, not just tidiness). Extracted to one
+new file, `frontend/config.js`, loaded as the first `<script>` in all
+three HTML entry points (landing, `/app/`, `/admin/waitlist/`) —
+classic `<script>` tags in one document share a single top-level
+lexical scope, so every later script (including `access-gate.js`'s own
+IIFE, via closure) sees the same `API_BASE_URL` by name, no import or
+`window.` prefix needed. To point this frontend at a real backend now,
+one line in one file changes; nothing else does.
+
+This was a genuinely high-risk change to make blind (it touches how
+literally every page reaches the backend), so it was verified live,
+not just visually inspected: a jsdom check confirmed `API_BASE_URL` is
+defined with the right value and zero JS errors on all three entry
+points, that the dashboard still actually loads leases through a real
+fetch call, and a direct functional round-trip (upload via the real
+API, then confirm the dashboard's own fetch — through the new
+config.js-sourced URL — renders that same lease) before considering it
+safe.
+
+Also fixed the same category of issue in `run.py`: the Flask dev
+server's port was hardcoded to 5000. Now reads `PORT` from the
+environment (falling back to 5000), matching how the file already
+handled `FLASK_DEBUG` — many hosting platforms assign a port via
+exactly this env var and expect the app to read it rather than
+guessing a fixed one.
+
+### Noted, deliberately not fixed: duplicated test-helper functions
+
+`_request()`/`_multipart_body()` (the raw-HTTP test helpers) are
+copy-pasted with minor signature drift across `test_live_portfolio_
+api.py`, `test_live_multi_lease_api.py`, `test_live_dashboard_api.py`,
+and `test_security_hardening.py`. Real duplication, but low severity —
+it's test-only code with no effect on the shipped product, the
+signatures have already drifted slightly (some take `json_body`, some
+don't; `_multipart_body` takes different argument shapes), and
+properly unifying it means touching four already-comprehensive,
+currently-passing test files' worth of call sites for a maintainability
+win with no product-facing benefit. Given the actual blockers still
+ahead for this pass (real auth, multi-tenancy, backups), this was
+deliberately left as a documented, known item rather than spending the
+time now — flagged here explicitly rather than silently skipped.
+
+Also noted: one frontend helper, `lease_filename()`, is snake_case
+against the rest of the frontend's consistent camelCase — a single
+trivial cosmetic inconsistency, not fixed for the same reason (touches
+many call sites for zero functional benefit).
+
+### Also surfaced (not this section's job to fix, flagged for the sale-readiness report)
+
+Restarting the backend during this pass surfaced two things worth
+carrying into the honest report rather than losing track of: Flask's
+own startup output warns "This is a development server. Do not use it
+in a production deployment" (this project has no production WSGI
+server — gunicorn, uwsgi — configured at all), and this environment's
+Python (3.9.6) is past its official end of life per warnings from the
+`google-auth` library. Neither is a "code quality" fix in the sense
+of this section; both are real pre-launch items.
+
+22/22 test files, 555/555 checks, unchanged from Part 1 (no test
+counts should change from a pure code-quality pass — confirmed they
+didn't). Dev DB confirmed empty after the live verification above.

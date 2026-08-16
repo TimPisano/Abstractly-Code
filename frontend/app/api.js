@@ -2,9 +2,10 @@
  * Lease Portfolio Intelligence - API Client
  * Thin fetch wrappers for every backend endpoint. No state, no DOM —
  * just request/response plumbing shared by every view.
+ *
+ * API_BASE_URL comes from ../config.js, loaded before this script (see
+ * access-gate.js's APP_SCRIPTS list) and before access-gate.js itself.
  */
-
-const API_BASE_URL = 'http://localhost:5000';
 
 /**
  * Shared request helper. Throws an Error with the backend's own error

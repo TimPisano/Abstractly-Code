@@ -5,9 +5,8 @@
  *  - Scroll reveal: a subtle fade + rise for elements marked .reveal
  *    as they enter the viewport, restrained rather than bouncy, and
  *    skipped entirely for prefers-reduced-motion (handled in CSS).
+ * API_BASE_URL comes from config.js, loaded before this script.
  */
-
-const API_BASE_URL = 'http://localhost:5000';
 
 document.getElementById('waitlistForm').addEventListener('submit', async (e) => {
     e.preventDefault();

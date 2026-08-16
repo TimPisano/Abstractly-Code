@@ -5,12 +5,15 @@ This module handles extracting text from lease PDFs using PyPDF2 for digital PDF
 and falling back to OCR (pytesseract + pdf2image) for scanned PDFs.
 """
 
+import logging
 import re
 from typing import Optional, Dict, Any, List
 import PyPDF2
 from pdf2image import convert_from_path
 import pytesseract
 from io import BytesIO
+
+logger = logging.getLogger(__name__)
 
 
 class PDFExtractor:
@@ -41,11 +44,11 @@ class PDFExtractor:
 
         # If extraction yielded poor results, fall back to OCR
         if len(total_text.strip()) < self.min_text_length:
-            print("PyPDF2 extraction yielded poor results, falling back to OCR...")
+            logger.info("PyPDF2 extraction yielded poor results, falling back to OCR...")
             if pdf_path:
                 pages = self._extract_with_ocr(pdf_path)
             else:
-                print("Warning: OCR fallback requires pdf_path parameter")
+                logger.warning("OCR fallback requires pdf_path parameter, but none was given")
 
         return pages
 
@@ -76,8 +79,8 @@ class PDFExtractor:
                     "text": text
                 })
 
-        except Exception as e:
-            print(f"Error during PyPDF2 extraction: {e}")
+        except Exception:
+            logger.exception("Error during PyPDF2 extraction")
             # Return empty list on error, will trigger OCR fallback
             return []
 
@@ -108,8 +111,8 @@ class PDFExtractor:
                     "text": text
                 })
 
-        except Exception as e:
-            print(f"Error during OCR extraction: {e}")
+        except Exception:
+            logger.exception("Error during OCR extraction")
             # Return empty result if OCR also fails
             return []
 

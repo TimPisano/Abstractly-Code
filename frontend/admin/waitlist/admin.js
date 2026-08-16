@@ -3,9 +3,9 @@
  * 'approved'. Talks to the unauthenticated /waitlist endpoints — see
  * the NOTE in index.html and backend/app/api.py about locking this
  * down before real launch.
+ *
+ * API_BASE_URL comes from ../../config.js, loaded before this script.
  */
-
-const API_BASE_URL = 'http://localhost:5000';
 
 function escapeHtml(str) {
     if (str === null || str === undefined) return '';
