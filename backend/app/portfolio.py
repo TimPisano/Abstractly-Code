@@ -18,7 +18,7 @@ parsed, and a metric with no parseable inputs at all reports None ("we
 don't know") rather than 0.0 ("we know it's zero").
 """
 
-from datetime import date
+from datetime import date, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from .normalize import (
@@ -385,6 +385,98 @@ def compute_attention_items(
         "expiring_soon": expiring_soon,
         "missing_data": missing_data,
         "unusual_terms": unusual_terms,
+    }
+
+
+# The three windows the expiration-alerts widget buckets into. 90 days
+# is also compute_attention_items' outer window (ATTENTION_EXPIRING_DAYS)
+# -- kept as the same constant so "expiring soon" can't mean two
+# different horizons on the same dashboard.
+EXPIRATION_ALERT_DAYS = ATTENTION_EXPIRING_DAYS
+
+
+def _days_bucket(days_remaining: int) -> str:
+    if days_remaining <= 30:
+        return "30"
+    if days_remaining <= 60:
+        return "60"
+    return "90"
+
+
+def compute_expiration_alerts(
+    leases: List[Dict[str, Any]],
+    reference_date: Optional[date] = None,
+) -> Dict[str, List[Dict[str, Any]]]:
+    """
+    Two lists for the dashboard's expiration-alerts widget, each sorted
+    soonest-first:
+
+      - expiring: leases whose lease_end_date falls within the next
+        EXPIRATION_ALERT_DAYS (90) days, bucketed "30"/"60"/"90" by how
+        soon. Already-expired leases are a different, more urgent
+        problem (handled by the "unusual terms"/risk machinery
+        elsewhere) and are excluded here, same as compute_attention_
+        items' expiring_soon.
+
+      - renewal_deadlines: leases whose renewal *notice* deadline
+        (lease_end_date minus the notice period parsed out of
+        renewal_options) falls within the same window -- kept
+        separate from straight expirations because the two dates are
+        usually different, and the renewal deadline is the one that
+        actually requires action first. A deadline that has already
+        passed (negative days_remaining) is still included and
+        bucketed "overdue" rather than dropped, since a missed
+        renewal window is the single most actionable flag this
+        function can surface -- silently hiding it once the date
+        passes would be exactly the "produces a garbage/misleading
+        picture instead of surfacing the problem" failure mode this
+        project's quality bar exists to prevent. A lease that has
+        already fully expired is excluded either way -- there's
+        nothing left to renew.
+    """
+    if reference_date is None:
+        reference_date = date.today()
+
+    expiring = []
+    renewal_deadlines = []
+
+    for lease in leases:
+        end_date = parse_date(field_value(lease, "lease_end_date"))
+        if end_date is None:
+            continue
+        days_to_end = (end_date - reference_date).days
+        if days_to_end < 0:
+            continue
+
+        if days_to_end <= EXPIRATION_ALERT_DAYS:
+            expiring.append(_attention_entry(
+                lease,
+                lease_end_date=field_value(lease, "lease_end_date"),
+                days_remaining=days_to_end,
+                bucket=_days_bucket(days_to_end),
+            ))
+
+        notice_days = parse_renewal_options(field_value(lease, "renewal_options")).get("notice_days")
+        if notice_days is None:
+            continue
+        deadline = end_date - timedelta(days=notice_days)
+        days_to_deadline = (deadline - reference_date).days
+        if days_to_deadline <= EXPIRATION_ALERT_DAYS:
+            renewal_deadlines.append(_attention_entry(
+                lease,
+                lease_end_date=field_value(lease, "lease_end_date"),
+                renewal_deadline=deadline.isoformat(),
+                notice_days=notice_days,
+                days_remaining=days_to_deadline,
+                bucket="overdue" if days_to_deadline < 0 else _days_bucket(days_to_deadline),
+            ))
+
+    expiring.sort(key=lambda entry: entry["days_remaining"])
+    renewal_deadlines.sort(key=lambda entry: entry["days_remaining"])
+
+    return {
+        "expiring": expiring,
+        "renewal_deadlines": renewal_deadlines,
     }
 
 

@@ -20,12 +20,13 @@ failing on their own as fixtures aged past their expiration dates.
 
 import os
 import sys
-from datetime import date
+from datetime import date, timedelta
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from app.portfolio import (
     FIELD_NAMES,
+    compute_expiration_alerts,
     compute_expiration_timeline,
     compute_portfolio_metrics,
     portfolio_context_for_risk_analysis,
@@ -428,6 +429,128 @@ def test_expiring_today_counts_as_active():
     print("✓ test_expiring_today_counts_as_active: PASS")
 
 
+def _days_from_reference(n):
+    """MM/DD/YYYY string n days from REFERENCE_DATE -- parse_date-friendly, and avoids hand-picked calendar dates going stale or being miscounted."""
+    return (REFERENCE_DATE + timedelta(days=n)).strftime("%m/%d/%Y")
+
+
+def test_expiration_alerts_buckets_by_30_60_90():
+    within_30 = _lease(20, "within_30.pdf", tenant="ThirtyCo", lease_end_date=_days_from_reference(20))
+    within_60 = _lease(21, "within_60.pdf", tenant="SixtyCo", lease_end_date=_days_from_reference(45))
+    within_90 = _lease(22, "within_90.pdf", tenant="NinetyCo", lease_end_date=_days_from_reference(85))
+    outside_90 = _lease(23, "outside_90.pdf", tenant="TooFarCo", lease_end_date=_days_from_reference(120))
+    already_expired = _lease(24, "expired.pdf", tenant="ExpiredCo", lease_end_date=_days_from_reference(-5))
+
+    alerts = compute_expiration_alerts(
+        [within_30, within_60, within_90, outside_90, already_expired],
+        reference_date=REFERENCE_DATE,
+    )
+    by_id = {e["lease_id"]: e for e in alerts["expiring"]}
+
+    assert set(by_id.keys()) == {20, 21, 22}, "only leases within 90 days, excluding already-expired, belong here"
+    assert by_id[20]["bucket"] == "30"
+    assert by_id[21]["bucket"] == "60"
+    assert by_id[22]["bucket"] == "90"
+    assert by_id[20]["days_remaining"] == 20
+    print("✓ test_expiration_alerts_buckets_by_30_60_90: PASS")
+
+
+def test_expiration_alerts_sorted_soonest_first():
+    soon = _lease(25, "soon.pdf", tenant="SoonCo", lease_end_date=_days_from_reference(10))
+    mid = _lease(26, "mid.pdf", tenant="MidCo", lease_end_date=_days_from_reference(50))
+    later = _lease(27, "later.pdf", tenant="LaterCo", lease_end_date=_days_from_reference(80))
+
+    alerts = compute_expiration_alerts([later, soon, mid], reference_date=REFERENCE_DATE)
+    assert [e["lease_id"] for e in alerts["expiring"]] == [25, 26, 27]
+    print("✓ test_expiration_alerts_sorted_soonest_first: PASS")
+
+
+def test_renewal_deadline_kept_separate_from_expiration_and_can_land_in_different_bucket():
+    """
+    A lease ending in 100 days (outside the 90-day expiring window) with
+    a 40-day notice period has its renewal deadline 60 days out -- inside
+    the window. It must show up in renewal_deadlines but NOT expiring,
+    proving the two lists are computed independently, not one derived
+    from the other.
+    """
+    lease = _lease(
+        30, "far_out_but_deadline_soon.pdf", tenant="DeadlineCo",
+        lease_end_date=_days_from_reference(100),
+        renewal_options="1 option(s) of 5 year(s) each; 40 days notice; renewal rent based on fair market rate",
+    )
+    alerts = compute_expiration_alerts([lease], reference_date=REFERENCE_DATE)
+
+    assert alerts["expiring"] == []
+    assert len(alerts["renewal_deadlines"]) == 1
+    entry = alerts["renewal_deadlines"][0]
+    assert entry["lease_id"] == 30
+    assert entry["days_remaining"] == 60
+    assert entry["bucket"] == "60"
+    assert entry["notice_days"] == 40
+    assert date.fromisoformat(entry["renewal_deadline"]) == REFERENCE_DATE + timedelta(days=60)
+    print("✓ test_renewal_deadline_kept_separate_from_expiration_and_can_land_in_different_bucket: PASS")
+
+
+def test_missed_renewal_deadline_flagged_as_overdue_not_dropped():
+    """
+    A lease whose renewal notice window has already closed (but whose
+    lease term hasn't ended yet) is the single most actionable flag this
+    function can raise -- it must still appear, bucketed "overdue" with
+    a negative days_remaining, not silently disappear once the date
+    passes.
+    """
+    lease = _lease(
+        31, "missed_deadline.pdf", tenant="OverdueCo",
+        lease_end_date=_days_from_reference(200),
+        renewal_options="1 option(s) of 10 year(s) each; 210 days notice; renewal rent based on fair market rate",
+    )
+    alerts = compute_expiration_alerts([lease], reference_date=REFERENCE_DATE)
+
+    assert len(alerts["renewal_deadlines"]) == 1
+    entry = alerts["renewal_deadlines"][0]
+    assert entry["bucket"] == "overdue"
+    assert entry["days_remaining"] == -10
+    print("✓ test_missed_renewal_deadline_flagged_as_overdue_not_dropped: PASS")
+
+
+def test_expired_lease_excluded_from_renewal_deadlines_even_if_notice_unparsed_would_match():
+    """Once the lease itself has fully expired, there's nothing left to renew -- excluded regardless of notice period math."""
+    lease = _lease(
+        32, "fully_expired.pdf", tenant="GoneCo",
+        lease_end_date=_days_from_reference(-1),
+        renewal_options="1 option(s) of 5 year(s) each; 30 days notice; renewal rent based on fair market rate",
+    )
+    alerts = compute_expiration_alerts([lease], reference_date=REFERENCE_DATE)
+    assert alerts["renewal_deadlines"] == []
+    assert alerts["expiring"] == []
+    print("✓ test_expired_lease_excluded_from_renewal_deadlines_even_if_notice_unparsed_would_match: PASS")
+
+
+def test_renewal_options_with_no_parseable_notice_days_excluded_silently():
+    """A renewal_options string with no '<N> days notice' phrase can't produce a deadline -- excluded, not a crash or a bogus 0-day deadline."""
+    lease = _lease(
+        33, "no_notice_period.pdf", tenant="VagueCo",
+        lease_end_date=_days_from_reference(20),
+        renewal_options="Renewal terms to be negotiated at time of exercise",
+    )
+    alerts = compute_expiration_alerts([lease], reference_date=REFERENCE_DATE)
+    assert alerts["renewal_deadlines"] == []
+    assert [e["lease_id"] for e in alerts["expiring"]] == [33]
+    print("✓ test_renewal_options_with_no_parseable_notice_days_excluded_silently: PASS")
+
+
+def test_lease_can_appear_in_both_expiring_and_renewal_deadlines():
+    lease = _lease(
+        34, "both_lists.pdf", tenant="BothCo",
+        lease_end_date=_days_from_reference(15),
+        renewal_options="1 option(s) of 5 year(s) each; 10 days notice; renewal rent based on fair market rate",
+    )
+    alerts = compute_expiration_alerts([lease], reference_date=REFERENCE_DATE)
+    assert [e["lease_id"] for e in alerts["expiring"]] == [34]
+    assert [e["lease_id"] for e in alerts["renewal_deadlines"]] == [34]
+    print("✓ test_lease_can_appear_in_both_expiring_and_renewal_deadlines: PASS")
+
+
 if __name__ == "__main__":
     test_portfolio_totals_and_averages()
     test_year_table_escalation_contributes_a_derived_rate()
@@ -441,4 +564,11 @@ if __name__ == "__main__":
     test_timeline_buckets_sorted_soonest_first()
     test_timeline_entry_shape()
     test_expiring_today_counts_as_active()
+    test_expiration_alerts_buckets_by_30_60_90()
+    test_expiration_alerts_sorted_soonest_first()
+    test_renewal_deadline_kept_separate_from_expiration_and_can_land_in_different_bucket()
+    test_missed_renewal_deadline_flagged_as_overdue_not_dropped()
+    test_expired_lease_excluded_from_renewal_deadlines_even_if_notice_unparsed_would_match()
+    test_renewal_options_with_no_parseable_notice_days_excluded_silently()
+    test_lease_can_appear_in_both_expiring_and_renewal_deadlines()
     print("\nAll portfolio tests passed.")

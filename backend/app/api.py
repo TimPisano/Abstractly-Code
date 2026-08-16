@@ -42,6 +42,7 @@ from app.portfolio import (
     compute_portfolio_metrics,
     compute_expiration_timeline,
     compute_attention_items,
+    compute_expiration_alerts,
     compute_portfolio_health,
     portfolio_context_for_risk_analysis,
 )
@@ -674,6 +675,13 @@ def portfolio_attention():
     """'What needs attention today' — expiring soon, missing data, unusual terms. See compute_attention_items for the exact definitions."""
     leases = database.get_all_effective_leases()
     return jsonify(compute_attention_items(leases)), 200
+
+
+@app.route('/portfolio/expiration-alerts', methods=['GET'])
+def portfolio_expiration_alerts():
+    """Dashboard widget data: leases expiring within 90/60/30 days, plus renewal-notice deadlines closing soon -- see compute_expiration_alerts for the exact windows and why the two lists are kept separate."""
+    leases = database.get_all_effective_leases()
+    return jsonify(compute_expiration_alerts(leases)), 200
 
 
 @app.route('/portfolio/health', methods=['GET'])

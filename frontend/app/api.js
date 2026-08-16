@@ -144,6 +144,10 @@ const Api = {
         return apiRequest('/portfolio/health');
     },
 
+    portfolioExpirationAlerts() {
+        return apiRequest('/portfolio/expiration-alerts');
+    },
+
     recentActivity(limit = 10) {
         return apiRequest(`/activity?limit=${limit}`);
     },

@@ -553,6 +553,15 @@
     padding-left: 0.875rem;
 }
 
+/* A renewal notice deadline that's already passed is the most urgent
+   flag this panel can show -- same severity coloring as a high-risk
+   flag elsewhere in the app, not a new color introduced just for this. */
+.attention-item-overdue {
+    background-color: var(--severity-high-bg);
+    color: var(--severity-high);
+    font-weight: 600;
+}
+
 /* ===================== Portfolio health strip ===================== */
 
 .health-strip {
