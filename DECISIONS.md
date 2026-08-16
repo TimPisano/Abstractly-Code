@@ -1481,3 +1481,41 @@ for this test and restored afterward, confirmed via `/config`.
 
 22/22 backend test files pass throughout (all fixes this part were
 frontend-only).
+
+## Session 9 (continued), Part 3 — data confidence
+
+### Coverage was already architecturally guaranteed — re-verified, didn't rebuild
+
+`detail-view.js`'s `createResultCard()` is the single code path every
+one of the 15 extracted fields renders through — there's no per-field
+branching that could let one field type quietly skip its confidence
+badge or citation. Re-verified this holds in practice, not just in
+theory: uploaded all 10 of this project's real fixture PDFs (each with
+a different field-presence pattern — some missing clauses, some with
+every field found) through the live API and checked every field on
+every one for exactly two failure modes: a found field missing its
+confidence or citation, or a not-found field carrying stray citation
+data it shouldn't have. Zero anomalies across all 10 fixtures × 15
+fields. Nothing needed fixing here; the ask to "add it if any field
+type is missing this" turned out to already be satisfied.
+
+### Added the accuracy explainer, not present before
+
+Nothing on the lease detail view told a buyer *why* the citations and
+confidence badges are there — they were just present, which a careful
+reader would notice but a first-time skimmer might not register as a
+deliberate differentiator. Added a short "Why this matters" callout
+directly above the field cards (replacing the old terse one-line
+`.edit-hint`, whose "click to correct" guidance is folded into the new
+note's closing sentence rather than dropped): names explicitly that
+every value traces to a source page/quote, that confidence is
+attached, and that a citation can be clicked to verify against the
+original document. Styled with the same jade/`--confidence-high`
+tokens used for high-confidence badges elsewhere, so it reads as
+reinforcing that system rather than introducing a new visual language.
+The now-unused `.edit-hint` CSS rule was removed rather than left as
+dead code.
+
+Screenshotted the result on a real uploaded lease to confirm placement
+and legibility. 22/22 backend test files pass (frontend-only change).
+Test lease deleted afterward.
