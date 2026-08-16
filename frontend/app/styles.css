@@ -1736,6 +1736,24 @@
     }
 }
 
+/* ---- Initial boot loading state: visible the instant the HTML paints,
+   before access-gate.js has even finished asking the backend whether to
+   show the sign-in gate or the app itself -- closes the blank-page gap
+   that async decision would otherwise leave open. ---- */
+.app-boot-loading {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--background);
+}
+
+.app-boot-loading .spinner-small {
+    width: 1.75rem;
+    height: 1.75rem;
+    border-width: 3px;
+}
+
 /* ---- Access gate (frontend/app/access-gate.js) ---- */
 .access-gate {
     min-height: 100vh;

@@ -1413,3 +1413,71 @@ verification were deleted from the dev DB afterward.
 
 22/22 backend test files pass (this part touched only frontend
 HTML/CSS, no backend changes).
+
+## Session 9 (continued), Part 2 — reliability polish + full new-user flow
+
+### Found and fixed a real error-message bug: `err.message || "fallback"` doesn't work
+
+Auditing every error path for "no raw error codes or stack traces ever
+visible to a user" turned up a genuine bug, not just a hypothetical
+risk: `access-gate.js`'s three catch blocks used
+`err.message || "Couldn't reach the server..."` to fall back to a
+friendly message when something goes wrong. That pattern only works if
+`err.message` can be falsy — but a raw `fetch()` network failure
+(backend unreachable, DNS down) throws with a non-empty technical
+`message` ("Failed to fetch" in a browser, "fetch failed" in this
+project's own Node-based test harness), so the `||` never falls
+through and the raw string reaches the screen verbatim. Reproduced
+directly: killed the simulated network path and watched the literal
+string `"fetch failed"` appear in the gate's error text.
+
+Fixed at the source rather than patching each `||` site (which is what
+produced the bug in the first place — easy to get subtly wrong per
+call site): `api.js`'s shared `apiRequest()` now wraps its own
+`fetch()` call in a try/catch and re-throws one consistent friendly
+message on any network failure, before the raw error ever reaches a
+caller's `catch`. `access-gate.js` can't use `apiRequest()` (it runs
+before `api.js` is even loaded — it's the thing that decides whether
+to load it), so it got its own copy of the same fix via a small
+`fetchJson()` helper. Grepping for every other raw `fetch(` call in
+the frontend turned up two more unprotected sites that needed the same
+fix independently: `landing.js`'s waitlist form (the single most
+visible form on the whole site) and `admin/waitlist/admin.js`'s two
+calls — both fixed the same way, each inline since these are
+standalone scripts with no shared module to fix once for both.
+
+### Closed a blank-page gap at initial load
+
+`#accessGate` and `#appShell` both start `display:none` in the raw
+HTML; nothing decides which one to show until `access-gate.js`'s
+`GET /config` round trip resolves. On a slow connection that's a
+window where the page is blank — not broken, but exactly the kind of
+moment the request called out as looking "frozen." Added
+`#appBootLoading`, a small centered spinner with no inline
+`display:none` (so it's the thing painted first, before any JS runs),
+hidden by every one of access-gate.js's decision points (`showSignIn`,
+`showRequestAccess`, `showPending`, `grant`) the instant they run.
+Verified with an artificially delayed `/config` response: at t=50ms
+(mid-fetch) the spinner is showing and neither the gate nor the app
+shell is visible yet; once the fetch resolves, the spinner is gone and
+the correct one of the other two is showing — no blank frame either
+side of the transition.
+
+### Verified the complete new-user journey end to end, live, all in one run
+
+Not a series of isolated checks — one script that plays out the actual
+sequence a first-time visitor would go through against the real
+running app: land on the landing page, submit "Request Access" with a
+brand-new email, visit `/app/` before being approved (confirmed it
+correctly lands on the pending screen, not the dashboard), approve the
+request through the real admin panel (clicking the real button, not
+calling the API directly), sign back in now that it's approved, upload
+a real lease PDF, open its detail view and confirm all 15 field cards
+show both a citation and a confidence badge, and confirm the Excel
+export link is correctly set. Zero JS errors at any point in the whole
+sequence. All test data (the lease, the waitlist signup) deleted
+afterward; `LOCAL_DEV_MODE` was toggled off to exercise the real gate
+for this test and restored afterward, confirmed via `/config`.
+
+22/22 backend test files pass throughout (all fixes this part were
+frontend-only).

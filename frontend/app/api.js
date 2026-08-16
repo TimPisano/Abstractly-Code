@@ -10,9 +10,24 @@ const API_BASE_URL = 'http://localhost:5000';
  * Shared request helper. Throws an Error with the backend's own error
  * message (falling back to statusText) so callers can surface it
  * directly without re-deriving what went wrong.
+ *
+ * A raw `fetch()` failure (backend unreachable, DNS/network down, CORS)
+ * is caught and re-thrown with one consistent, human-readable message
+ * instead of letting the browser's own technical error text (e.g.
+ * "Failed to fetch" in Chrome, "fetch failed" in Node/some environments)
+ * propagate to a view's `catch (err) { showError(err.message) }` and end
+ * up on screen verbatim. This is the one place every API call passes
+ * through, so fixing it here covers every caller — a per-call-site
+ * `err.message || "fallback"` doesn't work, since a raw network error's
+ * `message` is a non-empty string and always wins over the fallback.
  */
 async function apiRequest(path, options = {}) {
-    const response = await fetch(`${API_BASE_URL}${path}`, options);
+    let response;
+    try {
+        response = await fetch(`${API_BASE_URL}${path}`, options);
+    } catch (networkErr) {
+        throw new Error("Couldn't reach the server. Check your connection and try again.");
+    }
 
     const contentType = response.headers.get('content-type') || '';
     if (!response.ok) {

@@ -35,7 +35,15 @@ const WaitlistAdmin = {
     async load() {
         const content = document.getElementById('waitlistContent');
         try {
-            const response = await fetch(`${API_BASE_URL}/waitlist`);
+            let response;
+            try {
+                response = await fetch(`${API_BASE_URL}/waitlist`);
+            } catch (networkErr) {
+                // A raw fetch() failure throws a browser-internal string
+                // ("Failed to fetch") -- replaced with a message that
+                // actually tells whoever's looking at this what to do.
+                throw new Error("Couldn't reach the server. Is the backend running?");
+            }
             if (!response.ok) throw new Error(`Server returned ${response.status}`);
             this.signups = await response.json();
             this.render();
@@ -116,7 +124,12 @@ const WaitlistAdmin = {
 
     async approve(id) {
         try {
-            const response = await fetch(`${API_BASE_URL}/waitlist/${id}/approve`, { method: 'POST' });
+            let response;
+            try {
+                response = await fetch(`${API_BASE_URL}/waitlist/${id}/approve`, { method: 'POST' });
+            } catch (networkErr) {
+                throw new Error("Couldn't reach the server. Is the backend running?");
+            }
             if (!response.ok) throw new Error(`Server returned ${response.status}`);
             const signup = this.signups.find(s => s.id === id);
             if (signup) signup.status = 'approved';

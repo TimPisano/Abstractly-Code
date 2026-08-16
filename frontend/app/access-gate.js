@@ -36,8 +36,17 @@
         'qa-view.js', 'report-view.js',
     ];
 
+    const bootLoadingEl = document.getElementById('appBootLoading');
     const gateEl = document.getElementById('accessGate');
     const shellEl = document.getElementById('appShell');
+
+    // Called from every place that decides what to show first (the
+    // gate, in any of its 3 panels, or the app itself) -- idempotent,
+    // safe to call more than once (e.g. every time the pending screen's
+    // "Check again" re-decides what to show).
+    function hideBootLoading() {
+        bootLoadingEl.style.display = 'none';
+    }
 
     const panels = {
         signIn: document.getElementById('accessGateSignInPanel'),
@@ -70,6 +79,7 @@
     }
 
     function showSignIn(prefillEmail, message, isError) {
+        hideBootLoading();
         gateEl.style.display = '';
         shellEl.style.display = 'none';
         showPanel('signIn');
@@ -79,6 +89,7 @@
     }
 
     function showRequestAccess(prefillEmail) {
+        hideBootLoading();
         gateEl.style.display = '';
         shellEl.style.display = 'none';
         showPanel('request');
@@ -88,6 +99,7 @@
     }
 
     function showPending(email) {
+        hideBootLoading();
         gateEl.style.display = '';
         shellEl.style.display = 'none';
         pendingEmail = email;
@@ -96,6 +108,7 @@
     }
 
     function grant() {
+        hideBootLoading();
         gateEl.style.display = 'none';
         shellEl.style.display = '';
         loadAppScripts();
@@ -138,30 +151,49 @@
         scripts.forEach((script) => document.body.appendChild(script));
     }
 
+    // access-gate.js runs before api.js even loads (it's the thing that
+    // decides whether api.js gets loaded at all), so it can't share
+    // apiRequest()'s network-failure handling and needs its own copy of
+    // the same fix: a raw fetch() failure (backend unreachable, DNS/
+    // network down) throws a browser-internal string like "Failed to
+    // fetch" that would otherwise end up on screen verbatim. Translated
+    // here, once, into one consistent human-readable message, rather
+    // than trusting every call site's own `err.message || "fallback"`
+    // -- which doesn't work anyway, since a truthy raw message always
+    // wins over the fallback.
+    async function fetchJson(url, options) {
+        let response;
+        try {
+            response = await fetch(url, options);
+        } catch (networkErr) {
+            throw new Error("Couldn't reach the server. Check your connection and try again.");
+        }
+        const data = await response.json().catch(() => ({}));
+        return { response, data };
+    }
+
     async function fetchConfig() {
-        const response = await fetch(`${API_BASE_URL}/config`);
+        const { response, data } = await fetchJson(`${API_BASE_URL}/config`);
         if (!response.ok) throw new Error('config request failed');
-        return response.json();
+        return data;
     }
 
     async function checkAccess(email) {
-        const response = await fetch(`${API_BASE_URL}/waitlist/check`, {
+        const { response, data } = await fetchJson(`${API_BASE_URL}/waitlist/check`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email }),
         });
-        const data = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(data.error || 'Something went wrong. Please try again.');
         return data; // { approved, found }
     }
 
     async function submitAccessRequest(email) {
-        const response = await fetch(`${API_BASE_URL}/waitlist`, {
+        const { response, data } = await fetchJson(`${API_BASE_URL}/waitlist`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email }),
         });
-        const data = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(data.error || 'Something went wrong. Please try again.');
         return data;
     }

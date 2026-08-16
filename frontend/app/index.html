@@ -11,6 +11,20 @@
 </head>
 <body>
     <!--
+      Shown by default (no inline display:none) so there's never a
+      blank-page moment between HTML paint and access-gate.js deciding
+      whether to show the sign-in gate or the app shell -- that async
+      decision requires a round trip to GET /config, which takes long
+      enough on a slow connection to otherwise look like the page
+      failed to load rather than that it's still loading. Hidden by
+      access-gate.js the instant it knows which of the other two to
+      show instead.
+    -->
+    <div class="app-boot-loading" id="appBootLoading">
+        <span class="spinner-small"></span>
+    </div>
+
+    <!--
       Access gate: hidden until access-gate.js confirms either
       LOCAL_DEV_MODE (local testing only, see backend/.env) or an
       approved waitlist email. Kept as its own top-level section (not

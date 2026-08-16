@@ -22,11 +22,21 @@ document.getElementById('waitlistForm').addEventListener('submit', async (e) => 
     submitBtn.textContent = 'Submitting...';
 
     try {
-        const response = await fetch(`${API_BASE_URL}/waitlist`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email }),
-        });
+        let response;
+        try {
+            response = await fetch(`${API_BASE_URL}/waitlist`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email }),
+            });
+        } catch (networkErr) {
+            // A raw fetch() failure (backend unreachable, network down)
+            // throws a browser-internal string like "Failed to fetch" --
+            // caught here and replaced before it can reach a prospective
+            // client's screen on the single most important form on the
+            // page.
+            throw new Error("Couldn't reach the server. Check your connection and try again.");
+        }
         const data = await response.json().catch(() => ({}));
 
         if (!response.ok) {
