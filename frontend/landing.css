@@ -92,6 +92,14 @@ html {
     padding: 2rem 1.5rem 0;
 }
 
+/* .landing-nav sits in normal document flow BEFORE .hero (not overlaid
+   on top of it), so it renders against the page's own ivory background,
+   not the hero's black one -- these colors are chosen for that ivory
+   backdrop specifically. (Previously used --lux-ivory / a light rgba,
+   colors meant for text on a dark surface; against the actual ivory
+   background behind the nav that made the entire nav bar's text nearly
+   invisible -- a real contrast bug, not a deliberate transparent-over-
+   hero look, since the markup never positions the nav over the hero.) */
 .landing-brand {
     display: flex;
     align-items: center;
@@ -99,7 +107,7 @@ html {
     font-weight: 800;
     font-size: 1.0625rem;
     letter-spacing: -0.01em;
-    color: var(--lux-ivory);
+    color: var(--text-dark);
 }
 
 .landing-brand-icon {
@@ -119,7 +127,7 @@ html {
     font-size: 0.8125rem;
     font-weight: 500;
     letter-spacing: 0.03em;
-    color: rgba(246, 243, 236, 0.65);
+    color: var(--text-medium);
 }
 
 .landing-nav-links a {
@@ -127,12 +135,12 @@ html {
 }
 
 .landing-nav-links a:hover {
-    color: var(--lux-ivory);
+    color: var(--lux-accent);
 }
 
 .nav-client-login {
     padding: 0.5rem 1rem;
-    border: 1px solid var(--lux-line-dark);
+    border: 1px solid var(--border-color);
     border-radius: var(--radius-sm);
 }
 

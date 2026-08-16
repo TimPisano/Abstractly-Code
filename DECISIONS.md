@@ -1519,3 +1519,67 @@ dead code.
 Screenshotted the result on a real uploaded lease to confirm placement
 and legibility. 22/22 backend test files pass (frontend-only change).
 Test lease deleted afterward.
+
+## Session 9 (continued), Part 4 — final visual QA, two widths
+
+### Found and fixed a real overflow bug: the lease detail action buttons
+
+`.detail-actions` (Export JSON / Download Excel / Export to Google
+Sheets / Delete) was a plain `display: flex` row with no wrap. It had
+room to spare at desktop width, but Part 3's Google Sheets button
+addition (an earlier session) pushed the row's natural width past what
+a tablet viewport (820px) has available, and with no `flex-wrap`, the
+last button was clipped at the viewport edge rather than dropping to a
+second line. Fixed with `flex-wrap: wrap` — same one-line fix already
+correctly in place on the sibling `.export-actions` block, just missed
+on this one when the button was added. Verified the wide comparison
+table's own horizontal scroll doesn't leak into a page-wide scrollbar
+either (`body.scrollWidth === document.documentElement.clientWidth` at
+tablet width) — that one was already correctly contained.
+
+### Found and fixed a real, pre-existing contrast bug: the landing page nav was nearly invisible
+
+While screenshotting the landing page at both widths for this pass,
+noticed the top nav (brand name, "How It Works," "Capabilities,"
+"Request Access," "Client Login") wasn't rendering at all — not a
+sizing/wrapping issue this time, a color one. Diagnosed methodically
+rather than guessing: confirmed via `getComputedStyle` that color,
+opacity, and visibility were all "correct" and the elements were
+correctly hit-testable and on top (`elementFromPoint` returned the
+right `<a>` tag) — ruling out a covering-element or stacking-context
+theory. Forcing an obviously-wrong bright red/yellow override made the
+text immediately visible, which combined with `getBoundingClientRect()`
+on `.landing-nav` vs `.hero` (nav: y 0-140; hero starts at y 140) and
+`getComputedStyle(document.body).backgroundColor` (`rgb(246,243,236)`,
+the ivory token) pinned the actual cause: `.landing-nav` sits in normal
+document flow *before* `.hero`, so it paints against the page's own
+ivory background — but `.landing-brand` and `.landing-nav-links` were
+both styled with light/`--lux-ivory` text colors clearly meant for
+sitting *over* the dark hero. Ivory text at up to 65% opacity on an
+ivory background is a near-zero-contrast bug, not a deliberate
+transparent-nav-over-hero look — the markup never actually positions
+the nav over the hero, so that light-on-dark styling never had a
+backdrop that would make it visible. This is not something this
+session introduced; it's been present since the nav was first built,
+just never caught because no prior screenshot happened to scrutinize
+that specific region closely enough to notice genuinely-missing text
+rather than assume it simply hadn't been looked at yet.
+
+Fixed by switching `.landing-brand`, `.landing-nav-links`, and
+`.nav-client-login`'s border to the same dark-ivory-appropriate tokens
+the rest of the page's light-background sections already use
+(`--text-dark`, `--text-medium`, `--border-color`), and the hover
+color to the brass accent instead of ivory (which would have the same
+invisibility problem). Verified fixed with a fresh screenshot: brand
+name and all four nav links now clearly legible against the ivory
+background.
+
+This is exactly the class of bug a "make sure nothing looks broken"
+pass exists to catch, and exactly why the instruction to actually
+screenshot and look — not just trust that a component was styled
+correctly when it was written — mattered here: every computed-style
+diagnostic said the text was "there," and it still wasn't visible to
+an actual visitor.
+
+Re-ran the full backend suite after both fixes: 22/22 pass (both were
+frontend CSS-only changes). All QA test leases deleted afterward.
