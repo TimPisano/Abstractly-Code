@@ -1289,3 +1289,44 @@ correctly reads 2 succeeded / 1 failed. Screenshotted all four visual
 states (pending / processing / done / error) together. 22/22 backend
 test files pass (backend was unmodified — this phase was frontend-
 only); all leases created during verification were deleted afterward.
+
+## Session 8 (continued), Phase 5 — consistency audit, not a second redesign
+
+### Asked before assuming: "new palette/typography/spacing" vs. a consistency pass
+
+The task's DESIGN section read as a from-scratch redesign brief ("new
+color palette, typography, spacing... should look like a professional
+B2B SaaS product"), phrased the same way it would be if this were the
+first design pass on the app. It isn't — the app was already fully
+redesigned earlier in this same session (the deep-charcoal/brass/ivory
+palette promoted from the landing page into the shared token file,
+verified screen-by-screen with real screenshots), and every piece of
+UI built in Phases 2-4 (gate panels, filter row, selection summary
+tiles, upload status rows) was already built using those same existing
+tokens and component classes, not new ones. Redoing the palette from
+scratch here would have discarded already-verified work for no stated
+reason, so this was raised directly rather than guessed at either way
+— asked whether Phase 5 meant "consistency pass" or "genuinely
+propose something different," confirmed: consistency pass.
+
+### What the audit actually checked
+
+Grepped every CSS/JS file touched in Phases 2-4 for hardcoded hex
+colors bypassing the token system (none found — the one apparent match
+was `#accessGateForm`, a CSS ID selector, not a color) and diffed the
+font-size/spacing values added since the Part 4 redesign against the
+existing scale (all reused already-established values — `0.75rem`,
+`0.8125rem`, `0.9375rem` for type; `0.4rem`/`0.5rem`/`0.75rem` for
+spacing — nothing new introduced). Also screenshotted the dashboard
+and the access gate at two tablet breakpoints (820px, matching the
+existing `>768px` layout, and 700px, matching the existing `<=768px`
+horizontal-sidebar layout) specifically because "responsive for
+desktop and tablet" was an explicit requirement and none of this
+session's earlier screenshots had been taken below desktop width —
+both breakpoints already handled the new filter row and selection
+panel correctly via the existing `flex-wrap` on `.table-controls`,
+with no CSS changes needed.
+
+No code changes were required for Phase 5 — the audit confirmed the
+Phase 2-4 work was already consistent with the established design
+system rather than finding drift to fix.
