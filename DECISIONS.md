@@ -1167,3 +1167,67 @@ button chrome (a visible border box) since `.access-gate-link` had
 never needed to reset that. Fixed by resetting `background`/`border`/
 `padding`/`font` on that class. A pure functional/DOM test would never
 have caught this — only actually rendering it would.
+
+## Session 8 (continued), Phase 3 — checkbox selection rolls up to a live summary panel
+
+### New endpoint reuses compute_portfolio_metrics rather than a second summing routine
+
+`GET /leases/selection-summary?ids=1,2,3` (new, in `api.py`) calls the
+exact same `compute_portfolio_metrics()` that already powers the
+portfolio-wide dashboard tiles, just over the caller's subset of
+leases instead of every lease. No new aggregation logic was written.
+- **Reason**: this project already has one documented instance of
+  exactly this reasoning (`portfolio_context_for_risk_analysis`, "so a
+  risk flag citing a number the dashboard disagrees with would
+  undermine the whole point") — a selection-summary total is the same
+  category of risk. Computing sums a second way client-side (parsing
+  "$6,250.00" strings in JS) would create two independent places a
+  currency-parsing edge case could be fixed in only one of them and
+  silently diverge from the other. Mirrors `/leases/compare` and
+  `/leases/<id>/benchmark`'s existing `?ids=` pattern rather than
+  inventing a new request shape.
+- Unlike `/leases/compare` (requires 2+ ids), a single selected lease
+  is allowed here — its "total" is just its own numbers, which is
+  still a meaningful thing to show. Doesn't log an activity-feed
+  entry, unlike a run comparison: checking a box to glance at a
+  running total is routine browsing, not a distinct action worth an
+  audit trail entry.
+
+### Selection summary is additive to Compare, not a replacement for it
+
+The existing "Select to compare" checkbox mode now drives two
+independent pieces of UI: the existing compare-bar (2+ selected ->
+"Compare Selected" navigates to the side-by-side Compare view,
+unchanged) and a new inline summary panel (1+ selected -> live rollup
+tiles, reusing the exact `.metric-tile` markup/CSS the portfolio-wide
+tiles already use, so it reads as the same kind of number in the same
+place rather than a bolted-on second summary style). A "latest
+request wins" token guards `updateSelectionSummary()` against a rapid
+run of checkbox clicks resolving out of order and overwriting a newer
+total with a stale one.
+
+### Status filter mirrors the Timeline view's own 6-month bucketing exactly
+
+The new "Expiring soon" status option reuses `portfolio.py`'s
+`DAYS_PER_MONTH = 30.4375` constant and its `< 0` / `< 6` month
+thresholds verbatim in a client-side `leaseStatus()` helper, so a
+lease the dashboard filter calls "expiring soon" can't disagree with
+the Timeline view's "Expiring within 6 months" bucket for the same
+lease — same reasoning, and the same established pattern, as Part 1's
+`parseLeaseDate()` mirroring `normalize.py`'s date parsing. A lease
+with no parseable end date matches neither the status filter nor the
+date-range filter (excluded, not guessed into a bucket) — consistent
+with how the rest of the app treats missing dates.
+
+### Verified live: checkbox selection, deselection, and both new filters
+
+jsdom driving the real running app against 3 real uploaded fixtures:
+selecting all 3 shows the correct 3-lease totals (cross-checked
+against a direct `curl` of the same endpoint — identical numbers);
+deselecting one live-recomputes to the correct 2-lease totals; the
+panel correctly hides again at zero selected. Status and date-range
+filters both correctly narrow the visible rows. Also screenshotted the
+populated dashboard to confirm the new filter row and the selection
+summary panel render correctly, consistent with the existing tile
+style. 22/22 backend test files pass; all test leases created for
+verification were deleted afterward.

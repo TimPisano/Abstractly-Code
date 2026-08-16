@@ -164,6 +164,18 @@
                         <h2>Lease Library</h2>
                         <div class="table-controls">
                             <input type="text" id="dashboardFilter" class="text-input" placeholder="Filter by name, tenant, landlord, address, or tag...">
+                            <select id="dashboardStatusFilter" class="text-input select-input" title="Filter by lease status">
+                                <option value="">All statuses</option>
+                                <option value="active">Active</option>
+                                <option value="expiring_soon">Expiring soon (6 mo)</option>
+                                <option value="expired">Expired</option>
+                            </select>
+                            <label class="dashboard-date-filter-label" title="Filter by lease end date">
+                                Expires
+                                <input type="date" id="dashboardDateFrom" class="text-input date-input">
+                                <span>&ndash;</span>
+                                <input type="date" id="dashboardDateTo" class="text-input date-input">
+                            </label>
                             <label class="checkbox-label">
                                 <input type="checkbox" id="compareModeToggle"> Select to compare
                             </label>
@@ -196,6 +208,12 @@
                         <p class="empty-state-title">No leases uploaded yet</p>
                         <p class="empty-state-hint">Upload your first lease PDF and we'll extract the key terms automatically — rent, dates, escalations, and more.</p>
                         <button class="btn-primary" data-goto="upload" type="button">Upload your first lease</button>
+                    </div>
+                    <div class="selection-summary-panel" id="selectionSummaryPanel" style="display:none;">
+                        <div class="selection-summary-header">
+                            <h3>Selected Leases <span class="selection-summary-count" id="selectionSummaryCount">0</span></h3>
+                        </div>
+                        <div class="metrics-row selection-summary-tiles" id="selectionSummaryTiles"></div>
                     </div>
                     <div class="compare-bar" id="compareBar" style="display:none;">
                         <span id="compareCount">0 selected</span>

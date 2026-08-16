@@ -767,6 +767,46 @@ def leases_compare():
     return jsonify(compare_leases(leases)), 200
 
 
+@app.route('/leases/selection-summary', methods=['GET'])
+def leases_selection_summary():
+    """
+    GET /leases/selection-summary?ids=1,2,3
+
+    Rollup totals/averages for an arbitrary subset of leases -- the
+    dashboard's checkbox selection, not the whole portfolio. Reuses
+    compute_portfolio_metrics (the same function behind the portfolio-
+    wide dashboard tiles) rather than a separate summing routine, so a
+    3-lease selection's total rent can't disagree with what the
+    portfolio-wide total would be if all 3 were the entire portfolio --
+    one definition of "how these numbers get summed," same reasoning as
+    portfolio_context_for_risk_analysis above.
+
+    Unlike /leases/compare, 1 id is allowed (a single-lease selection
+    still has a meaningful sum -- it's just that lease's own numbers)
+    and this doesn't log an activity entry, since selecting leases to
+    glance at a running total is a routine, high-frequency browsing
+    action, not a distinct user action worth an audit trail entry the
+    way running a full comparison is.
+    """
+    ids_param = request.args.get('ids', '')
+    try:
+        ids = [int(i) for i in ids_param.split(',') if i.strip()]
+    except ValueError:
+        return jsonify({"error": "ids must be a comma-separated list of integers"}), 400
+
+    if not ids:
+        return jsonify({"error": "Provide at least 1 lease id (e.g. ?ids=1,2)"}), 400
+
+    leases = []
+    for lease_id in ids:
+        lease = database.get_effective_lease(lease_id)
+        if not lease:
+            return jsonify({"error": f"Lease {lease_id} not found"}), 404
+        leases.append(lease)
+
+    return jsonify(compute_portfolio_metrics(leases)), 200
+
+
 @app.route('/leases/<int:lease_id>/benchmark', methods=['GET'])
 def lease_benchmark(lease_id):
     """Benchmarks one lease against every OTHER lease in the portfolio (this lease excluded from its own comparison average)."""

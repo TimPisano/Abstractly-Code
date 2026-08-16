@@ -150,6 +150,10 @@ const Api = {
         return apiRequest(`/leases/compare?ids=${leaseIds.join(',')}`);
     },
 
+    selectionSummary(leaseIds) {
+        return apiRequest(`/leases/selection-summary?ids=${leaseIds.join(',')}`);
+    },
+
     leaseBenchmark(leaseId) {
         return apiRequest(`/leases/${leaseId}/benchmark`);
     },

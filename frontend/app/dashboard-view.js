@@ -213,6 +213,9 @@ const Dashboard = {
         tableWrap.style.display = 'block';
 
         const filterText = (document.getElementById('dashboardFilter').value || '').toLowerCase();
+        const statusFilter = document.getElementById('dashboardStatusFilter').value;
+        const dateFromStr = document.getElementById('dashboardDateFrom').value;
+        const dateToStr = document.getElementById('dashboardDateTo').value;
         const compareMode = document.getElementById('compareModeToggle').checked;
 
         let rows = leases.map(lease => ({
@@ -237,6 +240,25 @@ const Dashboard = {
                 r.tags.some(tag => tag.toLowerCase().includes(filterText)) ||
                 lease_filename(r.lease).toLowerCase().includes(filterText)
             );
+        }
+
+        if (statusFilter) {
+            rows = rows.filter(r => leaseStatus(r.endDate) === statusFilter);
+        }
+
+        if (dateFromStr || dateToStr) {
+            // Leases with no parseable end date can't match a date-range
+            // filter one way or the other -- exclude them rather than
+            // guessing, same reasoning as the status filter above.
+            const fromTime = dateFromStr ? new Date(dateFromStr + 'T00:00:00').getTime() : null;
+            const toTime = dateToStr ? new Date(dateToStr + 'T23:59:59').getTime() : null;
+            rows = rows.filter(r => {
+                const t = parseLeaseDate(r.endDate);
+                if (t === null) return false;
+                if (fromTime !== null && t < fromTime) return false;
+                if (toTime !== null && t > toTime) return false;
+                return true;
+            });
         }
 
         rows = this.sortRows(rows);
@@ -291,6 +313,7 @@ const Dashboard = {
                 if (cb.checked) AppState.compareSelection.add(id);
                 else AppState.compareSelection.delete(id);
                 Dashboard.updateCompareBar();
+                Dashboard.updateSelectionSummary();
             });
         });
         tbody.querySelectorAll('.editable-name').forEach(el => {
@@ -384,6 +407,53 @@ const Dashboard = {
         document.getElementById('compareCount').textContent = `${count} selected`;
     },
 
+    _selectionSummaryToken: 0,
+
+    async updateSelectionSummary() {
+        const panel = document.getElementById('selectionSummaryPanel');
+        const ids = Array.from(AppState.compareSelection);
+
+        if (ids.length === 0) {
+            panel.style.display = 'none';
+            return;
+        }
+
+        panel.style.display = 'block';
+        document.getElementById('selectionSummaryCount').textContent = ids.length;
+
+        const tiles = document.getElementById('selectionSummaryTiles');
+        tiles.innerHTML = SELECTION_SUMMARY_TILE_DEFS.map(() => `
+            <div class="metric-tile">
+                <div class="metric-value"><span class="skeleton skeleton-text"></span></div>
+                <div class="metric-label"></div>
+            </div>
+        `).join('');
+
+        // A rapid string of checkbox clicks fires this repeatedly;
+        // only the response for the MOST RECENT selection should ever
+        // reach the DOM, or a slow earlier request could overwrite a
+        // faster later one with stale totals.
+        const token = ++this._selectionSummaryToken;
+        try {
+            const metrics = await Api.selectionSummary(ids);
+            if (token !== this._selectionSummaryToken) return;
+            this.renderSelectionSummaryTiles(metrics);
+        } catch (err) {
+            if (token !== this._selectionSummaryToken) return;
+            tiles.innerHTML = `<p class="empty-inline">Couldn't load totals for the selected leases: ${escapeHtml(err.message)}</p>`;
+        }
+    },
+
+    renderSelectionSummaryTiles(metrics) {
+        const tiles = document.getElementById('selectionSummaryTiles');
+        tiles.innerHTML = SELECTION_SUMMARY_TILE_DEFS.map(def => `
+            <div class="metric-tile">
+                <div class="metric-value">${def.format(metrics)}</div>
+                <div class="metric-label">${def.label}</div>
+            </div>
+        `).join('');
+    },
+
     async exportToGoogleSheets() {
         const btn = document.getElementById('dashboardExportSheetsBtn');
         const status = document.getElementById('dashboardExportStatus');
@@ -423,10 +493,37 @@ function parseMoney(str) {
     return match ? parseFloat(match[1].replace(/,/g, '')) : 0;
 }
 
+// Mirrors portfolio.py's compute_expiration_timeline bucket thresholds
+// exactly (same DAYS_PER_MONTH constant, same "< 0" / "< 6" cutoffs) so
+// this dashboard filter's "Expiring soon" can't disagree with what the
+// Timeline view's "Expiring within 6 months" bucket already shows for
+// the same lease.
+const DAYS_PER_MONTH = 30.4375;
+function leaseStatus(endDateStr) {
+    const t = parseLeaseDate(endDateStr);
+    if (t === null) return null;
+    const monthsRemaining = (t - Date.now()) / (1000 * 60 * 60 * 24) / DAYS_PER_MONTH;
+    if (monthsRemaining < 0) return 'expired';
+    if (monthsRemaining < 6) return 'expiring_soon';
+    return 'active';
+}
+
 function fmtMoney(value) {
     if (value === null || value === undefined) return '—';
     return `$${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
+
+// Same metric vocabulary as the portfolio-wide tiles in renderMetrics()
+// above, computed over just the checkbox-selected leases instead of the
+// whole portfolio -- deliberately not a different set of numbers, so
+// "select all" would read the same as the portfolio-wide row.
+const SELECTION_SUMMARY_TILE_DEFS = [
+    { label: 'Total Monthly Rent', format: m => fmtMoney(m.total_monthly_rent) },
+    { label: 'Total Sq Ft', format: m => m.total_square_footage != null ? m.total_square_footage.toLocaleString() : '—' },
+    { label: 'Total CAM Exposure', format: m => fmtMoney(m.total_cam_exposure) },
+    { label: 'Avg. Rent / Sq Ft', format: m => m.avg_rent_per_sqft != null ? `$${m.avg_rent_per_sqft.toFixed(2)}` : '—' },
+    { label: 'Avg. Security Deposit', format: m => fmtMoney(m.avg_security_deposit) },
+];
 
 const ACTIVITY_TYPE_LABELS = {
     lease_uploaded: 'Upload',
@@ -466,9 +563,20 @@ function _initDashboardViewBindings() {
         Dashboard.renderTable(AppState.leases);
     });
 
+    document.getElementById('dashboardStatusFilter').addEventListener('change', () => {
+        Dashboard.renderTable(AppState.leases);
+    });
+    document.getElementById('dashboardDateFrom').addEventListener('change', () => {
+        Dashboard.renderTable(AppState.leases);
+    });
+    document.getElementById('dashboardDateTo').addEventListener('change', () => {
+        Dashboard.renderTable(AppState.leases);
+    });
+
     document.getElementById('compareModeToggle').addEventListener('change', () => {
         AppState.compareSelection.clear();
         Dashboard.updateCompareBar();
+        Dashboard.updateSelectionSummary();
         Dashboard.renderTable(AppState.leases);
     });
 
