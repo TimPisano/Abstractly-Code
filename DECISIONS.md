@@ -1851,3 +1851,95 @@ could hit `/leases` or `/extract` in a tight loop, or hammer
 ("if none exists, flag it as a gap") this section's job was
 confirmation, not implementation — recorded as a real gap for the
 sale-readiness report, not silently built without being asked.
+
+## Session 10 (continued), Part 4 — data handling and reliability
+
+### Storage survives a hard crash and concurrent uploads — verified empirically, not assumed
+
+Storage is real file-backed SQLite (`backend/lease_portfolio.db`, not
+`:memory:`), with every route opening its own connection, always
+closed in a `finally`, and every write explicitly `commit()`-ed before
+the connection closes — so there's no long-lived in-memory state a
+crash could lose and no batched-write window where a crash could catch
+a commit half-done. Verified directly rather than trusting that
+description: uploaded a lease, hard-killed the server process with
+`kill -9` (not a graceful shutdown), restarted it, and confirmed the
+lease was still present with all fields intact. Separately, fired 5
+simultaneous uploads at the running server and confirmed all 5
+persisted (`lease_count` correctly read back as 5) with no lost or
+corrupted rows — SQLite's own file-level locking serializes the
+concurrent writes safely without any additional code needed here.
+
+### Multi-lease splitting: real bug found and fixed while testing against structural variation
+
+The request specifically asked not to trust the splitting logic
+against just the one sample PDF already in the repo. Built
+`test_multi_lease_structural_variation.py` with three genuinely
+different document shapes (not just re-shuffled sample text): each
+lease spanning 2 pages instead of 1, financial/term clauses stated
+*before* the parties are named instead of after, and "Lessor"/"Lessee"
+terminology with numbered "ARTICLE" headers instead of "Landlord"/
+"Tenant" prose.
+
+The third case failed on first run — and not narrowly. Tracing it
+down found that `field_extractor.py`'s `_defined_term_pattern`, the
+regex used to pull a party's name out of prose like
+`Some Company, LLC ("Lessor")`, only ever matched the literal words
+"Tenant"/"Landlord" there. A separate, unrelated pattern (for
+label-style text like `Tenant: John Smith`) already recognized
+"Lessee"/"Lessor"/"Renter" as synonyms — but that recognition never
+extended to the defined-term pattern, which both single-lease
+extraction and multi-lease boundary detection both depend on. The
+practical effect: **any lease using "Lessor"/"Lessee" phrasing —
+extremely common real-world terminology, not a rare edge case — would
+silently extract neither tenant nor landlord at all**, in ordinary
+single-lease use, not just in multi-lease documents. This was not
+caught by the existing test suite because none of its fixtures used
+that terminology in the defined-term style.
+
+Fixed by changing `_defined_term_pattern` to accept a tuple of role
+keywords and build an alternation (`Tenant|Lessee|Renter`,
+`Landlord|Lessor`), and updating its three callers
+(`_extract_defined_party`, `_find_all_party_occurrences`,
+`_find_all_party_values`) and their six call sites across
+`extract_fields()`, `detect_lease_boundaries()`, and
+`detect_multiple_leases()` accordingly. Verified three ways before
+considering it fixed: the new structural-variation tests directly
+(3/3 pass), the full suite after registering the new file (23/23
+files), and a live end-to-end upload through the running API — which
+initially still showed `tenant: None, landlord: None` after the code
+fix, until realizing the Flask dev server doesn't hot-reload and was
+still running the pre-fix code in memory; restarting it produced the
+correct `tenant: Cascade Outdoor Supply Co.`, `landlord: Highland
+Estates Group`.
+
+### Export accuracy: Excel and Google Sheets checked cell-by-cell, not spot-checked
+
+Uploaded three leases with deliberately varied field coverage (one
+fully-populated commercial lease, one minimal Lessor/Lessee lease with
+many fields absent, one office lease with a different subset missing)
+and compared every cell of `/portfolio/rent-roll.xlsx` and every value
+`sheets_export._lease_row()` would write against each lease's own
+`extracted_fields` response, field by field:
+
+- Currency and count strings (`"$6,250.00"`, `"2,400 sq ft"`) retype
+  correctly to plain numbers (`6250`, `2400`) in both exports, with no
+  rounding drift — `Rent/SqFt` matches the exact division
+  (`6250/2400 = 2.604166...`, `11250/4500 = 2.5`) in the Excel export,
+  and the Sheets row-builder's independently-derived `Annual Rent`
+  (`monthly * 12`) and `Rent per Square Foot` came out identical to
+  hand-computed values for all three leases.
+- Every field the extractor reported as not-found rendered as a true
+  blank cell (`None` in the xlsx, `""` in the Sheets row) in both
+  exports — never the literal text "None" or "Not Found" leaking into
+  exported data.
+- Row count and row order matched the upload order exactly in both
+  exports (3 leases in, 3 rows out, correctly attributed).
+
+No mismatches found. Google Sheets export itself still can't be
+tested end-to-end without live Google credentials (unchanged from
+Part 1/Part 2 — the route correctly returns a clean 502 with a setup
+message when unconfigured, confirmed by existing tests), but the row
+data it *would* send is proven identical to what the Excel export and
+the app itself show, which was the actual accuracy question being
+asked here.

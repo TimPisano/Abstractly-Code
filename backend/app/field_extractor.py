@@ -135,8 +135,8 @@ class FieldExtractor:
              "confidence": "high"/"medium"/"low" or None}
         """
         result = {
-            "tenant": self._extract_defined_party(pages, "Tenant", self._party_label_patterns("tenant", "lessee", "renter")),
-            "landlord": self._extract_defined_party(pages, "Landlord", self._party_label_patterns("landlord", "lessor")),
+            "tenant": self._extract_defined_party(pages, ("Tenant", "Lessee", "Renter"), self._party_label_patterns("tenant", "lessee", "renter")),
+            "landlord": self._extract_defined_party(pages, ("Landlord", "Lessor"), self._party_label_patterns("landlord", "lessor")),
             "rent_amount": self._extract_rent(pages),
             "lease_start_date": self._extract_start_date(pages),
             "lease_end_date": self._extract_end_date(pages),
@@ -230,8 +230,21 @@ class FieldExtractor:
             rf"(?i:{keyword_group}){connector}([A-Z][\w&,\.\'\-\s]+?)(?:\n|$)",
         ]
 
-    def _defined_term_pattern(self, role: str) -> str:
-        return rf"([A-Z][A-Za-z0-9&,\.\'\-\s]{{2,80}}?)\s*\(\s*{QUOTE_OPEN}(?i:{role}){QUOTE_CLOSE}\s*\)"
+    def _defined_term_pattern(self, *role_keywords: str) -> str:
+        # Accepts every synonym a real lease might use as the defined
+        # term in prose like '...Some Company, LLC ("Lessor")' -- not
+        # just "Tenant"/"Landlord". Found and fixed during the pre-sale
+        # audit: this previously only ever matched the literal words
+        # "Tenant"/"Landlord" here, while the separate label-style
+        # pattern ("Tenant: John Smith") already recognized "Lessee"/
+        # "Lessor"/"Renter" as synonyms -- meaning a lease that defines
+        # its parties with "Lessor"/"Lessee" (extremely common real-
+        # world terminology, not a rare edge case) silently extracted
+        # neither tenant nor landlord at all, in both single-lease
+        # extraction and multi-lease boundary detection alike, since
+        # both go through this same pattern.
+        role_group = "|".join(role_keywords)
+        return rf"([A-Z][A-Za-z0-9&,\.\'\-\s]{{2,80}}?)\s*\(\s*{QUOTE_OPEN}(?i:{role_group}){QUOTE_CLOSE}\s*\)"
 
     def _clean_defined_term_value(self, value: str) -> str:
         """Shared cleanup for a defined-term-style party match (e.g. '...Some Company, LLC ("Tenant")')."""
@@ -262,18 +275,20 @@ class FieldExtractor:
     def _extract_defined_party(
         self,
         pages: List[Dict[str, Any]],
-        role: str,
+        role_keywords: Tuple[str, ...],
         label_patterns: List[str]
     ) -> Dict[str, Any]:
         """
         Extract a party name (Tenant/Landlord). Tries, in order:
-          1. Defined-term prose style: '...Some Company, LLC ("Tenant")' (high)
+          1. Defined-term prose style: '...Some Company, LLC ("Tenant")',
+             matching any of role_keywords (e.g. "Tenant"/"Lessee"/
+             "Renter"), not just the first one (high)
           2. Label style: 'Tenant: John Smith' (high)
 
         Both run case-sensitive (flags=0) with keywords scoped
         case-insensitive via (?i:...) — see _party_label_patterns.
         """
-        result = self._search_ordered(pages, [self._defined_term_pattern(role)], ["high"], flags=0)
+        result = self._search_ordered(pages, [self._defined_term_pattern(*role_keywords)], ["high"], flags=0)
         if result:
             result["value"] = self._clean_defined_term_value(result["value"])
             return result
@@ -288,7 +303,7 @@ class FieldExtractor:
     def _find_all_party_occurrences(
         self,
         pages: List[Dict[str, Any]],
-        role: str,
+        role_keywords: Tuple[str, ...],
         label_patterns: List[str],
     ) -> List[Tuple[str, int]]:
         """
@@ -304,7 +319,7 @@ class FieldExtractor:
         full_text, page_for_offset = _concat_pages(pages)
 
         occurrences: List[Tuple[str, int]] = []
-        for match in re.finditer(self._defined_term_pattern(role), full_text):
+        for match in re.finditer(self._defined_term_pattern(*role_keywords), full_text):
             value = self._clean_defined_term_value(_clean_value(match.group(1)))
             if value:
                 occurrences.append((value, page_for_offset(match.start())))
@@ -320,7 +335,7 @@ class FieldExtractor:
     def _find_all_party_values(
         self,
         pages: List[Dict[str, Any]],
-        role: str,
+        role_keywords: Tuple[str, ...],
         label_patterns: List[str],
     ) -> List[str]:
         """
@@ -331,7 +346,7 @@ class FieldExtractor:
         leases were concatenated into one PDF rather than this genuinely
         being a single lease. Returns distinct values in document order.
         """
-        occurrences = self._find_all_party_occurrences(pages, role, label_patterns)
+        occurrences = self._find_all_party_occurrences(pages, role_keywords, label_patterns)
         return [value for value, _page in self._dedupe_party_occurrences(occurrences)]
 
     @staticmethod
@@ -416,10 +431,10 @@ class FieldExtractor:
         {"landlords": [...]}, or both.
         """
         tenants = self._find_all_party_values(
-            pages, "Tenant", self._party_label_patterns("tenant", "lessee", "renter")
+            pages, ("Tenant", "Lessee", "Renter"), self._party_label_patterns("tenant", "lessee", "renter")
         )
         landlords = self._find_all_party_values(
-            pages, "Landlord", self._party_label_patterns("landlord", "lessor")
+            pages, ("Landlord", "Lessor"), self._party_label_patterns("landlord", "lessor")
         )
 
         result: Dict[str, Any] = {}
@@ -470,10 +485,10 @@ class FieldExtractor:
             return []
 
         tenant_occurrences = self._find_all_party_occurrences(
-            pages, "Tenant", self._party_label_patterns("tenant", "lessee", "renter")
+            pages, ("Tenant", "Lessee", "Renter"), self._party_label_patterns("tenant", "lessee", "renter")
         )
         landlord_occurrences = self._find_all_party_occurrences(
-            pages, "Landlord", self._party_label_patterns("landlord", "lessor")
+            pages, ("Landlord", "Lessor"), self._party_label_patterns("landlord", "lessor")
         )
         tenant_pages = {page for _value, page in self._dedupe_party_occurrences(tenant_occurrences)}
         landlord_pages = {page for _value, page in self._dedupe_party_occurrences(landlord_occurrences)}
