@@ -1,6 +1,101 @@
 # Progress Summary
 
-**Last updated**: session 11 — a 4-part polish/reliability pass: verified organization end-to-end (and fixed a real date-sort bug), verified extraction accuracy holds at small/medium/large PDF scale, added Excel/Google Sheets export to both the detail and list views (and fixed a real field-coverage gap in the Excel exporter), and unified the app's color palette with the landing page's premium redesign
+**Last updated**: session 12 — a client-facing product pass in 5 phases: re-verified accuracy, built a real request-access + pending-approval flow on the app's own gate, added a live checkbox-selection aggregation panel plus status/date filters to the dashboard, made multi-file upload show genuinely live per-file status, and confirmed the new UI already matches the existing design system
+
+---
+
+## Session 12: Access control, dashboard aggregation, live upload status
+
+**Honest status up front**: all 5 requested phases (accuracy re-check,
+access control, dashboard aggregation, upload UX, visual consistency)
+are built, committed separately (one commit per phase, 5 total, plus
+2 follow-up color fixes carried over from finishing the prior
+session's redesign work first), and verified against the real running
+app — uploads, checkbox selections, filters, and the access gate's
+full state machine were all driven live through jsdom or a small
+hand-rolled Chrome DevTools Protocol screenshot client, not just unit
+tests. Two real bugs were found and fixed along the way (an
+access-gate link picking up default browser button styling once it
+stopped being a plain `<a>` tag; a missing button-chrome reset). Real
+Google Sheets export still cannot be verified end-to-end in this
+environment — no `GOOGLE_APPLICATION_CREDENTIALS` is configured here,
+same open item as prior sessions.
+
+### Phase 1: Re-verified accuracy before building anything new
+
+The prior session already ran a thorough small/medium/large accuracy
+pass; this phase re-confirmed nothing had regressed since (fresh
+live-API uploads of 3 real fixtures, checked that every found field
+still carries both a confidence badge and a source citation, and that
+missing fields stay cleanly `null` rather than being guessed). No
+issues found; 22/22 backend test files pass.
+
+### Phase 2: A real request-access + pending-approval gate
+
+Extended the existing waitlist system (already had signup -> pending
+-> admin approve/deny, just not reachable from the app itself) into
+`access-gate.js`'s own UI: three swappable panels — sign-in
+(existing), request-access (new, posts to the same `POST /waitlist`
+the landing page already used), and a dedicated pending-approval
+screen (new — previously "not yet approved" was just an inline
+message, not its own screen). No backend changes needed. Still
+explicitly not real authentication (self-reported email, no password)
+— restated in DECISIONS.md since the new pending screen reads more
+like a real signup flow than the old version did. Verified the full
+state machine live: unknown email -> request access -> pending screen
+-> admin approves via the real API -> recheck -> granted.
+
+### Phase 3: Checkbox selection now rolls up to a live summary panel
+
+New `GET /leases/selection-summary?ids=...` endpoint (reuses the
+existing `compute_portfolio_metrics()` over just the selected subset,
+same reasoning as the existing risk-analysis portfolio-context helper
+— one definition of "how these numbers get summed"). The dashboard's
+existing "Select to compare" checkboxes now also drive a live inline
+tiles panel (total rent, total sq ft, total CAM, avg rent/sqft, avg
+security deposit) that updates as boxes are checked/unchecked,
+alongside (not replacing) the existing side-by-side Compare view.
+Added status (Active/Expiring Soon/Expired) and expiration date-range
+filters next to the existing text search — the status thresholds
+mirror the Timeline view's own 6-month bucketing exactly, so they
+can't disagree with each other for the same lease.
+
+### Phase 4: Upload status is now genuinely live, not a batch-wide flip
+
+Found the real gap: multi-file upload showed a spinner on every file
+immediately, then flipped all of them to done/error simultaneously
+only once the whole batch request finished — a fast file next to one
+slow file looked stuck the whole time even though it had actually
+finished. Switched to sequential per-file `POST /leases` calls (not a
+new endpoint), each updating its own row the moment it resolves.
+Verified the staggering is real by polling the DOM every 15ms during
+a real 3-file upload and capturing files reaching "processing"/"done"
+at different times, not together. Also verified the error path: a
+genuinely corrupted PDF mixed into valid files gets its own error row
+without blocking the others.
+
+### Phase 5: Confirmed consistency rather than redesigning twice
+
+The task's design brief read like a from-scratch redesign ask, but the
+app had already been fully redesigned earlier in this same session
+(the charcoal/brass/ivory palette promoted into the shared token
+file). Asked directly whether Phase 5 meant a second redesign or a
+consistency check on the new Phase 2-4 UI, rather than guessing and
+risking discarding already-verified work — confirmed: consistency
+check. Audited for hardcoded colors (none), off-scale typography/
+spacing (none), and tablet responsiveness at two breakpoints (both
+already correct via existing `flex-wrap`). No code changes needed.
+
+### What still needs your input
+
+- **Google Sheets export's real success path**: still only verified
+  via the clean "not configured" error message in this environment
+  (no `GOOGLE_APPLICATION_CREDENTIALS` set) — needs your own Google
+  Cloud service account to verify a real spreadsheet gets created.
+- **A human pass over the new screens**: everything was verified with
+  real screenshots and live functional tests this session, but 10
+  minutes of your own eyes on the request-access flow and the
+  dashboard selection panel is still worth doing before calling it done.
 
 ---
 
