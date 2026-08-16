@@ -23,14 +23,41 @@
                 </svg>
                 <span>Lease Portfolio</span>
             </div>
-            <h1>Enter your approved email</h1>
-            <p class="access-gate-subtitle">This app is invite-only right now. If you've been approved from the waitlist, enter the same email you signed up with.</p>
-            <form id="accessGateForm">
-                <input type="email" id="accessGateEmail" class="text-input" placeholder="you@company.com" required autocomplete="email">
-                <button type="submit" class="btn-primary" id="accessGateSubmitBtn">Continue</button>
-            </form>
-            <p class="access-gate-message" id="accessGateMessage"></p>
-            <a href="/" class="access-gate-link">&larr; Not on the list yet? Join the waitlist</a>
+
+            <!-- Panel 1 of 3: sign in with an already-approved email -->
+            <div id="accessGateSignInPanel">
+                <h1>Enter your approved email</h1>
+                <p class="access-gate-subtitle">This app is invite-only right now. If you've been approved, enter the same email you signed up with.</p>
+                <form id="accessGateForm">
+                    <input type="email" id="accessGateEmail" class="text-input" placeholder="you@company.com" required autocomplete="email">
+                    <button type="submit" class="btn-primary" id="accessGateSubmitBtn">Continue</button>
+                </form>
+                <p class="access-gate-message" id="accessGateMessage"></p>
+                <button type="button" class="access-gate-link" id="accessGateShowRequestBtn">Not on the list yet? Request access</button>
+            </div>
+
+            <!-- Panel 2 of 3: request access (new signup) -->
+            <div id="accessGateRequestPanel" style="display:none;">
+                <h1>Request access</h1>
+                <p class="access-gate-subtitle">We personally review every request. Enter your email and we'll be in touch once it's approved.</p>
+                <form id="accessGateRequestForm">
+                    <input type="email" id="accessGateRequestEmail" class="text-input" placeholder="you@company.com" required autocomplete="email">
+                    <button type="submit" class="btn-primary" id="accessGateRequestSubmitBtn">Request Access</button>
+                </form>
+                <p class="access-gate-message" id="accessGateRequestMessage"></p>
+                <button type="button" class="access-gate-link" id="accessGateBackToSignInBtn">&larr; Already approved? Sign in</button>
+            </div>
+
+            <!-- Panel 3 of 3: pending approval (found on the list, not yet approved) -->
+            <div id="accessGatePendingPanel" style="display:none;">
+                <div class="access-gate-pending-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 6v6l4 2M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                </div>
+                <h1>Your request is pending approval</h1>
+                <p class="access-gate-subtitle">We're reviewing the request for <strong id="accessGatePendingEmail"></strong>. You'll be able to sign in as soon as it's approved.</p>
+                <button type="button" class="btn-secondary btn-block" id="accessGateRecheckBtn">Check again</button>
+                <button type="button" class="access-gate-link" id="accessGatePendingBackBtn">&larr; Use a different email</button>
+            </div>
         </div>
     </div>
 

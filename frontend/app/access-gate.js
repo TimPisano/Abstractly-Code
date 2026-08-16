@@ -1,7 +1,7 @@
 /**
  * Access gate for /app.
  *
- * Two ways in:
+ * Three ways in:
  *  1. LOCAL_DEV_MODE=true in backend/.env (local testing only). Reported
  *     by the backend's /config endpoint -- it can only be set by whoever
  *     controls the server process, never by a request, so a client can't
@@ -9,6 +9,10 @@
  *  2. A waitlist email with status 'approved', re-checked against the
  *     backend on every load (not just cached client-side), so a later
  *     revocation takes effect the next time this page loads.
+ *  3. A brand-new request, submitted right here (not just from the
+ *     marketing landing page), which lands the visitor on a dedicated
+ *     "pending approval" screen -- not just an inline message next to
+ *     the sign-in form -- until an admin approves it.
  *
  * This is NOT real authentication -- there's no password and no proof
  * the visitor typing an email actually owns it, just a self-reported
@@ -34,21 +38,61 @@
 
     const gateEl = document.getElementById('accessGate');
     const shellEl = document.getElementById('appShell');
+
+    const panels = {
+        signIn: document.getElementById('accessGateSignInPanel'),
+        request: document.getElementById('accessGateRequestPanel'),
+        pending: document.getElementById('accessGatePendingPanel'),
+    };
+
     const formEl = document.getElementById('accessGateForm');
     const emailEl = document.getElementById('accessGateEmail');
     const submitBtn = document.getElementById('accessGateSubmitBtn');
     const messageEl = document.getElementById('accessGateMessage');
+    const showRequestBtn = document.getElementById('accessGateShowRequestBtn');
 
-    function showMessage(text, isError) {
-        messageEl.textContent = text || '';
+    const requestFormEl = document.getElementById('accessGateRequestForm');
+    const requestEmailEl = document.getElementById('accessGateRequestEmail');
+    const requestSubmitBtn = document.getElementById('accessGateRequestSubmitBtn');
+    const requestMessageEl = document.getElementById('accessGateRequestMessage');
+    const backToSignInBtn = document.getElementById('accessGateBackToSignInBtn');
+
+    const pendingEmailEl = document.getElementById('accessGatePendingEmail');
+    const recheckBtn = document.getElementById('accessGateRecheckBtn');
+    const pendingBackBtn = document.getElementById('accessGatePendingBackBtn');
+
+    let pendingEmail = null;
+
+    function showPanel(name) {
+        Object.entries(panels).forEach(([key, el]) => {
+            el.style.display = key === name ? '' : 'none';
+        });
+    }
+
+    function showSignIn(prefillEmail, message, isError) {
+        gateEl.style.display = '';
+        shellEl.style.display = 'none';
+        showPanel('signIn');
+        if (prefillEmail) emailEl.value = prefillEmail;
+        messageEl.textContent = message || '';
         messageEl.classList.toggle('is-error', !!isError);
     }
 
-    function showGate(prefillEmail, message, isError) {
+    function showRequestAccess(prefillEmail) {
         gateEl.style.display = '';
         shellEl.style.display = 'none';
-        if (prefillEmail) emailEl.value = prefillEmail;
-        if (message) showMessage(message, isError);
+        showPanel('request');
+        requestEmailEl.value = prefillEmail || emailEl.value || '';
+        requestMessageEl.textContent = '';
+        requestMessageEl.classList.remove('is-error');
+    }
+
+    function showPending(email) {
+        gateEl.style.display = '';
+        shellEl.style.display = 'none';
+        pendingEmail = email;
+        pendingEmailEl.textContent = email;
+        showPanel('pending');
     }
 
     function grant() {
@@ -111,32 +155,121 @@
         return data; // { approved, found }
     }
 
+    async function submitAccessRequest(email) {
+        const response = await fetch(`${API_BASE_URL}/waitlist`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || 'Something went wrong. Please try again.');
+        return data;
+    }
+
+    function cacheEmail(email) {
+        try { localStorage.setItem(STORAGE_KEY, email); } catch (e) { /* localStorage unavailable -- just won't persist across reloads */ }
+    }
+
+    function clearCachedEmail() {
+        try { localStorage.removeItem(STORAGE_KEY); } catch (e) { /* ignore */ }
+    }
+
+    // ---- Panel 1: sign in with an already-approved email ----
+
     formEl.addEventListener('submit', async (e) => {
         e.preventDefault();
         const email = emailEl.value.trim();
         submitBtn.disabled = true;
         submitBtn.textContent = 'Checking...';
-        showMessage('', false);
+        messageEl.textContent = '';
+        messageEl.classList.remove('is-error');
 
         try {
             const result = await checkAccess(email);
             if (result.approved) {
-                try { localStorage.setItem(STORAGE_KEY, email); } catch (e2) { /* localStorage unavailable -- just won't persist across reloads */ }
+                cacheEmail(email);
                 grant();
                 return;
             }
             if (result.found) {
-                showMessage("You're on the waitlist, but not approved yet. We'll be in touch once you are.", false);
+                cacheEmail(email);
+                showPending(email);
             } else {
-                showMessage("That email isn't on the waitlist yet.", true);
+                showSignIn(email, "That email isn't on the list yet. You can request access below.", true);
             }
         } catch (err) {
-            showMessage(err.message || "Couldn't reach the server. Is the backend running?", true);
+            showSignIn(email, err.message || "Couldn't reach the server. Is the backend running?", true);
         } finally {
             submitBtn.disabled = false;
             submitBtn.textContent = 'Continue';
         }
     });
+
+    showRequestBtn.addEventListener('click', () => showRequestAccess());
+
+    // ---- Panel 2: request access (new signup, right here -- not only
+    // reachable by navigating away to the marketing landing page) ----
+
+    requestFormEl.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const email = requestEmailEl.value.trim();
+        requestSubmitBtn.disabled = true;
+        requestSubmitBtn.textContent = 'Submitting...';
+        requestMessageEl.textContent = '';
+        requestMessageEl.classList.remove('is-error');
+
+        try {
+            await submitAccessRequest(email);
+            cacheEmail(email);
+            showPending(email);
+        } catch (err) {
+            requestMessageEl.textContent = err.message || "Couldn't reach the server. Is the backend running?";
+            requestMessageEl.classList.add('is-error');
+        } finally {
+            requestSubmitBtn.disabled = false;
+            requestSubmitBtn.textContent = 'Request Access';
+        }
+    });
+
+    backToSignInBtn.addEventListener('click', () => showSignIn(requestEmailEl.value));
+
+    // ---- Panel 3: pending approval ----
+
+    recheckBtn.addEventListener('click', async () => {
+        if (!pendingEmail) return;
+        recheckBtn.disabled = true;
+        recheckBtn.textContent = 'Checking...';
+
+        try {
+            const result = await checkAccess(pendingEmail);
+            if (result.approved) {
+                cacheEmail(pendingEmail);
+                grant();
+                return;
+            }
+            if (!result.found) {
+                // The underlying signup was removed since we last checked.
+                clearCachedEmail();
+                showSignIn(pendingEmail, 'That request is no longer on file. Enter your email to try again.', true);
+            }
+            // Still pending -- stay on this screen, nothing else to show;
+            // the button resetting below is enough feedback that the
+            // check ran and nothing has changed yet.
+        } catch (err) {
+            // Network hiccup checking again isn't worth leaving the
+            // pending screen over -- just let the visitor retry.
+        } finally {
+            recheckBtn.disabled = false;
+            recheckBtn.textContent = 'Check again';
+        }
+    });
+
+    pendingBackBtn.addEventListener('click', () => {
+        clearCachedEmail();
+        showSignIn(pendingEmail);
+    });
+
+    // ---- Initial load ----
 
     (async function init() {
         let config;
@@ -147,7 +280,7 @@
             // whether the local-dev bypass is on, don't guess -- show the
             // real gate with a clear explanation rather than silently
             // granting or silently blocking access either way.
-            showGate(null, "Couldn't reach the server to verify access. Is the backend running?", true);
+            showSignIn(null, "Couldn't reach the server to verify access. Is the backend running?", true);
             return;
         }
 
@@ -160,7 +293,7 @@
         try { cachedEmail = localStorage.getItem(STORAGE_KEY); } catch (e) { /* localStorage unavailable */ }
 
         if (!cachedEmail) {
-            showGate(null, null, false);
+            showSignIn();
             return;
         }
 
@@ -170,15 +303,19 @@
                 grant();
                 return;
             }
-            // Cached email is no longer approved (or the underlying
-            // signup was removed) -- clear it so we don't keep re-trying
-            // a stale value, and prefill the gate with it for convenience.
-            try { localStorage.removeItem(STORAGE_KEY); } catch (e) { /* ignore */ }
-            showGate(cachedEmail, result.found
-                ? 'Your access is no longer approved. Enter your email to re-check.'
-                : 'Enter your approved email to continue.', false);
+            if (result.found) {
+                // Still pending from a previous visit -- go straight to
+                // the pending screen rather than making them re-submit
+                // the sign-in form just to be told the same thing again.
+                showPending(cachedEmail);
+                return;
+            }
+            // Cached email is no longer on the list at all (removed) --
+            // clear it so we don't keep re-trying a stale value.
+            clearCachedEmail();
+            showSignIn(cachedEmail, 'Enter your approved email to continue.', false);
         } catch (err) {
-            showGate(cachedEmail, err.message || "Couldn't verify access. Is the backend running?", true);
+            showSignIn(cachedEmail, err.message || "Couldn't verify access. Is the backend running?", true);
         }
     })();
 })();

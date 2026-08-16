@@ -1105,3 +1105,65 @@ the same specific colors as the rest of the product instead of a
 similar-looking but independently-chosen set. `test_report.py` doesn't
 assert exact hex values (it asserts structure/content), so no test
 changes were needed; all 11 report tests still pass.
+
+## Session 8: Client-facing product pass, Phase 2 — a real request-access + pending-approval gate
+
+### Extended the existing waitlist system rather than building a second one
+
+The new request asked for "new users sign up but land in a pending
+state" and "until approved, show a pending approval screen instead of
+the dashboard." Both already existed in substance — the landing page's
+waitlist form + `/waitlist` (status `pending`) + `/admin/waitlist/`
+approve/deny — just not reachable from the app itself, and not
+rendered as a dedicated screen. Rather than building a parallel
+"users" concept, extended `access-gate.js` (`frontend/app/`) into
+three swappable panels inside the same card: sign-in (existing),
+request-access (new — a plain email form posting to the same
+`POST /waitlist` the landing page already uses), and pending-approval
+(new — a dedicated screen, not an inline message next to a form).
+- **Reason**: the schema this needs already exists
+  (`waitlist_signups: email, created_at, status`) and is already
+  covered by a real admin approval flow — inventing a second,
+  parallel "user account" concept would duplicate that state and
+  create two sources of truth for "is this person allowed in" with no
+  new requirement actually asking for anything the waitlist model
+  can't represent. No backend changes were needed for this phase at
+  all; everything is new frontend state built on existing endpoints.
+
+### Still explicitly not real authentication
+
+Same caveat as before, restated because this phase makes the flow
+*feel* more like a real signup than it did previously (a dedicated
+pending screen reads as "your account is being set up," not just "an
+email on a list"): there is still no password, and "access" is still
+a self-reported email checked against a status column, not a verified
+identity. `access-gate.js`'s own header comment and DECISIONS.md's
+earlier "Access gate uses self-reported email, not real auth" entry
+still apply unchanged. If this product moves toward real customers
+with real login credentials, that's a genuinely separate build (a
+`users` table with password hashes or an OAuth provider, sessions,
+etc.), not an extension of the waitlist gate.
+
+### Verified the full state machine live, not just each panel in isolation
+
+Wrote a jsdom harness that drives the real gate against the real
+backend through every transition in one run: unknown email -> error
+message (still on sign-in) -> click "Request access" -> prefilled
+request panel -> submit -> pending panel with the right email shown ->
+"Check again" while still pending (correctly stays put) -> approve the
+signup via the actual admin API (not a mock) -> "Check again" ->
+gate hides, app shell (with a working dashboard nav) shows. All 9
+checks passed on the first fully-wired run. Required briefly disabling
+`LOCAL_DEV_MODE` (it bypasses the gate entirely, by design) and
+restoring it after — done via a real `.env` edit + server restart
+each way, backed up first, confirmed restored via `/config` afterward.
+
+Also screenshotted all three panels with the same headless-Chrome/CDP
+approach from the Part 4 redesign work, which caught one real bug the
+functional test couldn't: the "Request access" and "Use a different
+email" links are `<button type="button">` now (they weren't before —
+they used to be a plain `<a>`), and picked up the browser's default
+button chrome (a visible border box) since `.access-gate-link` had
+never needed to reset that. Fixed by resetting `background`/`border`/
+`padding`/`font` on that class. A pure functional/DOM test would never
+have caught this — only actually rendering it would.
