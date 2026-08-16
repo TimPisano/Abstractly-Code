@@ -1,6 +1,121 @@
 # Progress Summary
 
-**Last updated**: session 13 — a trust-and-polish pass in 4 parts: fixed real first-impression issues on the landing page, fixed a real error-message leak and a blank-load gap, verified data-confidence coverage and added an accuracy explainer, and a final visual QA pass that caught two real bugs (a button-overflow issue and a pre-existing landing-page nav contrast bug nobody had noticed)
+**Last updated**: session 14 (pre-sale technical audit) — a 4-part
+code-quality/correctness/production-readiness pass across test
+coverage, code quality, security re-verification, and data handling.
+23/23 test files passing. Found and fixed one genuinely significant
+extraction bug (Lessor/Lessee terminology). **Not ready to sell to a
+company yet** — see the sale-readiness assessment below for the exact
+blockers, none of which are hidden or downplayed.
+
+---
+
+## Session 14: Pre-sale technical audit — honest sale-readiness assessment
+
+Full findings and technical detail for every part are in
+`DECISIONS.md` ("Session 10: Pre-sale technical audit, Parts 1–4").
+This is the direct, no-spin summary the audit itself asked for.
+
+### What's genuinely production-ready right now
+
+- **Extraction pipeline**: 15 fields extracted with a source citation
+  (page number + quote) and a confidence level on every field — a
+  human can verify each value against the document, not just trust a
+  black box. This is a real, demonstrated differentiator, not
+  marketing copy.
+- **Test suite**: 23/23 test files passing, covering every route,
+  every extracted field, every export path, and the edge cases that
+  matter (empty PDF, corrupted PDF, huge 35-page PDF, non-English
+  text, scanned/image-only PDF via real OCR, multi-lease PDFs across
+  4 structurally different document shapes).
+- **Data storage**: real file-backed SQLite, empirically verified to
+  survive a hard `kill -9` crash-and-restart and 5 simultaneous
+  concurrent uploads with zero data loss.
+- **Exports**: Excel and Google Sheets export logic verified
+  cell-by-cell against the app's own extracted data — no rounding
+  drift, no mismatched rows, missing fields render as true blanks
+  rather than leaking "None" into exported files.
+- **Error handling**: every API call, file operation, and external
+  service call (OCR, email, Google Sheets) fails with a clear,
+  human-readable message — never a raw stack trace or error code
+  reaches the user. Verified live, not just by code review.
+- **Code hygiene**: no leftover debug/console statements, no
+  unresolved TODOs, no hardcoded config that should be an environment
+  variable, no secrets anywhere in the codebase or git history
+  (checked content, not just filenames).
+- **Frontend polish**: consistent design system, responsive at both
+  laptop and tablet widths, real "how it works" flow, no dead links or
+  placeholder/lorem-ipsum content anywhere.
+
+### What works but has known limitations a company would ask about
+
+- **Google Sheets export** requires a one-time Google Cloud
+  service-account setup that hasn't been done yet (needs the user's
+  credentials — same open item as prior sessions). The code path is
+  fully tested and fails cleanly (502, clear message) until it's
+  configured.
+- **OCR fallback** (tesseract + poppler) works and is verified against
+  real scanned PDFs, but depends on those binaries being installed and
+  on `PATH` on whatever machine runs the backend — not bundled or
+  containerized. Needs setup documentation before deploying anywhere
+  new.
+- **Extraction is pattern/regex-based, not ML-based.** It's now been
+  tested against several deliberately varied real-world document
+  structures (including the Lessor/Lessee bug this session found and
+  fixed) and handles them correctly, but a sufficiently unusual lease
+  format could still miss a field — which is exactly what the
+  source-citation-on-every-field design is for: a human always has
+  what they need to catch it, nothing is silently guessed.
+- **Python 3.9**, which is past end-of-life — `google-auth` already
+  emits an end-of-life warning on every run. Still fully functional
+  today, but accumulating risk without a maintained runtime.
+- **No deployment configuration exists** (no Dockerfile, no Procfile,
+  no CI/CD) — the app has only ever run locally during development.
+
+### Actual blockers if this were sold to a company today
+
+1. **No real authentication or authorization exists.** The current
+   "access gate" is a waitlist-approval flow, not per-user login —
+   there is no account concept, no session, and no per-company data
+   scoping. Every approved user currently sees the exact same shared
+   pool of leases. This alone blocks selling to more than one company.
+2. **The admin waitlist route has zero authentication, confirmed live
+   this session**: `curl http://localhost:5000/waitlist` with no
+   credentials returns every prospective customer's email and can
+   approve/grant access to anyone who finds the URL. This is a real,
+   currently-exploitable gap, not a hypothetical one, and was already
+   flagged (not newly discovered) in the code's own comments as
+   needing real auth before going live.
+3. **No rate limiting anywhere** — the CPU/OCR-heavy upload endpoints
+   and the unauthenticated waitlist routes can both be hit in a tight
+   loop by anyone.
+4. **No data backup or disaster-recovery strategy.** Storage survives
+   a process crash, but there is no backup of the SQLite database file
+   itself — losing the disk, migrating hosts, or an accidental file
+   deletion loses every customer's lease data permanently. There is
+   also no hosting plan yet at all.
+5. **Running on Flask's built-in development server**, which Flask's
+   own documentation states plainly is not fit for production traffic
+   (no real concurrency or hardening).
+
+### Overall recommendation
+
+**Ready to demo, not ready to pilot.** The extraction quality, the
+source-citation trust UX, and the visual polish are genuinely strong
+and will land well in a live demo run locally. But the missing
+authentication/data-scoping and the currently-open admin route aren't
+polish items — they're prerequisites for letting a real company's real
+lease data anywhere near this app. Recommend demoing now to validate
+interest, but treating real auth, multi-tenant data scoping, and a
+backup/hosting plan as required — not optional — before any company
+actually pilots this with their own documents.
+
+### Restart commands
+
+```
+cd backend && source venv/bin/activate && python run.py
+cd frontend && python3 -m http.server 8000
+```
 
 ---
 
