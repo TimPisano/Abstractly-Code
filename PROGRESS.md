@@ -1,6 +1,106 @@
 # Progress Summary
 
-**Last updated**: session 12 — a client-facing product pass in 5 phases: re-verified accuracy, built a real request-access + pending-approval flow on the app's own gate, added a live checkbox-selection aggregation panel plus status/date filters to the dashboard, made multi-file upload show genuinely live per-file status, and confirmed the new UI already matches the existing design system
+**Last updated**: session 13 — a trust-and-polish pass in 4 parts: fixed real first-impression issues on the landing page, fixed a real error-message leak and a blank-load gap, verified data-confidence coverage and added an accuracy explainer, and a final visual QA pass that caught two real bugs (a button-overflow issue and a pre-existing landing-page nav contrast bug nobody had noticed)
+
+---
+
+## Session 13: Trust-and-polish pass — landing page, reliability, data confidence, visual QA
+
+**Honest status up front**: all 4 requested parts are done, committed
+separately (4 commits), and verified against the real running app.
+This pass found and fixed 5 real bugs that were sitting in the app
+before it started, not hypothetical risks — worth listing plainly
+since the whole point of this pass was surfacing exactly this kind of
+thing before a demo:
+
+1. **Landing page nav had near-zero contrast** (Part 4) — the entire
+   top nav (brand name + 4 links) was rendering nearly invisible
+   because its text used colors meant for sitting over the dark hero,
+   but the nav actually sits in normal document flow above the hero,
+   against the page's own ivory background. Pre-existing, not
+   introduced this session — caught only because this pass actually
+   screenshotted and looked closely at that specific region. Fixed.
+2. **A real error-message leak** (Part 2) — `err.message || "friendly
+   fallback"` doesn't work when `err.message` is a raw, non-empty
+   technical string (a real network failure throws with exactly that).
+   The literal string `"fetch failed"` could reach a user's screen on
+   the landing page's request-access form, the app's own gate, and the
+   admin panel. Fixed at the source in every affected file.
+3. **A blank-page moment on first load** (Part 2) — nothing was shown
+   while the gate's initial `/config` check was in flight. Added a
+   default-visible loading spinner so there's no gap.
+4. **The lease detail action buttons could get clipped at tablet
+   width** (Part 4) — missing `flex-wrap` on a 4-button row.
+5. **The Excel/CSV rent-roll export was missing 4 of 15 fields**
+   (found and fixed in a prior session, restated here since it's the
+   same category of "looked complete, wasn't" issue).
+
+### Part 1: First-impression trust signals
+
+Fixed a real page-load risk (Google Fonts loaded via chained CSS
+`@import`, which delays font discovery past what the browser's preload
+scanner sees during initial parse and risks a visible reflow on the
+hero's headline) by switching to `<link rel="preconnect">` + one
+combined font request in all three HTML entry points. Added a 3-step
+"How It Works" section (upload → extract → review/export) that didn't
+exist before. Removed the footer's placeholder Privacy/Terms/About
+links (already self-documented as dead links) rather than leaving them
+clickable to nowhere. Verified zero console errors and zero visible
+broken links across landing load, waitlist submission, gate sign-in,
+request-access → pending, and the admin page.
+
+### Part 2: Reliability polish + full new-user flow
+
+Fixed the error-message and blank-load issues above. Then verified the
+complete new-user journey in one live run against the real app: land
+on the landing page → request access → visit `/app/` before approval
+(correctly blocked on the pending screen) → approve via the real admin
+panel → sign in → upload a real lease → confirm all 15 fields show
+citation + confidence → confirm the export link is set. Zero JS errors
+anywhere in the sequence.
+
+### Part 3: Data confidence
+
+Re-verified (didn't need to rebuild) that every one of the 15 fields
+shows confidence + citation when found, neither when not found —
+architecturally guaranteed by a single shared rendering code path,
+confirmed live across all 10 real fixture PDFs (150 field checks, zero
+anomalies). Added a "Why this matters" explainer above the field cards
+on the lease detail view, naming explicitly why the citations exist.
+
+### Part 4: Final visual QA, two widths
+
+Screenshotted every screen at small-laptop (1366px) and tablet (820px)
+widths. Found and fixed the button-overflow and nav-contrast bugs
+above. Confirmed the wide comparison table's horizontal scroll stays
+contained rather than leaking into a page-wide scrollbar.
+
+### What still needs your input
+
+- **Google Sheets export's real success path** — still only verified
+  via the clean "not configured" error message; this environment has
+  no `GOOGLE_APPLICATION_CREDENTIALS` set. Needs your own Google Cloud
+  service account to verify a real spreadsheet gets created. Setup
+  steps are in `backend/.env.example`.
+- **The original 500-page/250-lease PDF** — still unrecoverable from
+  an earlier session; large-scale accuracy has only been verified
+  against a synthetic 60-lease document, not that specific file.
+
+### How to restart both servers
+
+```bash
+# Terminal 1 — backend
+cd backend
+source venv/bin/activate
+python run.py
+# Runs on http://localhost:5000 — confirm with: curl http://localhost:5000/health
+
+# Terminal 2 — frontend
+cd frontend
+python3 -m http.server 8000
+# Open http://localhost:8000 (landing page) or http://localhost:8000/app/ (app,
+# gated unless LOCAL_DEV_MODE=true in backend/.env)
+```
 
 ---
 
