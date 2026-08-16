@@ -53,6 +53,7 @@ from app.portfolio import (
 from app.comparison import compare_leases, benchmark_lease
 from app.rent_roll_export import generate_rent_roll_csv, generate_rent_roll_excel
 from app.report import generate_portfolio_report_html
+from app.summary_memo import generate_lease_summary_pdf, generate_portfolio_summary_pdf
 from app.sheets_export import export_to_google_sheets, SheetsExportError
 
 
@@ -1010,6 +1011,30 @@ def lease_export_excel(lease_id):
     )
 
 
+@app.route('/leases/<int:lease_id>/summary.pdf', methods=['GET'])
+def lease_summary_pdf(lease_id):
+    """
+    Decision-ready one-page PDF memo for a single lease: key terms,
+    confidence summary, and risk flags (including any cross-lease
+    mismatches) -- meant to be forwarded to someone who will never open
+    the app. See summary_memo.py.
+    """
+    lease = database.get_effective_lease(lease_id)
+    if not lease:
+        return jsonify({"error": "Lease not found"}), 404
+
+    flags = _lease_risks(lease)
+    pdf_bytes = generate_lease_summary_pdf(lease, flags)
+    display_name = lease.get("display_name") or lease.get("filename") or f"lease_{lease_id}"
+    database.insert_activity("summary_memo_exported", f"Exported {display_name} as a summary memo")
+    safe_name = re.sub(r'[^A-Za-z0-9_.-]', '_', display_name)
+    return Response(
+        pdf_bytes,
+        mimetype='application/pdf',
+        headers={"Content-Disposition": f"attachment; filename={safe_name}_summary.pdf"},
+    )
+
+
 @app.route('/leases/<int:lease_id>/export/google-sheets', methods=['POST'])
 def lease_export_google_sheets(lease_id):
     """Same Google Sheets export as the portfolio-wide one, scoped to one lease (a single data row)."""
@@ -1133,6 +1158,35 @@ def portfolio_report():
 
     html = generate_portfolio_report_html(leases, metrics, timeline, all_risks)
     return Response(html, mimetype='text/html')
+
+
+@app.route('/portfolio/summary.pdf', methods=['GET'])
+def portfolio_summary_pdf():
+    """
+    Decision-ready one-page PDF memo for the whole portfolio: a rollup
+    table, the portfolio-wide confidence summary, and the
+    highest-severity risk flags across every lease. See summary_memo.py.
+    """
+    leases = database.get_all_effective_leases()
+    context = portfolio_context_for_risk_analysis(leases)
+    cross_lease_mismatches = compute_cross_lease_mismatches(leases)
+    confidence_summary = compute_portfolio_confidence_summary(leases)
+
+    risks_by_lease = {}
+    for lease in leases:
+        date_candidates = lease.get("date_candidates")
+        cross_lease_flags = cross_lease_mismatches.get(lease["id"], [])
+        risks_by_lease[lease["id"]] = analyze_lease_risks(
+            lease["extracted_fields"], context, date_candidates, cross_lease_flags,
+        )
+
+    pdf_bytes = generate_portfolio_summary_pdf(leases, confidence_summary, risks_by_lease)
+    database.insert_activity("summary_memo_exported", f"Exported portfolio summary memo ({len(leases)} leases)")
+    return Response(
+        pdf_bytes,
+        mimetype='application/pdf',
+        headers={"Content-Disposition": "attachment; filename=portfolio_summary.pdf"},
+    )
 
 
 @app.route('/health', methods=['GET'])

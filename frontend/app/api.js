@@ -222,12 +222,20 @@ const Api = {
         return `${API_BASE_URL}/portfolio/report`;
     },
 
+    portfolioSummaryPdfUrl() {
+        return `${API_BASE_URL}/portfolio/summary.pdf`;
+    },
+
     exportToGoogleSheets() {
         return apiRequest('/portfolio/export/google-sheets', { method: 'POST' });
     },
 
     leaseExportExcelUrl(leaseId) {
         return `${API_BASE_URL}/leases/${leaseId}/export.xlsx`;
+    },
+
+    leaseSummaryPdfUrl(leaseId) {
+        return `${API_BASE_URL}/leases/${leaseId}/summary.pdf`;
     },
 
     exportLeaseToGoogleSheets(leaseId) {

@@ -23,6 +23,7 @@ const LeaseDetail = {
             }
             document.getElementById('detailSubtitle').textContent = subtitle;
             document.getElementById('detailExportExcelBtn').href = Api.leaseExportExcelUrl(this.lease.id);
+            document.getElementById('detailSummaryMemoBtn').href = Api.leaseSummaryPdfUrl(this.lease.id);
             document.getElementById('detailExportStatus').innerHTML = '';
             document.getElementById('detailNonLeaseWarning').innerHTML = this.lease.looks_like_lease === false ? `
                 <div class="upload-result-warning detail-non-lease-warning">

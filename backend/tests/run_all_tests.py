@@ -23,6 +23,7 @@ UNIT_TESTS = [
     "test_extraction.py",
     "test_synthetic_accuracy.py",
     "test_confidence_validation.py",
+    "test_summary_memo.py",
     "test_multipage_field.py",
     "test_ocr_fallback.py",
     "test_real_ocr.py",

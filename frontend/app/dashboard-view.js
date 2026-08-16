@@ -17,6 +17,7 @@ const Dashboard = {
         this.renderActivitySkeleton();
         document.getElementById('portfolioConfidenceSummaryPanel').innerHTML = '<p class="loading-inline"><span class="spinner-small"></span> Loading...</p>';
         document.getElementById('dashboardExportExcelBtn').href = Api.rentRollExcelUrl();
+        document.getElementById('dashboardSummaryMemoBtn').href = Api.portfolioSummaryPdfUrl();
         document.getElementById('dashboardExportStatus').innerHTML = '';
 
         try {
