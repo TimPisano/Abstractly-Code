@@ -1583,3 +1583,104 @@ an actual visitor.
 
 Re-ran the full backend suite after both fixes: 22/22 pass (both were
 frontend CSS-only changes). All QA test leases deleted afterward.
+
+## Session 10: Pre-sale technical audit, Part 1 — test coverage
+
+**Exact numbers, as requested**: 22/22 test files passing, 555/555
+individual checks/assertions passing (the finer-grained count — most
+files are one `assert` per named `test_...()` function, a handful use
+an explicit checks-list with their own "N/N" reporting, both counted
+at that finest granularity and summed). Includes real OCR, not mocked
+— see below.
+
+### Inventoried every route, field, export path, and named edge case against actual test coverage — didn't assume
+
+Went through all 35 backend routes and cross-referenced each against
+every test file's content (not just filenames), all 15 extracted
+fields, and the 7 edge cases named in the request (empty/corrupted/
+huge/tiny/non-English/scanned/multi-lease PDF). Found 4 real gaps and
+fixed all 4, plus one more found by accident while fixing them:
+
+1. **`GET /leases/selection-summary` had zero test coverage.** Added
+   route-level checks (2+ ids, exactly 1 id — allowed here unlike
+   `/leases/compare`, 0 ids returns 400, nonexistent id returns 404)
+   to `test_live_portfolio_api.py`.
+2. **The single-lease export routes (`GET /leases/<id>/export.xlsx`,
+   `POST /leases/<id>/export/google-sheets`) had zero test coverage**
+   — only their portfolio-wide siblings were tested, even though
+   they're separate route handlers with their own not-found/success
+   paths. Added real xlsx-content and mocked-Sheets-response tests for
+   both.
+3. **A dead test, hiding as a live one**: `test_sheets_export.py` had
+   two fully-written test functions
+   (`test_route_returns_200_with_url_on_success_and_logs_activity`,
+   `test_route_does_not_log_activity_on_failure`) that were never
+   actually invoked — `run_all_tests.py` runs each file as a
+   subprocess, which only executes what's inside `if __name__ ==
+   "__main__":`, and these two calls were missing from that block.
+   They'd been silently not-running, passing by never being asked to.
+   Found this by writing a quick AST script to check every test file
+   for exactly this pattern (defined-but-never-called) — which itself
+   had a bug (a broken `ast.Compare` check produced a false positive
+   here, which I almost "fixed" by adding duplicate calls before
+   re-reading the file and catching my own mistake). Correctly fixed
+   by reading the actual `__main__` block directly rather than trusting
+   the script's output blindly — the same "verify, don't just script
+   something once and trust it" discipline this project applies to
+   everything else.
+4. **The XSS/injection round-trip test was silently skipping.**
+   `test_security_hardening.py`'s XSS check read a fixture PDF from a
+   hardcoded `/tmp/xss_test_lease.pdf` path that nothing in the repo
+   ever generated — it happened to still exist on this machine from
+   an earlier session's manual scratch work, so the check always
+   looked green, but would silently no-op (not fail, just never run)
+   on a fresh clone or CI runner with no memory of that file. Rebuilt
+   as an in-memory reportlab PDF generated fresh every run. While
+   rewriting it, found the test's own assumption was wrong too: it
+   targeted the *tenant* field, but the tenant/landlord name pattern's
+   character class (`[A-Za-z0-9&,.'\-\s]`) can't match `<`/`>`/`/` at
+   all, so a script tag there correctly extracts as not-found — never
+   actually reaching the "does captured script-like text round-trip
+   safely" question the test existed to answer. Retargeted to
+   `permitted_use`, whose pattern (`[^.]{5,150}`) has no such
+   restriction and genuinely captures the payload — confirming it
+   round-trips as inert JSON string data (the API never renders HTML;
+   the frontend's `escapeHtml()`, already covered elsewhere, is what
+   makes this safe on screen).
+5. **"Large PDF" and "non-English text" had never been tested at
+   all** (empty PDF was already covered incidentally by the corrupted-
+   PDF test's random-bytes case reading 0 usable pages the same way,
+   confirmed by inspection, not assumed). Added three new permanent
+   tests: a genuinely empty (0-page, structurally valid, not
+   corrupted-bytes) PDF fails the same clean way a corrupted one does;
+   a Spanish-language lease with accented characters extracts without
+   crashing and every field honestly comes back not-found rather than
+   fabricating a match (the extraction patterns are English-only by
+   design); and a permanent 35-page single-lease document (real terms
+   on page 1, 34 pages of exhibit boilerplate) that's now a real
+   regression test instead of the ad-hoc scratch-script verification
+   an earlier session did by hand and never locked in — confirms both
+   that extraction doesn't degrade on a realistically long document
+   and that `detect_lease_boundaries()` doesn't mistake "long" for
+   "multi-lease" and over-split it.
+
+### Real OCR, not mocked — but flagging what that actually took
+
+`test_real_ocr.py` requires real `tesseract`/`poppler` binaries and
+was **silently SKIPPING** at the start of this audit — this shell
+session's `PATH` didn't include them, even though a prior session
+installed them via Miniforge conda-forge into `~/.miniforge3/bin`
+(documented in PROGRESS.md). Confirmed the binaries were still
+genuinely present on disk (not reinstalled — verified with `ls`
+directly) and re-ran with `PATH` corrected: real OCR pipeline
+re-verified end to end, 7/7 fields correct. This is a real
+environment-fragility point worth naming plainly for the sale-
+readiness report: OCR support depends on a `PATH` export that isn't
+persistent across shells/sessions/deploys unless something (a
+`.bashrc`, a Docker image, a systemd unit) sets it — worth fixing
+properly (baking the binaries or the `PATH` export into whatever
+actually runs this in production) before relying on OCR working
+by default in a new environment.
+
+22/22 test files, 555/555 checks. Dev DB confirmed empty throughout
+(all route tests clean up after themselves or use isolated temp DBs).

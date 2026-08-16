@@ -233,6 +233,21 @@ def main():
             json.dumps(benchmark.get("rent_amount")),
         )
 
+        # ---- Selection summary (checkbox-selected rollup, distinct from compare) ----
+        print("\n--- Selection summary ---")
+        status, summary = _request("GET", f"/leases/selection-summary?ids={commercial_id},{underpriced_id}")
+        check("selection-summary returns 200", status == 200, str(status))
+        check("selection-summary lease_count is 2", summary.get("lease_count") == 2, json.dumps(summary))
+
+        status, single_summary = _request("GET", f"/leases/selection-summary?ids={commercial_id}")
+        check("selection-summary allows a single id (unlike compare)", status == 200, str(status))
+        check("single-lease selection-summary lease_count is 1", single_summary.get("lease_count") == 1, json.dumps(single_summary))
+
+        status, err = _request("GET", "/leases/selection-summary?ids=")
+        check("selection-summary with no ids returns 400", status == 400, str(status))
+        status, err = _request("GET", "/leases/selection-summary?ids=999999")
+        check("selection-summary with a nonexistent id returns 404", status == 404, str(status))
+
         # ---- Exports ----
         print("\n--- Exports ---")
         status, csv_bytes = _request("GET", "/portfolio/rent-roll.csv")
@@ -244,6 +259,32 @@ def main():
         status, excel_bytes = _request("GET", "/portfolio/rent-roll.xlsx")
         check("rent roll Excel returns 200", status == 200, str(status))
         check("rent roll Excel has substantial content", isinstance(excel_bytes, bytes) and len(excel_bytes) > 1000, str(len(excel_bytes) if isinstance(excel_bytes, bytes) else 'n/a'))
+
+        # ---- Single-lease Excel export (distinct route from the portfolio-wide one above) ----
+        print("\n--- Single-lease export ---")
+        status, single_excel_bytes = _request("GET", f"/leases/{commercial_id}/export.xlsx")
+        check("single-lease Excel export returns 200", status == 200, str(status))
+        check(
+            "single-lease Excel export is a real xlsx (zip signature)",
+            isinstance(single_excel_bytes, bytes) and single_excel_bytes[:2] == b"PK",
+            str(single_excel_bytes[:20] if isinstance(single_excel_bytes, bytes) else single_excel_bytes),
+        )
+        import openpyxl as _openpyxl
+        _single_wb = _openpyxl.load_workbook(io.BytesIO(single_excel_bytes))
+        _single_sheet = _single_wb.active
+        check(
+            "single-lease Excel export has exactly 1 header + 1 data row",
+            _single_sheet.max_row == 2,
+            f"got {_single_sheet.max_row} rows",
+        )
+        check(
+            "single-lease Excel export's row matches the requested lease's filename",
+            _single_sheet.cell(row=2, column=1).value == "sample_lease_commercial.pdf",
+            str(_single_sheet.cell(row=2, column=1).value),
+        )
+
+        status, err = _request("GET", "/leases/999999/export.xlsx")
+        check("single-lease Excel export for nonexistent lease returns 404", status == 404, str(status))
 
         status, report_html = _request("GET", "/portfolio/report")
         check("portfolio report returns 200", status == 200, str(status))

@@ -313,6 +313,60 @@ def test_route_does_not_log_activity_on_failure():
     print("✓ test_route_does_not_log_activity_on_failure: PASS")
 
 
+# ------------------------------------------------------------------
+# Route-level: POST /leases/<id>/export/google-sheets (single-lease
+# variant -- same underlying export_to_google_sheets(), scoped to one
+# lease instead of the whole portfolio; had zero test coverage before
+# this, found during the pre-sale test-coverage audit).
+# ------------------------------------------------------------------
+
+def test_single_lease_route_returns_502_with_clean_message_when_not_configured():
+    db_path = _fresh_temp_db()
+    try:
+        lease_id = database.insert_lease("solo.pdf", LEASE_COMPLETE["extracted_fields"])
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("GOOGLE_APPLICATION_CREDENTIALS", None)
+            resp = app.test_client().post(f"/leases/{lease_id}/export/google-sheets")
+        assert resp.status_code == 502, resp.get_json()
+        assert "GOOGLE_APPLICATION_CREDENTIALS" in resp.get_json()["error"]
+    finally:
+        os.unlink(db_path)
+    print("✓ test_single_lease_route_returns_502_with_clean_message_when_not_configured: PASS")
+
+
+def test_single_lease_route_returns_404_for_nonexistent_lease():
+    db_path = _fresh_temp_db()
+    try:
+        resp = app.test_client().post("/leases/999999/export/google-sheets")
+        assert resp.status_code == 404, resp.get_json()
+    finally:
+        os.unlink(db_path)
+    print("✓ test_single_lease_route_returns_404_for_nonexistent_lease: PASS")
+
+
+def test_single_lease_route_returns_200_and_logs_activity_naming_the_lease():
+    db_path = _fresh_temp_db()
+    try:
+        lease_id = database.insert_lease("solo.pdf", LEASE_COMPLETE["extracted_fields"], display_name="Blue Sky Coffee Roasters, Inc.")
+        with mock.patch("app.api.export_to_google_sheets", return_value={"spreadsheet_id": "xyz", "url": "https://docs.google.com/spreadsheets/d/xyz/edit"}) as mocked:
+            resp = app.test_client().post(f"/leases/{lease_id}/export/google-sheets")
+
+        assert resp.status_code == 200, resp.get_json()
+        assert resp.get_json()["url"] == "https://docs.google.com/spreadsheets/d/xyz/edit"
+
+        # Scoped to just the one requested lease, not the whole portfolio.
+        exported_leases = mocked.call_args[0][0]
+        assert len(exported_leases) == 1 and exported_leases[0]["id"] == lease_id
+
+        activity = database.get_recent_activity(5)
+        matching = [a for a in activity if a["action_type"] == "google_sheets_exported"]
+        assert matching, activity
+        assert "Blue Sky Coffee Roasters" in matching[0]["description"], matching[0]
+    finally:
+        os.unlink(db_path)
+    print("✓ test_single_lease_route_returns_200_and_logs_activity_naming_the_lease: PASS")
+
+
 if __name__ == "__main__":
     test_lease_row_column_order_matches_header()
     test_not_found_fields_are_blank_not_literal_text()
@@ -329,4 +383,7 @@ if __name__ == "__main__":
     test_route_returns_502_with_clean_message_when_not_configured()
     test_route_returns_200_with_url_on_success_and_logs_activity()
     test_route_does_not_log_activity_on_failure()
+    test_single_lease_route_returns_502_with_clean_message_when_not_configured()
+    test_single_lease_route_returns_404_for_nonexistent_lease()
+    test_single_lease_route_returns_200_and_logs_activity_naming_the_lease()
     print("\nAll Google Sheets export tests passed.")

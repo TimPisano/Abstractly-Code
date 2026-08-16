@@ -50,6 +50,82 @@ def _multipart_body(files):
     return b"".join(parts), f"multipart/form-data; boundary={boundary}"
 
 
+def _build_xss_test_pdf() -> bytes:
+    """A synthetic one-page lease whose Permitted Use clause is a script
+    tag, built in-memory with reportlab (no fixture file on disk to go
+    stale or be missing in a fresh environment). Deliberately targets
+    permitted_use rather than tenant/landlord: the party-name patterns'
+    character class ([A-Za-z0-9&,.'\\-\\s]) can't match angle brackets at
+    all, so a script tag there would correctly extract as not-found and
+    never actually exercise the "does script-like text round-trip
+    safely once captured" question this test exists to answer. The
+    permitted_use pattern ("permitted use[:\\s]+([^\\n]+)") has no such
+    restriction, so this is the field that's actually reachable by this
+    payload."""
+    import io
+    from reportlab.pdfgen import canvas
+    from reportlab.lib.pagesizes import letter
+
+    buf = io.BytesIO()
+    c = canvas.Canvas(buf, pagesize=letter)
+    c.setFont("Helvetica", 10)
+    lines = [
+        "COMMERCIAL LEASE AGREEMENT",
+        "This Lease is entered into by and between Harborview Properties LLC (\"Landlord\")",
+        "and Test Tenant, Inc. (\"Tenant\").",
+        "PREMISES: Landlord leases to Tenant the premises located at 1 Test Plaza.",
+        "RENT: Monthly Rent: $4,000.00.",
+        "Permitted Use: <script>alert(1)</script>",
+    ]
+    y = 700
+    for line in lines:
+        c.drawString(72, y, line)
+        y -= 20
+    c.save()
+    return buf.getvalue()
+
+
+def _build_empty_pdf() -> bytes:
+    """A structurally valid PDF with zero pages -- reportlab's own
+    output when .save() is called with nothing drawn/no showPage(),
+    not corrupted/random bytes. Distinct edge case from the corrupted-
+    PDF test above: this is a well-formed file a PDF library can open
+    just fine, that simply has no content to extract from."""
+    import io
+    from reportlab.pdfgen import canvas
+    buf = io.BytesIO()
+    c = canvas.Canvas(buf)
+    c.save()
+    return buf.getvalue()
+
+
+def _build_nonenglish_pdf() -> bytes:
+    """A one-page lease written entirely in Spanish with accented
+    characters -- the extraction patterns are English-only by design,
+    so the correct behavior is graceful non-extraction (every field
+    stays null), not a crash and not a false-positive match."""
+    import io
+    from reportlab.pdfgen import canvas
+    from reportlab.lib.pagesizes import letter
+
+    buf = io.BytesIO()
+    c = canvas.Canvas(buf, pagesize=letter)
+    c.setFont("Helvetica", 10)
+    lines = [
+        "CONTRATO DE ARRENDAMIENTO COMERCIAL",
+        "Este contrato se celebra entre Propiedades del Sol S.A. (\"Arrendador\") y",
+        "Café Nacional, S. de R.L. (\"Arrendatario\").",
+        "El Arrendatario pagará un alquiler mensual de $3,200.00.",
+        "Superficie aproximada: 1,800 pies cuadrados.",
+    ]
+    y = 700
+    for line in lines:
+        c.drawString(72, y, line)
+        y -= 20
+    c.save()
+    return buf.getvalue()
+
+
 def main():
     checks = []
 
@@ -99,29 +175,73 @@ def main():
     status, body, content_type = _request("GET", "/this-route-does-not-exist")
     check("unknown route returns JSON 404, not framework HTML", status == 404 and "application/json" in content_type, content_type)
 
+    # --- Empty PDF: a structurally valid PDF with zero pages (not
+    # corrupted bytes -- a real, well-formed file reportlab itself
+    # produces when .save() is called with nothing drawn). Must fail
+    # the same clean way a corrupted file does, not crash differently. ---
+    empty_pdf = _build_empty_pdf()
+    body_bytes, content_type_header = _multipart_body([("file", "empty.pdf", empty_pdf)])
+    status, body, _ = _request(
+        "POST", "/extract", data=body_bytes, headers={"Content-Type": content_type_header}
+    )
+    check("empty (0-page) PDF fails cleanly, not a 200 with fabricated data", status in (400, 500), str(status))
+    check(
+        "empty PDF error has no path/traceback leak",
+        isinstance(body, dict) and "/tmp/" not in json.dumps(body) and "Traceback" not in json.dumps(body),
+        json.dumps(body) if isinstance(body, dict) else str(body),
+    )
+
+    # --- Non-English content: the extraction patterns are English-
+    # specific by design (see field_extractor.py) -- the bar here isn't
+    # "extracts Spanish text," it's "doesn't crash, doesn't mangle
+    # encoding, and honestly reports fields as not-found rather than
+    # fabricating a match on foreign text." ---
+    nonenglish_pdf = _build_nonenglish_pdf()
+    body_bytes, content_type_header = _multipart_body([("file", "nonenglish.pdf", nonenglish_pdf)])
+    status, body, _ = _request(
+        "POST", "/extract", data=body_bytes, headers={"Content-Type": content_type_header}
+    )
+    check("non-English (Spanish) lease extracts without error", status == 200, str(status))
+    if isinstance(body, dict) and body.get("leases"):
+        fields = body["leases"][0]["fields"]
+        check(
+            "non-English lease honestly reports fields as not-found rather than fabricating a match",
+            all(f.get("value") is None for f in fields.values()),
+            json.dumps({k: v.get("value") for k, v in fields.items()}),
+        )
+
     # --- XSS: a lease containing HTML/script-like text in extractable
     # fields must round-trip through the API as plain data (the API
     # itself doesn't render anything — this just confirms extraction
     # doesn't choke on it and returns it as inert JSON string data,
-    # which the frontend's escapeHtml() then renders safely — see
-    # run_xss_test.js in this session's scratch dir for the full
-    # rendered-DOM verification). ---
-    xss_pdf_path = "/tmp/xss_test_lease.pdf"
-    if os.path.exists(xss_pdf_path):
-        with open(xss_pdf_path, "rb") as f:
-            xss_content = f.read()
-        body_bytes, content_type_header = _multipart_body([("file", "xss.pdf", xss_content)])
-        status, body, _ = _request(
-            "POST", "/extract", data=body_bytes, headers={"Content-Type": content_type_header}
-        )
-        check("lease with HTML/script-like content extracts without error", status == 200)
+    # which the frontend's escapeHtml() then renders safely).
+    #
+    # Generated in-memory here rather than relying on a fixture file on
+    # disk — an earlier version of this test read a PDF from a fixed
+    # /tmp path that nothing in the repo ever (re)created, so the check
+    # silently no-op'd (never failed, just never ran) in any environment
+    # where that exact file hadn't been manually placed first, e.g. a
+    # fresh clone or CI. Found during the pre-sale test-coverage audit. ---
+    xss_content = _build_xss_test_pdf()
+    body_bytes, content_type_header = _multipart_body([("file", "xss.pdf", xss_content)])
+    status, body, _ = _request(
+        "POST", "/extract", data=body_bytes, headers={"Content-Type": content_type_header}
+    )
+    check("lease with HTML/script-like content extracts without error", status == 200, str(status))
+    check(
+        "response is well-formed JSON (script content didn't break serialization)",
+        isinstance(body, dict) and isinstance(body.get("leases"), list) and len(body["leases"]) > 0
+        and "tenant" in body["leases"][0].get("fields", {}),
+        json.dumps(body)[:300],
+    )
+    if isinstance(body, dict) and body.get("leases"):
+        use_field = body["leases"][0]["fields"].get("permitted_use") or {}
+        use_value = use_field.get("value") or ""
         check(
-            "response is well-formed JSON (script content didn't break serialization)",
-            isinstance(body, dict) and isinstance(body.get("leases"), list) and len(body["leases"]) > 0
-            and "tenant" in body["leases"][0].get("fields", {}),
+            "script tag survives extraction as inert string data, not executed/stripped",
+            "<script>" in use_value,
+            use_value,
         )
-    else:
-        print("(skipping XSS round-trip check — fixture not present in this run)")
 
     print("\n" + "=" * 70)
     passed = sum(1 for _, ok, _ in checks if ok)
