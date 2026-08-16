@@ -226,6 +226,10 @@ const Api = {
         return `${API_BASE_URL}/portfolio/summary.pdf`;
     },
 
+    portfolioMonthlyReportPdfUrl() {
+        return `${API_BASE_URL}/portfolio/monthly-report.pdf`;
+    },
+
     exportToGoogleSheets() {
         return apiRequest('/portfolio/export/google-sheets', { method: 'POST' });
     },

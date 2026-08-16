@@ -9,6 +9,7 @@ const ReportView = {
 
     async load() {
         document.getElementById('exportCsvBtn').href = Api.rentRollCsvUrl();
+        document.getElementById('generateMonthlyReportBtn').href = Api.portfolioMonthlyReportPdfUrl();
         document.getElementById('exportStatus').innerHTML = '';
 
         const frame = document.getElementById('reportFrame');

@@ -26,7 +26,10 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 import PyPDF2
 
 from app.portfolio import FIELD_NAMES, compute_lease_confidence_summary, compute_portfolio_confidence_summary
-from app.summary_memo import generate_lease_summary_pdf, generate_portfolio_summary_pdf, _MAX_RISKS_SHOWN
+from app.summary_memo import (
+    generate_lease_summary_pdf, generate_portfolio_summary_pdf,
+    monthly_report_extra_sections, _MAX_RISKS_SHOWN,
+)
 
 
 def _field(value, page=1, confidence="high"):
@@ -204,6 +207,45 @@ def test_portfolio_memo_extra_sections_are_appended():
     print("✓ test_portfolio_memo_extra_sections_are_appended: PASS")
 
 
+def test_monthly_report_title_and_sections_render_correctly():
+    summary = compute_portfolio_confidence_summary(PORTFOLIO_LEASES)
+    expiring = [{"lease_id": 1, "display_name": "Blue Sky Coffee Roasters, Inc.", "lease_end_date": "March 31, 2030", "days_remaining": 45}]
+    outliers = [{"lease_id": 2, "display_name": "Vertex Analytics LLC", "rent_per_sqft": 1.53, "portfolio_avg_rent_per_sqft": 2.49, "diff_pct": -38.6, "direction": "below"}]
+    extra = monthly_report_extra_sections(expiring, outliers)
+
+    pdf_bytes = generate_portfolio_summary_pdf(
+        PORTFOLIO_LEASES, summary, PORTFOLIO_RISKS_BY_LEASE,
+        extra_sections=extra, title="Portfolio Monthly Report",
+    )
+    text = _pdf_text(pdf_bytes)
+
+    assert "Portfolio Monthly Report" in text
+    assert "Upcoming Expirations" in text
+    assert "45 days" in text
+    assert "Rent Variance Outliers" in text
+    assert "39% below the portfolio average" in text, "abs(-38.6) formatted to 0 decimals rounds to 39"
+    assert "Loss to Lease" in text
+    assert "Not available" in text
+    print("✓ test_monthly_report_title_and_sections_render_correctly: PASS")
+
+
+def test_monthly_report_empty_expirations_and_outliers_say_so_explicitly():
+    text_flowables = monthly_report_extra_sections([], [])
+    summary = compute_portfolio_confidence_summary(PORTFOLIO_LEASES)
+    pdf_bytes = generate_portfolio_summary_pdf(PORTFOLIO_LEASES, summary, PORTFOLIO_RISKS_BY_LEASE, extra_sections=text_flowables)
+    text = _pdf_text(pdf_bytes)
+    assert "No leases expiring in the next 90 days." in text
+    assert "No leases significantly above or below the portfolio's average rent/sqft." in text
+    print("✓ test_monthly_report_empty_expirations_and_outliers_say_so_explicitly: PASS")
+
+
+def test_default_portfolio_memo_title_unchanged_when_not_overridden():
+    summary = compute_portfolio_confidence_summary(PORTFOLIO_LEASES)
+    text = _pdf_text(generate_portfolio_summary_pdf(PORTFOLIO_LEASES, summary, PORTFOLIO_RISKS_BY_LEASE))
+    assert "Portfolio Summary Memo" in text
+    print("✓ test_default_portfolio_memo_title_unchanged_when_not_overridden: PASS")
+
+
 if __name__ == "__main__":
     test_lease_memo_is_a_real_single_page_pdf()
     test_lease_memo_contains_key_terms()
@@ -218,4 +260,7 @@ if __name__ == "__main__":
     test_portfolio_memo_empty_portfolio_does_not_crash()
     test_portfolio_memo_no_risks_anywhere_says_so_explicitly()
     test_portfolio_memo_extra_sections_are_appended()
+    test_monthly_report_title_and_sections_render_correctly()
+    test_monthly_report_empty_expirations_and_outliers_say_so_explicitly()
+    test_default_portfolio_memo_title_unchanged_when_not_overridden()
     print("\nAll summary memo tests passed.")

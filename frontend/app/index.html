@@ -473,6 +473,17 @@
                     <div id="exportStatus"></div>
                 </div>
 
+                <!-- Monthly Portfolio Report: a decision-ready PDF (expirations, rent variance outliers, confidence summary, risk flags) -- manually triggered for now, see the /portfolio/monthly-report.pdf route for where scheduled automation would hook in later -->
+                <div class="panel export-panel">
+                    <div class="panel-header">
+                        <h2>Monthly Portfolio Report</h2>
+                    </div>
+                    <p class="panel-description">A decision-ready PDF: upcoming 90-day expirations, rent variance outliers, the confidence summary, and top risk flags across the whole portfolio.</p>
+                    <div class="export-actions">
+                        <a class="btn-primary" id="generateMonthlyReportBtn" href="#" download>Generate Portfolio Report</a>
+                    </div>
+                </div>
+
                 <div class="report-frame-container">
                     <iframe id="reportFrame" title="Portfolio Report"></iframe>
                 </div>

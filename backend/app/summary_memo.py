@@ -276,6 +276,7 @@ def generate_portfolio_summary_pdf(
     risks_by_lease: Dict[int, List[Dict[str, Any]]],
     generated_date: Optional[date] = None,
     extra_sections: Optional[List[Any]] = None,
+    title: str = "Portfolio Summary Memo",
 ) -> bytes:
     """
     A one-page memo for the whole portfolio: a rollup table (one row
@@ -296,7 +297,7 @@ def generate_portfolio_summary_pdf(
     generated_date = generated_date or date.today()
 
     flowables = _header_flowables(
-        "Portfolio Summary Memo",
+        title,
         [f"{len(leases)} lease{'' if len(leases) == 1 else 's'} in this portfolio"],
         generated_date,
     )
@@ -359,3 +360,66 @@ def generate_portfolio_summary_pdf(
         flowables.extend(extra_sections)
 
     return _build_pdf(flowables)
+
+
+def monthly_report_extra_sections(
+    expiring_90_days: List[Dict[str, Any]],
+    rent_variance_outliers: List[Dict[str, Any]],
+) -> List[Any]:
+    """
+    The sections specific to the monthly portfolio report (beyond the
+    standard portfolio memo's overview/confidence/risk sections above),
+    built to be passed as generate_portfolio_summary_pdf's
+    extra_sections -- reuses that function's header/footer/build
+    machinery rather than duplicating it.
+
+    `expiring_90_days` is portfolio.py's compute_expiration_alerts()
+    ["expiring"] list; `rent_variance_outliers` is
+    compute_rent_variance_outliers()'s output. Both are computed by the
+    caller (the /portfolio/monthly-report.pdf route) and passed in, the
+    same "never recompute what a caller already has" convention every
+    other function in this module follows.
+
+    Loss-to-lease is deliberately NOT computed here: it would require
+    an asking/market-rent figure this tool has no way to capture from a
+    lease document itself (a lease states the *actual* contracted rent,
+    never what the landlord could have gotten), so a real number here
+    would have to be fabricated. Reported as explicitly unavailable
+    instead, with the reason stated -- the same "explicit none message,
+    never a silently blank or fabricated section" rule report.py's
+    HTML report already follows.
+    """
+    flowables = [Paragraph("Upcoming Expirations (Next 90 Days)", _styles["section"])]
+    if not expiring_90_days:
+        flowables.append(Paragraph("No leases expiring in the next 90 days.", _styles["muted"]))
+    else:
+        for entry in expiring_90_days:
+            name = entry.get("display_name") or entry.get("filename") or f"Lease #{entry.get('lease_id')}"
+            flowables.append(Paragraph(
+                f"{name} &mdash; expires {entry.get('lease_end_date')} ({entry.get('days_remaining')} days)",
+                _styles["flag"],
+            ))
+
+    flowables.append(Paragraph("Rent Variance Outliers", _styles["section"]))
+    if not rent_variance_outliers:
+        flowables.append(Paragraph("No leases significantly above or below the portfolio's average rent/sqft.", _styles["muted"]))
+    else:
+        for entry in rent_variance_outliers:
+            direction = "above" if entry["direction"] == "above" else "below"
+            flowables.append(Paragraph(
+                f'{entry["display_name"]} &mdash; ${entry["rent_per_sqft"]:.2f}/sq ft/mo is '
+                f'{abs(entry["diff_pct"]):.0f}% {direction} the portfolio average '
+                f'(${entry["portfolio_avg_rent_per_sqft"]:.2f}/sq ft/mo)',
+                _styles["flag"],
+            ))
+
+    flowables.append(Paragraph("Loss to Lease", _styles["section"]))
+    flowables.append(Paragraph(
+        "Not available. Loss-to-lease compares actual contracted rent against current asking/market "
+        "rent, and this tool has no way to capture an asking-rent figure from a lease document itself "
+        "(a lease states what was actually agreed to, never what the landlord could get today). This "
+        "section will populate once a market-rent input is added.",
+        _styles["muted"],
+    ))
+
+    return flowables

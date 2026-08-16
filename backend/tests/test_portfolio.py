@@ -32,6 +32,7 @@ from app.portfolio import (
     compute_lease_confidence_summary,
     compute_portfolio_confidence_summary,
     compute_portfolio_metrics,
+    compute_rent_variance_outliers,
     portfolio_context_for_risk_analysis,
 )
 
@@ -618,6 +619,43 @@ def test_portfolio_confidence_summary_empty_portfolio_does_not_crash():
     print("✓ test_portfolio_confidence_summary_empty_portfolio_does_not_crash: PASS")
 
 
+def test_rent_variance_outliers_flags_both_directions():
+    # avg rent/sqft across these three: (2.00 + 2.10 + 5.00) / 3 = 3.03
+    cheap = _lease(70, "cheap.pdf", tenant="Cheap Co.", rent_amount="$2,000.00", square_footage="1,000 sq ft")  # $2.00/sqft
+    typical = _lease(71, "typical.pdf", tenant="Typical Co.", rent_amount="$2,100.00", square_footage="1,000 sq ft")  # $2.10/sqft
+    expensive = _lease(72, "expensive.pdf", tenant="Expensive Co.", rent_amount="$5,000.00", square_footage="1,000 sq ft")  # $5.00/sqft
+
+    outliers = compute_rent_variance_outliers([cheap, typical, expensive])
+    by_id = {o["lease_id"]: o for o in outliers}
+
+    assert 72 in by_id and by_id[72]["direction"] == "above"
+    assert 70 in by_id and by_id[70]["direction"] == "below"
+    # "typical" (only ~30% below avg... let's just confirm it's not the most extreme)
+    assert outliers[0]["lease_id"] == 72, "most extreme deviation must sort first"
+    print("✓ test_rent_variance_outliers_flags_both_directions: PASS")
+
+
+def test_rent_variance_outliers_excludes_leases_within_normal_range():
+    close_a = _lease(73, "a.pdf", rent_amount="$3,000.00", square_footage="1,000 sq ft")  # $3.00/sqft
+    close_b = _lease(74, "b.pdf", rent_amount="$3,200.00", square_footage="1,000 sq ft")  # $3.20/sqft, ~6.5% above avg of $3.10
+    outliers = compute_rent_variance_outliers([close_a, close_b])
+    assert outliers == []
+    print("✓ test_rent_variance_outliers_excludes_leases_within_normal_range: PASS")
+
+
+def test_rent_variance_outliers_skips_leases_without_sqft():
+    no_sqft = _lease(75, "no_sqft.pdf", rent_amount="$50,000.00")  # would be a huge outlier if raw rent were compared
+    normal = _lease(76, "normal.pdf", rent_amount="$3,000.00", square_footage="1,000 sq ft")
+    outliers = compute_rent_variance_outliers([no_sqft, normal])
+    assert outliers == [], "a lease missing square footage can't contribute a rent/sqft outlier"
+    print("✓ test_rent_variance_outliers_skips_leases_without_sqft: PASS")
+
+
+def test_rent_variance_outliers_empty_portfolio_does_not_crash():
+    assert compute_rent_variance_outliers([]) == []
+    print("✓ test_rent_variance_outliers_empty_portfolio_does_not_crash: PASS")
+
+
 def test_cross_lease_mismatch_flags_both_leases_at_same_address():
     lease_a = _lease(
         40, "unit_a.pdf", tenant="Alpha Retail LLC",
@@ -731,4 +769,8 @@ if __name__ == "__main__":
     test_lease_confidence_summary_all_not_found()
     test_portfolio_confidence_summary_aggregates_across_leases()
     test_portfolio_confidence_summary_empty_portfolio_does_not_crash()
+    test_rent_variance_outliers_flags_both_directions()
+    test_rent_variance_outliers_excludes_leases_within_normal_range()
+    test_rent_variance_outliers_skips_leases_without_sqft()
+    test_rent_variance_outliers_empty_portfolio_does_not_crash()
     print("\nAll portfolio tests passed.")

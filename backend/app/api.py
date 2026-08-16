@@ -48,12 +48,13 @@ from app.portfolio import (
     compute_cross_lease_mismatches,
     compute_lease_confidence_summary,
     compute_portfolio_confidence_summary,
+    compute_rent_variance_outliers,
     portfolio_context_for_risk_analysis,
 )
 from app.comparison import compare_leases, benchmark_lease
 from app.rent_roll_export import generate_rent_roll_csv, generate_rent_roll_excel
 from app.report import generate_portfolio_report_html
-from app.summary_memo import generate_lease_summary_pdf, generate_portfolio_summary_pdf
+from app.summary_memo import generate_lease_summary_pdf, generate_portfolio_summary_pdf, monthly_report_extra_sections
 from app.sheets_export import export_to_google_sheets, SheetsExportError
 
 
@@ -1186,6 +1187,58 @@ def portfolio_summary_pdf():
         pdf_bytes,
         mimetype='application/pdf',
         headers={"Content-Disposition": "attachment; filename=portfolio_summary.pdf"},
+    )
+
+
+@app.route('/portfolio/monthly-report.pdf', methods=['GET'])
+def portfolio_monthly_report_pdf():
+    """
+    The monthly portfolio report -- same PDF memo format as
+    /portfolio/summary.pdf, with three additional sections: leases
+    expiring in the next 90 days, rent-per-sqft outliers in either
+    direction, and an explicit "not available" for loss-to-lease (see
+    monthly_report_extra_sections' docstring for why that one can't be
+    computed from data this tool captures today).
+
+    Manually triggered for now, by design (see Part 3 of the request
+    this was built against) -- there is no scheduling infrastructure
+    yet. To make this a real monthly automation later: add a scheduled
+    job (APScheduler running in-process, a cron entry calling a small
+    script that imports and calls the same generate_portfolio_summary_
+    pdf()/monthly_report_extra_sections() functions this route calls,
+    or a cloud provider's scheduled-function trigger hitting this exact
+    route on a timer) and decide where the output goes each run --
+    emailed via email_service.py's existing Gmail SMTP setup, or
+    written to a dated file in storage. The generation logic itself
+    (this route's body) would not need to change; only what triggers it
+    and what happens to the resulting bytes.
+    """
+    leases = database.get_all_effective_leases()
+    context = portfolio_context_for_risk_analysis(leases)
+    cross_lease_mismatches = compute_cross_lease_mismatches(leases)
+    confidence_summary = compute_portfolio_confidence_summary(leases)
+
+    risks_by_lease = {}
+    for lease in leases:
+        date_candidates = lease.get("date_candidates")
+        cross_lease_flags = cross_lease_mismatches.get(lease["id"], [])
+        risks_by_lease[lease["id"]] = analyze_lease_risks(
+            lease["extracted_fields"], context, date_candidates, cross_lease_flags,
+        )
+
+    expiring_90_days = compute_expiration_alerts(leases)["expiring"]
+    rent_variance_outliers = compute_rent_variance_outliers(leases)
+    extra_sections = monthly_report_extra_sections(expiring_90_days, rent_variance_outliers)
+
+    pdf_bytes = generate_portfolio_summary_pdf(
+        leases, confidence_summary, risks_by_lease,
+        extra_sections=extra_sections, title="Portfolio Monthly Report",
+    )
+    database.insert_activity("monthly_report_exported", f"Generated monthly portfolio report ({len(leases)} leases)")
+    return Response(
+        pdf_bytes,
+        mimetype='application/pdf',
+        headers={"Content-Disposition": "attachment; filename=portfolio_monthly_report.pdf"},
     )
 
 

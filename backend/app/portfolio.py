@@ -441,6 +441,61 @@ def compute_portfolio_confidence_summary(leases: List[Dict[str, Any]]) -> Dict[s
     }
 
 
+# How far a lease's rent/sqft has to sit from the portfolio average
+# (in either direction) to count as a "variance outlier" for the
+# monthly report -- deliberately its own threshold, not reused from
+# risk_analysis.py's BELOW_MARKET_* constants, since this is a
+# two-sided screen (both unusually cheap AND unusually expensive are
+# worth a reviewer's attention in a monthly portfolio scan) rather
+# than risk_analysis.py's one-sided "is this lease underpriced" check.
+RENT_VARIANCE_OUTLIER_PCT = 20.0
+
+
+def compute_rent_variance_outliers(leases: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Leases whose rent-per-square-foot deviates significantly from the
+    portfolio average, in either direction. Broader than risk_analysis.
+    py's below-market-rent check (which only flags rent that's too
+    LOW): a lease priced well ABOVE market is just as worth a reviewer's
+    attention in a monthly scan -- it could mean genuine upside, a
+    misextracted figure, or a lease approaching renewal that needs
+    repricing scrutiny before the market moves further.
+
+    Only leases with both a parseable rent and square footage are
+    considered -- comparing raw monthly rent across differently-sized
+    spaces would mostly measure size, not price, same reasoning the
+    below-market check already uses.
+
+    Returns entries sorted by |deviation| descending (most extreme
+    first): {lease_id, display_name, tenant, rent_per_sqft,
+    portfolio_avg_rent_per_sqft, diff_pct, direction: "above"|"below"}.
+    """
+    avg_psf = compute_portfolio_metrics(leases).get("avg_rent_per_sqft")
+    if not avg_psf or avg_psf <= 0:
+        return []
+
+    outliers = []
+    for lease in leases:
+        lease_psf = rent_per_sqft(field_value(lease, "rent_amount"), field_value(lease, "square_footage"))
+        if lease_psf is None or lease_psf <= 0:
+            continue
+        diff_pct = ((lease_psf - avg_psf) / avg_psf) * 100
+        if abs(diff_pct) < RENT_VARIANCE_OUTLIER_PCT:
+            continue
+        outliers.append({
+            "lease_id": lease.get("id"),
+            "display_name": _lease_label(lease),
+            "tenant": field_value(lease, "tenant"),
+            "rent_per_sqft": round(lease_psf, 2),
+            "portfolio_avg_rent_per_sqft": round(avg_psf, 2),
+            "diff_pct": round(diff_pct, 1),
+            "direction": "above" if diff_pct > 0 else "below",
+        })
+
+    outliers.sort(key=lambda entry: abs(entry["diff_pct"]), reverse=True)
+    return outliers
+
+
 def _timeline_entry(
     lease: Dict[str, Any],
     months_remaining: Optional[float],
