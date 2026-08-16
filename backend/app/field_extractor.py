@@ -30,7 +30,10 @@ Fields that were not found have confidence None.
 """
 
 import re
+from datetime import date as _date
 from typing import Optional, Dict, Any, List, Tuple
+
+from .normalize import parse_currency, parse_date, parse_square_footage
 
 
 MONTHS_FULL = (r"January|February|March|April|May|June|July|August|September"
@@ -152,7 +155,114 @@ class FieldExtractor:
             "square_footage": self._extract_square_footage(pages),
         }
 
+        self._apply_confidence_validation(result, pages)
         return result
+
+    # ------------------------------------------------------------------
+    # Confidence validation: a second, independent signal layered on top
+    # of the pattern-based confidence above. Pattern confidence answers
+    # "how reliably was this text located in the document" -- validation
+    # answers "does the located value actually look real, and was the
+    # page it came from even legible." A field can score high on the
+    # first and still be wrong (a loose pattern latching onto the wrong
+    # number, or a barely-legible scan), which is exactly what this
+    # layer catches. It can only ever downgrade a tier, never upgrade
+    # one -- a plausible number found by a low-confidence fallback
+    # pattern is still a low-confidence match.
+    # ------------------------------------------------------------------
+
+    _CONFIDENCE_DOWNGRADE = {"high": "medium", "medium": "low", "low": "low"}
+
+    # Below this mean OCR word-confidence (0-100), a page is treated as
+    # "barely legible" -- chosen conservatively (tesseract's own docs
+    # treat sub-60 as generally unreliable) rather than tuned against a
+    # labeled dataset, since no such dataset exists for this project.
+    _LOW_OCR_CONFIDENCE_THRESHOLD = 60.0
+
+    def _downgrade_confidence(self, entry: Dict[str, Any], note: str) -> None:
+        current = entry.get("confidence")
+        if current in self._CONFIDENCE_DOWNGRADE:
+            entry["confidence"] = self._CONFIDENCE_DOWNGRADE[current]
+        entry["validation_note"] = note
+
+    def _validate_currency_range(self, entry: Dict[str, Any], min_val: float, max_val: float, label: str) -> None:
+        if not entry.get("value"):
+            return
+        amount = parse_currency(entry["value"])
+        if amount is None:
+            return
+        if amount < min_val or amount > max_val:
+            self._downgrade_confidence(
+                entry,
+                f"{label} of {entry['value']} is outside the expected "
+                f"${min_val:,.0f}-${max_val:,.0f} range for this field -- verify against the source document.",
+            )
+
+    def _validate_square_footage(self, entry: Dict[str, Any]) -> None:
+        if not entry.get("value"):
+            return
+        sqft = parse_square_footage(entry["value"])
+        if sqft is None:
+            return
+        if sqft < 50 or sqft > 2_000_000:
+            self._downgrade_confidence(
+                entry,
+                f"Square footage of {entry['value']} is outside the expected "
+                f"50-2,000,000 sq ft range -- verify against the source document.",
+            )
+
+    def _validate_date_fields(self, start_entry: Dict[str, Any], end_entry: Dict[str, Any]) -> None:
+        current_year = _date.today().year
+        for label, entry in (("Lease start date", start_entry), ("Lease end date", end_entry)):
+            if not entry.get("value"):
+                continue
+            parsed = parse_date(entry["value"])
+            if parsed is None:
+                continue
+            if parsed.year < 1980 or parsed.year > current_year + 30:
+                self._downgrade_confidence(
+                    entry,
+                    f"{label} of {entry['value']} falls well outside a plausible "
+                    f"range -- verify against the source document.",
+                )
+
+        start = parse_date(start_entry.get("value"))
+        end = parse_date(end_entry.get("value"))
+        if start and end and end <= start:
+            self._downgrade_confidence(
+                end_entry,
+                f"Lease end date ({end_entry['value']}) is not after the lease "
+                f"start date ({start_entry['value']}) -- verify against the source document.",
+            )
+
+    def _validate_ocr_page_clarity(self, result: Dict[str, Any], pages: List[Dict[str, Any]]) -> None:
+        ocr_confidence_by_page = {
+            page["page"]: page["ocr_confidence"]
+            for page in pages
+            if "ocr_confidence" in page
+        }
+        if not ocr_confidence_by_page:
+            return  # this document wasn't OCR'd at all -- nothing to check
+
+        for entry in result.values():
+            source = entry.get("source")
+            if not source:
+                continue
+            page_confidence = ocr_confidence_by_page.get(source["page"])
+            if page_confidence is not None and page_confidence < self._LOW_OCR_CONFIDENCE_THRESHOLD:
+                self._downgrade_confidence(
+                    entry,
+                    f"This value came from a scanned page with low OCR clarity "
+                    f"({page_confidence:.0f}/100) -- verify against the source document.",
+                )
+
+    def _apply_confidence_validation(self, result: Dict[str, Any], pages: List[Dict[str, Any]]) -> None:
+        self._validate_currency_range(result["rent_amount"], 50, 1_000_000, "Rent amount")
+        self._validate_currency_range(result["security_deposit"], 1, 2_000_000, "Security deposit")
+        self._validate_currency_range(result["cam_charges"], 1, 500_000, "CAM charges")
+        self._validate_square_footage(result["square_footage"])
+        self._validate_date_fields(result["lease_start_date"], result["lease_end_date"])
+        self._validate_ocr_page_clarity(result, pages)
 
     def _search_ordered(
         self,

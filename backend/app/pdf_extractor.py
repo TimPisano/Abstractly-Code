@@ -103,6 +103,17 @@ class PDFExtractor:
         """
         Extract text using OCR (for scanned PDFs).
 
+        Each page also carries an "ocr_confidence" (0-100, tesseract's own
+        mean word-confidence for that page's recognized text, or None if
+        nothing was recognized at all) -- a real, per-page signal of how
+        legible the scan actually was, not a guess. field_extractor.py's
+        confidence-validation step uses this to downgrade a field whose
+        source page came back barely legible, even if the field's own
+        pattern match looked clean. Digitally-extracted pages (PyPDF2,
+        no OCR involved) never carry this key at all, which is the
+        signal field_extractor.py uses to know OCR wasn't involved for
+        that page's fields.
+
         Args:
             pdf_path: File path to PDF
 
@@ -116,13 +127,16 @@ class PDFExtractor:
             # Note: This requires poppler to be installed on the system
             images = convert_from_path(pdf_path)
 
-            # Run OCR on each page
+            # Run OCR on each page. image_to_data (not image_to_string) is
+            # used so the same OCR pass yields both the recognized text
+            # AND tesseract's own per-word confidence -- calling both
+            # would OCR every page twice for no reason.
             for page_num, image in enumerate(images, start=1):
-                text = pytesseract.image_to_string(image)
-                pages.append({
-                    "page": page_num,
-                    "text": text
-                })
+                text, confidence = self._ocr_page_with_confidence(image)
+                page_entry = {"page": page_num, "text": text}
+                if confidence is not None:
+                    page_entry["ocr_confidence"] = confidence
+                pages.append(page_entry)
 
         except Exception:
             logger.exception("Error during OCR extraction")
@@ -130,3 +144,40 @@ class PDFExtractor:
             return []
 
         return pages
+
+    def _ocr_page_with_confidence(self, image):
+        """
+        Runs tesseract once via image_to_data and returns (text, mean_
+        confidence). Text is reconstructed from the word-level data
+        (joined with spaces within a line, newlines between lines) rather
+        than calling image_to_string separately, so this is a single OCR
+        pass, not two.
+
+        mean_confidence is the average of tesseract's own per-word
+        confidence scores (0-100), counting only words it actually
+        recognized -- tesseract reports -1 for regions with no
+        recognized text (whitespace/layout boxes), which are excluded
+        rather than dragging the average down for reasons that have
+        nothing to do with legibility. Returns (text, None) if nothing
+        was recognized at all, so a caller can tell "OCR ran but found
+        nothing" apart from "OCR ran and was confident."
+        """
+        data = pytesseract.image_to_data(image, output_type=pytesseract.Output.DICT)
+
+        lines: Dict[Any, List[str]] = {}
+        confidences: List[float] = []
+        for i, word in enumerate(data["text"]):
+            if not word.strip():
+                continue
+            line_key = (data["block_num"][i], data["par_num"][i], data["line_num"][i])
+            lines.setdefault(line_key, []).append(word)
+            try:
+                conf = float(data["conf"][i])
+            except (ValueError, TypeError):
+                conf = -1
+            if conf >= 0:
+                confidences.append(conf)
+
+        text = "\n".join(" ".join(words) for words in lines.values())
+        mean_confidence = round(sum(confidences) / len(confidences), 1) if confidences else None
+        return text, mean_confidence
