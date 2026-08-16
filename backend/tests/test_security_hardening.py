@@ -15,6 +15,8 @@ import json
 import urllib.request
 import urllib.error
 
+import PyPDF2
+
 API_BASE_URL = "http://localhost:5000"
 FIXTURES_DIR = os.path.dirname(__file__)
 
@@ -117,6 +119,93 @@ def _build_nonenglish_pdf() -> bytes:
         "Café Nacional, S. de R.L. (\"Arrendatario\").",
         "El Arrendatario pagará un alquiler mensual de $3,200.00.",
         "Superficie aproximada: 1,800 pies cuadrados.",
+    ]
+    y = 700
+    for line in lines:
+        c.drawString(72, y, line)
+        y -= 20
+    c.save()
+    return buf.getvalue()
+
+
+def _build_password_protected_pdf() -> bytes:
+    """A real one-page lease, structurally valid, encrypted with a real
+    user password via PyPDF2 -- distinct from both the corrupted-bytes
+    case (not a valid PDF at all) and the empty-PDF case (valid but
+    contentless). This one is entirely valid and has real content; it
+    just can't be opened without a password nobody supplied."""
+    import io
+    from reportlab.pdfgen import canvas
+    from reportlab.lib.pagesizes import letter
+
+    buf = io.BytesIO()
+    c = canvas.Canvas(buf, pagesize=letter)
+    c.setFont("Helvetica", 10)
+    c.drawString(72, 700, 'This Lease is between Example Landlord LLC ("Landlord") and Example Tenant Inc. ("Tenant").')
+    c.save()
+
+    reader = PyPDF2.PdfReader(io.BytesIO(buf.getvalue()))
+    writer = PyPDF2.PdfWriter()
+    for page in reader.pages:
+        writer.add_page(page)
+    writer.encrypt(user_password="hunter2")
+
+    encrypted_buf = io.BytesIO()
+    writer.write(encrypted_buf)
+    return encrypted_buf.getvalue()
+
+
+def _build_owner_password_only_pdf() -> bytes:
+    """Encrypted, but with only an owner password set and no user
+    password -- PyPDF2.is_encrypted is still true, but decrypt("")
+    fully opens it since no password is actually required to read the
+    content, only to edit/print it. Must NOT be misclassified as
+    "password-protected" the way a real user-password file is."""
+    import io
+    from reportlab.pdfgen import canvas
+    from reportlab.lib.pagesizes import letter
+
+    buf = io.BytesIO()
+    c = canvas.Canvas(buf, pagesize=letter)
+    c.setFont("Helvetica", 10)
+    # Comfortably over PDFExtractor.min_text_length (100 chars) so this
+    # exercises the direct PyPDF2 decrypt path deterministically,
+    # rather than depending on whether OCR fallback happens to be
+    # available in the environment running this test.
+    c.drawString(72, 700, 'This Lease is between Example Landlord LLC ("Landlord") and Example Tenant Inc. ("Tenant").')
+    c.drawString(72, 680, "TERM: Lease Start Date: January 1, 2026. Lease End Date: December 31, 2030.")
+    c.save()
+
+    reader = PyPDF2.PdfReader(io.BytesIO(buf.getvalue()))
+    writer = PyPDF2.PdfWriter()
+    for page in reader.pages:
+        writer.add_page(page)
+    writer.encrypt(user_password="", owner_password="ownerhunter2")
+
+    encrypted_buf = io.BytesIO()
+    writer.write(encrypted_buf)
+    return encrypted_buf.getvalue()
+
+
+def _build_unrelated_document_pdf() -> bytes:
+    """A structurally valid, plain-English, multi-line PDF with real
+    extractable text -- but nothing that reads as a lease. Distinct
+    from the non-English case above: this one fails for content
+    reasons, not language ones, and every one of the 5 lease-identity
+    fields (tenant/landlord/rent/start/end) should come back null."""
+    import io
+    from reportlab.pdfgen import canvas
+    from reportlab.lib.pagesizes import letter
+
+    buf = io.BytesIO()
+    c = canvas.Canvas(buf, pagesize=letter)
+    c.setFont("Helvetica", 10)
+    lines = [
+        "QUARTERLY MARKETING PERFORMANCE SUMMARY",
+        "Prepared for the Northwest Regional Sales Team",
+        "This report reviews campaign engagement metrics across all channels",
+        "for the quarter ending in June. Overall click-through rates improved",
+        "by twelve percent compared to the prior period.",
     ]
     y = 700
     for line in lines:
@@ -241,6 +330,68 @@ def main():
             "script tag survives extraction as inert string data, not executed/stripped",
             "<script>" in use_value,
             use_value,
+        )
+
+    # --- Password-protected PDF: must be distinguished from generic
+    # corruption with a specific, actionable message -- found during
+    # the reliability pass that this previously fell through to the
+    # same vague "corrupted or unsupported" 500 as truly unreadable
+    # garbage bytes, giving the user no way to tell the two apart. ---
+    password_protected_pdf = _build_password_protected_pdf()
+    body_bytes, content_type_header = _multipart_body([("file", "protected.pdf", password_protected_pdf)])
+    status, body, _ = _request(
+        "POST", "/extract", data=body_bytes, headers={"Content-Type": content_type_header}
+    )
+    check("password-protected PDF returns 422, not the generic corrupted-PDF 500", status == 422, str(status))
+    check(
+        "password-protected PDF error specifically names the password, not generic corruption language",
+        isinstance(body, dict) and "password" in body.get("error", "").lower(),
+        json.dumps(body),
+    )
+    error_text = json.dumps(body)
+    check("password-protected PDF error has no path/traceback leak", "/tmp/" not in error_text and "Traceback" not in error_text, error_text)
+
+    # An owner-password-only PDF (no password needed to open/read it,
+    # just to edit/print) must still extract normally -- PyPDF2 can
+    # decrypt those with an empty password, so this must NOT be
+    # misclassified as "password-protected."
+    owner_only_pdf = _build_owner_password_only_pdf()
+    body_bytes, content_type_header = _multipart_body([("file", "owner_only.pdf", owner_only_pdf)])
+    status, body, _ = _request(
+        "POST", "/extract", data=body_bytes, headers={"Content-Type": content_type_header}
+    )
+    check("an owner-password-only PDF (no password needed to read it) extracts normally, not flagged as password-protected", status == 200, str(status))
+
+    # --- Non-lease document: a structurally valid, readable, plain-
+    # English PDF that simply isn't a lease. Extraction must not
+    # silently produce a normal-looking empty lease -- looks_like_lease
+    # must come back false so the frontend can warn the user instead of
+    # quietly filing it as a real, if sparse, lease. ---
+    unrelated_pdf = _build_unrelated_document_pdf()
+    body_bytes, content_type_header = _multipart_body([("file", "unrelated.pdf", unrelated_pdf)])
+    status, body, _ = _request(
+        "POST", "/extract", data=body_bytes, headers={"Content-Type": content_type_header}
+    )
+    check("non-lease document still extracts without error (real text, just not a lease)", status == 200, str(status))
+    if isinstance(body, dict) and body.get("leases"):
+        entry = body["leases"][0]
+        check(
+            "non-lease document is flagged looks_like_lease=false",
+            entry.get("looks_like_lease") is False,
+            json.dumps({k: v for k, v in entry.items() if k != "fields"}),
+        )
+
+    # A real lease, by contrast, must NOT be flagged -- this isn't a
+    # blanket "always warn" switch.
+    body_bytes, content_type_header = _multipart_body([("file", "xss.pdf", _build_xss_test_pdf())])
+    status, body, _ = _request(
+        "POST", "/extract", data=body_bytes, headers={"Content-Type": content_type_header}
+    )
+    if isinstance(body, dict) and body.get("leases"):
+        check(
+            "a genuine lease (has tenant/landlord found) is NOT flagged looks_like_lease=false",
+            body["leases"][0].get("looks_like_lease") is True,
+            json.dumps({k: v for k, v in body["leases"][0].items() if k != "fields"}),
         )
 
     print("\n" + "=" * 70)

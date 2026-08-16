@@ -335,6 +335,7 @@ const Dashboard = {
                     </td>
                     <td class="lease-name-cell">
                         <span class="lease-name-text editable-name" data-id="${r.lease.id}" title="Click to rename">${escapeHtml(r.name)}</span>
+                        ${r.lease.looks_like_lease === false ? `<span class="non-lease-flag" title="Doesn't look like a lease — no tenant, landlord, rent, or dates were found">&#9888;</span>` : ''}
                         ${r.tags.length ? `<div class="lease-name-tags">${r.tags.map(t => `<span class="tag-chip-mini tag-chip-filter" data-tag="${escapeHtml(t)}" title="Filter by this tag">${escapeHtml(t)}</span>`).join('')}</div>` : ''}
                     </td>
                     <td>${escapeHtml(r.tenant) || '<span class="muted">Not found</span>'}</td>

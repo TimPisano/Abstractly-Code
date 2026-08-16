@@ -71,6 +71,19 @@ class PDFExtractor:
             # Read PDF
             pdf_reader = PyPDF2.PdfReader(pdf_file)
 
+            # An owner-password-only PDF (no password needed to read
+            # it, just to edit/print) still reports is_encrypted, and
+            # PyPDF2 refuses to read .pages on it until decrypt() has
+            # been called -- even with the correct effective (empty)
+            # password. A real user-password PDF also reaches this
+            # point (the caller's own upfront check only short-circuits
+            # the ones it can detect this way; direct callers of this
+            # method skip that check entirely) -- decrypt("") simply
+            # fails for those, .pages then raises, and this method
+            # returns [] same as any other unreadable PDF.
+            if pdf_reader.is_encrypted:
+                pdf_reader.decrypt("")
+
             # Extract text from each page
             for page_num, page in enumerate(pdf_reader.pages, start=1):
                 text = page.extract_text()

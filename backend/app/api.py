@@ -32,6 +32,7 @@ import tempfile
 # happens before that import.
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
+import PyPDF2
 from app.pdf_extractor import PDFExtractor
 from app.field_extractor import FieldExtractor
 from app import database
@@ -174,6 +175,29 @@ def _extract_leases_from_file_storage(file_storage):
             temp_path = temp_file.name
             file_storage.save(temp_path)
 
+        # Checked before extraction, not left to surface as a generic
+        # "corrupted or unsupported" failure: a password-protected PDF
+        # is structurally fine and has a specific, actionable fix (open
+        # it, remove the password, re-upload) that a vague corruption
+        # message would hide. PyPDF2.is_encrypted is true even for a
+        # PDF with only an *owner* password (no password needed to
+        # open/read it) -- decrypt("") succeeds for those, and only
+        # genuinely unreadable-without-a-real-password files fail here.
+        with open(temp_path, 'rb') as pdf_file:
+            try:
+                reader = PyPDF2.PdfReader(pdf_file)
+                if reader.is_encrypted and reader.decrypt("") == 0:
+                    return None, (
+                        "This PDF is password-protected. Remove the password (or save an "
+                        "unprotected copy) and upload it again.", 422,
+                    )
+            except Exception:
+                # Not our concern here -- extract_text() below runs its
+                # own extraction attempt and OCR fallback, and reports
+                # its own failure if the file turns out to be
+                # unreadable for some other reason.
+                pass
+
         pdf_extractor = PDFExtractor()
         with open(temp_path, 'rb') as pdf_file:
             pages = pdf_extractor.extract_text(pdf_file, pdf_path=temp_path)
@@ -193,6 +217,7 @@ def _extract_leases_from_file_storage(file_storage):
                 "source_page_start": result["source_page_start"],
                 "source_page_end": result["source_page_end"],
                 "display_name": _default_lease_name(result["fields"], file_storage.filename, index, total),
+                "looks_like_lease": _looks_like_lease(result["fields"]),
             })
         return leases, None
 
@@ -259,6 +284,22 @@ def extract_lease_data():
 # Persisted leases (portfolio)
 # ----------------------------------------------------------------------
 
+# The fields that identify a document as an actual lease -- if every
+# one of these came back not-found, extraction technically "succeeded"
+# (real text was pulled from a real PDF) but the document almost
+# certainly isn't a lease at all: a cover letter, an unrelated report,
+# a blank/near-blank scan. Same field set as portfolio.py's
+# CORE_FIELDS_FOR_COMPLETENESS -- not imported from there directly
+# since that module's meaning ("missing some fields, needs review") is
+# a different, narrower question than this one ("might not be a lease
+# at all"), even though the underlying fields happen to coincide.
+_LEASE_IDENTITY_FIELDS = ["tenant", "landlord", "rent_amount", "lease_start_date", "lease_end_date"]
+
+
+def _looks_like_lease(extracted_fields) -> bool:
+    return any((extracted_fields.get(name) or {}).get("value") for name in _LEASE_IDENTITY_FIELDS)
+
+
 def _lease_summary(lease):
     """Trim a DB lease record down to what list views need, keeping full extracted_fields (the dashboard needs most columns anyway)."""
     return {
@@ -270,6 +311,7 @@ def _lease_summary(lease):
         "base_lease_id": lease["base_lease_id"],
         "amendment_count": lease.get("amendment_count", 0),
         "extracted_fields": lease["extracted_fields"],
+        "looks_like_lease": _looks_like_lease(lease["extracted_fields"]),
         "source_page_start": lease.get("source_page_start"),
         "source_page_end": lease.get("source_page_end"),
         "tags": lease.get("tags", []),

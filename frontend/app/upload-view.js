@@ -65,7 +65,7 @@ const Upload = {
         for (let i = 0; i < validFiles.length; i++) {
             const file = validFiles[i];
             const itemEl = document.getElementById(`uploadProgressItem-${i}`);
-            this.setProgressItemProcessing(itemEl);
+            const stopReassurance = this.setProgressItemProcessing(itemEl);
 
             let result;
             try {
@@ -75,6 +75,7 @@ const Upload = {
             } catch (err) {
                 result = { filename: file.name, success: false, error: err.message };
             }
+            stopReassurance();
             fileResults.push(result);
             this.setProgressItemDone(itemEl, result);
         }
@@ -82,11 +83,26 @@ const Upload = {
         this.showResults(fileResults);
     },
 
+    // A large or multi-lease PDF can genuinely take tens of seconds to
+    // process (OCR fallback especially), with no server-side progress
+    // to report mid-request -- so instead of one static "Processing…"
+    // message the whole time, the text itself escalates over time,
+    // so a long-running upload reads as "still working on something
+    // big" rather than "did this freeze?" Returns a cleanup function
+    // that stops the escalation once the file finishes.
     setProgressItemProcessing(itemEl) {
-        if (!itemEl) return;
+        if (!itemEl) return () => {};
         itemEl.classList.remove('pending');
         itemEl.classList.add('processing');
-        itemEl.querySelector('.upload-progress-status-text').textContent = 'Processing (running OCR / extracting fields)…';
+        const textEl = itemEl.querySelector('.upload-progress-status-text');
+        const messages = [
+            [0, 'Processing (running OCR / extracting fields)…'],
+            [6000, 'Still working — larger or scanned PDFs take longer…'],
+            [15000, 'Still working — a multi-lease PDF can take up to a minute to split and extract…'],
+        ];
+        textEl.textContent = messages[0][1];
+        const timers = messages.slice(1).map(([delay, text]) => setTimeout(() => { textEl.textContent = text; }, delay));
+        return () => timers.forEach(clearTimeout);
     },
 
     setProgressItemDone(itemEl, result) {
@@ -157,6 +173,7 @@ const Upload = {
                     <span class="upload-result-name">${escapeHtml(lease.display_name)}</span>
                     <span class="upload-result-detail">pages ${lease.source_page_start}&ndash;${lease.source_page_end}</span>
                 </div>
+                ${this.nonLeaseWarningHtml(lease)}
             `).join('');
             return header + children;
         }
@@ -167,6 +184,24 @@ const Upload = {
                 <span class="upload-result-icon">✓</span>
                 <span class="upload-result-name">${escapeHtml(lease.display_name)}</span>
                 <span class="upload-result-detail">${escapeHtml(fieldValue(lease, 'tenant') || 'Tenant not found')}</span>
+            </div>
+            ${this.nonLeaseWarningHtml(lease)}
+        `;
+    },
+
+    // looks_like_lease is false only when NONE of tenant/landlord/rent/
+    // start/end date were found -- real extraction, real text, just
+    // nothing that reads as a lease. Surfaced right where the upload
+    // result already is, not buried -- silently filing it as a normal
+    // (if very sparse) lease would hide exactly the kind of mistake
+    // this warning exists to catch (wrong file picked, a cover page
+    // instead of the lease itself, a non-lease PDF entirely).
+    nonLeaseWarningHtml(lease) {
+        if (lease.looks_like_lease !== false) return '';
+        return `
+            <div class="upload-result-warning">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/></svg>
+                <span>This doesn't look like a lease — no tenant, landlord, rent, or dates were found. Double-check the file before relying on it.</span>
             </div>
         `;
     },
