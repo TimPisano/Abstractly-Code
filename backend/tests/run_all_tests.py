@@ -55,6 +55,7 @@ LIVE_API_TESTS = [
     "test_security_hardening.py",
     "test_live_dashboard_api.py",
     "test_live_multi_lease_api.py",
+    "test_live_composition_api.py",
 ]
 
 

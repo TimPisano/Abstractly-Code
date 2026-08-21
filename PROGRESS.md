@@ -23,11 +23,26 @@ code): a Unit/Suite column whose cell already spelled out its own designator
 (e.g. a cell literally reading "Suite 101") got double-prefixed into "Suite
 Suite 101", which silently broke address matching for the reconciliation
 feature above — found via live messy-data testing, not a hypothetical, fixed,
-and covered by a new regression test. Full backend suite: 28/28. Live-verified
-in a real browser, including clicking through the reconciliation panel's
-empty-state "import one" link to confirm it actually navigates (that exact
-click-handler bug is also documented in DECISIONS.md). See DECISIONS.md's
-"Dashboard UI for the 4 new portfolio metrics" entry for the full write-up.
+and covered by a new regression test. Live-verified in a real browser,
+including clicking through the reconciliation panel's empty-state "import
+one" link to confirm it actually navigates (that exact click-handler bug is
+also documented in DECISIONS.md).
+
+That first round of live-browser verification, on its own self-review pass,
+turned out to have a real gap: the test data it used for the Suite-fix
+happened to take a code path that looks identical whether the fix is present
+or not, and separately, the local dev backend had gone stale *again*
+(restarted, unrelated to this fix, before the fix was actually saved to
+disk) without that being noticed. Closed by building a new automated live-
+HTTP regression suite, `test_live_composition_api.py`, covering all 5
+endpoints in this batch end-to-end against the real running server — it
+immediately caught the stale server for real. Backend restarted again,
+re-verified, and now genuinely confirmed fixed. This test suite is
+registered permanently in `run_all_tests.py --live`, so this exact class of
+"code is right, but did anyone restart the server" regression gets caught by
+running the suite going forward, not by luck. Full suite including live
+tests: 33/33. See DECISIONS.md's "Dashboard UI for the 4 new portfolio
+metrics" entry (and its addendum) for the full write-up.
 
 **Blocked, needs the user**: PMS-specific rent roll imports (Yardi/AppFolio/
 RealPage/MRI/Buildium — needs real sample export files, can't be built

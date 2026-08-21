@@ -2833,3 +2833,58 @@ behind from the verification pass itself.
 No backend route or computation logic changed by this work (aside from
 the rent_roll_import.py fix above, which is a real bug fix, not part of
 "dashboard UI"); full backend suite 28/28 both before and after.
+
+### Addendum: the live-browser verification above didn't actually re-verify the fix it thought it did
+
+Caught during the "re-check your own work a second time" pass, on the
+same trip through this feature that shipped it — not a later session.
+The browser verification above is genuine and its findings stand (the
+reconciliation matching, the dashboard rendering, the empty-state link
+click-through all really were confirmed live). What it did NOT do,
+despite implying otherwise: re-verify the `_UNIT_DESIGNATOR_RE` fix
+itself against the live server. The CSV used for that browser pass
+gave its Unit column a bare "101", not an already-designated "Suite
+101" -- the bare case takes the same code path and produces the same
+correct output under *both* the buggy and fixed versions of the
+function, so passing it proves nothing about which version was
+actually running. This was the same mistake in miniature as the fix
+itself was catching in the app: an input that happens not to exercise
+the bug looks identical to a real fix.
+
+Worse, independently of that: the live dev backend had, at that exact
+point, been restarted (by an unrelated action -- most likely in
+response to this session's own earlier heads-up about the missing
+reconciliation route) *before* the `_UNIT_DESIGNATOR_RE` fix was
+written to disk, and was never restarted again afterward. So the
+running server was serving pre-fix code the entire time the "browser
+verification" screenshots above were taken -- undetectable from those
+screenshots alone, precisely because the test data used couldn't have
+told the difference either way.
+
+Found and closed by building `test_live_composition_api.py` -- a new
+automated live-HTTP regression suite for all five endpoints in this
+feature batch (tenant-concentration, rollover, loss-to-lease,
+reconciliation, import-rent-roll), following the exact convention
+already established by `test_live_portfolio_api.py` and
+`test_live_dashboard_api.py`: run against the actually-running dev
+server over real HTTP, not Flask's `test_client()` (which re-imports
+the app fresh every run and so can never catch "the code is right but
+the running process is stale" -- exactly the class of bug this was).
+Its scenario deliberately DOES use already-designated unit values
+("Suite 100", "Suite 200") specifically so it discriminates between
+the fixed and unfixed function, unlike the earlier browser pass. First
+run against the live server failed exactly as expected, showing
+"Suite Suite 100" / "Suite Suite 200" -- confirming the server really
+was stale. Backend restarted a second time; re-run confirmed the fix is
+now genuinely live (31/31). Two unrelated bugs in the test file itself
+were also found and fixed along the way (asserting `status == 200`
+against a route that actually, correctly, returns `201` on create; and
+an ordering bug where the file's own PDF-fixture upload -- added for
+the reconciliation check -- was placed before the tenant-concentration/
+rollover/loss-to-lease checks and so polluted their expected totals,
+not a backend bug at all). Full suite including live tests: 33/33.
+
+Registered in `run_all_tests.py`'s `LIVE_API_TESTS` list so this
+exact class of regression gets caught automatically on every future
+`--live` run, rather than depending on a human happening to test the
+exact right input by hand again.
