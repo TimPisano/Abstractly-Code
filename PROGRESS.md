@@ -1,6 +1,20 @@
 # Progress Summary
 
-**Last updated**: PMS rent roll import now covers all five originally-named
+**Last updated**: The T12 cross-check now has a real dashboard UI, closing
+the "ships API-only for now" gap from when it first shipped. New "Cross-Check
+Against a T12" section on the Upload view, parallel to the existing Import
+Rent Roll section — upload a T12 + property address, get an inline result
+(no lease list, since nothing is created). Reused existing CSS classes
+throughout (`.health-strip`/`.health-metric` for the figures,
+`.severity-badge` for the agree/flagged status) rather than inventing new
+ones, applying the lesson from the earlier composition-panel work this same
+session. All 4 states — validation error, no matching leases, agreement,
+flagged discrepancy — verified live in a real browser via CDP screenshots,
+using the same real end-to-end scenario (a real rent roll import + a real T12
+upload) the backend's own live test already covers. See DECISIONS.md's "T12
+dashboard UI panel" entry for the full write-up.
+
+Before that: PMS rent roll import now covers all five originally-named
 platforms — RealPage, MRI, and Buildium added alongside Yardi/AppFolio, using
 the same synthetic-fixture approach (no real vendor files available; user
 explicitly chose synthetic over waiting). Mostly extended already-built,
@@ -89,9 +103,10 @@ running the suite going forward, not by luck. Full suite including live
 tests: 33/33. See DECISIONS.md's "Dashboard UI for the 4 new portfolio
 metrics" entry (and its addendum) for the full write-up.
 
-**Still open**: a dashboard UI panel for the T12 cross-check (currently API-
-only; in progress, see above). Real vendor sample files (rent roll exports
-or a T12), whenever available, are still preferred over synthetic ones and
+**Still open**: nothing from the original Platform "Coming soon" list —
+every item has shipped, tested, and (where synthetic fixtures were used)
+clearly labeled as such. Real vendor sample files (rent roll exports or a
+T12), whenever available, are still preferred over synthetic ones and
 should replace them.
 
 Before that: the admin login page (`/admin/`) no longer has any

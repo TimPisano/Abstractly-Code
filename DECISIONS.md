@@ -3232,3 +3232,68 @@ MRI/Buildium bullets merged into one checkmarked bullet covering all
 five platforms, plus the hero step-card and FAQ answer (both previously
 corrected to say "on our roadmap" for these three) updated to reflect
 they're live now too.
+
+## T12 dashboard UI panel
+
+**Status: done.** Closes the "ships API-only for now" gap noted when
+the T12 cross-check itself shipped -- a real UI surface for
+`POST /portfolio/t12-reconciliation`, following user request to build
+it alongside RealPage/MRI/Buildium import.
+
+**Design.** Unlike the earlier "Portfolio Composition & Risk" dashboard
+panel (four GET endpoints, computed automatically from whatever's
+already in the database on page load), the T12 cross-check is
+fundamentally request-response: it needs a freshly uploaded FILE each
+time, and nothing about it is stored to passively display later. That
+rules out a dashboard panel in the same sense as the other four --
+there's no standing state to show on load. Placed instead as a new
+section on the Upload view, directly parallel to the existing "Import
+Rent Roll" section (same upload-box/property-address-field layout,
+same visual language), but with a fundamentally different result
+display: rent roll import shows a *list* of newly created lease
+records; T12 cross-check shows a single structured comparison result
+inline, since nothing was created.
+
+Reused, not invented, existing UI patterns throughout -- consistent
+with the lesson already learned earlier this session (the
+`_riskBadgeHtml` CSS-class mistake): the result's three key figures
+(rent roll annualized, T12 actual income, difference) reuse the
+`.health-strip`/`.health-metric` classes already built for the
+dashboard's top metric row, and the agree/flagged status reuses the
+same `.severity-badge`/`.severity-high`/`.severity-low` classes the
+risk panel and the composition dashboard already use -- no new CSS
+needed at all.
+
+**Four states handled explicitly**, each verified live in a real
+browser (headless Chrome via CDP, on a dedicated scratch profile):
+1. **Client-side validation** -- property_address is required (a T12
+   covers exactly one property; the backend also enforces this, but
+   failing fast client-side with a clear toast is better than a round
+   trip just to learn the same thing).
+2. **No matching leases** -- an honest message distinct from a real
+   comparison, showing the T12's own real number (so the check wasn't
+   wasted) alongside a clear reason nothing could be compared and what
+   to do about it (upload a rent roll/leases for that address first, or
+   check the address matches exactly).
+3. **Agreement** ("Matches" badge) -- verified against the same
+   Riverside Commons Shopping Center scenario the backend's own live
+   test uses (real rent roll import through the real route, then a real
+   T12 upload through the UI), confirming the exact same $179,400 /
+   $187,900 / 4.52% figures render correctly end to end from a real
+   browser interaction, not just an API response.
+4. **Flagged discrepancy** ("Discrepancy Flagged" badge, red) -- a
+   deliberately large gap (27.5%), confirming the visual distinction
+   between the two states is real, not just a label difference.
+
+**Verified nothing was persisted** by the UI flow specifically (not
+just the API in isolation, already covered by `test_t12_route_does_
+not_persist_anything`): checked `GET /leases` before and after
+interacting with the actual upload form in the browser.
+
+No new automated test file for the frontend itself (this codebase has
+no browser-based JS test runner; frontend correctness is established
+the same way it has been all session -- live CDP verification with
+screenshots, following the exact process used for the earlier
+composition dashboard panel). `node --check` confirms no syntax errors
+in the modified files. Backend test suite unaffected by this change:
+38/38, confirmed unchanged.

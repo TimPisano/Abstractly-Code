@@ -346,6 +346,39 @@
                     <div id="rentRollResultsList"></div>
                     <button class="btn-primary" data-goto="dashboard" type="button">Go to Dashboard</button>
                 </div>
+
+                <div class="view-header" style="margin-top:2.5rem;">
+                    <div>
+                        <h1>Cross-Check Against a T12</h1>
+                        <p class="view-subtitle">Upload a trailing-12-month operating statement to compare its actual rental income against this property's rent roll — checked in one pass, never stored</p>
+                    </div>
+                </div>
+
+                <div class="rent-roll-import-form">
+                    <label class="rent-roll-field-label" for="t12PropertyAddress">Property address (required)</label>
+                    <input type="text" id="t12PropertyAddress" class="text-input" placeholder="e.g. 100 Main Street, Portland, ME">
+                    <p class="rent-roll-field-hint">A T12 covers exactly one property — this must match how that property's address appears on your leases or rent roll, so the cross-check can find the right units to compare against.</p>
+
+                    <div class="upload-box" id="t12UploadBox">
+                        <div class="upload-content">
+                            <svg class="upload-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m-6 4h6m-6 4h4M5 3h9.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V19a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2z" />
+                            </svg>
+                            <p class="upload-text">Drag and drop a T12 operating statement here, or click to browse</p>
+                            <p class="upload-subtext">.csv or .xlsx only, one file at a time</p>
+                            <input type="file" id="t12FileInput" accept=".csv,.xlsx" hidden>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="upload-progress" id="t12Progress" style="display:none;">
+                    <h3><span class="spinner-small"></span> Checking&hellip;</h3>
+                </div>
+
+                <div class="upload-results" id="t12Results" style="display:none;">
+                    <h3>Cross-Check Result</h3>
+                    <div id="t12ResultContent"></div>
+                </div>
             </section>
 
             <!-- LEASE DETAIL VIEW -->

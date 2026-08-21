@@ -76,6 +76,13 @@ const Api = {
         return apiRequest('/leases/import-rent-roll', { method: 'POST', body: formData });
     },
 
+    t12Reconciliation(file, propertyAddress) {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('property_address', propertyAddress);
+        return apiRequest('/portfolio/t12-reconciliation', { method: 'POST', body: formData });
+    },
+
     listLeases() {
         return apiRequest('/leases');
     },

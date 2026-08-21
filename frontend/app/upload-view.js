@@ -35,6 +35,7 @@ const Upload = {
         const fileInput = document.getElementById('fileInput');
         if (fileInput) fileInput.value = '';
         RentRollImport.reset();
+        T12CrossCheck.reset();
     },
 
     async handleFiles(fileList) {
@@ -295,6 +296,96 @@ const RentRollImport = {
     },
 };
 
+// Stateless -- a T12 upload never creates a lease record (see
+// DECISIONS.md's "Rent-roll-vs-T12 cross-check" entry for why: a T12
+// isn't a lease, and treating it like a rent-roll import would corrupt
+// every other per-lease computation). So this object has no "reset on
+// success" list to maintain the way RentRollImport does -- just the
+// most recent single result, shown until the next check replaces it.
+const T12CrossCheck = {
+    reset() {
+        document.getElementById('t12Results').style.display = 'none';
+        document.getElementById('t12Progress').style.display = 'none';
+        const fileInput = document.getElementById('t12FileInput');
+        if (fileInput) fileInput.value = '';
+    },
+
+    async handleFile(file) {
+        const name = file.name.toLowerCase();
+        if (!name.endsWith('.csv') && !name.endsWith('.xlsx')) {
+            showError('Please select a .csv or .xlsx T12 statement.');
+            return;
+        }
+
+        const propertyAddress = document.getElementById('t12PropertyAddress').value.trim();
+        if (!propertyAddress) {
+            showError('Enter the property address this T12 is for before uploading -- a T12 covers one property, and without it there\'s nothing to compare against.');
+            return;
+        }
+
+        document.getElementById('t12Results').style.display = 'none';
+        document.getElementById('t12Progress').style.display = 'block';
+
+        try {
+            const response = await Api.t12Reconciliation(file, propertyAddress);
+            this.showResult(file.name, response);
+        } catch (err) {
+            showError(`Couldn't check ${file.name}: ${err.message}`);
+        } finally {
+            document.getElementById('t12Progress').style.display = 'none';
+        }
+    },
+
+    _money(value) {
+        return value == null ? '—' : `$${value.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+    },
+
+    showResult(filename, response) {
+        const container = document.getElementById('t12ResultContent');
+
+        if (response.matched_lease_count === 0) {
+            container.innerHTML = `
+                <p class="upload-summary">No leases found at <strong>${escapeHtml(response.property_address)}</strong> to compare against.</p>
+                <p class="upload-result-detail">This T12's actual rental income is <strong>${this._money(response.t12_annual_rental_income)}</strong>/year, but nothing on file matches that property address yet -- upload a rent roll or lease PDFs for it first, or check the address matches exactly how it appears elsewhere in this app.</p>
+            `;
+            document.getElementById('t12Results').style.display = 'block';
+            return;
+        }
+
+        const badge = response.flagged
+            ? '<span class="severity-badge severity-high">Discrepancy Flagged</span>'
+            : '<span class="severity-badge severity-low">Matches</span>';
+
+        const directionText = {
+            rent_roll_higher: 'the rent roll is higher than the T12\'s actual income',
+            t12_higher: 'the T12\'s actual income is higher than the rent roll',
+            agree: 'they agree exactly',
+        }[response.direction] || '';
+
+        container.innerHTML = `
+            <p class="upload-summary">${badge} &mdash; <strong>${escapeHtml(response.property_address)}</strong></p>
+            <div class="health-strip">
+                <div class="health-metric">
+                    <div class="health-metric-value">${this._money(response.rent_roll_annual_rent)}</div>
+                    <div class="health-metric-label">Rent roll (annualized)</div>
+                    <div class="health-metric-sub">${response.matched_lease_count} lease(s)${response.excluded_lease_count ? `, ${response.excluded_lease_count} excluded (no usable rent)` : ''}</div>
+                </div>
+                <div class="health-metric">
+                    <div class="health-metric-value">${this._money(response.t12_annual_rental_income)}</div>
+                    <div class="health-metric-label">T12 actual rental income</div>
+                    <div class="health-metric-sub">from &ldquo;${escapeHtml(response.t12_source.quote)}&rdquo;, ${escapeHtml(filename)}</div>
+                </div>
+                <div class="health-metric">
+                    <div class="health-metric-value">${this._money(Math.abs(response.difference))} (${response.difference_pct}%)</div>
+                    <div class="health-metric-label">Difference</div>
+                    <div class="health-metric-sub">${directionText}</div>
+                </div>
+            </div>
+        `;
+        document.getElementById('t12Results').style.display = 'block';
+    },
+};
+
 registerView('upload', Upload);
 
 // Loaded dynamically by access-gate.js after the gate passes, well after
@@ -343,6 +434,28 @@ function _initUploadViewBindings() {
         e.preventDefault();
         rentRollBox.classList.remove('dragover');
         if (e.dataTransfer.files.length > 0) RentRollImport.handleFile(e.dataTransfer.files[0]);
+    });
+
+    const t12Box = document.getElementById('t12UploadBox');
+    const t12Input = document.getElementById('t12FileInput');
+
+    t12Box.addEventListener('click', () => t12Input.click());
+    t12Input.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) T12CrossCheck.handleFile(e.target.files[0]);
+    });
+
+    t12Box.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        t12Box.classList.add('dragover');
+    });
+    t12Box.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        t12Box.classList.remove('dragover');
+    });
+    t12Box.addEventListener('drop', (e) => {
+        e.preventDefault();
+        t12Box.classList.remove('dragover');
+        if (e.dataTransfer.files.length > 0) T12CrossCheck.handleFile(e.dataTransfer.files[0]);
     });
 }
 if (document.readyState === 'loading') {
