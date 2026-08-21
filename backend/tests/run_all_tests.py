@@ -36,6 +36,7 @@ UNIT_TESTS = [
     "test_dashboard_features.py",
     "test_waitlist_email.py",
     "test_access_gate.py",
+    "test_admin_auth.py",
     "test_multi_lease_detection.py",
     "test_multi_lease_structural_variation.py",
     "test_sheets_export.py",
@@ -52,11 +53,27 @@ LIVE_API_TESTS = [
 
 
 def run_test(filename):
+    # EMAIL_USER/EMAIL_APP_PASSWORD are stripped for every test subprocess,
+    # not just the two files known (as of this writing) to hit /waitlist
+    # unmocked -- a real incident sent thousands of real Gmail emails to
+    # the real ADMIN_EMAIL inbox because two test files exercised
+    # /waitlist through app.test_client() with no email mocking at all.
+    # Those two files now also strip these vars themselves (defense in
+    # depth for anyone running one directly with `python3 <file>.py`),
+    # but stripping them centrally here means any *future* test file that
+    # touches /waitlist can't repeat this by omission -- it fails safe by
+    # default rather than depending on every new test file remembering to
+    # mock email_service itself. See DECISIONS.md for the full incident.
+    env = dict(os.environ)
+    env.pop("EMAIL_USER", None)
+    env.pop("EMAIL_APP_PASSWORD", None)
+
     result = subprocess.run(
         [sys.executable, filename],
         cwd=TESTS_DIR,
         capture_output=True,
         text=True,
+        env=env,
     )
     return result.returncode == 0, result.stdout, result.stderr
 

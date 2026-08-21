@@ -108,6 +108,7 @@ html {
     font-size: 1.0625rem;
     letter-spacing: -0.01em;
     color: var(--text-dark);
+    white-space: nowrap;
 }
 
 .landing-brand-icon {
@@ -132,6 +133,10 @@ html {
 
 .landing-nav-links a {
     transition: color 0.2s ease;
+    /* Every link (and "Trust & Security" in particular, the longest
+       one) must stay on one line -- see the nav's own media query
+       below for why this alone isn't enough down to mobile widths. */
+    white-space: nowrap;
 }
 
 .landing-nav-links a:hover {
@@ -843,13 +848,25 @@ html {
 
 /* ===================== Responsive ===================== */
 
-@media (max-width: 860px) {
-    /* Nav has grown from 3 links to 5 (+ Client Login) as sections were
-       added -- on a narrow screen there's no room for all of it on one
-       row next to the brand. Wrapping the whole nav (brand included)
-       onto its own line, with links wrapping and centering below it,
-       keeps every link reachable without introducing a hamburger-menu
-       component this page didn't have before. */
+/* Nav has grown to 6 links + Client Login as sections were added, and
+   with white-space: nowrap on every link (so no single link ever
+   breaks mid-phrase), the full row needs ~930-940px to fit next to the
+   brand without anything shrinking below its content width. Below
+   that, and above the 860px breakpoint every OTHER section on this
+   page still comfortably fits at, was a dead zone: too narrow for one
+   row, but not yet caught by the page's general mobile breakpoint --
+   flex items were forced to shrink and their text wrapped mid-word
+   ("Trust & Security" splitting across two lines) instead of the whole
+   nav switching to the stacked mobile layout. Giving the nav its own,
+   wider breakpoint (1040px, with margin above the ~935px measured
+   minimum for different fonts/zoom levels) closes that gap; it's
+   intentionally separate from the 860px block below so unrelated
+   sections that still fit fine down to 860px aren't stacked early. */
+@media (max-width: 1040px) {
+    /* Wrapping the whole nav (brand included) onto its own line, with
+       links wrapping and centering below it, keeps every link reachable
+       without introducing a hamburger-menu component this page didn't
+       have before. */
     .landing-nav {
         flex-direction: column;
         align-items: center;
@@ -861,7 +878,9 @@ html {
         justify-content: center;
         gap: 0.5rem 1.25rem;
     }
+}
 
+@media (max-width: 860px) {
     .platform-groups {
         grid-template-columns: 1fr;
     }

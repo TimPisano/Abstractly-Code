@@ -380,6 +380,22 @@ def approve_waitlist_signup(signup_id: int) -> bool:
         conn.close()
 
 
+def deny_waitlist_signup(signup_id: int) -> bool:
+    """Flip a signup's status to 'denied'. Returns False if no such id. A denied signup stays in the table (not deleted) so the admin dashboard keeps a record of the decision, rather than the request silently vanishing."""
+    conn = get_connection()
+    try:
+        cur = conn.execute(
+            "UPDATE waitlist_signups SET status = 'denied' WHERE id = ?",
+            (signup_id,),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    except OverflowError:
+        return False
+    finally:
+        conn.close()
+
+
 def insert_activity(action_type: str, description: str, lease_id: Optional[int] = None) -> int:
     """
     Records one entry in the account-wide activity feed. Called

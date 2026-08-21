@@ -16,13 +16,16 @@ Three layers of endpoints:
     report.py) — the actual logic lives there, not here.
 """
 
-from flask import Flask, request, jsonify, Response
+from flask import Flask, request, jsonify, Response, session
 from flask_cors import CORS
 from dotenv import load_dotenv
+from datetime import timedelta
 import logging
 import os
 import re
+import secrets
 import tempfile
+import time
 
 # Loads backend/.env (if present) into os.environ before anything below
 # reads an env var from it — real deployments can just set real
@@ -56,10 +59,58 @@ from app.rent_roll_export import generate_rent_roll_csv, generate_rent_roll_exce
 from app.report import generate_portfolio_report_html
 from app.summary_memo import generate_lease_summary_pdf, generate_portfolio_summary_pdf, monthly_report_extra_sections
 from app.sheets_export import export_to_google_sheets, SheetsExportError
+from app.auth import verify_admin_credentials, admin_login_is_configured, require_admin
 
 
 app = Flask(__name__)
-CORS(app)  # Enable CORS for frontend integration
+
+# Origins allowed to send credentialed (cookie-bearing) cross-origin
+# requests -- required for the admin login session cookie to work at
+# all, since the frontend (served on its own port via `python3 -m
+# http.server`) and the backend API are different origins in this
+# project's dev setup. flask-cors requires an explicit origin list
+# here (not "*") whenever supports_credentials=True; the browser itself
+# also refuses a wildcard-plus-credentials combination. Extend
+# ADMIN_ALLOWED_ORIGINS (comma-separated) in .env for a real deployed
+# frontend origin -- nothing else about this needs to change.
+_default_allowed_origins = "http://localhost:8000,http://127.0.0.1:8000"
+ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.environ.get("ADMIN_ALLOWED_ORIGINS", _default_allowed_origins).split(",")
+    if origin.strip()
+]
+CORS(app, supports_credentials=True, origins=ALLOWED_ORIGINS)
+
+# Signs the admin session cookie -- if FLASK_SECRET_KEY isn't set, a
+# random key is generated for this process only, logged as a warning
+# (every admin session is invalidated on the next restart, but nothing
+# about this is silently insecure; a fresh random key each start is
+# strictly safer than any hardcoded fallback would be). Set a real,
+# stable FLASK_SECRET_KEY in backend/.env to keep admin sessions alive
+# across restarts -- see .env.example for how to generate one.
+_flask_secret_key = os.environ.get("FLASK_SECRET_KEY", "").strip()
+if not _flask_secret_key:
+    _flask_secret_key = secrets.token_hex(32)
+    logging.getLogger(__name__).warning(
+        "FLASK_SECRET_KEY is not set -- generated a random one for this process only. "
+        "Admin login sessions will not survive a backend restart until you set a real, "
+        "stable value in backend/.env (see .env.example)."
+    )
+app.secret_key = _flask_secret_key
+
+# SameSite=None + Secure is what a cross-origin (different-port, and
+# later different-domain) fetch with credentials actually requires --
+# browsers refuse to send a SameSite=Lax/Strict cookie on a cross-site
+# fetch() at all, credentials:'include' or not. Secure normally means
+# "HTTPS only," but Chrome/Firefox/Safari all treat http://localhost
+# (and http://127.0.0.1) as a secure context specifically for local
+# development, which is what makes this work over plain HTTP here. A
+# real deployment needs real HTTPS on both the frontend and backend for
+# this same cookie to keep working.
+app.config['SESSION_COOKIE_SAMESITE'] = 'None'
+app.config['SESSION_COOKIE_SECURE'] = True
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.permanent_session_lifetime = timedelta(hours=12)
 
 # Configure upload settings
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 MB max file size
@@ -645,15 +696,64 @@ def bulk_tag_leases():
 
 
 # ----------------------------------------------------------------------
+# Admin authentication
+#
+# A single admin account, configured via ADMIN_EMAIL/ADMIN_PASSWORD_HASH
+# in backend/.env (see app/auth.py and .env.example) -- not a users
+# table, since there is exactly one admin account for now. Real
+# password, real bcrypt check, backed by a signed session cookie (see
+# the SESSION_COOKIE_* config and CORS setup near the top of this
+# file). Deliberately separate from the client-facing access gate
+# below (/waitlist/check) -- see app/auth.py's module docstring.
+# ----------------------------------------------------------------------
+
+@app.route('/admin/login', methods=['POST'])
+def admin_login():
+    """
+    Body: {"email": str, "password": str}. On success, starts an admin
+    session (signed cookie, 12-hour lifetime) and returns {"email": ...}.
+    On failure, always the same generic error regardless of whether the
+    email or the password was wrong -- see verify_admin_credentials for
+    why the check itself is also timing-safe about that, not just the
+    message.
+    """
+    body = request.get_json(silent=True) or {}
+    email = (body.get("email") or "").strip()
+    password = body.get("password") or ""
+
+    if not verify_admin_credentials(email, password):
+        return jsonify({"error": "Invalid email or password"}), 401
+
+    session.permanent = True
+    session["admin_authenticated"] = True
+    session["admin_email"] = email
+    return jsonify({"email": email}), 200
+
+
+@app.route('/admin/logout', methods=['POST'])
+def admin_logout():
+    session.clear()
+    return jsonify({"status": "logged_out"}), 200
+
+
+@app.route('/admin/session', methods=['GET'])
+def admin_session():
+    """Used by the admin login page and dashboard on load to check current auth state without triggering a 401 (this route itself is intentionally public -- it only ever reflects the caller's own session back to them)."""
+    if session.get("admin_authenticated"):
+        return jsonify({"authenticated": True, "email": session.get("admin_email")}), 200
+    return jsonify({"authenticated": False, "email": None}), 200
+
+
+# ----------------------------------------------------------------------
 # Waitlist (landing page gate)
 #
-# NOTE: /waitlist (GET) and /waitlist/<id>/approve are unauthenticated —
-# anyone who finds the admin URL can view every signup email and approve
-# accounts. This is acceptable for the current pre-launch stage (per
-# explicit product decision) but MUST be locked down behind real auth
-# before this goes live to real users.
+# /waitlist (GET), /waitlist/<id>/approve, and /waitlist/<id>/deny all
+# require an authenticated admin session (see app/auth.py's
+# require_admin) -- viewing every signup's email and granting/denying
+# access is exactly the kind of privileged action that must sit behind
+# real auth, not an unguessable-URL "don't share this link" convention.
 #
-# /waitlist/check (below) is DELIBERATELY public too, but that's a
+# /waitlist/check (below) is DELIBERATELY still public, but that's a
 # separate, narrower decision: it only ever answers "is this one email
 # approved?" for the email the caller already supplies — it never
 # returns the signup list, other people's emails, or anything the caller
@@ -686,9 +786,43 @@ def _send_email_best_effort(send_fn, *args):
         logger.exception("Unexpected error calling %s", getattr(send_fn, "__name__", send_fn))
 
 
+# In-memory, per-process, per-IP fixed-window rate limit on POST
+# /waitlist -- deliberately not a new dependency (Flask-Limiter, Redis,
+# ...), consistent with this project's minimal-dependencies precedent.
+# Added after a real incident where two test files hit this exact route
+# in a loop with no email mocking, sending real emails to ADMIN_EMAIL
+# (see DECISIONS.md and the EMAIL_USER/EMAIL_APP_PASSWORD stripping now
+# in test_access_gate.py/test_admin_auth.py/run_all_tests.py, which
+# fixes the actual root cause of that specific incident). This is
+# defense in depth on the route itself: it's a public, unauthenticated
+# endpoint that sends two real emails per call, so it should never be
+# hittable in a tight loop regardless of what's calling it. 15/60s
+# comfortably clears every existing test file's own waitlist-signup
+# count (the largest is 7, in test_waitlist_email.py) while cutting a
+# real tight loop's throughput by well over 90%. Resets on backend
+# restart -- fine here, since the goal is "can't be hit in a tight
+# loop," not durable abuse tracking.
+_waitlist_rate_limit_state = {}  # ip -> (window_start_epoch_seconds, count_in_window)
+_WAITLIST_RATE_LIMIT_MAX = 15
+_WAITLIST_RATE_LIMIT_WINDOW_SECONDS = 60
+
+
+def _waitlist_rate_limited(ip: str) -> bool:
+    now = time.time()
+    window_start, count = _waitlist_rate_limit_state.get(ip, (now, 0))
+    if now - window_start >= _WAITLIST_RATE_LIMIT_WINDOW_SECONDS:
+        window_start, count = now, 0
+    count += 1
+    _waitlist_rate_limit_state[ip] = (window_start, count)
+    return count > _WAITLIST_RATE_LIMIT_MAX
+
+
 @app.route('/waitlist', methods=['POST'])
 def join_waitlist():
     """Body: {"email": str}. Adds the email to the waitlist as 'pending'."""
+    if _waitlist_rate_limited(request.remote_addr or "unknown"):
+        return jsonify({"error": "Too many requests. Please try again in a minute."}), 429
+
     body = request.get_json(silent=True) or {}
     email = (body.get("email") or "").strip()
 
@@ -706,22 +840,27 @@ def join_waitlist():
         return jsonify({"message": "Your request has been received. If it's a fit, we'll be in touch."}), 200
 
     # Best-effort — see _send_email_best_effort. The signup above is
-    # already committed to the database regardless of whether this
-    # send succeeds.
+    # already committed to the database regardless of whether either
+    # send succeeds. Two separate emails, two separate recipients: the
+    # requester gets a confirmation, the admin gets a notification that
+    # a new request is waiting on them.
     _send_email_best_effort(email_service.send_waitlist_confirmation_email, email)
+    _send_email_best_effort(email_service.send_admin_new_request_notification, email)
 
     return jsonify({"message": "Your request has been received. If it's a fit, we'll be in touch."}), 201
 
 
 @app.route('/waitlist', methods=['GET'])
+@require_admin
 def list_waitlist():
-    """Admin-only (unauthenticated for now, see NOTE above). Lists every signup, newest first."""
+    """Admin-only. Lists every signup, newest first."""
     return jsonify(database.get_all_waitlist_signups()), 200
 
 
 @app.route('/waitlist/<int:signup_id>/approve', methods=['POST'])
+@require_admin
 def approve_waitlist(signup_id):
-    """Admin-only (unauthenticated for now, see NOTE above). Flips a signup's status to 'approved'."""
+    """Admin-only. Flips a signup's status to 'approved'."""
     signup = database.get_waitlist_signup(signup_id)
     if not signup:
         return jsonify({"error": "Signup not found"}), 404
@@ -732,6 +871,18 @@ def approve_waitlist(signup_id):
     _send_email_best_effort(email_service.send_waitlist_approval_email, signup["email"])
 
     return jsonify({"id": signup_id, "status": "approved"}), 200
+
+
+@app.route('/waitlist/<int:signup_id>/deny', methods=['POST'])
+@require_admin
+def deny_waitlist(signup_id):
+    """Admin-only. Flips a signup's status to 'denied'. No email is sent -- there's no "you were denied" template, and adding one wasn't asked for; this is a silent status change the admin dashboard reflects."""
+    signup = database.get_waitlist_signup(signup_id)
+    if not signup:
+        return jsonify({"error": "Signup not found"}), 404
+
+    database.deny_waitlist_signup(signup_id)
+    return jsonify({"id": signup_id, "status": "denied"}), 200
 
 
 @app.route('/waitlist/check', methods=['POST'])

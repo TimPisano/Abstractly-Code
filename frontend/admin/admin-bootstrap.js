@@ -1,0 +1,203 @@
+/**
+ * Admin dashboard bootstrap.
+ *
+ * Two independent jobs:
+ *  1. Gate the page on the real admin session (GET /admin/session) --
+ *     redirect to the login page if it isn't authenticated, same as
+ *     before. This is real auth (see backend/app/auth.py), unlike the
+ *     client-facing app's self-reported-email gate.
+ *  2. Register the "Access Requests" panel as a fourth view in the same
+ *     router frontend/app/app.js already defines (registerView/showView),
+ *     alongside 'dashboard' (admin-dashboard-view.js), 'upload'
+ *     (admin-upload-view.js), and 'detail' (admin-detail-view.js) -- all
+ *     four are wired into one tab bar via the shared `.nav-item[data-view]`
+ *     convention.
+ *
+ * Every request here that touches an admin-only route uses
+ * `credentials: 'include'` and treats a 401 as "the session ended, go
+ * back to the login page" -- see login.js's comment for why the cookie
+ * needs `credentials: 'include'` at all (frontend and backend are
+ * different origins in dev). Requests that go through Api (api.js) don't
+ * need this -- /leases and friends aren't admin-gated, same as the
+ * client app.
+ *
+ * API_BASE_URL comes from ../config.js. app.js (AppState, registerView,
+ * showView, showToast, showError, escapeHtml, formatDate, init, ...) and
+ * every view module are loaded as plain static <script> tags before this
+ * one, in dashboard.html -- no dynamic script loading is needed here
+ * (unlike the client app's access-gate.js): a view's own API calls only
+ * ever fire from its load() method, which only ever runs once init()
+ * (called at the bottom of this file) invokes showView(), so there's no
+ * risk of a view fetching data before the session check below settles.
+ */
+
+async function adminFetch(path, options = {}) {
+    let response;
+    try {
+        response = await fetch(`${API_BASE_URL}${path}`, { ...options, credentials: 'include' });
+    } catch (networkErr) {
+        throw new Error("Couldn't reach the server. Is the backend running?");
+    }
+    if (response.status === 401) {
+        window.location.href = 'index.html';
+        // Never resolves -- the redirect above is already underway, and
+        // nothing calling this should keep running against a session
+        // that just turned out to be invalid.
+        return new Promise(() => {});
+    }
+    if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || `Server returned ${response.status}`);
+    }
+    return response.json();
+}
+
+function accessStatusLabel(status) {
+    if (status === 'approved') return 'Access Granted';
+    if (status === 'denied') return 'Denied';
+    return 'Pending Review';
+}
+
+const AccessRequests = {
+    signups: [],
+
+    load() {
+        this.loadWaitlist();
+    },
+
+    async loadWaitlist() {
+        const content = document.getElementById('waitlistContent');
+        content.innerHTML = '<p class="admin-loading"><span class="spinner-small"></span> Loading...</p>';
+        try {
+            this.signups = await adminFetch('/waitlist');
+            this.renderWaitlist();
+        } catch (err) {
+            content.innerHTML = `<p class="error-text">Failed to load access requests: ${escapeHtml(err.message)}</p>`;
+        }
+    },
+
+    renderWaitlist() {
+        const total = this.signups.length;
+        const pending = this.signups.filter(s => s.status === 'pending').length;
+        const approved = this.signups.filter(s => s.status === 'approved').length;
+        document.getElementById('waitlistStats').innerHTML = `
+            <div class="admin-stat-tile">
+                <div class="admin-stat-value">${total}</div>
+                <div class="admin-stat-label">Total requests</div>
+            </div>
+            <div class="admin-stat-tile">
+                <div class="admin-stat-value">${pending}</div>
+                <div class="admin-stat-label">Pending review</div>
+            </div>
+            <div class="admin-stat-tile">
+                <div class="admin-stat-value">${approved}</div>
+                <div class="admin-stat-label">Access granted</div>
+            </div>
+        `;
+
+        const content = document.getElementById('waitlistContent');
+        if (this.signups.length === 0) {
+            content.innerHTML = '<p class="admin-empty">No access requests yet. Once someone requests access from the landing page, they\'ll show up here.</p>';
+            return;
+        }
+
+        content.innerHTML = `
+            <table class="admin-table">
+                <thead>
+                    <tr><th>Email</th><th>Requested</th><th>Status</th><th></th></tr>
+                </thead>
+                <tbody>
+                    ${this.signups.map(s => `
+                        <tr>
+                            <td>${escapeHtml(s.email)}</td>
+                            <td>${escapeHtml(formatDate(s.created_at))}</td>
+                            <td><span class="status-pill status-${escapeHtml(s.status)}">${escapeHtml(accessStatusLabel(s.status))}</span></td>
+                            <td>
+                                <div class="admin-row-actions">
+                                    <button class="btn-secondary approve-btn" data-id="${s.id}" ${s.status === 'approved' ? 'disabled' : ''}>
+                                        ${s.status === 'approved' ? 'Granted' : 'Approve'}
+                                    </button>
+                                    <button class="btn-secondary btn-deny deny-btn" data-id="${s.id}" ${s.status === 'denied' ? 'disabled' : ''}>
+                                        ${s.status === 'denied' ? 'Denied' : 'Deny'}
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        `;
+
+        content.querySelectorAll('.approve-btn:not(:disabled)').forEach(btn => {
+            btn.addEventListener('click', () => this.decide(parseInt(btn.dataset.id, 10), 'approve'));
+        });
+        content.querySelectorAll('.deny-btn:not(:disabled)').forEach(btn => {
+            btn.addEventListener('click', () => this.decide(parseInt(btn.dataset.id, 10), 'deny'));
+        });
+    },
+
+    async decide(id, action) {
+        const signup = this.signups.find(s => s.id === id);
+        const who = signup ? signup.email : 'this request';
+
+        // Approve grants access -- reversible by denying afterward, and
+        // not destructive, so no confirmation. Deny is the one an admin
+        // could easily misclick in a long list, and it turns away a real
+        // prospective user -- confirm it, same as every other
+        // destructive action in this app (bulk delete, single lease
+        // delete).
+        if (action === 'deny' && !confirm(`Deny access for ${who}? They won't be able to sign in.`)) {
+            return;
+        }
+
+        try {
+            await adminFetch(`/waitlist/${id}/${action}`, { method: 'POST' });
+            if (signup) signup.status = action === 'approve' ? 'approved' : 'denied';
+            this.renderWaitlist();
+            showToast(action === 'approve' ? `Access granted to ${who}.` : `Denied ${who}.`, 'success');
+        } catch (err) {
+            showError(`Failed to ${action} this request: ${err.message}`);
+        }
+    },
+};
+
+registerView('access', AccessRequests);
+
+async function initAdminDashboard() {
+    let session;
+    try {
+        session = await fetch(`${API_BASE_URL}/admin/session`, { credentials: 'include' }).then(r => r.json());
+    } catch (err) {
+        session = { authenticated: false };
+    }
+    if (!session.authenticated) {
+        window.location.href = 'index.html';
+        return;
+    }
+
+    document.getElementById('adminEmailLabel').textContent = session.email || '';
+    document.getElementById('adminShell').style.display = 'block';
+
+    document.getElementById('refreshBtn').addEventListener('click', () => {
+        const activeView = document.querySelector('.view.active');
+        if (activeView) showView(activeView.id.replace('view-', ''));
+    });
+
+    document.getElementById('logoutBtn').addEventListener('click', async () => {
+        try {
+            await fetch(`${API_BASE_URL}/admin/logout`, { method: 'POST', credentials: 'include' });
+        } catch (err) {
+            // Even if the request fails, still send the operator back to
+            // the login page -- there's nothing useful to do here besides
+            // that regardless of why logout's own request failed.
+        }
+        window.location.href = 'index.html';
+    });
+
+    // app.js's init() wires every .nav-item[data-view] click, wires the
+    // session-stats panel, and calls showView('dashboard') as the
+    // landing tab -- defined here since it's shared with the client app.
+    window.init();
+}
+
+initAdminDashboard();

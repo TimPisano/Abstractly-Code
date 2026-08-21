@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard — Abstractly</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap">
+    <!-- ../app/styles.css @imports ../design-system.css itself, so the
+         admin page's own tokens come along with it -- no separate
+         design-system.css link needed here. admin.css loads last so its
+         .admin-tabs/.admin-panel overrides win the cascade. -->
+    <link rel="stylesheet" href="../app/styles.css">
+    <link rel="stylesheet" href="admin.css">
+</head>
+<body>
+
+    <div class="admin-shell" id="adminShell" style="display:none;">
+        <div class="admin-shell-header">
+            <div>
+                <div class="admin-shell-brand">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                    </svg>
+                    Abstractly
+                </div>
+                <h1>Admin Dashboard</h1>
+                <p class="admin-shell-subtitle">Signed in as <strong id="adminEmailLabel"></strong></p>
+            </div>
+            <div class="admin-shell-actions">
+                <button class="btn-secondary" id="refreshBtn" type="button">Refresh</button>
+                <button class="btn-secondary" id="logoutBtn" type="button">Log Out</button>
+            </div>
+        </div>
+
+        <!-- Toasts (success/error banners) shared by every view below -->
+        <div class="toast-container" id="toastContainer"></div>
+
+        <!-- Session Stats Panel (overlay) -- wired unconditionally by
+             app.js's init(); kept so init() doesn't throw looking up
+             these ids. -->
+        <section class="stats-panel" id="statsPanel" style="display: none;">
+            <div class="stats-panel-header">
+                <h2>Session Extraction Stats</h2>
+                <div>
+                    <button class="btn-text" id="clearStatsBtn" type="button">Clear</button>
+                    <button class="btn-text" id="closeStatsBtn" type="button">Close</button>
+                </div>
+            </div>
+            <div id="statsContent"></div>
+        </section>
+
+        <nav class="admin-tabs">
+            <button class="nav-item" data-view="access" type="button">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M18 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zM3 19.235v-.11a6.375 6.375 0 0112.75 0v.109A12.318 12.318 0 019.374 21c-2.331 0-4.512-.645-6.374-1.766z"/></svg>
+                Access Requests
+            </button>
+            <button class="nav-item active" data-view="dashboard" type="button">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h8v8H3V3zm10 0h8v5h-8V3zm0 8h8v10h-8V11zM3 14h8v7H3v-7z"/></svg>
+                Leases &amp; Rent Rolls
+            </button>
+            <button class="nav-item" data-view="upload" type="button">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v12m0 0l-4-4m4 4l4-4M4 20h16"/></svg>
+                Upload
+            </button>
+            <button class="btn-text" id="statsToggleBtn" type="button" style="margin-left:auto;align-self:center;">Session Stats</button>
+        </nav>
+
+        <!-- ACCESS REQUESTS VIEW -->
+        <section class="view" id="view-access">
+            <div class="admin-panel">
+                <div class="admin-panel-header">
+                    <h2>Access Requests</h2>
+                </div>
+                <div class="admin-stats" id="waitlistStats"></div>
+                <div class="admin-table-scroll" id="waitlistContent">
+                    <p class="admin-loading"><span class="spinner-small"></span> Loading...</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- LEASES & RENT ROLLS (DASHBOARD) VIEW -->
+        <section class="view active" id="view-dashboard">
+            <div class="view-header">
+                <div>
+                    <h1>Leases &amp; Rent Rolls</h1>
+                    <p class="view-subtitle">Every processed document, at a glance</p>
+                </div>
+                <button class="btn-primary" data-goto="upload" type="button">+ Upload Leases</button>
+            </div>
+
+            <!-- Portfolio-wide confidence summary: real, computed field-confidence counts across every lease -->
+            <div class="panel" id="portfolioConfidenceSummaryPanel"></div>
+
+            <!-- What Needs Attention Today -->
+            <div class="panel attention-panel" id="attentionPanel">
+                <div class="panel-header">
+                    <h2>What Needs Attention Today</h2>
+                </div>
+                <div id="attentionContent"></div>
+            </div>
+
+            <!-- Expiration & Renewal Alerts -->
+            <div class="panel attention-panel" id="expirationAlertsPanel">
+                <div class="panel-header">
+                    <h2>Expiring Soon</h2>
+                </div>
+                <div id="expirationAlertsContent"></div>
+            </div>
+
+            <!-- Portfolio health strip -->
+            <div class="health-strip" id="healthStrip"></div>
+
+            <div class="metrics-row" id="metricsRow"></div>
+
+            <div class="panel">
+                <div class="panel-header">
+                    <h2>Lease Library</h2>
+                    <div class="table-controls">
+                        <input type="text" id="dashboardFilter" class="text-input" placeholder="Filter by name, tenant, landlord, address, or tag...">
+                        <select id="dashboardStatusFilter" class="text-input select-input" title="Filter by lease status">
+                            <option value="">All statuses</option>
+                            <option value="active">Active</option>
+                            <option value="expiring_soon">Expiring soon (6 mo)</option>
+                            <option value="expired">Expired</option>
+                        </select>
+                        <label class="dashboard-date-filter-label" title="Filter by lease end date">
+                            Expires
+                            <input type="date" id="dashboardDateFrom" class="text-input date-input">
+                            <span>&ndash;</span>
+                            <input type="date" id="dashboardDateTo" class="text-input date-input">
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="compareModeToggle"> Select multiple
+                        </label>
+                        <a class="btn-secondary" id="dashboardExportExcelBtn" href="#" download>Download Excel</a>
+                        <button class="btn-secondary" id="dashboardExportSheetsBtn" type="button">Export to Google Sheets</button>
+                        <a class="btn-secondary" id="dashboardSummaryMemoBtn" href="#" download>Download Summary Memo</a>
+                    </div>
+                </div>
+                <div id="dashboardExportStatus"></div>
+                <div class="table-scroll">
+                    <table class="data-table" id="leaseTable">
+                        <thead>
+                            <tr>
+                                <th class="compare-col" style="display:none;"></th>
+                                <th data-sort="name">Name</th>
+                                <th data-sort="status">Status</th>
+                                <th data-sort="tenant">Tenant</th>
+                                <th data-sort="address">Property Address</th>
+                                <th data-sort="rent">Monthly Rent</th>
+                                <th data-sort="uploaded">Uploaded</th>
+                                <th data-sort="end_date">Expires</th>
+                                <th data-sort="risk">Risk</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody id="leaseTableBody"></tbody>
+                    </table>
+                </div>
+                <div class="empty-state" id="dashboardEmptyState" style="display:none;">
+                    <div class="empty-state-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5"/></svg>
+                    </div>
+                    <p class="empty-state-title">No leases uploaded yet</p>
+                    <p class="empty-state-hint">Upload your first lease PDF and we'll extract the key terms automatically — rent, dates, escalations, and more.</p>
+                    <button class="btn-primary" data-goto="upload" type="button">Upload your first lease</button>
+                </div>
+                <div class="selection-summary-panel" id="selectionSummaryPanel" style="display:none;">
+                    <div class="selection-summary-header">
+                        <h3>Selected Leases <span class="selection-summary-count" id="selectionSummaryCount">0</span></h3>
+                    </div>
+                    <div class="metrics-row selection-summary-tiles" id="selectionSummaryTiles"></div>
+                </div>
+                <div class="compare-bar" id="compareBar" style="display:none;">
+                    <span id="compareCount">0 selected</span>
+                    <a class="btn-secondary" id="bulkExportExcelBtn" href="#" download>Download Excel</a>
+                    <button class="btn-secondary" id="bulkExportSheetsBtn" type="button">Export to Google Sheets</button>
+                    <button class="btn-secondary" id="bulkTagBtn" type="button">Tag Selected</button>
+                    <button class="btn-danger" id="bulkDeleteBtn" type="button">Delete Selected</button>
+                </div>
+                <div id="bulkActionStatus"></div>
+            </div>
+
+            <!-- Recent Activity -->
+            <div class="panel">
+                <div class="panel-header">
+                    <h2>Recent Activity</h2>
+                </div>
+                <div id="activityFeed"></div>
+            </div>
+        </section>
+
+        <!-- UPLOAD VIEW -->
+        <section class="view" id="view-upload">
+            <div class="view-header">
+                <div>
+                    <h1>Upload Leases</h1>
+                    <p class="view-subtitle">Drop one or more PDF lease documents to extract and add them to the portfolio</p>
+                </div>
+            </div>
+
+            <div class="upload-box" id="uploadBox">
+                <div class="upload-content">
+                    <svg class="upload-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                    </svg>
+                    <p class="upload-text">Drag and drop PDF files here, or click to browse</p>
+                    <p class="upload-subtext">PDF files only, max 16MB each — multiple files allowed</p>
+                    <input type="file" id="fileInput" accept=".pdf" multiple hidden>
+                </div>
+            </div>
+
+            <div class="upload-progress" id="uploadProgress" style="display:none;">
+                <h3>Processing batch...</h3>
+                <div id="uploadProgressList"></div>
+            </div>
+
+            <div class="upload-results" id="uploadResults" style="display:none;">
+                <h3>Upload Results</h3>
+                <div id="uploadResultsList"></div>
+                <button class="btn-primary" data-goto="dashboard" type="button">Go to Leases &amp; Rent Rolls</button>
+            </div>
+        </section>
+
+        <!-- LEASE DETAIL VIEW -->
+        <section class="view" id="view-detail">
+            <div class="view-header">
+                <div>
+                    <button class="btn-text" data-goto="dashboard" type="button">&larr; Back to Leases &amp; Rent Rolls</button>
+                    <h1><span class="detail-title-name editable-name" id="detailTitle" title="Click to rename">Lease Detail</span></h1>
+                    <p class="view-subtitle" id="detailSubtitle"></p>
+                </div>
+                <div class="detail-actions">
+                    <button class="btn-secondary" id="detailExportBtn" type="button">Export JSON</button>
+                    <a class="btn-secondary" id="detailExportExcelBtn" href="#" download>Download Excel</a>
+                    <button class="btn-secondary" id="detailExportSheetsBtn" type="button">Export to Google Sheets</button>
+                    <a class="btn-secondary" id="detailSummaryMemoBtn" href="#" download>Download Summary Memo</a>
+                    <button class="btn-danger" id="detailDeleteBtn" type="button">Delete</button>
+                </div>
+            </div>
+            <div id="detailExportStatus"></div>
+            <div id="detailNonLeaseWarning"></div>
+
+            <div class="detail-layout">
+                <div class="detail-main">
+                    <div class="panel" id="detailConfidenceSummaryPanel"></div>
+                    <div class="panel" id="detailRiskPanel"></div>
+                    <div class="accuracy-note">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        <p><strong>Why this matters:</strong> every value below is traced back to the exact page and quote it came from in the source PDF, with a confidence level attached. Nothing here is a black-box guess — click a citation to verify it against the original document yourself, and click any value to correct it before exporting.</p>
+                    </div>
+                    <div id="detailResultsGroups"></div>
+                </div>
+                <div class="detail-sidebar">
+                    <div class="panel">
+                        <h3>Tags</h3>
+                        <div id="detailTagsList" class="detail-tags-list"></div>
+                        <div class="detail-tags-add-row">
+                            <input type="text" id="detailTagInput" class="text-input" placeholder="e.g. Downtown Portfolio" list="allTagsList">
+                            <button class="btn-secondary" id="detailAddTagBtn" type="button">Add</button>
+                        </div>
+                        <datalist id="allTagsList"></datalist>
+                    </div>
+                    <div class="panel">
+                        <h3>Amendments</h3>
+                        <div id="amendmentsList"></div>
+                        <button class="btn-secondary btn-block" id="addAmendmentBtn" type="button">+ Add Amendment</button>
+                        <input type="file" id="amendmentFileInput" accept=".pdf" hidden>
+                    </div>
+                    <div class="panel">
+                        <h3>Ask About This Lease</h3>
+                        <div id="detailQaHistory" class="qa-history"></div>
+                        <div class="qa-input-row">
+                            <input type="text" id="detailQaInput" class="text-input" placeholder="e.g. does this lease have an exclusivity clause?">
+                            <button class="btn-primary" id="detailQaBtn" type="button">Ask</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <script src="../config.js"></script>
+    <script src="../app/api.js"></script>
+    <script src="../app/app.js"></script>
+    <script src="admin-dashboard-view.js"></script>
+    <script src="admin-upload-view.js"></script>
+    <script src="admin-detail-view.js"></script>
+    <script src="admin-bootstrap.js"></script>
+</body>
+</html>

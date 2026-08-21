@@ -7,7 +7,7 @@
  * same hardcoded value, in four separate files, with no way to point
  * the frontend at a real deployed backend without editing all four and
  * risking missing one. Loaded as the first <script> in every HTML
- * entry point (landing, /app/, /admin/waitlist/) specifically so this
+ * entry point (landing, /app/, /admin/) specifically so this
  * one declaration is visible to all of them — classic <script> tags in
  * one document share a single top-level lexical scope, so a later
  * script can reference this const by name with no import needed.

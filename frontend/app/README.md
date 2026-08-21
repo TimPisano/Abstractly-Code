@@ -34,9 +34,9 @@ portfolio of commercial leases — not just extracting one PDF at a time.
    ```
    This app now lives at `http://localhost:8000/app/` — the public
    landing page + waitlist is at `http://localhost:8000/` and the
-   (unauthenticated, admin-only) waitlist approval view is at
-   `http://localhost:8000/admin/waitlist/`. See the repo root
-   `PROGRESS.md` (session 5) for details on those two.
+   password-protected admin login/dashboard (access requests +
+   uploaded leases) is at `http://localhost:8000/admin/`. See the repo
+   root `PROGRESS.md` for details on those two.
 
 ## File Structure
 
@@ -45,7 +45,7 @@ frontend/
 ├── index.html                       # Public landing page (root /)
 ├── landing.css, landing.js          # Landing page styles + waitlist form logic
 ├── design-system.css                # Shared tokens (colors, type, shadows, radii) — used here, by app/, and by admin/
-├── admin/waitlist/                  # Unauthenticated admin view for approving waitlist signups
+├── admin/                           # Admin login (index.html) + dashboard (dashboard.html), session-authenticated
 └── app/                             # This app (served at /app/)
     ├── index.html                   # App shell: sidebar nav + all view containers
     ├── styles.css                   # App-specific styles; @imports ../design-system.css for tokens

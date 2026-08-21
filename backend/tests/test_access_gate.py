@@ -20,6 +20,22 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 from app.api import app
 from app import database
 
+# This file exercises real /waitlist POST routes through
+# app.test_client(), unlike test_waitlist_email.py, which mocks
+# app.email_service everywhere. Popped here (after app.api's own
+# load_dotenv() has already run, so this can't be re-populated from
+# backend/.env) so email_service._send()'s existing "not configured"
+# fail-safe applies regardless of what's actually set in the real
+# environment: every send_* call becomes a safe no-op instead of a real
+# Gmail send. Protects this file even when run directly
+# (`python3 test_access_gate.py`), not just via run_all_tests.py's own
+# env sanitizing. Added after a real incident where this file's
+# "secret1@example.com" / "secret2@example.com" / "MixedCase@Example.com"
+# test signups sent real emails to the real ADMIN_EMAIL inbox -- see
+# DECISIONS.md.
+os.environ.pop("EMAIL_USER", None)
+os.environ.pop("EMAIL_APP_PASSWORD", None)
+
 
 def _fresh_temp_db():
     tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
@@ -27,6 +43,13 @@ def _fresh_temp_db():
     database.configure(tmp.name)
     database.init_db()
     return tmp.name
+
+
+def _login_as_admin(client):
+    """GET /waitlist and POST /waitlist/<id>/approve now require an admin session (see app/auth.py's require_admin) -- set directly via session_transaction() rather than driving a real login POST through bcrypt for every test that needs one."""
+    with client.session_transaction() as sess:
+        sess["admin_authenticated"] = True
+        sess["admin_email"] = "timmypisano24@gmail.com"
 
 
 def test_config_reports_local_dev_mode_off_by_default():
@@ -77,6 +100,7 @@ def test_check_access_for_approved_email():
         client = app.test_client()
         client.post("/waitlist", json={"email": "approved@example.com"})
         signup_id = database.get_all_waitlist_signups()[0]["id"]
+        _login_as_admin(client)
         client.post(f"/waitlist/{signup_id}/approve")
 
         resp = client.post("/waitlist/check", json={"email": "approved@example.com"})
@@ -93,6 +117,7 @@ def test_check_access_is_case_insensitive():
         client = app.test_client()
         client.post("/waitlist", json={"email": "MixedCase@Example.com"})
         signup_id = database.get_all_waitlist_signups()[0]["id"]
+        _login_as_admin(client)
         client.post(f"/waitlist/{signup_id}/approve")
 
         resp = client.post("/waitlist/check", json={"email": "mixedcase@example.com"})
@@ -134,8 +159,8 @@ def test_check_access_never_leaks_full_signup_list():
 
 def test_waitlist_signup_and_admin_approval_flow_unaffected():
     """The pre-existing waitlist signup + admin approval flow (used by the
-    landing page and /admin/waitlist/) must work exactly as before -- this
-    feature only adds a new read-only lookup, it doesn't touch
+    landing page and the admin dashboard) must work exactly as before --
+    this feature only adds a new read-only lookup, it doesn't touch
     insert_waitlist_signup / get_all_waitlist_signups /
     approve_waitlist_signup or the waitlist_signups table's schema."""
     db_path = _fresh_temp_db()
@@ -143,6 +168,7 @@ def test_waitlist_signup_and_admin_approval_flow_unaffected():
         client = app.test_client()
         resp = client.post("/waitlist", json={"email": "regular@example.com"})
         assert resp.status_code == 201
+        _login_as_admin(client)
 
         listing = client.get("/waitlist").get_json()
         assert any(s["email"] == "regular@example.com" and s["status"] == "pending" for s in listing)

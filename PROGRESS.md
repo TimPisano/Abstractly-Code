@@ -1,12 +1,124 @@
 # Progress Summary
 
-**Last updated**: session 14 (pre-sale technical audit) — a 4-part
-code-quality/correctness/production-readiness pass across test
-coverage, code quality, security re-verification, and data handling.
-23/23 test files passing. Found and fixed one genuinely significant
-extraction bug (Lessor/Lessee terminology). **Not ready to sell to a
-company yet** — see the sale-readiness assessment below for the exact
-blockers, none of which are hidden or downplayed.
+**Last updated**: the admin login page (`/admin/`) no longer has any
+session-based bypass of the credentials form — it used to show a
+"you're already signed in, Continue?" shortcut for a valid session;
+that's gone, the form always renders, unconditionally, on every visit.
+Verified live end to end without ever touching the real admin password:
+every rejection path (unknown email, wrong password, empty password —
+client- and server-side), the form-always-shows behavior with both no
+session and a valid one, full session lifecycle (persistence, logout,
+post-logout dashboard access correctly blocked), and finally the real
+success path confirmed directly by the user with their real
+credentials. Normal session persistence for direct dashboard access
+(bookmarked URL, valid session) is unchanged by design — this was
+specifically about the login page itself never skipping its own form.
+See DECISIONS.md's "Login page: no session-based bypass" entry.
+
+Also this pass: the product is rebranded from "Lumen Lease" to
+"Abstractly" everywhere (nav, page titles, emails, PDF footer — a
+repo-wide grep confirms zero remaining references, re-verified live in
+a cache-disabled browser navigation after an initial report turned out
+to be browser cache, not a real gap). The landing page is confirmed
+intact and serving correctly as the actual homepage (it was never
+actually removed — see DECISIONS.md), with the nav's "Client Login"
+link now pointing at `/admin/` instead of `/app/`, per explicit choice.
+Real email delivery is back on (fresh App Password, one confirmed live
+send) after the incident below was fully resolved and re-verified. See
+DECISIONS.md's "Rebrand" and "Landing page: restoring it as the actual
+homepage" entries.
+
+Before that: **email sending was temporarily disabled** after a
+test-suite bug caused a real email storm to the admin inbox (thousands
+of real sends, triggered by pre-existing test files that called
+`POST /waitlist` with fixture data and never mocked email, combined
+with real credentials being configured for the first time). Root cause
+fully diagnosed and fixed in two independent layers — the test files
+can no longer send real email regardless of what's in `.env`
+(empirically verified under a worst-case simulation, not just
+re-read), and `email_service.py` enforces a hard per-recipient rate
+limit as a backstop against any future misfire, alongside a separate
+route-level rate limiter in `api.py`. Full test suite (21/21) passing.
+See DECISIONS.md's "Incident: real email storm from the test suite"
+entry (and its addendum) for the full write-up.
+
+Before the incident: real Gmail SMTP delivery sent an admin
+notification email (to ADMIN_EMAIL) on every new "Request Access"
+submission, alongside the existing requester confirmation email —
+confirmed with a real send, not just mocked SMTP. Also fixed a top-nav
+layout bug: a dead zone roughly 900–1040px wide where nav links wrapped
+mid-phrase instead of either fitting on one row or hitting the mobile
+layout. See DECISIONS.md's "Real email delivery" and "Landing page top
+nav" entries for the full write-up.
+
+Before that: a real admin login (email + bcrypt password, signed-
+cookie session, checked server-side on every request) now protects the
+admin dashboard (access-request approve/deny, uploaded-leases
+overview) at `/admin/`, replacing the previously-unauthenticated
+`/admin/waitlist/` panel. This directly closes the "the admin waitlist
+approval route MUST require real authentication" blocker called out in
+the Session 14 pre-sale audit below — that finding is no longer
+current. See DECISIONS.md's "Admin login and dashboard" entry for the
+full design (why env-var credentials instead of a users table, the
+timing-safe wrong-email-vs-wrong-password check, why the cross-origin
+session cookie needed `SameSite=None; Secure`, and what's still
+deliberately public vs. now gated).
+
+Since Session 14, several other passes also shipped (portfolio rent
+roll rollup + 30/60/90-day expiration alerts, bulk actions, reliability
+hardening, a "rent roll AI" landing-page repositioning + pricing page,
+confidence/validation scoring with cross-lease mismatch detection, a
+decision-ready PDF summary memo, and a monthly portfolio report) — see
+DECISIONS.md for each; this summary focuses on the admin-auth
+milestone specifically since it's the most recent and closes a
+previously-flagged real gap.
+
+**Restart commands** (unchanged): `cd backend && source venv/bin/activate && python run.py` and `cd frontend && python3 -m http.server 8000`.
+
+---
+
+## Real email delivery + top nav fix
+
+**Email**: `POST /waitlist` now sends two real emails via Gmail SMTP —
+the existing confirmation to the requester, and a new notification to
+`ADMIN_EMAIL` so the admin actually finds out without keeping the
+dashboard open. Both are best-effort (a signup never fails because an
+email didn't send) and both are now configured with real credentials
+in `backend/.env` (`EMAIL_USER` + a Gmail App Password) and confirmed
+working with a real send to timmypisano24@gmail.com. No email exists
+yet for "lease finished processing" — that wasn't already built, so it
+wasn't added (was explicitly conditional in the request).
+
+**Nav**: the top nav's link spacing itself was already a uniform 32px
+at normal widths — the real bug was a dead zone (~900–1040px viewport
+width) where the nav neither fit on one row nor had hit the mobile
+breakpoint yet, so links wrapped mid-phrase ("Trust & Security"
+splitting across two lines). Fixed with `white-space: nowrap` on every
+nav link/the wordmark, plus giving the nav its own, wider breakpoint
+(1040px) split out from the page's general 860px mobile breakpoint.
+Verified across the full width range with a real (CDP-controlled, not
+headless) Chrome.
+
+---
+
+## Admin login and dashboard
+
+Real authentication for the internal admin surface — see DECISIONS.md
+for the full write-up. In short: `/admin/` is now a login page
+(email + password, generic "Invalid email or password" on failure,
+never revealing which field was wrong), backing a session-
+authenticated dashboard at `/admin/dashboard.html` showing pending
+access requests (approve/deny) and every uploaded lease/rent roll with
+a basic status (Verified / N Flagged / Doesn't Look Like A Lease,
+reusing the confidence-summary and `looks_like_lease` work from
+earlier this session — no new computation needed there).
+
+**Setup required before this works**: `ADMIN_PASSWORD_HASH` isn't set
+yet in `backend/.env` — run `cd backend && venv/bin/python3
+set_admin_password.py` and follow the prompt (see the chat for the
+full walkthrough). `ADMIN_EMAIL` is already set to
+timmypisano24@gmail.com. `FLASK_SECRET_KEY` is already set to a real
+generated value so sessions survive a backend restart.
 
 ---
 
