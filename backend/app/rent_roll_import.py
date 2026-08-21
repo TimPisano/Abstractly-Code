@@ -85,6 +85,12 @@ _COLUMN_ALIASES: Dict[str, List[str]] = {
 # concern, applied at the import boundary instead).
 _NON_TENANT_KEYWORDS = {"vacant", "vacancy", "total", "totals", "subtotal", "sub total", "n a", "na"}
 
+# Matches a Unit/Suite cell that already spells out its own designator
+# (e.g. "Suite 101", "Ste. 101", "Unit 5", "Apt 2", "#12"), as opposed to
+# a bare identifier (e.g. "101", "A") that still needs "Suite " prepended
+# to read naturally combined with a base property address.
+_UNIT_DESIGNATOR_RE = re.compile(r"^\s*(?:suite|ste\.?|unit|apt\.?|#)\s*[\w-]+", re.IGNORECASE)
+
 
 def _normalize_header(header: Any) -> str:
     return re.sub(r"[^\w\s]", "", str(header).lower()).strip()
@@ -273,7 +279,17 @@ def parse_rent_roll_rows(
         end_str = _cell_to_str(cell("lease_end_date"))
 
         if base_property_address and unit_str:
-            address = f"{base_property_address}, Suite {unit_str}"
+            # Many rent rolls' Unit/Suite column already spells out the
+            # designator itself (e.g. "Suite 101", "Unit 5", "#12"), not
+            # just a bare number -- unconditionally prepending "Suite "
+            # in that case produced "Suite Suite 101", which then fails
+            # to match the same unit's address on a lease PDF (e.g. via
+            # compute_rent_roll_reconciliation's exact-address matching).
+            # Only prepend "Suite" when the cell is a bare identifier.
+            if _UNIT_DESIGNATOR_RE.match(unit_str):
+                address = f"{base_property_address}, {unit_str}"
+            else:
+                address = f"{base_property_address}, Suite {unit_str}"
         elif base_property_address:
             address = base_property_address
         else:

@@ -562,6 +562,22 @@
     font-weight: 600;
 }
 
+/* Portfolio Composition & Risk panel (tenant concentration, WALT/
+   rollover, loss-to-lease, rent roll reconciliation) -- reuses the
+   .attention-group/.attention-item family above for every list it
+   renders; these two are the only genuinely new pieces it needed. */
+.attention-summary-line {
+    font-size: 0.875rem;
+    color: var(--text-dark);
+    margin-bottom: 0.625rem;
+}
+
+.attention-empty-note {
+    font-size: 0.8125rem;
+    color: var(--text-light);
+    font-style: italic;
+}
+
 /* ===================== Portfolio health strip ===================== */
 
 .health-strip {

@@ -159,6 +159,22 @@ const Api = {
         return apiRequest('/portfolio/confidence-summary');
     },
 
+    portfolioTenantConcentration() {
+        return apiRequest('/portfolio/tenant-concentration');
+    },
+
+    portfolioRollover() {
+        return apiRequest('/portfolio/rollover');
+    },
+
+    portfolioLossToLease() {
+        return apiRequest('/portfolio/loss-to-lease');
+    },
+
+    portfolioRentRollReconciliation() {
+        return apiRequest('/portfolio/rent-roll-reconciliation');
+    },
+
     recentActivity(limit = 10) {
         return apiRequest(`/activity?limit=${limit}`);
     },

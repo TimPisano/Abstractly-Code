@@ -2742,3 +2742,94 @@ WALT/rollover, loss-to-lease), this shipped as an API endpoint only --
 no new dedicated dashboard UI widget, matching the bar already set by
 those three rather than treating this one differently. Platform copy
 updated from "Coming soon" to a checkmark.
+
+### Dashboard UI for the 4 new portfolio metrics — closing the "API-only" gap
+
+**Status: done.** All four of the above features shipped as API-only
+endpoints, on the stated reasoning that they'd match the existing
+precedent set by `compute_rent_variance_outliers` (also API-only, no
+dashboard widget). Revisited that call after all five features were
+live: it left the dashboard with genuinely no surface for any of this
+new analysis — a user would have to know these endpoints exist and hit
+them directly to ever see tenant concentration, WALT/rollover, loss-to-
+lease, or reconciliation results. That gap is worth closing on its own,
+not something the original "match existing precedent" reasoning
+actually justified once four of these existed side by side.
+
+Added one new dashboard panel, "Portfolio Composition & Risk," placed
+after the existing "Expiring Soon" panel: `frontend/app/index.html`
+(`#compositionPanel` with four `.attention-group` sub-sections),
+`frontend/app/api.js` (thin wrappers for the four GET endpoints, already
+present from each feature's own API work), and `frontend/app/
+dashboard-view.js` (four independent `.then()/.catch()` loads in
+`Dashboard.load()` plus one render function per metric). Each render
+function handles its own empty state ("not enough data yet," "no rent
+roll imported yet") distinctly from its populated state, rather than
+one shared generic empty-state message — the four metrics have
+genuinely different reasons to be empty (too few tenants/leases vs. no
+rent roll ever imported), and a shared message would be honest about
+"nothing here" but not about *why*.
+
+**Two real bugs found while building this, neither hypothetical:**
+
+1. **CSS class mismatch.** `_riskBadgeHtml` initially invented a
+   `.badge`/`.badge-severity-X` pattern that doesn't exist anywhere in
+   `styles.css`. Caught by checking the actual stylesheet before
+   shipping rather than trusting the name felt plausible; fixed to
+   reuse the real, already-established `.severity-badge` +
+   `.severity-high/medium/low` classes the rest of the app already
+   uses for this exact purpose.
+
+2. **Dynamically-injected link had no click handler.** `renderReconciliation`'s
+   empty state injects `<a href="#" data-goto="upload">import one</a>`
+   via `innerHTML`. `app.js`'s `init()` only wires up `[data-goto]`
+   click handlers once, at page load, against elements present in the
+   DOM at that time — an element injected later by a render function
+   never gets one. The link rendered correctly but silently did nothing
+   when clicked. Fixed by giving it a unique id and manually attaching
+   `addEventListener('click', ...)` right after injecting it, calling
+   `showView('upload')` directly instead of relying on the global
+   `data-goto` wiring.
+
+**Found a third, more consequential bug during live verification of
+this same panel** — not in the dashboard code itself, but surfaced by
+it. Testing the reconciliation panel end-to-end required an imported
+rent roll row that genuinely disagreed with a lease PDF for the same
+unit; the panel showed zero compared pairs even though the planted
+mismatch should have matched. Root cause was in `rent_roll_import.py`,
+not the dashboard: `parse_rent_roll_rows` built each row's
+`property_address` as `f"{base_property_address}, Suite {unit_str}"`
+unconditionally — but a rent roll's Unit/Suite column routinely already
+contains the designator itself (a cell literally reading "Suite 101",
+not bare "101"), producing "500 Commerce Blvd, Suite Suite 101". That
+string doesn't match the same unit's lease-PDF address ("500 Commerce
+Blvd, Suite 101") under `_normalize_address`'s exact-unit matching, so
+`compute_rent_roll_reconciliation` silently never paired the two
+records — no error, just zero results, exactly the kind of silent
+failure this whole batch's process was designed to catch. Fixed with a
+new `_UNIT_DESIGNATOR_RE` check in `rent_roll_import.py`: only prepend
+"Suite " when the cell is a bare identifier; if it already starts with
+Suite/Ste/Unit/Apt/#, use it as-is. Regression test added
+(`test_unit_column_already_spelled_out_does_not_double_prefix`,
+covering "Suite 101", "Ste. 101", "Unit 5", "Apt 2B", "#12", and a bare
+"101" control case). Full suite re-run: 28/28.
+
+**Live-verified in a real browser** (headless Chrome via CDP, dedicated
+instance on a scratch profile so as not to disturb peer sessions' own
+browser state), against a realistic 5-lease portfolio built specifically
+to exercise every panel's populated state at once (a dominant anchor
+tenant for concentration, a near-term expiration for rollover, a
+3-suite building for loss-to-lease, and a deliberately-planted $150
+rent gap between a rent-roll row and its matching lease PDF for
+reconciliation) plus, separately, the reconciliation panel's empty
+state with the same portfolio minus its rent-roll row — confirming both
+that the empty-state copy renders correctly and that its "import one"
+link (bug #2 above) actually navigates to the Upload view when clicked,
+not just that it looks clickable. All test data (leases and the
+temporary waitlist-approval bypass used to pass the /app access gate
+for verification) removed/reverted afterward; nothing durable was left
+behind from the verification pass itself.
+
+No backend route or computation logic changed by this work (aside from
+the rent_roll_import.py fix above, which is a real bug fix, not part of
+"dashboard UI"); full backend suite 28/28 both before and after.

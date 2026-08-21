@@ -54,6 +54,146 @@ const Dashboard = {
         Api.recentActivity(10)
             .then(a => this.renderActivity(a))
             .catch(() => { document.getElementById('activityFeed').innerHTML = '<p class="error-text">Failed to load activity.</p>'; });
+
+        Api.portfolioTenantConcentration()
+            .then(d => this.renderTenantConcentration(d))
+            .catch(() => { document.getElementById('tenantConcentrationContent').innerHTML = '<p class="error-text">Failed to load tenant concentration.</p>'; });
+        Api.portfolioRollover()
+            .then(d => this.renderRollover(d))
+            .catch(() => { document.getElementById('rolloverContent').innerHTML = '<p class="error-text">Failed to load rollover risk.</p>'; });
+        Api.portfolioLossToLease()
+            .then(d => this.renderLossToLease(d))
+            .catch(() => { document.getElementById('lossToLeaseContent').innerHTML = '<p class="error-text">Failed to load loss-to-lease.</p>'; });
+        Api.portfolioRentRollReconciliation()
+            .then(d => this.renderReconciliation(d))
+            .catch(() => { document.getElementById('reconciliationContent').innerHTML = '<p class="error-text">Failed to load rent roll reconciliation.</p>'; });
+    },
+
+    // Shared "risk_level -> badge" mapping -- reuses the existing
+    // .severity-badge + .severity-high/medium/low classes the risk
+    // panel already uses elsewhere in this app, not a new badge style
+    // invented for these four panels.
+    _riskBadgeHtml(level) {
+        const cls = level === 'high' ? 'severity-high' : level === 'moderate' ? 'severity-medium' : 'severity-low';
+        const label = level === 'high' ? 'High' : level === 'moderate' ? 'Moderate' : 'Low';
+        return `<span class="severity-badge ${cls}">${label}</span>`;
+    },
+
+    renderTenantConcentration(data) {
+        const el = document.getElementById('tenantConcentrationContent');
+        if (data.tenant_count === 0) {
+            el.innerHTML = `
+                <div class="attention-group-title">Tenant Concentration</div>
+                <p class="attention-empty-note">Not enough data yet — needs at least one lease with both a tenant name and rent.</p>
+            `;
+            return;
+        }
+
+        const topTenants = data.tenants.slice(0, 3).map(t => `
+            <div class="attention-item">${escapeHtml(t.tenant)} — ${t.pct_of_total.toFixed(1)}% of total rent</div>
+        `).join('');
+
+        el.innerHTML = `
+            <div class="attention-group-title">
+                Tenant Concentration ${this._riskBadgeHtml(data.concentration_level)}
+            </div>
+            <p class="attention-summary-line">Top tenant is <strong>${data.top_1_pct.toFixed(1)}%</strong> of total rent (HHI: ${data.hhi.toFixed(0)})</p>
+            <div class="attention-items">${topTenants}</div>
+        `;
+    },
+
+    renderRollover(data) {
+        const el = document.getElementById('rolloverContent');
+        const { walt, rollover_schedule } = data;
+
+        if (walt.walt_years === null) {
+            el.innerHTML = `
+                <div class="attention-group-title">WALT &amp; Rollover Risk</div>
+                <p class="attention-empty-note">Not enough data yet — needs at least one lease with both a rent amount and a (not-yet-expired) end date.</p>
+            `;
+            return;
+        }
+
+        const year1 = rollover_schedule.buckets.year_1;
+        el.innerHTML = `
+            <div class="attention-group-title">
+                WALT &amp; Rollover Risk ${this._riskBadgeHtml(rollover_schedule.rollover_risk_level)}
+            </div>
+            <p class="attention-summary-line">
+                WALT: <strong>${walt.walt_years.toFixed(1)} years</strong> (rent-weighted) &mdash;
+                <strong>${year1.pct_of_total_rent.toFixed(1)}%</strong> of rent rolls over in the next 12 months
+            </p>
+        `;
+    },
+
+    renderLossToLease(data) {
+        const el = document.getElementById('lossToLeaseContent');
+        if (data.lease_count === 0) {
+            el.innerHTML = `
+                <div class="attention-group-title">Loss to Lease</div>
+                <p class="attention-empty-note">Not enough data yet — needs at least two leases at the same building to compare against each other (an internal comp, not external market data).</p>
+            `;
+            return;
+        }
+
+        const topOpportunities = data.leases.filter(l => l.monthly_upside > 0).slice(0, 3).map(l => `
+            <div class="attention-item">${escapeHtml(l.display_name)} — $${l.monthly_upside.toLocaleString(undefined, {maximumFractionDigits: 0})}/mo upside (${l.loss_pct.toFixed(1)}% below this building's top rent)</div>
+        `).join('');
+
+        el.innerHTML = `
+            <div class="attention-group-title">Loss to Lease</div>
+            <p class="attention-summary-line">
+                <strong>$${data.total_monthly_upside.toLocaleString(undefined, {maximumFractionDigits: 0})}/mo</strong>
+                total upside vs. each building's own best-achieved rent
+            </p>
+            <div class="attention-items">${topOpportunities || '<div class="attention-item">Every unit is already at its building\'s top rate.</div>'}</div>
+        `;
+    },
+
+    renderReconciliation(data) {
+        const el = document.getElementById('reconciliationContent');
+        if (data.rent_roll_lease_count === 0) {
+            el.innerHTML = `
+                <div class="attention-group-title">Rent Roll Reconciliation</div>
+                <p class="attention-empty-note">No rent roll imported yet — <a href="#" id="reconciliationImportLink">import one</a> to cross-check it against your lease documents.</p>
+            `;
+            // app.js's init() only wires up [data-goto] elements that
+            // already existed in the DOM at page load -- this link is
+            // injected later, well after that, so it needs its own
+            // listener rather than relying on that one-time binding.
+            document.getElementById('reconciliationImportLink').addEventListener('click', (e) => {
+                e.preventDefault();
+                showView('upload');
+            });
+            return;
+        }
+
+        if (data.mismatches.length === 0) {
+            el.innerHTML = `
+                <div class="attention-clear">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    <span>Rent Roll Reconciliation — everything matches (${data.compared_pair_count} unit${data.compared_pair_count === 1 ? '' : 's'} checked against a lease document).</span>
+                </div>
+            `;
+            return;
+        }
+
+        const fieldLabels = { tenant: 'Tenant', rent_amount: 'Rent', lease_end_date: 'Lease end date' };
+        const items = data.mismatches.slice(0, 5).map(m => `
+            <div class="attention-item attention-item-overdue">
+                ${escapeHtml(m.address || 'Unknown address')} — ${fieldLabels[m.field] || m.field}:
+                rent roll says "${escapeHtml(m.rent_roll_value)}", lease document says "${escapeHtml(m.lease_document_value)}"
+            </div>
+        `).join('');
+        const more = data.mismatches.length > 5 ? `<p class="attention-more">+${data.mismatches.length - 5} more disagreement(s)</p>` : '';
+
+        el.innerHTML = `
+            <div class="attention-group-title">
+                Rent Roll Reconciliation <span class="attention-count">${data.mismatches.length}</span>
+            </div>
+            <div class="attention-items">${items}</div>
+            ${more}
+        `;
     },
 
     renderAttentionSkeleton() {

@@ -100,6 +100,37 @@ def test_header_alias_diversity():
     print("✓ test_header_alias_diversity: PASS")
 
 
+def test_unit_column_already_spelled_out_does_not_double_prefix():
+    """
+    Regression test: found via live messy-data testing, not written
+    speculatively. Many real rent rolls' Unit/Suite column already
+    contains the designator itself (e.g. "Suite 101"), not a bare
+    number -- unconditionally prepending "Suite " produced "Suite Suite
+    101", which then silently broke compute_rent_roll_reconciliation's
+    exact-address matching against the same unit's lease PDF (whose
+    property_address reads plain "Suite 101"), since the two strings
+    normalize differently. Covers "Suite", "Ste.", "Unit", "Apt", and
+    "#"-style cells, plus confirms a bare identifier still gets "Suite "
+    prepended as before.
+    """
+    for unit_cell, expected_address in [
+        ("Suite 101", "500 Commerce Blvd, Suite 101"),
+        ("Ste. 101", "500 Commerce Blvd, Ste. 101"),
+        ("Unit 5", "500 Commerce Blvd, Unit 5"),
+        ("Apt 2B", "500 Commerce Blvd, Apt 2B"),
+        ("#12", "500 Commerce Blvd, #12"),
+        ("101", "500 Commerce Blvd, Suite 101"),
+    ]:
+        csv_bytes = _csv_bytes([
+            ["Tenant", "Unit", "Rent"],
+            ["Acme Corp", unit_cell, "$4,950.00"],
+        ])
+        result = parse_csv_rent_roll(csv_bytes, "rr.csv", base_property_address="500 Commerce Blvd")
+        address = result["leases"][0]["extracted_fields"]["property_address"]["value"]
+        assert address == expected_address, f"unit cell {unit_cell!r} produced {address!r}, expected {expected_address!r}"
+    print("✓ test_unit_column_already_spelled_out_does_not_double_prefix: PASS")
+
+
 def test_bare_numeric_rent_with_no_dollar_sign():
     """A rent column stored as a plain number string (no "$") -- common in CSV exports -- must still parse."""
     csv_bytes = _csv_bytes([
@@ -282,6 +313,7 @@ if __name__ == "__main__":
     test_csv_happy_path_standard_headers()
     test_xlsx_happy_path_with_real_numeric_and_date_cell_types()
     test_header_alias_diversity()
+    test_unit_column_already_spelled_out_does_not_double_prefix()
     test_bare_numeric_rent_with_no_dollar_sign()
     test_vacant_row_skipped()
     test_total_row_skipped()

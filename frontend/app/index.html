@@ -186,6 +186,20 @@
                     <div id="expirationAlertsContent"></div>
                 </div>
 
+                <!-- Portfolio Composition & Risk: tenant concentration, WALT/rollover,
+                     loss-to-lease, and rent roll reconciliation -- each independently
+                     loaded/rendered the same way the panels above are, so one being
+                     briefly slow or unavailable never blocks the others. -->
+                <div class="panel attention-panel" id="compositionPanel">
+                    <div class="panel-header">
+                        <h2>Portfolio Composition &amp; Risk</h2>
+                    </div>
+                    <div class="attention-group" id="tenantConcentrationContent"></div>
+                    <div class="attention-group" id="rolloverContent"></div>
+                    <div class="attention-group" id="lossToLeaseContent"></div>
+                    <div class="attention-group" id="reconciliationContent"></div>
+                </div>
+
                 <!-- Portfolio health strip -->
                 <div class="health-strip" id="healthStrip"></div>
 

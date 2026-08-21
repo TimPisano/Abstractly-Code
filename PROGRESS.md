@@ -8,11 +8,26 @@ external market-rent data source), rent roll import for broker-built Excel/CSV
 files (no fixed column format required, plus a real upload UI), and cross-
 checking an imported rent roll against actual lease PDFs on file, flagging
 tenant/rent/expiration-date disagreements. Each shipped with new API
-endpoints, full test coverage (27/27 backend test files passing), and updated
-Platform page copy. See DECISIONS.md's "Platform 'Coming soon' features"
-entries for the full per-feature write-ups, including at least one real bug
-each pass caught via adversarial/messy-data testing that clean unit tests
-alone missed.
+endpoints, full test coverage, and updated Platform page copy. See
+DECISIONS.md's "Platform 'Coming soon' features" entries for the full
+per-feature write-ups, including at least one real bug each pass caught via
+adversarial/messy-data testing that clean unit tests alone missed.
+
+On top of that: all four of the pure-computation features (everything above
+except rent roll import itself) now also have a real dashboard surface —
+previously they were API-only, reachable only by hitting the endpoint
+directly. A new "Portfolio Composition & Risk" panel on the main dashboard
+shows all four, each with its own populated and empty states. Building it
+surfaced a genuine bug in the rent roll importer itself (not the dashboard
+code): a Unit/Suite column whose cell already spelled out its own designator
+(e.g. a cell literally reading "Suite 101") got double-prefixed into "Suite
+Suite 101", which silently broke address matching for the reconciliation
+feature above — found via live messy-data testing, not a hypothetical, fixed,
+and covered by a new regression test. Full backend suite: 28/28. Live-verified
+in a real browser, including clicking through the reconciliation panel's
+empty-state "import one" link to confirm it actually navigates (that exact
+click-handler bug is also documented in DECISIONS.md). See DECISIONS.md's
+"Dashboard UI for the 4 new portfolio metrics" entry for the full write-up.
 
 **Blocked, needs the user**: PMS-specific rent roll imports (Yardi/AppFolio/
 RealPage/MRI/Buildium — needs real sample export files, can't be built
