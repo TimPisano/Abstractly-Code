@@ -29,7 +29,11 @@ its test portfolio, since rent roll import gives full, exact control over
 every field's value with no OCR/regex extraction uncertainty involved --
 appropriate for a wiring/shape smoke test that needs known values, not
 appropriate as a replacement for the fixture-PDF-based extraction tests
-elsewhere in this suite.
+elsewhere in this suite. Covers both the .csv and .xlsx upload paths for
+the double-"Suite"-prefix regression specifically (both file formats
+reduce to the same shared parse_rent_roll_rows(), but "should be covered
+by the other format's test" is exactly the kind of assumption this file
+exists to not just trust).
 
 Like every other file in this "live" family, this assumes exclusive use
 of the shared local dev database for the duration of the run -- a real
@@ -50,6 +54,8 @@ import json
 import urllib.request
 import urllib.error
 from datetime import date, timedelta
+
+from openpyxl import Workbook
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
@@ -118,6 +124,25 @@ def _import_rent_roll(csv_rows, filename, property_address=None):
     body, content_type = _multipart_body(
         {"property_address": property_address} if property_address else {},
         [("file", filename, _csv_bytes(csv_rows), "text/csv")],
+    )
+    return _request("POST", "/leases/import-rent-roll", data=body, headers={"Content-Type": content_type})
+
+
+def _xlsx_bytes(rows):
+    wb = Workbook()
+    ws = wb.active
+    for row in rows:
+        ws.append(row)
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def _import_xlsx_rent_roll(rows, filename, property_address=None):
+    body, content_type = _multipart_body(
+        {"property_address": property_address} if property_address else {},
+        [("file", filename, _xlsx_bytes(rows),
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")],
     )
     return _request("POST", "/leases/import-rent-roll", data=body, headers={"Content-Type": content_type})
 
@@ -197,6 +222,29 @@ def main():
         for lease in import_result.get("leases", []):
             created_lease_ids.append(lease["id"])
         check("collected 2 lease ids from the import", len(created_lease_ids) == 2, str(len(created_lease_ids)))
+
+        # ---- Regression check for the double-"Suite" bug specifically
+        # through the .xlsx upload path (parse_xlsx_rent_roll), not just
+        # .csv (parse_csv_rent_roll) -- both reduce to the same shared
+        # parse_rent_roll_rows(), but that's exactly the kind of "should
+        # be covered" assumption this whole live suite exists to not
+        # just trust. Uploaded and cleaned up immediately, standalone,
+        # so it doesn't affect the CSV-based counts below. ----
+        print("\n--- .xlsx import path: already-designated unit isn't double-prefixed ----")
+        status, xlsx_result = _import_xlsx_rent_roll(
+            [["Tenant", "Unit", "Rent"], ["XLSX Designator Co", "Suite 300", "2000.00"]],
+            "live_composition_xlsx_test.xlsx",
+            property_address="850 XLSX Test Rd",
+        )
+        check("xlsx import-rent-roll succeeds", status == 201, str(xlsx_result))
+        xlsx_lease_id = xlsx_result["leases"][0]["id"] if status == 201 and xlsx_result.get("leases") else None
+        check(
+            "xlsx import doesn't double-prefix an already-designated unit",
+            status == 201 and xlsx_result["leases"][0]["extracted_fields"]["property_address"]["value"] == "850 XLSX Test Rd, Suite 300",
+            str(xlsx_result.get("leases", [{}])[0].get("extracted_fields", {}).get("property_address")),
+        )
+        if xlsx_lease_id is not None:
+            _request("DELETE", f"/leases/{xlsx_lease_id}")
 
         # ---- Tenant concentration: 2 tenants, $9,000 + $1,000 = $10,000
         # total, top tenant (Anchor) is exactly 90% -- comfortably past
