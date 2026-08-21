@@ -3145,3 +3145,90 @@ API-only first before a dedicated dashboard panel was added as a
 separate, later piece of work (see "Dashboard UI for the 4 new
 portfolio metrics" above) -- a natural next step if wanted, not
 required by "cross-checks the rent roll against the T12" as stated.
+
+## PMS-specific rent roll import: RealPage, MRI, and Buildium (Platform feature, using synthetic fixtures)
+
+**Status: done, pending real vendor files.** Closes out PMS import
+support for all five platforms named in the original Platform feature
+list. Same as Yardi/AppFolio and the T12 cross-check before it:
+unblocked by the user explicitly choosing synthetic fixtures over
+waiting for real vendor files, clearly labeled as such.
+
+**Design.** The generic machinery built for Yardi/AppFolio (header-row
+auto-detection, per-row Property column, market-rent denylist) is
+platform-agnostic by construction -- it works on ANY canned PMS report
+shape, not something Yardi/AppFolio-specific. The real question for
+these three platforms was narrower: does their own terminology need
+new aliases, and does building realistic fixtures for them surface any
+NEW risk the first two platforms' fixtures happened not to exercise.
+Both turned out to be true.
+
+**New aliases**: "Actual Rent"/"Charged Rent" (RealPage's own terms for
+actual vs. "Market Rent," same distinction Yardi's "Rent Charge"
+already covers -- added to the same allow-list, not a new mechanism).
+A bare "Commence" (no "date"/"lease" suffix) -- found during research,
+not by symptom: MRI-style exports commonly use single-word "Commence"/
+"Expire" column headers, and the EXISTING longer aliases ("commence
+date", "lease commencement") can only match a header that CONTAINS the
+full alias phrase -- a header that's just "Commence" is shorter than
+that phrase and can never contain it, so it silently wouldn't have
+matched at all. Fixed by adding a bare "commence" alias alongside the
+existing phrases (which still win when both are present, via the
+existing longest-alias-first ordering). "Occupant" (MRI's term for
+tenant) turned out to already be covered from the original Yardi/
+AppFolio pass.
+
+**A second real, more serious bug, also caught during self-review
+before shipping**: "Rent PSF" (rent per square foot) is a genuinely
+common column on RealPage/MRI-style commercial rent rolls -- a RATE
+(e.g. "2.75" meaning $2.75/sqft/month), not the tenant's total dollar
+rent. With no better rent column present, the bare "rent" alias
+(already existing, not new) would silently match "Rent PSF" and treat
+that per-square-foot figure as if it were the tenant's entire monthly
+rent -- wrong by roughly the unit's whole square footage, and silently
+so. This was a PRE-EXISTING risk in the original rent-roll importer
+(the bare "rent" alias already existed before this work), not
+something the new RealPage/MRI aliases introduced -- but building
+fixtures for exactly the platforms where PSF columns are most common
+is what surfaced it. Fixed with the same denylist pattern already used
+for "Market Rent" and "Property Manager": any rent-like header
+containing "psf" is never eligible for rent_amount, exact match or
+not. Regression test added; confirmed a file with BOTH a PSF rate
+column and a real dollar column still correctly uses the real one.
+
+**Synthetic fixtures** (clearly labeled, `synthetic_realpage_rent_
+roll.csv`, `synthetic_mri_rent_roll.csv`, `synthetic_buildium_rent_
+roll.csv`): RealPage and MRI built as single-property exports with a
+decorative header block, a VACANT unit, and a trailing Total row (same
+messy-data shape as the Yardi fixture); RealPage specifically pairs
+Market Rent alongside Actual Rent to exercise that denylist with this
+platform's own terminology. Buildium built as a genuine multi-property
+export (a realistic pattern for Buildium, commonly used by owners of
+several small scattered properties) using simpler, plainer terminology
+-- exercises the per-row Property column mechanism with a second,
+independent real-world case beyond the AppFolio fixture.
+
+**Verified against the real running server**, not just `test_client()`
+-- restarted first, per the standing lesson from earlier in this
+session: all three fixtures imported via real HTTP, confirmed correct
+rent/address values (Actual Rent over Market Rent, bare Commence/
+Expire parsed, multi-property Buildium correctly split by building),
+confirmed `/portfolio/tenant-concentration` correctly consumes the
+combined 9-tenant portfolio with zero special-casing, and separately
+re-verified the PSF fix live after the code changed (a fresh restart,
+confirmed a PSF-only file is honestly rejected on the actual running
+server, not just proven in a local test run).
+
+**Tests**: 2 new unit tests for the terminology aliases and the PSF
+bug, 3 new fixture-driven tests (one per platform) plus the shared
+round-trip-through-the-real-route test extended to cover all 5
+platforms now. Full suite: 38/38 (test count grew within existing
+files; no new test files needed here, unlike the Yardi/AppFolio and T12
+work, since this extends already-established test infrastructure
+rather than introducing a new capability).
+
+Platform copy updated: the two separate Yardi/AppFolio and RealPage/
+MRI/Buildium bullets merged into one checkmarked bullet covering all
+five platforms, plus the hero step-card and FAQ answer (both previously
+corrected to say "on our roadmap" for these three) updated to reflect
+they're live now too.

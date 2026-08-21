@@ -484,6 +484,57 @@ def test_yardi_appfolio_terminology_aliases():
     print("✓ test_yardi_appfolio_terminology_aliases: PASS")
 
 
+def test_realpage_mri_terminology_aliases():
+    """
+    RealPage/MRI-style column names: "Actual Rent" alongside "Market
+    Rent" (RealPage), and a BARE "Commence" (no "date"/"lease" suffix,
+    common in MRI-style exports) -- must correctly map to rent_amount
+    and lease_start_date respectively, not fall through unmapped just
+    because the header is shorter than the existing full-phrase
+    aliases.
+    """
+    csv_bytes = _csv_bytes([
+        ["Suite", "Occupant", "SF", "Commence", "Expire", "Market Rent", "Actual Rent"],
+        ["101", "Acme Corp", "1200", "01/01/2024", "12/31/2029", "3600.00", "3200.00"],
+    ])
+    result = parse_csv_rent_roll(csv_bytes, "realpage_style.csv")
+    fields = result["leases"][0]["extracted_fields"]
+    assert fields["tenant"]["value"] == "Acme Corp"
+    assert fields["rent_amount"]["value"] == "$3,200.00"  # Actual Rent, not Market Rent's $3,600.00
+    assert fields["lease_start_date"]["value"] == "01/01/2024"
+    assert fields["lease_end_date"]["value"] == "12/31/2029"
+    print("✓ test_realpage_mri_terminology_aliases: PASS")
+
+
+def test_rent_psf_rate_column_never_used_as_rent_amount():
+    """
+    Regression/design test for a real bug caught during self-review,
+    not found broken in production: "Rent PSF" (rent per square foot --
+    a common RealPage/MRI-style column) is a RATE, not the tenant's
+    total dollar rent. With no better rent column present, the bare
+    "rent" alias would otherwise match it and silently treat e.g.
+    "2.75" ($2.75/sqft/month) as if it were $2.75/month total rent --
+    wrong by roughly the unit's entire square footage. Must fail
+    honestly instead, same as a file with no rent column at all.
+    """
+    csv_bytes = _csv_bytes([["Tenant", "Rent PSF"], ["Acme Corp", "2.75"]])
+    try:
+        parse_csv_rent_roll(csv_bytes, "psf_only.csv")
+        assert False, "should have raised -- Rent PSF must never be treated as rent_amount"
+    except RentRollImportError:
+        pass
+
+    # With BOTH a PSF rate column and a real one, the real one must win.
+    csv_bytes2 = _csv_bytes([
+        ["Tenant", "Rent PSF", "Actual Rent"],
+        ["Acme Corp", "2.75", "4400.00"],
+    ])
+    result = parse_csv_rent_roll(csv_bytes2, "psf_and_real.csv")
+    assert result["leases"][0]["extracted_fields"]["rent_amount"]["value"] == "$4,400.00", \
+        result["leases"][0]["extracted_fields"]["rent_amount"]
+    print("✓ test_rent_psf_rate_column_never_used_as_rent_amount: PASS")
+
+
 def test_property_manager_column_not_mistaken_for_property_address():
     """
     Regression test caught during self-review, not found broken in
@@ -551,6 +602,8 @@ if __name__ == "__main__":
     test_property_column_falls_back_to_base_address_when_a_row_is_blank()
     test_market_rent_is_never_used_as_rent_amount()
     test_yardi_appfolio_terminology_aliases()
+    test_realpage_mri_terminology_aliases()
+    test_rent_psf_rate_column_never_used_as_rent_amount()
     test_property_manager_column_not_mistaken_for_property_address()
     test_move_in_move_out_not_mistaken_for_lease_dates()
     print("\nAll rent roll import tests passed.")

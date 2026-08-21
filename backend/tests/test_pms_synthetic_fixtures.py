@@ -1,28 +1,29 @@
 """
-Tests the rent roll importer against SYNTHETIC PMS-style fixture files --
-synthetic_yardi_rent_roll.csv, synthetic_yardi_rent_roll.xlsx, and
-synthetic_appfolio_rent_roll.csv, all in this directory.
+Tests the rent roll importer against SYNTHETIC PMS-style fixture files,
+all in this directory: synthetic_yardi_rent_roll.csv/.xlsx,
+synthetic_appfolio_rent_roll.csv, synthetic_realpage_rent_roll.csv,
+synthetic_mri_rent_roll.csv, synthetic_buildium_rent_roll.csv.
 
 IMPORTANT: These are fabricated test fixtures, clearly labeled as such
-inside each file's own first row, NOT real Yardi/AppFolio exports -- no
-real vendor sample files were available at the time this was built (see
-DECISIONS.md's "PMS-specific rent roll import" entry). They were built
-to match the real, publicly-documented structure of Yardi Voyager's and
-AppFolio's standard rent roll reports as closely as reasonably possible
-(decorative title/date rows before the real header, PMS-specific column
-terminology, a Market-Rent-alongside-actual-rent column, a multi-
-property portfolio-wide export) specifically so the header-row auto-
-detection, PMS terminology aliases, per-row Property column, and
-market-rent denylist added for this feature all get exercised against
-something more realistic than a hand-written unit test fixture, not
-just unit-tested in isolation.
+inside each file's own first row, NOT real vendor exports -- no real
+sample files were available at the time this was built (see
+DECISIONS.md's "PMS-specific rent roll import" entries). They were built
+to match each platform's real, publicly-documented rent roll report
+structure as closely as reasonably possible (decorative title/date rows
+before the real header, each platform's own column terminology, a
+Market/Actual-Rent-alongside-each-other column where realistic, a
+multi-property portfolio-wide export for AppFolio and Buildium)
+specifically so the header-row auto-detection, PMS terminology aliases,
+per-row Property column, and market-rent denylist added for this
+feature all get exercised against something more realistic than a
+hand-written unit test fixture, not just unit-tested in isolation.
 
 Swap in real vendor export files here (same filenames, or point these
 tests at new ones) the moment real samples are available -- everything
-below is written against the file's actual structure and known content,
-not against any Yardi/AppFolio-specific assumption baked into the test
-itself, so real files should need no test changes beyond updating the
-expected values to match.
+below is written against each file's actual structure and known
+content, not against any platform-specific assumption baked into the
+test itself, so real files should need no test changes beyond updating
+the expected values to match.
 """
 import os
 import sys
@@ -138,9 +139,70 @@ def test_synthetic_appfolio_csv_multi_property_imports_correctly():
     print("✓ test_synthetic_appfolio_csv_multi_property_imports_correctly: PASS")
 
 
+def test_synthetic_realpage_csv_imports_correctly():
+    """RealPage rent roll: "Actual Rent" must win over the adjacent "Market Rent" column, same principle as Yardi's Rent Charge, different platform's own terminology."""
+    result = parse_csv_rent_roll(
+        _read("synthetic_realpage_rent_roll.csv"),
+        "synthetic_realpage_rent_roll.csv",
+        base_property_address="Foothill Corporate Center",
+    )
+    assert len(result["leases"]) == 3, result["leases"]
+    assert len(result["skipped_rows"]) == 2  # VACANT unit + trailing Total row
+
+    by_tenant = {l["extracted_fields"]["tenant"]["value"]: l["extracted_fields"] for l in result["leases"]}
+    alpine = by_tenant["Alpine Consulting Group"]
+    assert alpine["rent_amount"]["value"] == "$4,400.00"  # Actual Rent, NOT Market Rent's $4,800.00
+    assert alpine["property_address"]["value"] == "Foothill Corporate Center, Suite 100"
+
+    cedar = by_tenant["Cedar Ridge Insurance"]
+    assert cedar["rent_amount"]["value"] == "$5,900.00"  # not Market Rent's $6,300.00
+
+    print("✓ test_synthetic_realpage_csv_imports_correctly: PASS")
+
+
+def test_synthetic_mri_csv_imports_correctly():
+    """MRI rent roll: "Occupant" for tenant, bare "Commence"/"Expire" (no "date" suffix) for lease dates -- MRI-specific terminology, not just Yardi/AppFolio's."""
+    result = parse_csv_rent_roll(
+        _read("synthetic_mri_rent_roll.csv"),
+        "synthetic_mri_rent_roll.csv",
+        base_property_address="Foothill Corporate Center",
+    )
+    assert len(result["leases"]) == 3, result["leases"]
+    assert len(result["skipped_rows"]) == 2  # VACANT unit + trailing Total row
+
+    by_tenant = {l["extracted_fields"]["tenant"]["value"]: l["extracted_fields"] for l in result["leases"]}
+    harborview = by_tenant["Harborview Logistics"]
+    assert harborview["rent_amount"]["value"] == "$7,150.00"
+    assert harborview["property_address"]["value"] == "Foothill Corporate Center, Suite 200"
+    assert harborview["lease_start_date"]["value"] == "03/01/2021"
+    assert harborview["lease_end_date"]["value"] == "02/28/2027"
+
+    print("✓ test_synthetic_mri_csv_imports_correctly: PASS")
+
+
+def test_synthetic_buildium_csv_multi_property_imports_correctly():
+    """Buildium: simpler terminology, but ALSO a genuine multi-property export (common for a Buildium-managed portfolio of scattered small properties) -- same per-row Property column mechanism as the AppFolio fixture, different platform."""
+    result = parse_csv_rent_roll(_read("synthetic_buildium_rent_roll.csv"), "synthetic_buildium_rent_roll.csv")
+    assert len(result["leases"]) == 3, result["leases"]
+    assert result["skipped_rows"] == []
+
+    by_tenant = {l["extracted_fields"]["tenant"]["value"]: l["extracted_fields"] for l in result["leases"]}
+    dana = by_tenant["Dana Whitfield"]
+    assert dana["property_address"]["value"] == "14 Chestnut St, Unit 1"
+    marcus = by_tenant["Marcus Ibe"]
+    assert marcus["property_address"]["value"] == "14 Chestnut St, Unit 2"
+    dentistry = by_tenant["Redwood Family Dentistry"]
+    assert dentistry["property_address"]["value"] == "508 Poplar Ave, Suite B"
+
+    # Two genuinely different buildings, not merged.
+    assert dana["property_address"]["value"] != dentistry["property_address"]["value"]
+
+    print("✓ test_synthetic_buildium_csv_multi_property_imports_correctly: PASS")
+
+
 def test_synthetic_fixtures_round_trip_through_the_real_import_route():
     """
-    Same 3 fixtures, but through the real Flask route (POST /leases/
+    Same fixtures, but through the real Flask route (POST /leases/
     import-rent-roll) via test_client(), not a direct function call --
     confirms the multipart upload + property_address form field + JSON
     response shape all work end to end for PMS-shaped files specifically,
@@ -152,28 +214,21 @@ def test_synthetic_fixtures_round_trip_through_the_real_import_route():
     client = app.test_client()
     created_ids = []
     try:
-        resp = client.post(
-            "/leases/import-rent-roll",
-            data={
-                "file": (open(os.path.join(FIXTURES_DIR, "synthetic_yardi_rent_roll.csv"), "rb"), "synthetic_yardi_rent_roll.csv"),
-                "property_address": "Riverside Commons Shopping Center",
-            },
-            content_type="multipart/form-data",
-        )
-        assert resp.status_code == 201, resp.get_json()
-        body = resp.get_json()
-        assert body["imported_count"] == 3, body
-        created_ids.extend(l["id"] for l in body["leases"])
-
-        resp2 = client.post(
-            "/leases/import-rent-roll",
-            data={"file": (open(os.path.join(FIXTURES_DIR, "synthetic_appfolio_rent_roll.csv"), "rb"), "synthetic_appfolio_rent_roll.csv")},
-            content_type="multipart/form-data",
-        )
-        assert resp2.status_code == 201, resp2.get_json()
-        body2 = resp2.get_json()
-        assert body2["imported_count"] == 3, body2
-        created_ids.extend(l["id"] for l in body2["leases"])
+        for filename, property_address, expected_count in [
+            ("synthetic_yardi_rent_roll.csv", "Riverside Commons Shopping Center", 3),
+            ("synthetic_appfolio_rent_roll.csv", None, 3),
+            ("synthetic_realpage_rent_roll.csv", "Foothill Corporate Center", 3),
+            ("synthetic_mri_rent_roll.csv", "Foothill Corporate Center", 3),
+            ("synthetic_buildium_rent_roll.csv", None, 3),
+        ]:
+            data = {"file": (open(os.path.join(FIXTURES_DIR, filename), "rb"), filename)}
+            if property_address:
+                data["property_address"] = property_address
+            resp = client.post("/leases/import-rent-roll", data=data, content_type="multipart/form-data")
+            assert resp.status_code == 201, (filename, resp.get_json())
+            body = resp.get_json()
+            assert body["imported_count"] == expected_count, (filename, body)
+            created_ids.extend(l["id"] for l in body["leases"])
     finally:
         for lease_id in created_ids:
             client.delete(f"/leases/{lease_id}")
@@ -185,5 +240,8 @@ if __name__ == "__main__":
     test_synthetic_yardi_csv_imports_correctly()
     test_synthetic_yardi_xlsx_imports_correctly()
     test_synthetic_appfolio_csv_multi_property_imports_correctly()
+    test_synthetic_realpage_csv_imports_correctly()
+    test_synthetic_mri_csv_imports_correctly()
+    test_synthetic_buildium_csv_multi_property_imports_correctly()
     test_synthetic_fixtures_round_trip_through_the_real_import_route()
     print("\nAll PMS synthetic fixture tests passed.")

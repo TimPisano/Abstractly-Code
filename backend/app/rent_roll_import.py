@@ -65,10 +65,13 @@ _COLUMN_ALIASES: Dict[str, List[str]] = {
     # which is the theoretical achievable rate at 100% occupancy --
     # explicitly denylisted below, see _MARKET_RENT_WORDS, since using
     # market rent as if it were actual rent would silently corrupt
-    # every downstream computation that reads rent_amount).
+    # every downstream computation that reads rent_amount). "Actual
+    # Rent"/"Charged Rent" are RealPage's own equivalent terms, for the
+    # exact same reason -- RealPage rent rolls commonly show both an
+    # Actual Rent and a Market Rent column side by side.
     "rent_amount": [
         "monthly base rent", "monthly rent", "base rent", "current rent", "rent/mo", "rent",
-        "scheduled rent", "rent charge", "scheduled charges",
+        "scheduled rent", "rent charge", "scheduled charges", "actual rent", "charged rent",
     ],
     # "Rent Commencement"/"Rent Start" are real, standard commercial
     # lease terms distinct from "Lease Commencement" -- rent can start
@@ -88,9 +91,18 @@ _COLUMN_ALIASES: Dict[str, List[str]] = {
     # same "don't conflate two different things" care already applied
     # elsewhere in this module (see _normalize_building_address in
     # portfolio.py for the same principle applied to addresses).
+    # Bare "Commence" (no "date"/"lease" suffix) is a real, common MRI-
+    # style column header -- caught during research for this addition,
+    # not found broken in production: the longer phrases above only
+    # match when the HEADER contains the full alias phrase, so a header
+    # that's just "Commence" wouldn't match "commence date" (the header
+    # is shorter than that alias, can never contain it). A bare
+    # "commence" alias fills that gap; the longer, more specific
+    # phrases above still win when both are present, via the existing
+    # longest-alias-first matching order.
     "lease_start_date": [
         "lease commencement", "commencement date", "commence date", "lease start", "start date", "lease from",
-        "rent commencement", "rent commencement date", "rent start", "rent start date",
+        "rent commencement", "rent commencement date", "rent start", "rent start date", "commence",
     ],
     "lease_end_date": [
         "lease expiration", "expiration date", "lease end", "end date", "expire", "lease to",
@@ -125,6 +137,24 @@ _MARKET_RENT_WORDS = {"market", "potential", "asking", "projected", "proforma"}
 def _is_market_rent_header(normalized_header: str) -> bool:
     words = set(normalized_header.split())
     return "rent" in words and bool(words & _MARKET_RENT_WORDS)
+
+
+# "Rent PSF" (rent per square foot) is a genuinely common commercial
+# rent-roll column, especially on RealPage/MRI-style exports -- a RATE,
+# not the tenant's total dollar rent (e.g. "2.75" meaning $2.75/sqft/
+# month, not $2.75/month total). Found during self-review while
+# researching RealPage/MRI terminology, not found broken in production:
+# with no better rent column present, the bare "rent" alias would
+# otherwise match "Rent PSF" and silently treat a per-square-foot rate
+# as if it were the tenant's actual total rent -- wrong by roughly the
+# unit's entire square footage, and silently so. Same denylist pattern
+# as _MARKET_RENT_WORDS.
+_RATE_NOT_AMOUNT_WORDS = {"psf"}
+
+
+def _is_rate_not_amount_header(normalized_header: str) -> bool:
+    words = set(normalized_header.split())
+    return "rent" in words and bool(words & _RATE_NOT_AMOUNT_WORDS)
 
 
 # "Property" alone is a genuinely common, useful column header (see the
@@ -179,8 +209,8 @@ def _match_columns(headers: List[Any]) -> Dict[str, int]:
         for i, h in enumerate(normalized):
             if i in used_columns:
                 continue
-            if field_name == "rent_amount" and _is_market_rent_header(h):
-                continue  # see _MARKET_RENT_WORDS -- never eligible for rent_amount, exact match or not
+            if field_name == "rent_amount" and (_is_market_rent_header(h) or _is_rate_not_amount_header(h)):
+                continue  # see _MARKET_RENT_WORDS / _RATE_NOT_AMOUNT_WORDS -- never eligible for rent_amount, exact match or not
             if field_name == "property" and _is_non_address_property_header(h):
                 continue  # see _NON_ADDRESS_PROPERTY_WORDS -- never eligible for property, exact match or not
             if h in alias_norms:
@@ -210,8 +240,8 @@ def _match_columns(headers: List[Any]) -> Dict[str, int]:
             for i, h in enumerate(normalized):
                 if i in used_columns:
                     continue
-                if field_name == "rent_amount" and _is_market_rent_header(h):
-                    continue  # see _MARKET_RENT_WORDS -- e.g. "Market Rent" must not fall through to the bare "rent" alias
+                if field_name == "rent_amount" and (_is_market_rent_header(h) or _is_rate_not_amount_header(h)):
+                    continue  # see _MARKET_RENT_WORDS / _RATE_NOT_AMOUNT_WORDS -- e.g. "Market Rent"/"Rent PSF" must not fall through to the bare "rent" alias
                 if field_name == "property" and _is_non_address_property_header(h):
                     continue  # see _NON_ADDRESS_PROPERTY_WORDS -- e.g. "Property Manager" must not fall through to the bare "property" alias
                 if pattern.search(h):

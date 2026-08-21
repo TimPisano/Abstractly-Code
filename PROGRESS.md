@@ -1,30 +1,37 @@
 # Progress Summary
 
-**Last updated**: The rent-roll-vs-T12 cross-check is now live, closing the
-last originally-blocked Platform item — unblocked the same way as the PMS
-import work just before it: no real vendor T12 was available, and the user
-explicitly chose to have a realistic synthetic one generated instead of
-waiting, clearly labeled as such (`backend/tests/synthetic_t12_operating_
-statement.csv`) so a real file can be swapped in later. A genuinely new
-document type and parsing module (`t12_import.py`) — a T12 is one row per
-LINE ITEM with months as columns, not one row per tenant like a rent roll —
+**Last updated**: PMS rent roll import now covers all five originally-named
+platforms — RealPage, MRI, and Buildium added alongside Yardi/AppFolio, using
+the same synthetic-fixture approach (no real vendor files available; user
+explicitly chose synthetic over waiting). Mostly extended already-built,
+platform-agnostic machinery (header-row detection, per-row Property column)
+with a few new terminology aliases (RealPage's "Actual Rent," a bare MRI-
+style "Commence" column that the existing longer aliases couldn't match at
+all). The more important find: building fixtures for these specific
+platforms surfaced a real, previously-latent bug in the ORIGINAL importer —
+"Rent PSF" (a common RealPage/MRI column, a per-square-foot RATE, not the
+tenant's total rent) could get silently used as if it were the tenant's
+actual dollar rent when no better column existed, via the bare "rent" alias
+that's been there since the very first version of this feature. Fixed with
+the same denylist pattern already used for "Market Rent." Verified live
+against the real running server both before and after that fix (restarted
+each time). Full suite 38/38. See DECISIONS.md's "PMS-specific rent roll
+import: RealPage, MRI, and Buildium" entry for the full write-up.
+
+Before that: the rent-roll-vs-T12 cross-check went live — a genuinely new
+document type and parsing module (`t12_import.py`, a T12 is one row per LINE
+ITEM with months as columns, not one row per tenant like a rent roll),
 deliberately scoped to extracting exactly one number (actual annual rental
-income) for the cross-check, not a full P&L ingestion pipeline nobody asked
-for. The one design decision that actually mattered: a T12 always has both a
-"Gross Potential Rent" line (theoretical, vacancy-inclusive) and an actual
-"Rental Income" line, and only the latter is the correct comparison — using
-potential rent would make a healthy property look short by definition. A
-real logic bug (a documented "Scheduled Rent Income" exception to the
-potential-income denylist that was never actually implemented) was caught by
-the test suite itself before shipping, not found broken later. Verified
-end-to-end against the real running server: a real rent roll import for a
-property, a real T12 upload for the same property, a real cross-check back,
-confirmed nothing was persisted. Full suite 38/38. Ships API-only for
-now (`POST /portfolio/t12-reconciliation`), matching how tenant
-concentration/rollover/loss-to-lease also shipped API-only before a
-dashboard panel followed as separate work — a natural next step if wanted.
-See DECISIONS.md's "Rent-roll-vs-T12 cross-check" entry for the full
-write-up.
+income), not a full P&L pipeline nobody asked for. The design decision that
+actually mattered: never confusing a T12's "Gross Potential Rent" (theoretical,
+vacancy-inclusive) with its actual "Rental Income" line — using potential rent
+would make a healthy property look short by definition. A real logic bug (a
+documented "Scheduled Rent Income" denylist exception that was never actually
+implemented) was caught by the test suite itself before shipping. Verified
+end-to-end against the real running server: real rent roll import, real T12
+upload, real cross-check, confirmed nothing persisted. Ships API-only for now
+(`POST /portfolio/t12-reconciliation`) — a dashboard panel is next. See
+DECISIONS.md's "Rent-roll-vs-T12 cross-check" entry for the full write-up.
 
 Before that: Yardi and AppFolio rent roll import went live the same way (see
 DECISIONS.md's "PMS-specific rent roll import: Yardi and AppFolio" entry) —
@@ -82,11 +89,10 @@ running the suite going forward, not by luck. Full suite including live
 tests: 33/33. See DECISIONS.md's "Dashboard UI for the 4 new portfolio
 metrics" entry (and its addendum) for the full write-up.
 
-**Still open**: RealPage/MRI/Buildium import (no synthetic fixtures built for
-these yet — Yardi and AppFolio were prioritized as the two most commonly
-requested) and a dashboard UI panel for the T12 cross-check (currently API-
-only). Real vendor sample files (rent roll exports or a T12), whenever
-available, are still preferred over synthetic ones and should replace them.
+**Still open**: a dashboard UI panel for the T12 cross-check (currently API-
+only; in progress, see above). Real vendor sample files (rent roll exports
+or a T12), whenever available, are still preferred over synthetic ones and
+should replace them.
 
 Before that: the admin login page (`/admin/`) no longer has any
 session-based bypass of the credentials form — it used to show a

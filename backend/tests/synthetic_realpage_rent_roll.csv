@@ -1,0 +1,13 @@
+SYNTHETIC TEST FIXTURE -- fabricated data for testing only, not a real RealPage export
+RealPage OneSite Commercial
+Rent Roll
+Property: Foothill Corporate Center
+Run Date: 08/01/2026
+
+Suite,Tenant Name,SF,Lease From,Lease To,Market Rent,Actual Rent
+100,Alpine Consulting Group,1600,05/01/2023,04/30/2028,4800.00,4400.00
+101,Cedar Ridge Insurance,2100,02/15/2022,02/14/2027,6300.00,5900.00
+102,VACANT,1400,,,4200.00,0.00
+103,Northgate Accounting LLP,1900,09/01/2024,08/31/2029,5700.00,5300.00
+
+Total,,7000,,,21000.00,15600.00

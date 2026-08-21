@@ -1,0 +1,13 @@
+SYNTHETIC TEST FIXTURE -- fabricated data for testing only, not a real MRI Software export
+MRI Commercial Management
+Rent Roll Report
+Foothill Corporate Center
+As of 08/01/2026
+
+Suite,Occupant,SF,Commence,Expire,Base Rent
+200,Harborview Logistics,2600,03/01/2021,02/28/2027,7150.00
+201,Silvercreek Dental Partners,1500,11/01/2023,10/31/2028,4275.00
+202,VACANT,1100,,,0.00
+203,Bramwell & Cole LLP,2000,06/15/2022,06/14/2027,5800.00
+
+Total,,7200,,,17225.00
