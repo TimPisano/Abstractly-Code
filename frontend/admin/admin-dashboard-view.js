@@ -7,20 +7,26 @@
  * Dashboard) rather than shared, per this project's existing pattern of
  * keeping the admin surface and the customer app intentionally
  * independent (see DECISIONS.md "Access gate uses self-reported email,
- * not real auth"). The one deliberate difference from the customer
- * version: a Status column (Verified / Needs Review / Doesn't Look Like
- * A Lease, derived from confidence_summary + looks_like_lease) plus an
- * Uploaded column, since an admin reviewing the whole portfolio needs
- * "is this record trustworthy" and "when did this land" at a glance in
- * a way an individual tenant browsing their own leases doesn't.
+ * not real auth"). Deliberate differences from the customer app's own
+ * Dashboard: a Status column (Verified / Needs Review / Doesn't Look
+ * Like A Lease, derived from confidence_summary + looks_like_lease) and
+ * an Uploaded column, since an admin reviewing the whole portfolio
+ * needs "is this record trustworthy" and "when did this land" at a
+ * glance in a way an individual tenant browsing their own leases
+ * doesn't; and client-side pagination (see currentPage/pageSize below),
+ * since an admin portfolio is the one place in this app expected to
+ * realistically reach 100+ leases.
  */
 
 const Dashboard = {
     sortKey: 'name',
     sortDir: 1,
     risksByLeaseId: {},
+    currentPage: 1,
+    pageSize: 25,
 
     async load() {
+        this.currentPage = 1;
         this.renderMetricsSkeleton();
         this.renderAttentionSkeleton();
         this.renderExpirationAlertsSkeleton();
@@ -282,6 +288,7 @@ const Dashboard = {
         if (leases.length === 0) {
             emptyState.style.display = 'flex';
             tableWrap.style.display = 'none';
+            this.renderPagination(0, 1);
             return;
         }
         emptyState.style.display = 'none';
@@ -340,10 +347,21 @@ const Dashboard = {
 
         rows = this.sortRows(rows);
 
+        // Paginate AFTER filtering/sorting, so a page always reflects
+        // the current filtered/sorted view rather than the raw list --
+        // filtering to fewer rows than fit on one page must clamp back
+        // to page 1, not leave the table showing an empty later page.
+        const totalRows = rows.length;
+        const totalPages = Math.max(1, Math.ceil(totalRows / this.pageSize));
+        if (this.currentPage > totalPages) this.currentPage = totalPages;
+        const pageStart = (this.currentPage - 1) * this.pageSize;
+        const pageRows = rows.slice(pageStart, pageStart + this.pageSize);
+        this.renderPagination(totalRows, totalPages);
+
         document.querySelector('.compare-col').style.display = compareMode ? '' : 'none';
 
         const tbody = document.getElementById('leaseTableBody');
-        tbody.innerHTML = rows.map(r => {
+        tbody.innerHTML = pageRows.map(r => {
             const highestSeverity = worstSeverity(r.risks);
             return `
                 <tr data-lease-id="${r.lease.id}">
@@ -400,6 +418,39 @@ const Dashboard = {
                 e.stopPropagation();
                 this.startRenameInline(el, parseInt(el.dataset.id, 10));
             });
+        });
+    },
+
+    // Hidden entirely at 1 page (0 or 1 lease, or a filtered-down result
+    // that fits on one page) so it never clutters the small-portfolio
+    // case -- only shows up once there's actually something to page
+    // through.
+    renderPagination(totalRows, totalPages) {
+        const container = document.getElementById('dashboardPagination');
+        if (!container) return;
+
+        if (totalRows === 0 || totalPages <= 1) {
+            container.innerHTML = '';
+            return;
+        }
+
+        const rangeStart = (this.currentPage - 1) * this.pageSize + 1;
+        const rangeEnd = Math.min(this.currentPage * this.pageSize, totalRows);
+
+        container.innerHTML = `
+            <span class="table-pagination-info">${rangeStart}&ndash;${rangeEnd} of ${totalRows}</span>
+            <button class="btn-text" id="dashboardPrevPageBtn" type="button" ${this.currentPage <= 1 ? 'disabled' : ''}>&larr; Prev</button>
+            <span class="table-pagination-page">Page ${this.currentPage} of ${totalPages}</span>
+            <button class="btn-text" id="dashboardNextPageBtn" type="button" ${this.currentPage >= totalPages ? 'disabled' : ''}>Next &rarr;</button>
+        `;
+
+        const prevBtn = document.getElementById('dashboardPrevPageBtn');
+        const nextBtn = document.getElementById('dashboardNextPageBtn');
+        if (prevBtn) prevBtn.addEventListener('click', () => {
+            if (this.currentPage > 1) { this.currentPage -= 1; this.renderTable(AppState.leases); }
+        });
+        if (nextBtn) nextBtn.addEventListener('click', () => {
+            if (this.currentPage < totalPages) { this.currentPage += 1; this.renderTable(AppState.leases); }
         });
     },
 
@@ -742,17 +793,26 @@ registerView('dashboard', Dashboard);
 // (these scripts finish loading after DOMContentLoaded has long since
 // fired).
 function _initDashboardViewBindings() {
+    // Every filter control resets to page 1 -- the result set's
+    // composition just changed, so staying on (say) page 4 could land on
+    // an empty page even though matching rows exist earlier on. Sort and
+    // the compare-mode toggle deliberately do NOT reset the page, since
+    // the row count doesn't change from either of those.
     document.getElementById('dashboardFilter').addEventListener('input', () => {
+        Dashboard.currentPage = 1;
         Dashboard.renderTable(AppState.leases);
     });
 
     document.getElementById('dashboardStatusFilter').addEventListener('change', () => {
+        Dashboard.currentPage = 1;
         Dashboard.renderTable(AppState.leases);
     });
     document.getElementById('dashboardDateFrom').addEventListener('change', () => {
+        Dashboard.currentPage = 1;
         Dashboard.renderTable(AppState.leases);
     });
     document.getElementById('dashboardDateTo').addEventListener('change', () => {
+        Dashboard.currentPage = 1;
         Dashboard.renderTable(AppState.leases);
     });
 

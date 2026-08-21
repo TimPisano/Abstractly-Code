@@ -346,6 +346,27 @@ body {
     cursor: default;
 }
 
+/* ---- Lease Library pagination ---- */
+
+.table-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 1rem;
+    padding: 0.875rem 0.25rem 0;
+    font-size: 0.875rem;
+    color: var(--text-medium);
+}
+
+.table-pagination:empty {
+    padding: 0;
+}
+
+.table-pagination-page {
+    font-weight: 600;
+    color: var(--text-dark);
+}
+
 @media (max-width: 700px) {
     .admin-stats {
         grid-template-columns: 1fr;

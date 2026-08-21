@@ -71,9 +71,12 @@ const Upload = {
             try {
                 const response = await Api.uploadLease(file);
                 response.leases.forEach(lease => recordStats(file.name, lease.extracted_fields));
-                result = { filename: file.name, success: true, leases: response.leases, split_count: response.split_count };
+                result = { filename: file.name, success: true, leases: response.leases, split_count: response.split_count, file };
             } catch (err) {
-                result = { filename: file.name, success: false, error: err.message };
+                // Keep the original File object on the result so a failed
+                // row's Retry button can re-submit the exact same file
+                // without asking the admin to browse for it again.
+                result = { filename: file.name, success: false, error: err.message, file };
             }
             stopReassurance();
             fileResults.push(result);
@@ -124,6 +127,10 @@ const Upload = {
     },
 
     showResults(fileResults) {
+        // Kept so a Retry button can re-submit the exact File object for
+        // its row without re-rendering everything else in the batch.
+        this._lastResults = fileResults;
+
         const succeededFiles = fileResults.filter(r => r.success);
         const failedFiles = fileResults.filter(r => !r.success);
         const totalLeasesCreated = succeededFiles.reduce((sum, r) => sum + (r.split_count || r.leases.length), 0);
@@ -134,7 +141,11 @@ const Upload = {
                 <strong>${totalLeasesCreated}</strong> lease(s) created from <strong>${succeededFiles.length}</strong> file(s)
                 &mdash; <strong>${failedFiles.length}</strong> file(s) failed (${fileResults.length} total)
             </p>
-        ` + fileResults.map(r => this.resultRowsHtml(r)).join('');
+        ` + fileResults.map((r, i) => this.resultRowsHtml(r, i)).join('');
+
+        container.querySelectorAll('.upload-retry-btn').forEach(btn => {
+            btn.addEventListener('click', () => this.retryFile(parseInt(btn.dataset.index, 10)));
+        });
 
         document.getElementById('uploadResults').style.display = 'block';
 
@@ -143,13 +154,27 @@ const Upload = {
         }
     },
 
-    resultRowsHtml(r) {
+    // Re-runs the exact same File through the normal upload path -- not a
+    // special-cased retry request, so it gets the same live progress UI,
+    // OCR-retry-message escalation, and error handling as any other
+    // upload. Deliberately replaces the results list with just this
+    // file's outcome (same as starting any new upload) rather than
+    // patching one row in place, to keep this simple and consistent with
+    // how every other upload already renders.
+    async retryFile(index) {
+        const r = this._lastResults && this._lastResults[index];
+        if (!r || !r.file) return;
+        await this.handleFiles([r.file]);
+    },
+
+    resultRowsHtml(r, index) {
         if (!r.success) {
             return `
                 <div class="upload-result-item failure">
                     <span class="upload-result-icon">✗</span>
                     <span class="upload-result-name">${escapeHtml(r.filename)}</span>
                     <span class="upload-result-detail error-text">${escapeHtml(r.error)}</span>
+                    <button class="btn-text upload-retry-btn" data-index="${index}" type="button">Retry</button>
                 </div>
             `;
         }
