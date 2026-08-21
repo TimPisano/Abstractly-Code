@@ -1041,6 +1041,30 @@
     color: var(--text-medium);
 }
 
+.rent-roll-import-form {
+    margin-bottom: 1.5rem;
+}
+
+.rent-roll-field-label {
+    display: block;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--text-dark);
+    margin-bottom: 0.5rem;
+}
+
+.rent-roll-import-form .text-input {
+    width: 100%;
+    margin-bottom: 0.5rem;
+}
+
+.rent-roll-field-hint {
+    font-size: 0.8125rem;
+    color: var(--text-medium);
+    margin-bottom: 1.25rem;
+    line-height: 1.5;
+}
+
 .upload-progress, .upload-results {
     background-color: var(--white);
     border: 1px solid var(--border-color);

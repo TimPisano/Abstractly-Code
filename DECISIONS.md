@@ -2347,3 +2347,398 @@ show the form" was asking for once the two were disambiguated.
 - The one thing that couldn't be verified this way — real credentials
   actually succeeding through the real form — was confirmed directly
   by the user themselves.
+
+## Platform "Coming soon" features: building them out for real
+
+User asked for all 5 remaining "Coming soon" Platform items built to
+genuinely working, tested completion (not stubs), one at a time,
+methodically. Two scope corrections made before starting (confirmed
+with the user): MRI stays in scope for rent-roll import (the live copy
+already promised it; the user's own written list had dropped it, by
+omission not intent), and "feature 4" as the user described it
+actually merges two separate existing roadmap items -- WALT/rollover
+risk (a pure calculation) and cross-checking the rent roll against
+lease documents (a validation feature) -- confirmed the user wants
+both, built as two passes since the second one has a real dependency
+(below).
+
+Sequencing chosen (lowest-risk/most self-contained first, per the
+user's own instruction to pick the order): tenant concentration →
+WALT/rollover risk → loss-to-lease → broker Excel/CSV import → [PMS-
+specific imports, blocked on real sample files] → rent-roll-vs-lease-
+document cross-check → T12 cross-check. The lease-document cross-check
+specifically can't come before rent-roll import: there is currently no
+"rent roll" data source in this system independent of the lease PDFs
+themselves (the only existing "rent roll" is *generated from* the
+extracted leases, in rent_roll_export.py) -- nothing to cross-check
+against until an externally-sourced rent roll (a PMS export or a
+broker file) can actually be imported.
+
+### Feature 1 of 5 (of 6 underlying items): Tenant concentration analysis
+
+`compute_tenant_concentration()` in portfolio.py. Groups leases by
+tenant (conservative name normalization -- case/punctuation/whitespace
+only, reusing the exact matching philosophy `_normalize_address`
+already established: a missed match is far cheaper than a false one,
+since merging two genuinely different tenants would understate
+concentration risk, the opposite of this check's purpose), sums rent
+per tenant, and reports top-1/3/5 cumulative share plus the
+Herfindahl-Hirschman Index -- the actual DOJ/FTC merger-guideline
+concentration metric, not an invented threshold. `concentration_level`
+("high"/"moderate"/"low") triggers off HHI *or* the single largest
+tenant's share independently, since HHI alone can under-flag a
+portfolio with one dominant tenant sitting among many small ones (a
+concrete case built and verified: one tenant at exactly 25% plus 75
+tenants at 1% each gives HHI=700, "low" by HHI alone, but is correctly
+flagged "high" via the dominant-tenant threshold).
+
+Edge cases designed for up front and covered by tests: empty
+portfolio, no lease with both a tenant and a parseable rent, a lease
+missing tenant name (excluded, never bucketed as a fake "Unknown"
+tenant -- that would fabricate a mega-tenant that doesn't exist), a
+chain tenant with several separate lease uploads (correctly merged
+into one), two genuinely different but similarly-named tenants
+("Acme Corp" vs "Acme Corp West" -- correctly NOT merged), and every
+threshold boundary (exact HHI=2500/top-1=25% cases, verified
+mathematically impossible to exceed HHI 2500 while keeping every
+individual tenant under 25% -- confirmed with a small script before
+writing that test, not assumed).
+
+**Two real bugs found and fixed during the mandatory second read-
+through** (re-reading the finished function fresh, looking for silent
+failures): (1) a genuine $0 base rent (a real, if uncommon, lease
+structure -- percentage-only retail deals) was being treated the same
+as an unparseable rent and excluded outright, conflating "found and
+it's zero" with "not found" -- exactly the distinction this codebase's
+other portfolio math (compute_portfolio_metrics et al.) is built
+around getting right; (2) fixing that exposed a real
+`ZeroDivisionError` risk: a portfolio where every included lease
+legitimately has $0 rent has total_rent == 0, and computing a
+percentage of that would crash. Both fixed (zero rent included as a
+real value; total_rent <= 0 now degrades to the same "not enough data"
+shape as an empty portfolio) and both got dedicated regression tests,
+not just a fix. A third, smaller precision bug was also caught this
+pass: top_N_pct and HHI were being computed from each tenant's
+*already-rounded* percentage rather than the raw rent/total fraction,
+compounding rounding error across tenants -- confirmed with a real
+messy-data run (top_5_pct was 95.70 before the fix, 95.69 after; the
+raw-fraction math confirms 95.69 is actually correct).
+
+**Verified against a deliberately messy combined scenario**, not just
+clean unit fixtures: a 12-lease mock shopping center mixing a chain
+tenant uploaded under three differently-cased/spaced names, a
+similarly-named-but-genuinely-different competing entity, a bad-OCR
+lease with no tenant name, a lease with a failed rent extraction, and
+a genuine $0-rent lease -- every number in the output was hand-traced
+and confirmed correct, not just "ran without crashing."
+
+Exposed via `GET /portfolio/tenant-concentration`, tested end to end
+through Flask's real test_client() (not just the underlying function)
+including that it correctly reflects amendments (reads
+`get_all_effective_leases()`, so a rent-increase amendment changes the
+concentration numbers, not just the original base lease's figures).
+Full suite 22/22 (new file: test_tenant_concentration_api.py).
+Platform page copy updated from "Coming soon" to a checkmark with
+copy describing what it actually computes.
+
+### Feature 2 of 5 (of 6 underlying items): Rollover risk and WALT
+
+`compute_walt()` and `compute_rollover_schedule()` in portfolio.py.
+WALT is rent-weighted (not lease-count-weighted) remaining lease term
+-- the standard industry convention, since WALT exists to answer "how
+much of my revenue is locked in, for how long," not "how many leases
+are left." The rollover schedule is the companion exhibit: what share
+of total rent (and lease count) expires in each of the next 5 years
+plus a "year_6_plus" catch-all, the standard "lease rollover schedule"
+analysts build by hand -- deliberately a different shape than the
+existing `compute_expiration_timeline` (which buckets by month,
+per-lease, for "what needs attention soon"), not a duplicate of it.
+
+Both share the same inclusion rule: a lease needs a parseable end date
+AND a parseable, positive rent to count, and an already-expired lease
+(negative days remaining) is excluded from the "remaining term"/
+forward-looking math entirely -- same precedent `compute_portfolio_
+health` already established. A lease expiring exactly today counts at
+0 years remaining (a real data point pulling the average down), not
+excluded like a truly expired one.
+
+**A real design bug found and fixed before ever running the code**
+(caught while re-tracing the draft, not by a test failing): the
+rollover schedule's `lease_count` denominator initially included
+already-expired leases while `total_rent` didn't, so the two
+percentage bases weren't parallel -- fixed by scoping both to the
+forward-looking (bucketed) leases only, with `already_expired` reported
+as raw counts with no percentage of its own (there's no single
+obviously-correct denominator for one). A second, more consequential
+gap: a portfolio where every analyzable lease has ALREADY expired was
+originally going to collapse into the same "not enough data" null
+result as an empty portfolio -- but that's actually the single worst
+possible rollover picture (100% already rolled over) and is real,
+important data, not an absence of it. Fixed to return real zero-filled
+buckets, the real already-expired count, and `rollover_risk_level`
+forced to "high" in that case, rather than silently discarding the
+finding.
+
+`rollover_risk_level`'s thresholds (year_1 share of rent >=25% "high",
+>=15% "moderate") are an explicitly stated rule of thumb, not an
+external standard the way HHI is for tenant concentration -- documented
+as such in the docstring and the constants' own comment, same honesty
+posture as the pricing page's "recommended, not market-tested" framing.
+
+**Verified against a deliberately messy combined portfolio**: a
+dominant anchor tenant expiring in 60 days (real near-term
+concentration risk), several ordinary leases laddered across multiple
+future years, a bad-OCR lease with no end date, a lease with a failed
+rent extraction, and a holdover tenant 45 days past their lease end.
+Every number in both WALT and the rollover schedule was hand-computed
+and confirmed exact, including that the holdover tenant correctly
+stayed out of the forward-looking percentages entirely (kept in
+`already_expired`) rather than diluting or inflating year_1.
+
+Exposed via a single combined `GET /portfolio/rollover` endpoint
+(`{walt, rollover_schedule}`) -- computes `reference_date` once in the
+route and passes the same value to both functions, so the two numbers
+shown together can never disagree about what "today" means. Tested
+end to end through Flask's real test_client(), including that both
+sub-results agree with each other and both correctly reflect lease
+amendments (an amendment extending a lease's end date moves it to a
+different rollover bucket and changes WALT, not just the base lease's
+original figure). Full suite 23/23 (new file: test_rollover_api.py).
+Platform copy updated from "Coming soon" to a checkmark.
+
+### Feature 3 of 5 (of 6 underlying items): Loss-to-lease analysis
+
+Asked the user directly before building anything: "loss to lease" is
+defined as the gap to *market* rent, and this system has no market-rent
+data source at all (no comps feed, no survey integration) -- leases
+only say what a tenant actually pays, never what space could rent for
+today. Building a version against invented market numbers would be
+fabricating data, which the user's own instructions for this whole
+batch of work explicitly said to stop and ask about rather than do.
+User chose a portfolio-internal proxy: `compute_loss_to_lease()`
+compares each lease's rent/sqft against the highest rent/sqft already
+achieved by another lease in the SAME BUILDING, as an honest,
+clearly-labeled stand-in for market rate -- not real market data, and
+documented as such everywhere (docstring, API route comment, and the
+Platform page copy itself). A property with only one lease on file has
+no internal comp and is honestly excluded, not compared against
+unrelated space elsewhere in the portfolio -- this system has no
+property-type field, so a portfolio-wide comp would risk comparing a
+downtown office suite against a suburban retail kiosk.
+
+Deliberately does NOT attach a "high/moderate/low" risk label the way
+tenant concentration (HHI, an external standard) and rollover risk (a
+stated rule of thumb) do -- an internal-proxy "market rate" has neither
+kind of grounding, and a risk label would lend it more authority than
+it honestly has. Reports raw numbers (loss %, and a dollar figure --
+monthly_upside -- since a small percentage gap on a huge unit can
+matter more than a large percentage gap on a tiny one) and lets the
+reader judge.
+
+**A real, meaningful bug found via the required messy-data test, not
+caught by the clean unit tests at all**: initially reused
+`_normalize_address` (the exact-unit-matching function
+`compute_cross_lease_mismatches` uses, designed to catch the SAME unit
+disagreeing with itself across two uploads) to group leases by
+property. That function keeps the suite number as part of the match
+key on purpose -- correct for its own job, wrong for this one. Every
+one of this feature's own unit tests happened to use identical address
+strings with no suite variation, so they all passed 100% despite the
+bug; it only surfaced when testing against a realistic multi-suite
+building ("400 Main St, Suite 100/200/300"), where all three units came
+back as three separate, comp-less single-lease "properties" instead of
+one 3-unit building -- which would have made the feature nearly useless
+for the single most common real case it exists to handle. Fixed by
+adding a second, purpose-built `_normalize_building_address()` that
+strips a recognized suite/unit designator before matching, used only
+here -- `_normalize_address` and cross-lease mismatch detection are
+completely untouched. Added a dedicated regression test for the exact
+scenario (different suites, same building, must group; genuinely
+different buildings with similar-looking addresses, must not).
+
+**Verified against messy combined data** after the fix: a 3-suite
+building with mixed case/spacing in the address, a single-lease
+property with no comp, a lease with no address extracted, and a lease
+with a failed square-footage extraction. Hand-traced every number
+(including the exclusion-count invariant: leases counted +
+leases excluded == leases in) and confirmed exact.
+
+Exposed via `GET /portfolio/loss-to-lease`. Full suite 24/24 (new
+file: test_loss_to_lease_api.py, including an end-to-end DB round-trip
+confirming the same-building/different-suite grouping fix works
+through the real route, not just the unit-level function). Platform
+copy updated from "Coming soon" to a checkmark, explicit that this is
+an internal comp, not external market data.
+
+### Feature 4 of 5 (of 6 underlying items): Rent roll import (broker Excel/CSV)
+
+Session was paused mid-feature and resumed the next day (see the git/
+chat history around this entry for the exact split) -- picking back up
+started by re-reading the in-progress checkpoint that used to be here,
+not just the code, which is exactly why that checkpoint was written in
+that much detail. Kept the parsing-module writeup from that checkpoint
+below since it's still accurate; everything after "Resumed and
+finished:" is what closed the feature out.
+
+**The parsing engine** (`backend/app/rent_roll_import.py`): reads CSV
+and .xlsx files with NO fixed format assumed (matches column headers
+against alias lists, e.g. "Tenant"/"Lessee"/"Occupant" all map to the
+same field), converts rows into the exact same `extracted_fields`
+shape the PDF extractor produces (so every existing portfolio
+computation -- tenant concentration, WALT, rollover, loss-to-lease --
+works on imported rows with zero special-casing), and skips vacant/
+total/subtotal/blank rows rather than importing them as fake tenants.
+Source citations for imported fields use a new shape -- `{row, file,
+quote}` instead of the PDF extractor's `{page, quote}`, since there's
+no PDF page for a spreadsheet cell.
+
+`backend/tests/test_rent_roll_import.py` -- 16 tests. Covers header-
+naming diversity, currency with/without "$", real openpyxl numeric/
+date cell types (not just strings), vacant/total/blank row skipping,
+missing optional columns, and two real bugs found and fixed via
+adversarial testing (not by the clean happy-path tests, which all
+passed even with these bugs present):
+1. A naive CSV-writing test helper split "$4,500.00" into two fields
+   because it didn't quote commas -- caught immediately, and confirms
+   properly-quoted CSV (what real Excel exports produce) round-trips
+   correctly through `csv.reader`.
+2. A real header-matching bug: "Rent Commencement"/"Rent Expiration"
+   (standard commercial lease terms, distinct from "Lease
+   Commencement" -- rent can start later than the lease itself during
+   a free-rent period) were getting matched to `rent_amount` via its
+   bare "rent" alias before `lease_start_date`'s more specific aliases
+   ever got a chance, purely because of dict iteration order. Fixed by
+   rewriting the matcher to prefer the LONGEST/most-specific alias
+   match across all fields simultaneously rather than "first field
+   declared wins," plus adding "rent commencement"/"rent expiration"
+   as real, intentional aliases for the date fields (not just a bug
+   workaround -- this is actually correct real-estate terminology).
+
+**Resumed and finished:**
+- `POST /leases/import-rent-roll` -- multipart file + optional
+  `property_address` (most rent rolls state the building once, not per
+  row; combined with a per-row Unit/Suite column, if present, into
+  each row's full address -- this is also what makes loss-to-lease's
+  same-building comp grouping work correctly for imported data). A
+  file-level problem (wrong extension, empty, no recognizable columns)
+  is a 400, nothing partially imported; a single bad data row is never
+  fatal to the rest of the file. `backend/tests/
+  test_rent_roll_import_api.py` -- 7 tests through the real Flask
+  route, including confirming an imported lease immediately feeds
+  `/portfolio/tenant-concentration` correctly (the actual point of
+  matching the PDF extractor's field shape, verified end to end, not
+  just asserted).
+- `frontend/app/detail-view.js` AND `frontend/admin/admin-detail-view.js`
+  (the peer session's duplicated copy, found and fixed after flagging
+  it to them) -- the source-citation renderer only knew `{page, quote}`
+  and would have shown "Page undefined" for an imported field. Added a
+  branch keyed on `'row' in fieldData.source`.
+- A real upload UI: a second section on the existing Upload Leases
+  page (`frontend/app/index.html`/`upload-view.js`/`api.js`) --
+  property-address input, drag-drop-or-click .csv/.xlsx picker, and a
+  results panel listing every imported lease plus every skipped row
+  with its reason (not just a count -- a user needs to see WHY a row
+  they expected isn't there). Deliberately a separate flow from the
+  PDF Upload object, not unified with it: genuinely different
+  semantics (one file → one lease vs. one file → many; an address
+  input that only applies here; a different accepted file type).
+- Full suite (backend): 26/26 test files passing.
+
+**Verified live, through the real browser, not just curl/pytest**: a
+deliberately messy combined CSV (mixed currency formatting with and
+without "$", a "Rent Commencement"/"Rent Expiration" header pair
+specifically re-testing yesterday's bug fix, a vacant row, a totals
+row, and a Unit column) uploaded through the actual running app at
+`localhost:8000/app/`. Confirmed: 3 real tenants imported, 2 rows
+correctly skipped with the right reasons shown in the UI, suite
+numbers correctly combined into full addresses, and -- opening one
+imported lease's real detail page -- every field showing a correct
+"ROW N OF MESSY_RENT_ROLL.CSV" citation with the actual quoted cell
+value, AND risk_analysis.py running automatically on the imported
+lease with zero modification (correctly flagged missing insurance/
+security-deposit/escalation clauses), which is the concrete proof the
+"same shape as a PDF-extracted lease" design goal actually holds, not
+just an architectural intention. All test data cleaned up afterward
+via the real DELETE route.
+
+Platform copy split into two lines: broker Excel/CSV import is now a
+checkmark; the named PMS systems (Yardi/AppFolio/RealPage/MRI/
+Buildium) remain "Coming soon" as their own line, since those still
+need real sample export files -- see below, unchanged from before.
+
+**Still fully untouched, per the original plan**: PMS-specific
+importers (blocked pending real sample export files from the user),
+and the T12 cross-check (likely needs a real sample T12, not yet asked
+about).
+
+### Feature 5 of 5 (of 6 underlying items): Cross-check rent roll against lease documents
+
+`compute_rent_roll_reconciliation()` in portfolio.py. The design
+problem worth recording: both a rent roll row and a PDF-extracted lease
+land in the exact same `leases` table with no dedicated "where did this
+come from" column, so telling them apart couldn't rely on a schema
+field. Solved with the uploaded filename's extension (.csv/.xlsx vs.
+everything else) -- the only way a non-PDF file enters this table is
+through the rent roll import route, so this is a reliable signal
+without a migration.
+
+"Same unit" is exact address match (`_normalize_address`, suite
+included -- deliberately the same-UNIT matcher `compute_cross_lease_
+mismatches` already uses, NOT `_normalize_building_address`'s same-
+BUILDING matcher loss-to-lease uses, since this is about one unit's two
+records disagreeing with each other). Compares three fields, each with
+its own honest tolerance: tenant name (any disagreement at all --
+there's no "close enough" for whether it's the same tenant), rent
+amount (flagged only past BOTH a percentage AND an absolute-dollar
+tolerance together -- either alone either over-triggers on rounding
+noise at one unit-size extreme or under-triggers at the other; verified
+with two dedicated tests, a $2 gap on a $100/mo kiosk correctly NOT
+flagged despite clearing 1%, a real gap on a $60k/mo anchor correctly
+still flagged), and lease end date (any disagreement -- a rent roll
+showing the pre-renewal expiration while the lease was actually
+extended is exactly the stale-data problem this exists to catch).
+Deliberately excludes square footage and lease start date from the
+comparison -- neither is a meaningful "went stale" signal the way rent/
+tenant/end-date are (a start date is a fixed historical fact; square
+footage rarely changes), a deliberate scope choice, not an oversight.
+
+Also deliberately does NOT attach a severity/risk-level classification
+the other three features in this batch do -- tenant and date mismatches
+are binary (either they agree or they don't, no gradient to classify),
+and a rent mismatch already had to clear a real tolerance bar before
+being flagged at all, so everything that IS flagged is already
+"significant enough."
+
+A rent roll row with no matching lease PDF -- the common case, since a
+rent roll typically covers far more units than have an uploaded lease
+PDF -- is simply not compared against anything, not an error. An empty
+`mismatches` list with real (non-zero) counts is itself a real, positive
+result ("reconciliation happened, everything agreed"), deliberately
+distinguished from an all-zero-counts result ("nothing to reconcile
+yet, most likely because no rent roll has ever been imported") --
+this function does NOT use the rest of this module's "None means not
+enough data" convention, since an empty mismatch list here is genuinely
+good news, not an unknown.
+
+**Verified against a realistic combined portfolio**, not just clean
+unit fixtures: 5 rent roll rows and 4 lease PDFs across a small
+building, covering both of the realistic scenarios this feature exists
+for (a real renewal where the PM system's rent AND expiration date both
+went stale, and a tenant turnover the PM system never picked up), a
+trivial 3-cent rounding gap correctly not flagged, and one rent roll
+row with no lease PDF on file yet correctly excluded rather than
+compared against something unrelated. Every mismatch (and every
+non-mismatch) hand-traced and confirmed exact.
+
+Exposed via `GET /portfolio/rent-roll-reconciliation`, tested end to
+end through Flask's real test_client() against a REAL rent roll import
+(through the real import route, not a fixture) compared against a real
+inserted "lease PDF" record, including that an amendment on the lease-
+document side is correctly reflected (reads `get_all_effective_leases()`,
+same as every other function in this batch). Full suite 27/27 (new
+file: test_rent_roll_reconciliation_api.py). Consistent with the other
+three pure-computation features in this batch (tenant concentration,
+WALT/rollover, loss-to-lease), this shipped as an API endpoint only --
+no new dedicated dashboard UI widget, matching the bar already set by
+those three rather than treating this one differently. Platform copy
+updated from "Coming soon" to a checkmark.

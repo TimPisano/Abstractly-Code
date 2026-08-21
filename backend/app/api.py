@@ -19,7 +19,7 @@ Three layers of endpoints:
 from flask import Flask, request, jsonify, Response, session
 from flask_cors import CORS
 from dotenv import load_dotenv
-from datetime import timedelta
+from datetime import date, timedelta
 import logging
 import os
 import re
@@ -42,6 +42,7 @@ from app import database
 from app import email_service
 from app.risk_analysis import analyze_lease_risks
 from app.qa_engine import answer_question
+from app.rent_roll_import import RentRollImportError, parse_csv_rent_roll, parse_xlsx_rent_roll
 from app.portfolio import (
     compute_portfolio_metrics,
     compute_expiration_timeline,
@@ -51,7 +52,12 @@ from app.portfolio import (
     compute_cross_lease_mismatches,
     compute_lease_confidence_summary,
     compute_portfolio_confidence_summary,
+    compute_loss_to_lease,
+    compute_rent_roll_reconciliation,
     compute_rent_variance_outliers,
+    compute_rollover_schedule,
+    compute_tenant_concentration,
+    compute_walt,
     portfolio_context_for_risk_analysis,
 )
 from app.comparison import compare_leases, benchmark_lease
@@ -482,6 +488,80 @@ def upload_leases_batch():
         "total_leases_created": total_leases_created,
         "results": results,
     }), 200
+
+
+@app.route('/leases/import-rent-roll', methods=['POST'])
+def import_rent_roll():
+    """
+    Upload a broker-built Excel (.xlsx) or CSV rent roll and import
+    every real tenant row as its own lease record. See
+    rent_roll_import.py for the parsing itself -- the key point is that
+    it produces the exact same extracted_fields shape the PDF extractor
+    does, so every existing portfolio computation (metrics, risk
+    analysis, tenant concentration, WALT, rollover schedule, loss-to-
+    lease) works on these rows with zero special-casing here or
+    anywhere else.
+
+    Expects multipart form data: 'file' (.csv or .xlsx), and an
+    optional 'property_address' field -- the building this rent roll is
+    for. Most rent rolls state the building once (a title/header area),
+    not per row, so this is supplied by the uploader rather than parsed
+    out of the file; combined with a per-row Unit/Suite column (if the
+    file has one) to produce each row's full property_address. Omitting
+    it is allowed (property_address is then only set when the file
+    itself has a per-row unit/suite column, and left "not found"
+    otherwise) but not recommended -- loss-to-lease's building-level
+    comp grouping needs a real address to be useful.
+
+    A file-level problem (wrong extension, empty file, no recognizable
+    tenant/rent columns) is a 400 -- nothing is imported. A single bad
+    DATA ROW (blank tenant, a vacant/total row, an unparseable cell) is
+    never fatal to the rest of the file -- see `skipped_rows` in the
+    response for what got skipped and why.
+    """
+    if 'file' not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
+    file_storage = request.files['file']
+    if file_storage.filename == '':
+        return jsonify({"error": "No file selected"}), 400
+
+    filename = file_storage.filename
+    extension = filename.rsplit('.', 1)[1].lower() if '.' in filename else ''
+    if extension not in ('csv', 'xlsx'):
+        return jsonify({"error": "Invalid file type. Only .csv and .xlsx rent rolls are supported."}), 400
+
+    base_property_address = (request.form.get('property_address') or '').strip() or None
+    file_bytes = file_storage.read()
+
+    try:
+        if extension == 'csv':
+            parsed = parse_csv_rent_roll(file_bytes, filename, base_property_address)
+        else:
+            parsed = parse_xlsx_rent_roll(file_bytes, filename, base_property_address)
+    except RentRollImportError as e:
+        return jsonify({"error": str(e)}), 400
+
+    created = []
+    for lease_data in parsed["leases"]:
+        lease_id = database.insert_lease(
+            filename,
+            lease_data["extracted_fields"],
+            document_type="lease",
+            display_name=lease_data["display_name"],
+        )
+        lease = database.get_effective_lease(lease_id)
+        lease["tags"] = []
+        created.append(_lease_summary(lease))
+
+    skipped_note = f" ({len(parsed['skipped_rows'])} row(s) skipped)" if parsed["skipped_rows"] else ""
+    database.insert_activity("rent_roll_imported", f"Imported {len(created)} lease(s) from {filename}{skipped_note}")
+
+    return jsonify({
+        "leases": created,
+        "imported_count": len(created),
+        "skipped_rows": parsed["skipped_rows"],
+        "column_mapping": parsed["column_mapping"],
+    }), 201
 
 
 @app.route('/leases', methods=['GET'])
@@ -956,6 +1036,45 @@ def portfolio_confidence_summary():
     """The trust-mechanism number: field counts by confidence tier across the whole portfolio, plus how many were flagged for review during validation. See compute_portfolio_confidence_summary."""
     leases = database.get_all_effective_leases()
     return jsonify(compute_portfolio_confidence_summary(leases)), 200
+
+
+@app.route('/portfolio/tenant-concentration', methods=['GET'])
+def portfolio_tenant_concentration():
+    """How much of total rent depends on a small number of tenants -- top-1/3/5 cumulative share, Herfindahl-Hirschman Index, and a high/moderate/low read. See compute_tenant_concentration."""
+    leases = database.get_all_effective_leases()
+    return jsonify(compute_tenant_concentration(leases)), 200
+
+
+@app.route('/portfolio/rollover', methods=['GET'])
+def portfolio_rollover():
+    """
+    Rollover risk and WALT together, in one response -- shipped as a
+    single combined Platform feature, so both numbers are computed
+    against the exact same `reference_date` (fetched once here, not
+    independently inside each function) so they can never disagree
+    about what "today" means if a request happened to straddle
+    midnight. See compute_walt and compute_rollover_schedule.
+    """
+    leases = database.get_all_effective_leases()
+    reference_date = date.today()
+    return jsonify({
+        "walt": compute_walt(leases, reference_date=reference_date),
+        "rollover_schedule": compute_rollover_schedule(leases, reference_date=reference_date),
+    }), 200
+
+
+@app.route('/portfolio/loss-to-lease', methods=['GET'])
+def portfolio_loss_to_lease():
+    """Upside vs. this portfolio's own best-achieved rent/sqft per building (no external market-rent data source exists -- see compute_loss_to_lease's docstring for why this is an internal proxy, not true market rent)."""
+    leases = database.get_all_effective_leases()
+    return jsonify(compute_loss_to_lease(leases)), 200
+
+
+@app.route('/portfolio/rent-roll-reconciliation', methods=['GET'])
+def portfolio_rent_roll_reconciliation():
+    """Cross-checks an imported rent roll (see /leases/import-rent-roll) against the actual lease PDFs on file for the same units, flagging tenant/rent/end-date disagreements. See compute_rent_roll_reconciliation."""
+    leases = database.get_all_effective_leases()
+    return jsonify(compute_rent_roll_reconciliation(leases)), 200
 
 
 @app.route('/activity', methods=['GET'])

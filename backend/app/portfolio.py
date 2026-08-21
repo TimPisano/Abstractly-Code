@@ -243,23 +243,75 @@ _CROSS_LEASE_SQFT_HIGH_PCT = 15.0
 _CROSS_LEASE_SQFT_MEDIUM_PCT = 5.0
 
 
+def _normalize_for_matching(text: Optional[str]) -> Optional[str]:
+    """
+    Loose text matching for "is this the same real-world thing" across
+    independently-uploaded leases -- lowercased, punctuation stripped,
+    whitespace collapsed. Not real entity resolution, just enough to
+    catch the common case of the exact same name/address typed the same
+    way in two lease documents. Deliberately conservative: this will
+    miss a real match typed two different ways ("Suite 200" vs
+    "Ste. 200", "Acme Corp" vs "Acme Corporation"), but will not
+    incorrectly match two genuinely different things -- a missed
+    opportunity to flag/group something is a far smaller problem than
+    an actively misleading false match (e.g. merging "Acme Corp" and
+    "Acme Corp West" into one tenant would understate concentration
+    risk, which is the opposite of what this kind of check is for).
+    """
+    if not text:
+        return None
+    normalized = re.sub(r"[^\w\s]", "", text.lower())
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+    return normalized or None
+
+
 def _normalize_address(address: Optional[str]) -> Optional[str]:
     """
-    Loose matching for "same property" across independently-uploaded
-    leases -- lowercased, punctuation stripped, whitespace collapsed.
-    Not a real address-parsing/geocoding solution, just enough to catch
-    the common case of the exact same address typed the same way in two
-    lease documents. Deliberately conservative: this will miss a real
-    match typed two different ways ("Suite 200" vs "Ste. 200"), but
-    will not incorrectly match two genuinely different addresses -- a
-    missed opportunity to flag something is a far smaller problem than
-    an actively misleading false match.
+    Loose matching for "same UNIT" (exact address, suite included)
+    across independently-uploaded leases -- see _normalize_for_matching.
+    Used by cross-lease mismatch detection, where the whole point is
+    catching the SAME unit uploaded twice with conflicting numbers, so
+    two different suites in the same building must NOT match here (see
+    _normalize_building_address for the opposite, building-level need).
+    """
+    return _normalize_for_matching(address)
+
+
+# Strips a recognizable suite/unit designator (", Suite 200", " Ste. 4",
+# " Unit 12B", " #301") wherever it appears, case-insensitively, before
+# the usual lowercase/punctuation/whitespace normalization runs. Applied
+# in _normalize_building_address only -- _normalize_address (used for
+# cross-lease mismatch detection) deliberately does NOT do this, since
+# that check exists specifically to catch the same unit's numbers
+# disagreeing across two uploads, which requires the suite to still be
+# part of the match key there.
+_SUITE_DESIGNATOR_RE = re.compile(r",?\s*(?:suite|ste\.?|unit|apt\.?|#)\s*[\w-]+", re.IGNORECASE)
+
+
+def _normalize_building_address(address: Optional[str]) -> Optional[str]:
+    """
+    Loose matching for "same BUILDING" (suite/unit number ignored)
+    across independently-uploaded leases -- for grouping DIFFERENT
+    units that share a property, e.g. for an internal rent comp. "123
+    Main St, Suite 100" and "123 Main St, Suite 200" must match here
+    (same building, different units) even though they must NOT match
+    under _normalize_address (which exists for the opposite purpose --
+    catching the same unit disagreeing with itself). Same conservative
+    posture as _normalize_for_matching otherwise: this will miss a
+    building match typed inconsistently in other ways (a different
+    street abbreviation, a missing city), but won't merge two
+    genuinely different buildings just because both happen to remove a
+    suite number.
     """
     if not address:
         return None
-    normalized = re.sub(r"[^\w\s]", "", address.lower())
-    normalized = re.sub(r"\s+", " ", normalized).strip()
-    return normalized or None
+    stripped = _SUITE_DESIGNATOR_RE.sub("", address)
+    return _normalize_for_matching(stripped)
+
+
+def _normalize_tenant_name(tenant: Optional[str]) -> Optional[str]:
+    """Loose matching for "same tenant" across independently-uploaded leases (e.g. a chain with several units) -- see _normalize_for_matching."""
+    return _normalize_for_matching(tenant)
 
 
 def _lease_label(lease: Dict[str, Any]) -> str:
@@ -494,6 +546,151 @@ def compute_rent_variance_outliers(leases: List[Dict[str, Any]]) -> List[Dict[st
 
     outliers.sort(key=lambda entry: abs(entry["diff_pct"]), reverse=True)
     return outliers
+
+
+# Herfindahl-Hirschman Index thresholds, on the standard 0-10,000 scale
+# (sum of each tenant's percent-of-total-rent, squared). These are the
+# exact thresholds DOJ/FTC merger guidelines use for market
+# concentration -- borrowed rather than invented, since "how concentrated
+# is too concentrated" needs a defensible reference point, not an
+# arbitrary number. A portfolio is also independently flagged "high" if
+# any single tenant exceeds TOP_TENANT_HIGH_RISK_PCT of total rent, since
+# a single dominant tenant is an intuitive cash-flow risk regardless of
+# how the HHI shape reads -- HHI alone can under-flag a portfolio with
+# one big tenant plus many small ones if the small ones pull the index
+# down.
+HHI_HIGH_THRESHOLD = 2500.0
+HHI_MODERATE_THRESHOLD = 1500.0
+TOP_TENANT_HIGH_RISK_PCT = 25.0
+TOP_TENANT_MODERATE_RISK_PCT = 15.0
+
+
+def compute_tenant_concentration(leases: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    How much of the portfolio's total rent depends on a small number of
+    tenants -- a real due-diligence concern independent of any single
+    lease's own terms: a portfolio where one tenant is 40% of total rent
+    takes a much bigger hit if that one tenant leaves than a portfolio
+    where no tenant exceeds 5%, even if every individual lease looks
+    fine on its own.
+
+    Leases are grouped by tenant name (conservatively normalized --
+    case/punctuation/whitespace only, see _normalize_tenant_name) so a
+    chain tenant with several separate lease uploads (e.g. three
+    locations of the same retailer) is correctly counted as one tenant,
+    not three. Deliberately does NOT do fuzzy/substring matching: two
+    similarly-named but genuinely different tenants ("Acme Corp" and
+    "Acme Corp West") must never be merged, since that would understate
+    concentration risk -- the exact failure mode this check exists to
+    catch. A missed merge (same tenant counted twice under slightly
+    different spellings) is a smaller, more honest failure than a false
+    merge.
+
+    A lease only counts toward this analysis if it has BOTH a tenant
+    name and a parseable, positive rent amount -- one without the other
+    can't be attributed to anyone's total. Leases missing either are
+    excluded and counted in `excluded_lease_count` rather than silently
+    dropped, so the result is honest about how much of the portfolio it
+    could actually analyze. A lease with a missing tenant name is never
+    bucketed into a generic "Unknown" tenant -- that would fabricate a
+    single large "tenant" out of unrelated leases and could itself look
+    like a concentration risk that doesn't really exist.
+
+    Returns `{tenant_count, lease_count, excluded_lease_count,
+    total_rent, tenants: [{tenant, rent, pct_of_total}, ...] sorted by
+    rent descending, top_1_pct, top_3_pct, top_5_pct, hhi,
+    concentration_level}`. `concentration_level` is "high" / "moderate"
+    / "low", based on HHI and the largest single tenant's share (see
+    the threshold constants above). When there isn't enough data to
+    analyze (no leases, or none with both a tenant and a rent), every
+    numeric field is None and concentration_level is None rather than a
+    misleading 0 -- an unknown concentration is not the same thing as a
+    known-zero one.
+    """
+    groups: Dict[str, Dict[str, Any]] = {}  # normalized name -> {"tenant": display name, "rent": total}
+    lease_count = 0
+    excluded_lease_count = 0
+
+    for lease in leases:
+        tenant_display = field_value(lease, "tenant")
+        rent = parse_currency(field_value(lease, "rent_amount"))
+        normalized = _normalize_tenant_name(tenant_display)
+
+        # rent == 0.0 is deliberately NOT excluded here: parse_currency
+        # distinguishes "no dollar figure found" (None) from "found, and
+        # it's genuinely zero" (0.0) -- a percentage-only retail lease
+        # with no base rent is a real, if uncommon, lease structure, not
+        # a data-quality problem. (rent < 0 can't actually happen given
+        # parse_currency's regex has no sign handling, but the guard
+        # costs nothing and documents the assumption.) A portfolio where
+        # EVERY included lease has $0 rent -- so total_rent ends up 0 --
+        # is handled below, not here: that's a "can't compute a
+        # percentage of zero" case, not a "this one lease is bad" case.
+        if normalized is None or rent is None or rent < 0:
+            excluded_lease_count += 1
+            continue
+
+        lease_count += 1
+        if normalized not in groups:
+            groups[normalized] = {"tenant": tenant_display, "rent": 0.0}
+        groups[normalized]["rent"] += rent
+
+    total_rent = sum(g["rent"] for g in groups.values())
+
+    if not groups or total_rent <= 0:
+        return {
+            "tenant_count": 0,
+            "lease_count": 0,
+            "excluded_lease_count": excluded_lease_count if not groups else len(leases),
+            "total_rent": None,
+            "tenants": [],
+            "top_1_pct": None,
+            "top_3_pct": None,
+            "top_5_pct": None,
+            "hhi": None,
+            "concentration_level": None,
+        }
+
+    # Computed from the raw (unrounded) rent/total_rent fractions, not
+    # from already-rounded per-tenant percentages -- rounding each
+    # tenant's share first and then summing those rounded values for
+    # top_N_pct/hhi compounds rounding error across tenants (visible as
+    # e.g. a portfolio's per-tenant percentages summing to 100.01, not
+    # 100.00, in a real test against a 6-tenant scenario). Rounding
+    # happens exactly once, on the final reported numbers.
+    raw_shares = [(g["tenant"], g["rent"], g["rent"] / total_rent * 100) for g in groups.values()]
+    raw_shares.sort(key=lambda entry: entry[1], reverse=True)
+
+    tenants = [
+        {"tenant": name, "rent": round(rent, 2), "pct_of_total": round(pct, 2)}
+        for name, rent, pct in raw_shares
+    ]
+
+    def _cumulative_pct(n: int) -> float:
+        return round(sum(pct for _, _, pct in raw_shares[:n]), 2)
+
+    hhi = round(sum(pct ** 2 for _, _, pct in raw_shares), 1)
+    top_1_pct = _cumulative_pct(1)
+
+    if hhi >= HHI_HIGH_THRESHOLD or top_1_pct >= TOP_TENANT_HIGH_RISK_PCT:
+        concentration_level = "high"
+    elif hhi >= HHI_MODERATE_THRESHOLD or top_1_pct >= TOP_TENANT_MODERATE_RISK_PCT:
+        concentration_level = "moderate"
+    else:
+        concentration_level = "low"
+
+    return {
+        "tenant_count": len(tenants),
+        "lease_count": lease_count,
+        "excluded_lease_count": excluded_lease_count,
+        "total_rent": round(total_rent, 2),
+        "tenants": tenants,
+        "top_1_pct": _cumulative_pct(1),
+        "top_3_pct": _cumulative_pct(3),
+        "top_5_pct": _cumulative_pct(5),
+        "hhi": hhi,
+        "concentration_level": concentration_level,
+    }
 
 
 def _timeline_entry(
@@ -803,4 +1000,499 @@ def compute_portfolio_health(
         "avg_days_to_expiration": _mean([float(d) for d in days_to_expiration], digits=0),
         "monthly_rent_expiring_6mo": _total(rent_expiring_6mo),
         "monthly_rent_expiring_12mo": _total(rent_expiring_12mo),
+    }
+
+
+# Average calendar year length (accounts for leap years), same
+# averaging approach as DAYS_PER_MONTH above -- used to convert a day
+# delta into "years remaining" for WALT and the rollover schedule.
+DAYS_PER_YEAR = 365.25
+
+
+def compute_walt(leases: List[Dict[str, Any]], reference_date: Optional[date] = None) -> Dict[str, Any]:
+    """
+    Weighted Average Lease Term (WALT): the average remaining lease term
+    across the portfolio, weighted by rent -- each lease pulls the
+    average toward its own remaining term in proportion to how much
+    rent it represents, not just counted equally per lease. This is the
+    standard industry convention (not an arbitrary choice): WALT exists
+    to answer "how much of my REVENUE is locked in, and for how long,"
+    not "how many leases do I have left." A portfolio can have plenty of
+    leases remaining and still have a short, risky WALT if the big
+    anchor tenants are the ones expiring soonest.
+
+    A lease only contributes if it has BOTH a parseable lease_end_date
+    and a parseable, positive rent -- one without the other can't be
+    placed in the weighted average. Leases already expired as of
+    `reference_date` (negative days remaining) are excluded entirely,
+    same precedent compute_portfolio_health already established for
+    "time remaining" math -- an expired lease doesn't have a remaining
+    term to average in, it has none. A lease expiring exactly on
+    `reference_date` (0 days remaining) IS included, at 0 years -- that
+    is a real, meaningful data point (a lease with no time left is
+    correctly pulling the average toward zero), not an error state,
+    same "expiring today counts as still-active-today" rule
+    compute_expiration_timeline already uses.
+
+    Returns `{walt_years, lease_count, excluded_lease_count,
+    total_weighted_rent}`. When there's nothing to average (no leases,
+    or none with both a usable end date and rent, or the only usable
+    leases all have $0 rent so there's no weight to average by),
+    `walt_years` is None -- an unknown WALT is not the same thing as a
+    zero one.
+    """
+    if reference_date is None:
+        reference_date = date.today()
+
+    lease_count = 0
+    excluded_lease_count = 0
+    weighted_years_sum = 0.0
+    rent_sum = 0.0
+
+    for lease in leases:
+        end_date = parse_date(field_value(lease, "lease_end_date"))
+        rent = parse_currency(field_value(lease, "rent_amount"))
+
+        if end_date is None or rent is None or rent <= 0:
+            excluded_lease_count += 1
+            continue
+
+        days_remaining = (end_date - reference_date).days
+        if days_remaining < 0:
+            excluded_lease_count += 1
+            continue
+
+        years_remaining = days_remaining / DAYS_PER_YEAR
+        weighted_years_sum += years_remaining * rent
+        rent_sum += rent
+        lease_count += 1
+
+    if lease_count == 0 or rent_sum <= 0:
+        return {
+            "walt_years": None,
+            "lease_count": 0,
+            "excluded_lease_count": len(leases),
+            "total_weighted_rent": None,
+        }
+
+    return {
+        "walt_years": round(weighted_years_sum / rent_sum, 2),
+        "lease_count": lease_count,
+        "excluded_lease_count": excluded_lease_count,
+        "total_weighted_rent": round(rent_sum, 2),
+    }
+
+
+# Rollover-risk read: how much of total rent rolling over in Year 1 (the
+# nearest, most urgent window) counts as concerning. There's no external
+# standard for this the way HHI is a real DOJ/FTC benchmark for tenant
+# concentration -- this is a stated, reasonable rule of thumb (a
+# portfolio with a well-laddered lease schedule keeps any single year's
+# rollover well under a fifth of total rent; above a quarter in the very
+# next year is a real near-term releasing/re-tenanting risk), not a
+# market-tested threshold. Deliberately conservative and named as such
+# in the docstring below, same posture as the pricing page's own
+# "recommended, not market-tested" framing for numbers without an
+# external reference point.
+ROLLOVER_YEAR_1_HIGH_RISK_PCT = 25.0
+ROLLOVER_YEAR_1_MODERATE_RISK_PCT = 15.0
+
+_ROLLOVER_BUCKET_NAMES = ["year_1", "year_2", "year_3", "year_4", "year_5", "year_6_plus"]
+
+
+def compute_rollover_schedule(leases: List[Dict[str, Any]], reference_date: Optional[date] = None) -> Dict[str, Any]:
+    """
+    The lease rollover schedule: what share of total portfolio rent (and
+    of total lease count) expires in each of the next five years, plus a
+    catch-all "6+ years" bucket -- the standard exhibit for seeing how
+    much revenue is "at risk" of needing to be re-leased, and when,
+    rather than just a single blended average (that's what compute_walt
+    is for). Complements compute_expiration_timeline (which buckets by
+    month, per-lease, for "what needs attention soon") with a coarser,
+    percentage-of-total view organized the way an underwriting exhibit
+    actually gets built: by year, by share of rent.
+
+    Same inclusion rule as compute_walt: a lease needs both a parseable
+    end date and a parseable, positive rent to be placed in a bucket.
+    Leases already expired as of `reference_date` go in their own
+    `already_expired` bucket -- not dropped, and deliberately NOT folded
+    into year_1, since "will expire soon" and "has already expired" are
+    materially different risks (an already-expired lease still on the
+    books usually means a holdover tenant or a data problem, either way
+    worth its own visibility rather than blending into the forward-
+    looking schedule). A lease expiring exactly on `reference_date`
+    lands in year_1 (0-12 months forward), matching the
+    "expiring today counts as still-active-today" rule used elsewhere.
+
+    Returns `{buckets: {bucket_name: {rent, pct_of_total_rent,
+    lease_count, pct_of_total_leases}, ...}, already_expired: {rent,
+    lease_count}, total_rent, lease_count, excluded_lease_count,
+    rollover_risk_level}`. `total_rent` and `lease_count` are scoped to
+    the forward-looking (bucketed) leases only, deliberately excluding
+    already-expired ones -- every bucket's percentages are relative to
+    that same forward-looking total, so they sum to (approximately) 100%
+    across the six buckets. `already_expired` reports raw rent/lease
+    count only, with no percentage of its own: a percentage of "total
+    rent" that itself excludes the expired leases would be misleading,
+    and there's no single obviously-correct larger denominator to use
+    instead. `rollover_risk_level` ("high"/"moderate"/"low") is driven
+    by year_1's share of total rent -- see the threshold constants above
+    for why, and their explicitly non-market-tested status.
+
+    Two distinct empty cases, handled differently on purpose: no usable
+    data at all (no leases, or none with both a date and rent) returns
+    a fully None-shaped "not enough data" result, same posture as
+    compute_walt. But a portfolio where every analyzable lease has
+    ALREADY expired is NOT "not enough data" -- it's real data showing
+    the worst possible rollover picture (100% already rolled over,
+    nothing scheduled in any future year) -- so that case returns real
+    zero-filled buckets, a real (non-null) `already_expired` count, and
+    `rollover_risk_level` forced to "high", rather than silently
+    discarding the finding by returning None.
+    """
+    if reference_date is None:
+        reference_date = date.today()
+
+    buckets = {name: {"rent": 0.0, "lease_count": 0} for name in _ROLLOVER_BUCKET_NAMES}
+    already_expired = {"rent": 0.0, "lease_count": 0}
+    lease_count = 0  # forward-looking (bucketed) leases only -- see docstring
+    excluded_lease_count = 0
+    total_rent = 0.0  # forward-looking rent only, same scope as lease_count
+
+    for lease in leases:
+        end_date = parse_date(field_value(lease, "lease_end_date"))
+        rent = parse_currency(field_value(lease, "rent_amount"))
+
+        if end_date is None or rent is None or rent <= 0:
+            excluded_lease_count += 1
+            continue
+
+        days_remaining = (end_date - reference_date).days
+
+        if days_remaining < 0:
+            already_expired["rent"] += rent
+            already_expired["lease_count"] += 1
+            continue
+
+        lease_count += 1
+        total_rent += rent
+        years_remaining = days_remaining / DAYS_PER_YEAR
+        bucket_index = min(int(years_remaining), 5)  # 0-4 -> year_1..year_5 ; 5+ -> year_6_plus
+        bucket_name = _ROLLOVER_BUCKET_NAMES[bucket_index]
+        buckets[bucket_name]["rent"] += rent
+        buckets[bucket_name]["lease_count"] += 1
+
+    # Nothing at all to work with -- neither a forward-looking schedule
+    # nor any already-expired data. Genuinely "not enough data."
+    if lease_count == 0 and already_expired["lease_count"] == 0:
+        return {
+            "buckets": None,
+            "already_expired": None,
+            "total_rent": None,
+            "lease_count": 0,
+            "excluded_lease_count": len(leases),
+            "rollover_risk_level": None,
+        }
+
+    # There IS real data, but none of it is forward-looking -- every
+    # analyzable lease has already expired. This is not "not enough
+    # data": it's the single worst possible rollover picture (100% of
+    # whatever's left has already rolled over), and reporting it as a
+    # null result would hide the most important finding this function
+    # can surface. Buckets are all real zeros (there's genuinely nothing
+    # scheduled to expire in any future year), not a placeholder.
+    if lease_count == 0:
+        bucket_results = {
+            name: {"rent": 0.0, "pct_of_total_rent": 0.0, "lease_count": 0, "pct_of_total_leases": 0.0}
+            for name in _ROLLOVER_BUCKET_NAMES
+        }
+        return {
+            "buckets": bucket_results,
+            "already_expired": {"rent": round(already_expired["rent"], 2), "lease_count": already_expired["lease_count"]},
+            "total_rent": 0.0,
+            "lease_count": 0,
+            "excluded_lease_count": excluded_lease_count,
+            "rollover_risk_level": "high",
+        }
+
+    bucket_results = {}
+    for name, data in buckets.items():
+        bucket_results[name] = {
+            "rent": round(data["rent"], 2),
+            "pct_of_total_rent": round(data["rent"] / total_rent * 100, 2),
+            "lease_count": data["lease_count"],
+            "pct_of_total_leases": round(data["lease_count"] / lease_count * 100, 2),
+        }
+
+    year_1_pct = bucket_results["year_1"]["pct_of_total_rent"]
+    if year_1_pct >= ROLLOVER_YEAR_1_HIGH_RISK_PCT:
+        rollover_risk_level = "high"
+    elif year_1_pct >= ROLLOVER_YEAR_1_MODERATE_RISK_PCT:
+        rollover_risk_level = "moderate"
+    else:
+        rollover_risk_level = "low"
+
+    return {
+        "buckets": bucket_results,
+        "already_expired": {"rent": round(already_expired["rent"], 2), "lease_count": already_expired["lease_count"]},
+        "total_rent": round(total_rent, 2),
+        "lease_count": lease_count,
+        "excluded_lease_count": excluded_lease_count,
+        "rollover_risk_level": rollover_risk_level,
+    }
+
+
+def compute_loss_to_lease(leases: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    "Loss to lease": how much upside exists if a unit were re-leased at
+    the strongest rent this portfolio has actually proven a comparable
+    unit can command, rather than what it's leased at today.
+
+    This is deliberately NOT compared against true external market
+    rent -- this system has no market-rent data source (no comps feed,
+    no survey integration), and inventing a market-rate number would be
+    fabricating data. Instead, the "market" proxy used here is
+    internal: the highest rent-per-square-foot already achieved among
+    OTHER leases at the same BUILDING -- grouped via
+    _normalize_building_address, which strips the suite/unit number
+    before matching (deliberately NOT the same _normalize_address used
+    for cross-lease mismatch detection elsewhere in this module, which
+    needs the exact opposite: matching the same UNIT, suite included,
+    to catch that unit's own numbers disagreeing across two uploads --
+    using it here would have made every differently-suited unit in a
+    building look comp-less, which was a real bug caught only by
+    testing against a multi-suite building, not by clean single-suite
+    test fixtures). A lease is only included if at least one OTHER
+    lease shares its building -- a property with only one lease on
+    file has no internal comp to measure against, and is honestly
+    excluded rather than compared against unrelated space elsewhere in
+    the portfolio (this system has no property-type field, so a
+    portfolio-wide comp would risk comparing, say, a downtown office
+    suite against a suburban
+    retail kiosk -- same-property grouping is the only comp basis
+    available that doesn't risk that).
+
+    Deliberately does NOT classify a "high/moderate/low" risk level the
+    way compute_tenant_concentration and compute_rollover_schedule do:
+    those have a defensible reference point (an external standard, or a
+    stated rule of thumb) to hang a threshold on. An internal-proxy
+    "market rate" has neither, and attaching a risk label would lend it
+    more authority than it honestly has. This function reports the raw
+    numbers; the reader judges them.
+
+    A lease at exactly its property's top rent has 0% loss (correctly
+    included at zero, not excluded -- it has a real, computed answer,
+    it's just zero) -- only a lease with strictly lower rent/sqft than
+    its property's max shows a positive gap.
+
+    Returns `{leases: [{lease_id, display_name, tenant, rent_per_sqft,
+    property_top_rent_per_sqft, loss_pct, monthly_upside}, ...] sorted
+    by monthly_upside descending, total_monthly_upside, lease_count,
+    excluded_lease_count}`. `monthly_upside` is
+    (property_top_psf - this_lease_psf) * this_lease_sqft -- the
+    dollar gap, not just the percentage, since a small percentage gap
+    on a huge unit can matter more than a large percentage gap on a
+    tiny one. `excluded_lease_count` covers both "missing rent/sqft/
+    address" and "no other lease at the same property to compare
+    against" -- both are real, honest reasons a lease can't get a
+    computed answer, not the same failure, but reported as one count
+    for simplicity (matching this module's existing per-metric,
+    single-excluded-count convention elsewhere).
+    """
+    # Group by normalized address first, keeping every lease that at
+    # least has enough to be grouped -- the "needs 2+ leases at this
+    # address" filter happens after grouping, not before, since we
+    # don't know a lease is comp-less until we see its whole group.
+    groups: Dict[str, List[Dict[str, Any]]] = {}
+    ungroupable_count = 0
+
+    for lease in leases:
+        address = _normalize_building_address(field_value(lease, "property_address"))
+        psf = rent_per_sqft(field_value(lease, "rent_amount"), field_value(lease, "square_footage"))
+        if address is None or psf is None or psf <= 0:
+            ungroupable_count += 1
+            continue
+        groups.setdefault(address, []).append(lease)
+
+    results = []
+    comp_less_count = 0
+
+    for group in groups.values():
+        if len(group) < 2:
+            comp_less_count += len(group)
+            continue
+
+        group_psf = [
+            (lease, rent_per_sqft(field_value(lease, "rent_amount"), field_value(lease, "square_footage")))
+            for lease in group
+        ]
+        top_psf = max(psf for _, psf in group_psf)
+
+        for lease, psf in group_psf:
+            sqft = parse_square_footage(field_value(lease, "square_footage"))
+            loss_pct = round((top_psf - psf) / top_psf * 100, 2)
+            monthly_upside = round((top_psf - psf) * sqft, 2)
+            results.append({
+                "lease_id": lease.get("id"),
+                "display_name": _lease_label(lease),
+                "tenant": field_value(lease, "tenant"),
+                "rent_per_sqft": round(psf, 2),
+                "property_top_rent_per_sqft": round(top_psf, 2),
+                "loss_pct": loss_pct,
+                "monthly_upside": monthly_upside,
+            })
+
+    results.sort(key=lambda entry: entry["monthly_upside"], reverse=True)
+
+    return {
+        "leases": results,
+        "total_monthly_upside": round(sum(r["monthly_upside"] for r in results), 2) if results else None,
+        "lease_count": len(results),
+        "excluded_lease_count": ungroupable_count + comp_less_count,
+    }
+
+
+# The only way a non-PDF file enters the leases table is through the
+# rent roll import route (see rent_roll_import.py) -- so the uploaded
+# filename's extension is a reliable signal for "is this record a rent
+# roll row or an actual lease document," without needing a dedicated
+# schema column just for this one check.
+_RENT_ROLL_IMPORT_EXTENSIONS = {"csv", "xlsx"}
+
+
+def _is_rent_roll_import(lease: Dict[str, Any]) -> bool:
+    filename = (lease.get("filename") or "").lower()
+    return "." in filename and filename.rsplit(".", 1)[1] in _RENT_ROLL_IMPORT_EXTENSIONS
+
+
+# A rent-figure "disagreement" must clear BOTH a percentage and an
+# absolute-dollar bar before being flagged -- either alone is too easy
+# to over- or under-trigger. A 1%-only rule would flag a $0.01 rounding
+# artifact on a $2 line item; a $5-only rule would flag noise on a
+# $50,000/mo anchor tenant's rent. Both together catch a real
+# discrepancy at any unit size without flagging rounding noise at either
+# extreme.
+_RENT_DISAGREEMENT_TOLERANCE_PCT = 1.0
+_RENT_DISAGREEMENT_TOLERANCE_ABS = 5.0
+
+
+def compute_rent_roll_reconciliation(leases: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Cross-checks an imported rent roll against the actual lease PDF
+    documents on file for the same units, and flags where they
+    disagree -- the real due-diligence problem this exists for: a
+    property manager's system saying one thing (often stale after a
+    renewal or rent increase that never made it back into that system)
+    while the signed lease itself says another.
+
+    "Same unit" is exact address match (same normalized
+    property_address, suite included -- reusing _normalize_address,
+    the same conservative same-UNIT matching compute_cross_lease_
+    mismatches already uses, NOT the same-BUILDING matching
+    compute_loss_to_lease uses -- this check is about one unit's two
+    records disagreeing with each other, not about comparing different
+    units). A rent roll row with no matching lease PDF on file --
+    the common case, since a rent roll typically covers far more units
+    than have an uploaded lease PDF -- is simply not compared against
+    anything. That's not an error; there's nothing to reconcile it
+    with yet.
+
+    Compares three fields, each with its own honest tolerance:
+      - tenant name: any disagreement at all (after the same
+        conservative case/punctuation-insensitive normalization used
+        throughout this module) is flagged -- there's no "close
+        enough" for whether it's the same tenant.
+      - rent_amount: flagged only past BOTH tolerance constants above
+        -- see their own comment for why both are needed together.
+      - lease_end_date: any disagreement at all -- a rent roll showing
+        the pre-renewal expiration while the lease was actually
+        extended is exactly the stale-data problem this function
+        exists to catch, and there's no meaningful "close enough" for
+        a date either.
+    A field missing on either side of a given pair is simply not
+    compared for that field on that pair -- not a mismatch, nothing to
+    compare.
+
+    Returns `{mismatches: [{rent_roll_lease_id, lease_document_id,
+    address, field, rent_roll_value, lease_document_value}, ...],
+    rent_roll_lease_count, lease_document_count, compared_pair_count}`.
+    An empty `mismatches` list alongside real (non-zero) counts means
+    real reconciliation happened and everything agreed -- genuinely
+    good news, not an absence of an answer. That's different from all
+    counts being 0 (most commonly: no rent roll has ever been
+    imported), which means there's nothing to reconcile yet. Both are
+    valid, distinguishable by the counts themselves -- this function
+    deliberately does NOT use the rest of this module's "None means
+    not enough data" convention, since an empty list here is a real,
+    positive result, not an unknown one.
+    """
+    rent_roll_leases = [l for l in leases if _is_rent_roll_import(l)]
+    lease_documents = [l for l in leases if not _is_rent_roll_import(l)]
+
+    address_groups: Dict[str, Dict[str, List[Dict[str, Any]]]] = {}
+    for lease in rent_roll_leases:
+        address = _normalize_address(field_value(lease, "property_address"))
+        if address is None:
+            continue
+        address_groups.setdefault(address, {"rent_roll": [], "lease_document": []})["rent_roll"].append(lease)
+    for lease in lease_documents:
+        address = _normalize_address(field_value(lease, "property_address"))
+        if address is None or address not in address_groups:
+            continue  # no rent roll row at this exact address -- nothing to reconcile against
+        address_groups[address]["lease_document"].append(lease)
+
+    def _add_mismatch(mismatches, rr_lease, doc_lease, address, field, rr_value, doc_value):
+        mismatches.append({
+            "rent_roll_lease_id": rr_lease.get("id"),
+            "lease_document_id": doc_lease.get("id"),
+            "address": address,
+            "field": field,
+            "rent_roll_value": rr_value,
+            "lease_document_value": doc_value,
+        })
+
+    mismatches: List[Dict[str, Any]] = []
+    compared_pair_count = 0
+
+    for group in address_groups.values():
+        if not group["lease_document"]:
+            continue  # rent roll rows here, but no lease PDF to compare any of them against
+        for rr_lease in group["rent_roll"]:
+            for doc_lease in group["lease_document"]:
+                compared_pair_count += 1
+                address = field_value(rr_lease, "property_address") or field_value(doc_lease, "property_address")
+
+                rr_tenant_norm = _normalize_for_matching(field_value(rr_lease, "tenant"))
+                doc_tenant_norm = _normalize_for_matching(field_value(doc_lease, "tenant"))
+                if rr_tenant_norm and doc_tenant_norm and rr_tenant_norm != doc_tenant_norm:
+                    _add_mismatch(
+                        mismatches, rr_lease, doc_lease, address, "tenant",
+                        field_value(rr_lease, "tenant"), field_value(doc_lease, "tenant"),
+                    )
+
+                rr_rent = parse_currency(field_value(rr_lease, "rent_amount"))
+                doc_rent = parse_currency(field_value(doc_lease, "rent_amount"))
+                if rr_rent is not None and doc_rent is not None and rr_rent != doc_rent:
+                    diff_abs = abs(rr_rent - doc_rent)
+                    larger = max(rr_rent, doc_rent)
+                    diff_pct = (diff_abs / larger * 100) if larger > 0 else 0.0
+                    if diff_abs > _RENT_DISAGREEMENT_TOLERANCE_ABS and diff_pct > _RENT_DISAGREEMENT_TOLERANCE_PCT:
+                        _add_mismatch(
+                            mismatches, rr_lease, doc_lease, address, "rent_amount",
+                            field_value(rr_lease, "rent_amount"), field_value(doc_lease, "rent_amount"),
+                        )
+
+                rr_end = parse_date(field_value(rr_lease, "lease_end_date"))
+                doc_end = parse_date(field_value(doc_lease, "lease_end_date"))
+                if rr_end is not None and doc_end is not None and rr_end != doc_end:
+                    _add_mismatch(
+                        mismatches, rr_lease, doc_lease, address, "lease_end_date",
+                        field_value(rr_lease, "lease_end_date"), field_value(doc_lease, "lease_end_date"),
+                    )
+
+    return {
+        "mismatches": mismatches,
+        "rent_roll_lease_count": len(rent_roll_leases),
+        "lease_document_count": len(lease_documents),
+        "compared_pair_count": compared_pair_count,
     }

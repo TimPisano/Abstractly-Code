@@ -1,6 +1,26 @@
 # Progress Summary
 
-**Last updated**: the admin login page (`/admin/`) no longer has any
+**Last updated**: 5 of the Platform page's original "Coming soon" items (6
+underlying pieces of work) are now genuinely working, tested, and live: tenant
+concentration analysis (Herfindahl-Hirschman Index), WALT + a year-by-year
+rollover schedule, loss-to-lease (portfolio-internal comp, since there's no
+external market-rent data source), rent roll import for broker-built Excel/CSV
+files (no fixed column format required, plus a real upload UI), and cross-
+checking an imported rent roll against actual lease PDFs on file, flagging
+tenant/rent/expiration-date disagreements. Each shipped with new API
+endpoints, full test coverage (27/27 backend test files passing), and updated
+Platform page copy. See DECISIONS.md's "Platform 'Coming soon' features"
+entries for the full per-feature write-ups, including at least one real bug
+each pass caught via adversarial/messy-data testing that clean unit tests
+alone missed.
+
+**Blocked, needs the user**: PMS-specific rent roll imports (Yardi/AppFolio/
+RealPage/MRI/Buildium — needs real sample export files, can't be built
+accurately by guessing at proprietary formats) and the T12 operating-
+statement cross-check (likely
+needs a real sample T12).
+
+Before that: the admin login page (`/admin/`) no longer has any
 session-based bypass of the credentials form — it used to show a
 "you're already signed in, Continue?" shortcut for a valid session;
 that's gone, the form always renders, unconditionally, on every visit.

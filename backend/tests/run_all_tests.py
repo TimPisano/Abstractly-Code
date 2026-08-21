@@ -41,6 +41,12 @@ UNIT_TESTS = [
     "test_multi_lease_structural_variation.py",
     "test_sheets_export.py",
     "test_lease_naming_and_tags.py",
+    "test_tenant_concentration_api.py",
+    "test_rollover_api.py",
+    "test_loss_to_lease_api.py",
+    "test_rent_roll_import.py",
+    "test_rent_roll_import_api.py",
+    "test_rent_roll_reconciliation_api.py",
 ]
 
 LIVE_API_TESTS = [

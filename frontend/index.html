@@ -74,10 +74,6 @@
                 acquisitions analysts and asset managers who review these by
                 hand today, not a general productivity tool.
             </p>
-            <p class="hero-exclusivity">
-                We work with a limited number of real estate firms at a time.
-                Request access below.
-            </p>
 
             <div class="hero-form-wrap" id="heroFormWrap">
                 <form class="waitlist-form" id="waitlistForm">
@@ -132,15 +128,19 @@
                 <ul class="platform-feature-list">
                     <li>
                         <span class="feature-check">✓</span>
-                        <span>Extracts and standardizes tenant, rent, dates, escalations, and renewal terms from lease PDFs — including scanned/image-only PDFs via OCR</span>
+                        <span>Pulls tenant, rent, dates, escalations, and renewal terms out of lease PDFs — including scanned copies, using text recognition (OCR)</span>
                     </li>
                     <li>
                         <span class="feature-check">✓</span>
-                        <span>Automatically detects and splits a single PDF containing multiple leases into individually accurate records</span>
+                        <span>Automatically splits a PDF containing multiple leases into separate, accurate records</span>
+                    </li>
+                    <li>
+                        <span class="feature-check">✓</span>
+                        <span>Import a broker-built Excel or CSV rent roll — no fixed column format required, we match your headers automatically, skip vacant/total rows, and give every value the same page/row-level citation a PDF-extracted field gets</span>
                     </li>
                     <li>
                         <span class="feature-soon">Coming soon</span>
-                        <span>Direct ingestion of rent roll exports from Yardi, AppFolio, RealPage, MRI, and Buildium, plus hand-built broker Excel/CSV files</span>
+                        <span>Direct import from Yardi, AppFolio, RealPage, MRI, and Buildium exports specifically</span>
                     </li>
                 </ul>
             </div>
@@ -150,19 +150,19 @@
                 <ul class="platform-feature-list">
                     <li>
                         <span class="feature-check">✓</span>
-                        <span>Every extracted value links back to the exact page and quote it came from in the source lease — click any citation to verify it yourself, nothing is a black-box guess</span>
+                        <span>Every value links back to the exact page and quote it came from — click any citation to check it yourself, nothing is a black-box guess</span>
                     </li>
                     <li>
                         <span class="feature-check">✓</span>
-                        <span>Flags inconsistent or unusual terms automatically: below-market rent, missing standard clauses, outlier notice periods, inconsistent escalation math, conflicting dates</span>
+                        <span>Automatically flags anything unusual: below-market rent, missing clauses, odd notice periods, escalation math that doesn't add up, conflicting dates</span>
                     </li>
                     <li>
                         <span class="feature-soon">Coming soon</span>
-                        <span>Cross-checks rent roll line items directly against your T12/operating statement, not just against portfolio averages</span>
+                        <span>Cross-checks the rent roll against your T12 (trailing 12-month operating statement) — not just portfolio averages</span>
                     </li>
                     <li>
-                        <span class="feature-soon">Coming soon</span>
-                        <span>Cross-checks rent roll line items against the actual lease documents on file, flagging where the rent roll and the lease disagree</span>
+                        <span class="feature-check">✓</span>
+                        <span>Cross-checks an imported rent roll against the actual lease documents on file for the same units, flagging tenant, rent, and expiration-date disagreements — catches stale property-management data a renewal never made it back into</span>
                     </li>
                 </ul>
             </div>
@@ -171,23 +171,23 @@
                 <ul class="platform-feature-list">
                     <li>
                         <span class="feature-check">✓</span>
-                        <span>Portfolio-wide rent roll rollup — total units, total square footage, total rent, and a square-footage-weighted average rent/sqft</span>
+                        <span>Portfolio totals — units, square footage, total rent, and average rent per square foot</span>
                     </li>
                     <li>
                         <span class="feature-check">✓</span>
-                        <span>Expiration and renewal-deadline tracking, bucketed by 30/60/90 days, with renewal notice windows tracked separately from lease expirations</span>
+                        <span>Tracks lease expirations and renewal deadlines in 30/60/90-day windows — kept separate, since they're not the same date</span>
                     </li>
                     <li>
-                        <span class="feature-soon">Coming soon</span>
-                        <span>Loss-to-lease analysis</span>
+                        <span class="feature-check">✓</span>
+                        <span>Tenant concentration analysis — how much of your rent depends on your largest tenants, with an automatic high/moderate/low read (Herfindahl-Hirschman Index, the same standard used to measure market concentration)</span>
                     </li>
                     <li>
-                        <span class="feature-soon">Coming soon</span>
-                        <span>Tenant concentration analysis</span>
+                        <span class="feature-check">✓</span>
+                        <span>WALT (weighted average lease term, weighted by rent) and a year-by-year rollover schedule — how much rent expires each year, with a high/moderate/low risk read on how concentrated your near-term rollover is</span>
                     </li>
                     <li>
-                        <span class="feature-soon">Coming soon</span>
-                        <span>Rollover risk / WALT (weighted average lease term)</span>
+                        <span class="feature-check">✓</span>
+                        <span>Loss-to-lease analysis — the upside per unit against the best rent already proven elsewhere in the same building. An internal comp, not external market data (we don't have a market-rent feed yet) — a property with only one unit on file has no comp and is excluded rather than guessed at</span>
                     </li>
                 </ul>
             </div>

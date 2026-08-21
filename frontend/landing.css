@@ -235,15 +235,6 @@ html {
     font-weight: 400;
 }
 
-.hero-exclusivity {
-    font-size: 0.9375rem;
-    color: rgba(246, 243, 236, 0.55);
-    font-style: italic;
-    max-width: 480px;
-    margin: 0 auto 2rem;
-    line-height: 1.5;
-}
-
 /* ===================== Request access form ===================== */
 
 .waitlist-form {

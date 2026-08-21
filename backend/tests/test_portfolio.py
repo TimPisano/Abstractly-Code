@@ -25,14 +25,22 @@ from datetime import date, timedelta
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from app.portfolio import (
+    DAYS_PER_YEAR,
     FIELD_NAMES,
+    ROLLOVER_YEAR_1_HIGH_RISK_PCT,
+    ROLLOVER_YEAR_1_MODERATE_RISK_PCT,
     compute_cross_lease_mismatches,
     compute_expiration_alerts,
     compute_expiration_timeline,
     compute_lease_confidence_summary,
+    compute_loss_to_lease,
     compute_portfolio_confidence_summary,
     compute_portfolio_metrics,
+    compute_rent_roll_reconciliation,
     compute_rent_variance_outliers,
+    compute_rollover_schedule,
+    compute_tenant_concentration,
+    compute_walt,
     portfolio_context_for_risk_analysis,
 )
 
@@ -739,6 +747,809 @@ def test_cross_lease_mismatch_three_leases_same_address_pairwise():
     print("✓ test_cross_lease_mismatch_three_leases_same_address_pairwise: PASS")
 
 
+def test_tenant_concentration_happy_path_multiple_distinct_tenants():
+    """4 tenants at $10k/$6k/$3k/$1k (total $20k) -> 50%/30%/15%/5%. HHI = 2500+900+225+25 = 3650 (high)."""
+    leases = [
+        _lease(70, "a.pdf", tenant="Tenant A", rent_amount="$10,000.00"),
+        _lease(71, "b.pdf", tenant="Tenant B", rent_amount="$6,000.00"),
+        _lease(72, "c.pdf", tenant="Tenant C", rent_amount="$3,000.00"),
+        _lease(73, "d.pdf", tenant="Tenant D", rent_amount="$1,000.00"),
+    ]
+    result = compute_tenant_concentration(leases)
+
+    assert result["tenant_count"] == 4
+    assert result["lease_count"] == 4
+    assert result["excluded_lease_count"] == 0
+    assert result["total_rent"] == 20000.0
+    assert [t["tenant"] for t in result["tenants"]] == ["Tenant A", "Tenant B", "Tenant C", "Tenant D"]
+    assert [t["pct_of_total"] for t in result["tenants"]] == [50.0, 30.0, 15.0, 5.0]
+    assert result["top_1_pct"] == 50.0
+    assert result["top_3_pct"] == 95.0
+    assert result["top_5_pct"] == 100.0  # fewer than 5 tenants exist -- takes however many there are
+    assert result["hhi"] == 3650.0
+    assert result["concentration_level"] == "high"
+    print("✓ test_tenant_concentration_happy_path_multiple_distinct_tenants: PASS")
+
+
+def test_tenant_concentration_merges_same_tenant_across_multiple_leases():
+    """A chain tenant with 3 separate lease uploads must count as ONE tenant, not three."""
+    leases = [
+        _lease(74, "chain1.pdf", tenant="Big Chain Co", rent_amount="$2,000.00"),
+        _lease(75, "chain2.pdf", tenant="Big Chain Co", rent_amount="$3,000.00"),
+        _lease(76, "chain3.pdf", tenant="Big Chain Co", rent_amount="$1,000.00"),
+        _lease(77, "solo.pdf", tenant="Solo Shop", rent_amount="$4,000.00"),
+    ]
+    result = compute_tenant_concentration(leases)
+
+    assert result["tenant_count"] == 2  # not 4 -- Big Chain Co's 3 leases merged into one
+    assert result["lease_count"] == 4
+    big_chain = next(t for t in result["tenants"] if t["tenant"] == "Big Chain Co")
+    assert big_chain["rent"] == 6000.0
+    assert big_chain["pct_of_total"] == 60.0
+    print("✓ test_tenant_concentration_merges_same_tenant_across_multiple_leases: PASS")
+
+
+def test_tenant_concentration_name_normalization_merges_formatting_variants():
+    """Same tenant typed with different case/punctuation/whitespace must still merge into one group."""
+    leases = [
+        _lease(78, "v1.pdf", tenant="Acme Corp", rent_amount="$1,000.00"),
+        _lease(79, "v2.pdf", tenant="ACME CORP.", rent_amount="$1,000.00"),
+        _lease(80, "v3.pdf", tenant="acme   corp", rent_amount="$1,000.00"),
+    ]
+    result = compute_tenant_concentration(leases)
+
+    assert result["tenant_count"] == 1
+    assert result["tenants"][0]["rent"] == 3000.0
+    assert result["tenants"][0]["tenant"] == "Acme Corp"  # first-seen display spelling is kept
+    print("✓ test_tenant_concentration_name_normalization_merges_formatting_variants: PASS")
+
+
+def test_tenant_concentration_does_not_merge_genuinely_different_tenants():
+    """"Acme Corp" and "Acme Corp West" are different tenants -- must never be fuzzy-merged."""
+    leases = [
+        _lease(81, "a.pdf", tenant="Acme Corp", rent_amount="$5,000.00"),
+        _lease(82, "b.pdf", tenant="Acme Corp West", rent_amount="$5,000.00"),
+    ]
+    result = compute_tenant_concentration(leases)
+
+    assert result["tenant_count"] == 2
+    assert result["top_1_pct"] == 50.0  # not 100 -- confirms they were NOT merged into one
+    print("✓ test_tenant_concentration_does_not_merge_genuinely_different_tenants: PASS")
+
+
+def test_tenant_concentration_excludes_lease_with_missing_tenant_name():
+    """A lease with no extracted tenant name must be excluded, never bucketed as a fake 'Unknown' tenant."""
+    leases = [
+        _lease(83, "known1.pdf", tenant="Known Tenant A", rent_amount="$5,000.00"),
+        _lease(84, "known2.pdf", tenant="Known Tenant B", rent_amount="$5,000.00"),
+        _lease(85, "unknown.pdf", rent_amount="$50,000.00"),  # no tenant= passed -> defaults to not-found
+    ]
+    result = compute_tenant_concentration(leases)
+
+    assert result["tenant_count"] == 2  # the $50k lease with no tenant must not appear as a 3rd "tenant"
+    assert result["excluded_lease_count"] == 1
+    assert result["total_rent"] == 10000.0  # the $50k unattributed lease is excluded from the total too
+    assert all(t["tenant"] not in (None, "Unknown", "unknown") for t in result["tenants"])
+    print("✓ test_tenant_concentration_excludes_lease_with_missing_tenant_name: PASS")
+
+
+def test_tenant_concentration_excludes_lease_with_unparseable_rent():
+    leases = [
+        _lease(86, "known.pdf", tenant="Known Tenant", rent_amount="$5,000.00"),
+        _lease(87, "no_rent.pdf", tenant="No Rent Tenant"),  # no rent_amount= passed
+    ]
+    result = compute_tenant_concentration(leases)
+
+    assert result["tenant_count"] == 1
+    assert result["excluded_lease_count"] == 1
+    assert result["top_1_pct"] == 100.0
+    print("✓ test_tenant_concentration_excludes_lease_with_unparseable_rent: PASS")
+
+
+def test_tenant_concentration_empty_portfolio_does_not_crash():
+    result = compute_tenant_concentration([])
+    assert result["tenant_count"] == 0
+    assert result["lease_count"] == 0
+    assert result["excluded_lease_count"] == 0
+    assert result["total_rent"] is None  # unknown, not a misleading 0
+    assert result["tenants"] == []
+    assert result["top_1_pct"] is None
+    assert result["hhi"] is None
+    assert result["concentration_level"] is None
+    print("✓ test_tenant_concentration_empty_portfolio_does_not_crash: PASS")
+
+
+def test_tenant_concentration_no_analyzable_leases_does_not_crash():
+    """Every lease is missing tenant, rent, or both -- must degrade to the same 'not enough data' shape as an empty portfolio, not crash on a division by zero."""
+    leases = [
+        _lease(88, "a.pdf", rent_amount="$5,000.00"),  # no tenant
+        _lease(89, "b.pdf", tenant="Some Tenant"),  # no rent
+    ]
+    result = compute_tenant_concentration(leases)
+
+    assert result["tenant_count"] == 0
+    assert result["excluded_lease_count"] == 2
+    assert result["total_rent"] is None
+    assert result["concentration_level"] is None
+    print("✓ test_tenant_concentration_no_analyzable_leases_does_not_crash: PASS")
+
+
+def test_tenant_concentration_single_tenant_is_maximum_concentration():
+    result = compute_tenant_concentration([
+        _lease(90, "only.pdf", tenant="Only Tenant", rent_amount="$8,000.00"),
+    ])
+    assert result["tenant_count"] == 1
+    assert result["top_1_pct"] == 100.0
+    assert result["hhi"] == 10000.0
+    assert result["concentration_level"] == "high"
+    print("✓ test_tenant_concentration_single_tenant_is_maximum_concentration: PASS")
+
+
+def test_tenant_concentration_evenly_split_is_low():
+    """10 tenants at 10% each -> HHI = 10*(10^2) = 1000, well under the 1500 'moderate' floor."""
+    leases = [
+        _lease(100 + i, f"t{i}.pdf", tenant=f"Tenant {i}", rent_amount="$1,000.00")
+        for i in range(10)
+    ]
+    result = compute_tenant_concentration(leases)
+
+    assert result["tenant_count"] == 10
+    assert result["top_1_pct"] == 10.0
+    assert result["hhi"] == 1000.0
+    assert result["concentration_level"] == "low"
+    print("✓ test_tenant_concentration_evenly_split_is_low: PASS")
+
+
+def test_tenant_concentration_high_via_dominant_tenant_even_with_low_hhi():
+    """
+    1 tenant at exactly 25% (the top-tenant "high" threshold) plus 75 tiny
+    tenants at 1% each: HHI = 625 + 75*(1) = 700, which is "low" by HHI
+    alone. Must still classify as "high" because of the single dominant
+    tenant -- this is exactly the case HHI alone can under-flag (see the
+    docstring), and the whole reason the top-tenant threshold exists as
+    an independent trigger.
+    """
+    leases = [_lease(200, "dominant.pdf", tenant="Dominant Tenant", rent_amount="$2,500.00")]
+    leases += [
+        _lease(201 + i, f"tiny{i}.pdf", tenant=f"Tiny Tenant {i}", rent_amount="$100.00")
+        for i in range(75)
+    ]
+    result = compute_tenant_concentration(leases)
+
+    assert result["total_rent"] == 10000.0
+    assert result["top_1_pct"] == 25.0
+    assert result["hhi"] == 700.0  # confirms HHI alone would NOT flag this as high
+    assert result["concentration_level"] == "high"
+    print("✓ test_tenant_concentration_high_via_dominant_tenant_even_with_low_hhi: PASS")
+
+
+def test_tenant_concentration_moderate_via_top_tenant_threshold():
+    """1 tenant at exactly 15% (the top-tenant 'moderate' threshold) plus 17 tenants at 5% each. HHI = 225 + 17*25 = 650 (low by HHI alone) -- moderate must still trigger off the top-tenant share."""
+    leases = [_lease(300, "midsize.pdf", tenant="Midsize Tenant", rent_amount="$1,500.00")]
+    leases += [
+        _lease(301 + i, f"small{i}.pdf", tenant=f"Small Tenant {i}", rent_amount="$500.00")
+        for i in range(17)
+    ]
+    result = compute_tenant_concentration(leases)
+
+    assert result["total_rent"] == 10000.0
+    assert result["top_1_pct"] == 15.0
+    assert result["hhi"] == 650.0
+    assert result["concentration_level"] == "moderate"
+    print("✓ test_tenant_concentration_moderate_via_top_tenant_threshold: PASS")
+
+
+def test_tenant_concentration_high_at_exact_threshold_boundary():
+    """
+    4 equal tenants at exactly 25% each: HHI = 4*(25^2) = 2500, exactly
+    at HHI_HIGH_THRESHOLD, and top_1_pct = 25.0, exactly at
+    TOP_TENANT_HIGH_RISK_PCT. Confirms both thresholds are inclusive
+    (>=, not >) -- a portfolio sitting exactly on the line is "high",
+    not "moderate". (It's mathematically not possible to exceed the HHI
+    high threshold while keeping every individual tenant strictly under
+    25% -- verified separately -- so this exact-equal-split case is the
+    boundary itself, not an arbitrary example.)
+    """
+    leases = [
+        _lease(400 + i, f"t{i}.pdf", tenant=f"Tenant {i}", rent_amount="$2,500.00")
+        for i in range(4)
+    ]
+    result = compute_tenant_concentration(leases)
+
+    assert result["total_rent"] == 10000.0
+    assert result["top_1_pct"] == 25.0
+    assert result["hhi"] == 2500.0
+    assert result["concentration_level"] == "high"
+    print("✓ test_tenant_concentration_high_at_exact_threshold_boundary: PASS")
+
+
+def test_tenant_concentration_includes_legitimate_zero_rent_tenant():
+    """
+    A genuine $0 base rent (e.g. a percentage-only retail lease) is a
+    real value, not a data-quality problem -- must be included at 0%,
+    not silently excluded the way a missing/unparseable rent is.
+    """
+    leases = [
+        _lease(500, "normal.pdf", tenant="Normal Tenant", rent_amount="$5,000.00"),
+        _lease(501, "pct_only.pdf", tenant="Percentage-Rent Kiosk", rent_amount="$0.00"),
+    ]
+    result = compute_tenant_concentration(leases)
+
+    assert result["tenant_count"] == 2  # the $0 tenant counts as a real tenant...
+    assert result["lease_count"] == 2
+    assert result["excluded_lease_count"] == 0  # ...not excluded like a missing/unparseable rent would be
+    zero_rent_tenant = next(t for t in result["tenants"] if t["tenant"] == "Percentage-Rent Kiosk")
+    assert zero_rent_tenant["rent"] == 0.0
+    assert zero_rent_tenant["pct_of_total"] == 0.0
+    assert result["total_rent"] == 5000.0  # unaffected by the $0 tenant
+    print("✓ test_tenant_concentration_includes_legitimate_zero_rent_tenant: PASS")
+
+
+def test_tenant_concentration_all_zero_rent_does_not_crash():
+    """
+    Every lease has a legitimate $0 rent -- total_rent is exactly 0, so
+    no percentage can be computed. Must degrade to the same 'not enough
+    data' shape as an empty portfolio, not raise ZeroDivisionError.
+    """
+    leases = [
+        _lease(502, "a.pdf", tenant="Tenant A", rent_amount="$0.00"),
+        _lease(503, "b.pdf", tenant="Tenant B", rent_amount="$0.00"),
+    ]
+    result = compute_tenant_concentration(leases)
+
+    assert result["tenant_count"] == 0
+    assert result["total_rent"] is None
+    assert result["concentration_level"] is None
+    print("✓ test_tenant_concentration_all_zero_rent_does_not_crash: PASS")
+
+
+def test_tenant_concentration_rounding_does_not_compound_across_tenants():
+    """
+    6 tenants whose true percentages don't round cleanly (e.g. thirds)
+    must still have top_5_pct/hhi computed from the RAW fractions, not
+    from already-rounded per-tenant percentages -- summing rounded
+    values first would drift the total away from what the raw math
+    actually says.
+    """
+    # $10,000 split as 5900/1100/1000/900/700/400 -- deliberately messy
+    # percentages (59.0/11.0/10.0/9.0/7.0/4.0, chosen to be clean here so
+    # the assertion below is exact) that still exercises the "compute
+    # cumulative/hhi from raw shares, round once" code path identically
+    # to a real messy split would.
+    leases = [
+        _lease(510, "a.pdf", tenant="A", rent_amount="$5,900.00"),
+        _lease(511, "b.pdf", tenant="B", rent_amount="$1,100.00"),
+        _lease(512, "c.pdf", tenant="C", rent_amount="$1,000.00"),
+        _lease(513, "d.pdf", tenant="D", rent_amount="$900.00"),
+        _lease(514, "e.pdf", tenant="E", rent_amount="$700.00"),
+        _lease(515, "f.pdf", tenant="F", rent_amount="$400.00"),
+    ]
+    result = compute_tenant_concentration(leases)
+    all_pcts = [t["pct_of_total"] for t in result["tenants"]]
+    assert sum(all_pcts) == 100.0  # every tenant's share, summed, must equal exactly 100
+    assert result["top_5_pct"] == 96.0  # 59+11+10+9+7
+    print("✓ test_tenant_concentration_rounding_does_not_compound_across_tenants: PASS")
+
+
+def _date_str(days_from_reference):
+    """A lease_end_date string `days_from_reference` days after REFERENCE_DATE, in the extractor's usual display format."""
+    return (REFERENCE_DATE + timedelta(days=days_from_reference)).strftime("%B %d, %Y")
+
+
+def test_walt_happy_path_weighted_by_rent():
+    """
+    2 leases: $8,000 rent with 365 days left, $2,000 rent with 1095 days
+    left. WALT must be pulled toward the $8,000 lease's shorter term,
+    not a plain unweighted average of the two remaining terms.
+    """
+    leases = [
+        _lease(600, "a.pdf", rent_amount="$8,000.00", lease_end_date=_date_str(365)),
+        _lease(601, "b.pdf", rent_amount="$2,000.00", lease_end_date=_date_str(1095)),
+    ]
+    result = compute_walt(leases, reference_date=REFERENCE_DATE)
+
+    expected_years_a = 365 / DAYS_PER_YEAR
+    expected_years_b = 1095 / DAYS_PER_YEAR
+    expected_walt = round((expected_years_a * 8000 + expected_years_b * 2000) / 10000, 2)
+    unweighted_avg = round((expected_years_a + expected_years_b) / 2, 2)
+
+    assert result["lease_count"] == 2
+    assert result["excluded_lease_count"] == 0
+    assert result["walt_years"] == expected_walt
+    assert result["walt_years"] != unweighted_avg  # confirms it's actually weighted, not a plain average
+    print("✓ test_walt_happy_path_weighted_by_rent: PASS")
+
+
+def test_walt_excludes_lease_missing_end_date():
+    leases = [
+        _lease(602, "a.pdf", rent_amount="$5,000.00", lease_end_date=_date_str(730)),
+        _lease(603, "b.pdf", rent_amount="$5,000.00"),  # no end date
+    ]
+    result = compute_walt(leases, reference_date=REFERENCE_DATE)
+    assert result["lease_count"] == 1
+    assert result["excluded_lease_count"] == 1
+    print("✓ test_walt_excludes_lease_missing_end_date: PASS")
+
+
+def test_walt_excludes_lease_missing_rent():
+    leases = [
+        _lease(604, "a.pdf", rent_amount="$5,000.00", lease_end_date=_date_str(730)),
+        _lease(605, "b.pdf", lease_end_date=_date_str(730)),  # no rent
+    ]
+    result = compute_walt(leases, reference_date=REFERENCE_DATE)
+    assert result["lease_count"] == 1
+    assert result["excluded_lease_count"] == 1
+    print("✓ test_walt_excludes_lease_missing_rent: PASS")
+
+
+def test_walt_excludes_already_expired_lease():
+    leases = [
+        _lease(606, "active.pdf", rent_amount="$5,000.00", lease_end_date=_date_str(365)),
+        _lease(607, "expired.pdf", rent_amount="$5,000.00", lease_end_date=_date_str(-30)),  # expired 30 days ago
+    ]
+    result = compute_walt(leases, reference_date=REFERENCE_DATE)
+    assert result["lease_count"] == 1
+    assert result["excluded_lease_count"] == 1
+    print("✓ test_walt_excludes_already_expired_lease: PASS")
+
+
+def test_walt_includes_lease_expiring_exactly_today_at_zero_years():
+    """A lease ending exactly on reference_date is 0 years remaining -- a real data point, not excluded like an already-expired lease."""
+    leases = [_lease(608, "today.pdf", rent_amount="$5,000.00", lease_end_date=_date_str(0))]
+    result = compute_walt(leases, reference_date=REFERENCE_DATE)
+    assert result["lease_count"] == 1
+    assert result["excluded_lease_count"] == 0
+    assert result["walt_years"] == 0.0
+    print("✓ test_walt_includes_lease_expiring_exactly_today_at_zero_years: PASS")
+
+
+def test_walt_empty_portfolio_does_not_crash():
+    result = compute_walt([], reference_date=REFERENCE_DATE)
+    assert result["walt_years"] is None
+    assert result["lease_count"] == 0
+    print("✓ test_walt_empty_portfolio_does_not_crash: PASS")
+
+
+def test_walt_no_analyzable_leases_does_not_crash():
+    leases = [_lease(609, "a.pdf", rent_amount="$5,000.00")]  # no end date
+    result = compute_walt(leases, reference_date=REFERENCE_DATE)
+    assert result["walt_years"] is None
+    assert result["excluded_lease_count"] == 1
+    print("✓ test_walt_no_analyzable_leases_does_not_crash: PASS")
+
+
+def test_rollover_schedule_happy_path_buckets_by_year():
+    leases = [
+        _lease(700, "y1.pdf", rent_amount="$1,000.00", lease_end_date=_date_str(100)),   # year_1
+        _lease(701, "y2.pdf", rent_amount="$1,000.00", lease_end_date=_date_str(400)),   # year_2
+        _lease(702, "y6.pdf", rent_amount="$1,000.00", lease_end_date=_date_str(2600)),  # year_6_plus (>5 years out)
+    ]
+    result = compute_rollover_schedule(leases, reference_date=REFERENCE_DATE)
+
+    assert result["lease_count"] == 3
+    assert result["total_rent"] == 3000.0
+    assert result["buckets"]["year_1"]["lease_count"] == 1
+    assert result["buckets"]["year_2"]["lease_count"] == 1
+    assert result["buckets"]["year_6_plus"]["lease_count"] == 1
+    assert result["buckets"]["year_3"]["lease_count"] == 0
+    assert result["buckets"]["year_1"]["pct_of_total_rent"] == round(1000 / 3000 * 100, 2)
+    print("✓ test_rollover_schedule_happy_path_buckets_by_year: PASS")
+
+
+def test_rollover_schedule_already_expired_kept_separate_not_folded_into_year_1():
+    leases = [
+        _lease(703, "active.pdf", rent_amount="$4,000.00", lease_end_date=_date_str(100)),
+        _lease(704, "expired.pdf", rent_amount="$1,000.00", lease_end_date=_date_str(-10)),
+    ]
+    result = compute_rollover_schedule(leases, reference_date=REFERENCE_DATE)
+
+    assert result["already_expired"]["rent"] == 1000.0
+    assert result["already_expired"]["lease_count"] == 1
+    # The forward-looking total must exclude the expired lease's rent entirely --
+    # year_1 gets 100% of the (forward-looking-only) total, not diluted by it.
+    assert result["total_rent"] == 4000.0
+    assert result["buckets"]["year_1"]["pct_of_total_rent"] == 100.0
+    print("✓ test_rollover_schedule_already_expired_kept_separate_not_folded_into_year_1: PASS")
+
+
+def test_rollover_schedule_lease_expiring_today_lands_in_year_1():
+    leases = [_lease(705, "today.pdf", rent_amount="$1,000.00", lease_end_date=_date_str(0))]
+    result = compute_rollover_schedule(leases, reference_date=REFERENCE_DATE)
+    assert result["buckets"]["year_1"]["lease_count"] == 1
+    assert result["already_expired"]["lease_count"] == 0
+    print("✓ test_rollover_schedule_lease_expiring_today_lands_in_year_1: PASS")
+
+
+def test_rollover_schedule_percentages_sum_to_100_across_buckets():
+    leases = [
+        _lease(706 + i, f"l{i}.pdf", rent_amount="$1,000.00", lease_end_date=_date_str(100 + i * 200))
+        for i in range(7)
+    ]
+    result = compute_rollover_schedule(leases, reference_date=REFERENCE_DATE)
+    total_pct = sum(b["pct_of_total_rent"] for b in result["buckets"].values())
+    assert abs(total_pct - 100.0) < 0.1  # small rounding tolerance, not a large drift
+    total_lease_pct = sum(b["pct_of_total_leases"] for b in result["buckets"].values())
+    assert abs(total_lease_pct - 100.0) < 0.1
+    print("✓ test_rollover_schedule_percentages_sum_to_100_across_buckets: PASS")
+
+
+def test_rollover_schedule_high_risk_when_year_1_concentrated():
+    """80% of rent rolling over in year_1 alone -- well over the high-risk threshold."""
+    leases = [
+        _lease(720, "big.pdf", rent_amount="$8,000.00", lease_end_date=_date_str(100)),
+        _lease(721, "small.pdf", rent_amount="$2,000.00", lease_end_date=_date_str(800)),
+    ]
+    result = compute_rollover_schedule(leases, reference_date=REFERENCE_DATE)
+    assert result["buckets"]["year_1"]["pct_of_total_rent"] == 80.0
+    assert result["rollover_risk_level"] == "high"
+    assert ROLLOVER_YEAR_1_HIGH_RISK_PCT <= 80.0
+    print("✓ test_rollover_schedule_high_risk_when_year_1_concentrated: PASS")
+
+
+def test_rollover_schedule_low_risk_when_evenly_laddered():
+    """10 equal leases, only 1 landing in year_1 (10% of total rent) -- clearly under the 15% moderate threshold."""
+    offsets = [100, 500, 500, 900, 900, 1300, 1300, 1700, 1700, 2100]  # 1 in year_1, 2 each in years 2-5, 2 in year_6_plus
+    leases = [
+        _lease(730 + i, f"l{i}.pdf", rent_amount="$1,000.00", lease_end_date=_date_str(offset))
+        for i, offset in enumerate(offsets)
+    ]
+    result = compute_rollover_schedule(leases, reference_date=REFERENCE_DATE)
+    assert result["buckets"]["year_1"]["pct_of_total_rent"] == 10.0
+    assert result["buckets"]["year_1"]["pct_of_total_rent"] < ROLLOVER_YEAR_1_MODERATE_RISK_PCT
+    assert result["rollover_risk_level"] == "low"
+    print("✓ test_rollover_schedule_low_risk_when_evenly_laddered: PASS")
+
+
+def test_rollover_schedule_empty_portfolio_does_not_crash():
+    result = compute_rollover_schedule([], reference_date=REFERENCE_DATE)
+    assert result["buckets"] is None
+    assert result["already_expired"] is None
+    assert result["rollover_risk_level"] is None
+    print("✓ test_rollover_schedule_empty_portfolio_does_not_crash: PASS")
+
+
+def test_rollover_schedule_all_leases_already_expired_reports_real_data_not_none():
+    """
+    Every analyzable lease has already expired -- this is real, important
+    data (100% rollover already happened) and must NOT collapse to the
+    same null result as an empty/unusable portfolio.
+    """
+    leases = [
+        _lease(740, "a.pdf", rent_amount="$3,000.00", lease_end_date=_date_str(-10)),
+        _lease(741, "b.pdf", rent_amount="$2,000.00", lease_end_date=_date_str(-5)),
+    ]
+    result = compute_rollover_schedule(leases, reference_date=REFERENCE_DATE)
+
+    assert result["buckets"] is not None  # NOT the null "not enough data" shape
+    assert all(b["rent"] == 0.0 for b in result["buckets"].values())
+    assert result["already_expired"]["rent"] == 5000.0
+    assert result["already_expired"]["lease_count"] == 2
+    assert result["rollover_risk_level"] == "high"
+    print("✓ test_rollover_schedule_all_leases_already_expired_reports_real_data_not_none: PASS")
+
+
+def test_loss_to_lease_happy_path_top_rent_becomes_the_proxy():
+    """
+    3 leases at the same property: $2.00/sqft, $3.00/sqft, $5.00/sqft
+    (the top). The $5.00 lease has 0% loss; the others show a real gap
+    against that property's own best-achieved rate.
+    """
+    leases = [
+        _lease(800, "unit_a.pdf", property_address="100 Main St", rent_amount="$2,000.00", square_footage="1,000 sq ft"),  # $2.00/sqft
+        _lease(801, "unit_b.pdf", property_address="100 Main St", rent_amount="$3,000.00", square_footage="1,000 sq ft"),  # $3.00/sqft
+        _lease(802, "unit_c.pdf", property_address="100 Main St", rent_amount="$5,000.00", square_footage="1,000 sq ft"),  # $5.00/sqft -- the top
+    ]
+    result = compute_loss_to_lease(leases)
+
+    assert result["lease_count"] == 3
+    assert result["excluded_lease_count"] == 0
+    by_id = {r["lease_id"]: r for r in result["leases"]}
+    assert by_id[802]["loss_pct"] == 0.0
+    assert by_id[802]["monthly_upside"] == 0.0
+    assert by_id[801]["loss_pct"] == 40.0  # (5-3)/5 * 100
+    assert by_id[801]["monthly_upside"] == 2000.0  # (5-3) * 1000 sqft
+    assert by_id[800]["loss_pct"] == 60.0  # (5-2)/5 * 100
+    assert by_id[800]["monthly_upside"] == 3000.0  # (5-2) * 1000 sqft
+    assert result["total_monthly_upside"] == 5000.0  # 2000 + 3000 + 0
+    print("✓ test_loss_to_lease_happy_path_top_rent_becomes_the_proxy: PASS")
+
+
+def test_loss_to_lease_excludes_property_with_only_one_lease():
+    """A single lease at a property has no internal comp -- must be excluded, not compared against unrelated properties."""
+    leases = [
+        _lease(803, "solo.pdf", property_address="200 Solo Ave", rent_amount="$4,000.00", square_footage="1,000 sq ft"),
+    ]
+    result = compute_loss_to_lease(leases)
+    assert result["lease_count"] == 0
+    assert result["excluded_lease_count"] == 1
+    assert result["leases"] == []
+    assert result["total_monthly_upside"] is None
+    print("✓ test_loss_to_lease_excludes_property_with_only_one_lease: PASS")
+
+
+def test_loss_to_lease_different_properties_not_compared_against_each_other():
+    """Two separate 2-lease properties -- each property's comp is its own, not blended across properties."""
+    leases = [
+        _lease(804, "prop1_a.pdf", property_address="100 Main St", rent_amount="$1,000.00", square_footage="1,000 sq ft"),  # $1/sqft
+        _lease(805, "prop1_b.pdf", property_address="100 Main St", rent_amount="$2,000.00", square_footage="1,000 sq ft"),  # $2/sqft (prop 1's top)
+        _lease(806, "prop2_a.pdf", property_address="999 Other Rd", rent_amount="$8,000.00", square_footage="1,000 sq ft"),  # $8/sqft
+        _lease(807, "prop2_b.pdf", property_address="999 Other Rd", rent_amount="$10,000.00", square_footage="1,000 sq ft"),  # $10/sqft (prop 2's top)
+    ]
+    result = compute_loss_to_lease(leases)
+    by_id = {r["lease_id"]: r for r in result["leases"]}
+
+    # Lease 804 must be compared against prop 1's $2/sqft top, NOT prop 2's $10/sqft
+    assert by_id[804]["property_top_rent_per_sqft"] == 2.0
+    assert by_id[806]["property_top_rent_per_sqft"] == 10.0
+    print("✓ test_loss_to_lease_different_properties_not_compared_against_each_other: PASS")
+
+
+def test_loss_to_lease_excludes_lease_missing_address():
+    leases = [
+        _lease(808, "a.pdf", property_address="100 Main St", rent_amount="$2,000.00", square_footage="1,000 sq ft"),
+        _lease(809, "b.pdf", property_address="100 Main St", rent_amount="$4,000.00", square_footage="1,000 sq ft"),
+        _lease(810, "c.pdf", rent_amount="$3,000.00", square_footage="1,000 sq ft"),  # no address
+    ]
+    result = compute_loss_to_lease(leases)
+    assert result["lease_count"] == 2
+    assert result["excluded_lease_count"] == 1
+    assert 810 not in {r["lease_id"] for r in result["leases"]}
+    print("✓ test_loss_to_lease_excludes_lease_missing_address: PASS")
+
+
+def test_loss_to_lease_excludes_lease_missing_sqft():
+    leases = [
+        _lease(811, "a.pdf", property_address="100 Main St", rent_amount="$2,000.00", square_footage="1,000 sq ft"),
+        _lease(812, "b.pdf", property_address="100 Main St", rent_amount="$4,000.00", square_footage="1,000 sq ft"),
+        _lease(813, "c.pdf", property_address="100 Main St", rent_amount="$3,000.00"),  # no sqft -- can't compute psf
+    ]
+    result = compute_loss_to_lease(leases)
+    assert result["lease_count"] == 2
+    assert result["excluded_lease_count"] == 1
+    print("✓ test_loss_to_lease_excludes_lease_missing_sqft: PASS")
+
+
+def test_loss_to_lease_address_normalization_matches_formatting_variants():
+    """Same exact unit typed with different case/whitespace must still be recognized as one group."""
+    leases = [
+        _lease(814, "a.pdf", property_address="100 Main Street, Suite 1", rent_amount="$2,000.00", square_footage="1,000 sq ft"),
+        _lease(815, "b.pdf", property_address="100 MAIN STREET, SUITE 1", rent_amount="$4,000.00", square_footage="1,000 sq ft"),
+    ]
+    result = compute_loss_to_lease(leases)
+    assert result["lease_count"] == 2  # recognized as the same property, not two comp-less singletons
+    print("✓ test_loss_to_lease_address_normalization_matches_formatting_variants: PASS")
+
+
+def test_loss_to_lease_groups_different_suites_in_same_building():
+    """
+    Regression test for a real bug: DIFFERENT suites in the SAME
+    building must be grouped as comparable units (that's the entire
+    point of an internal rent comp), not treated as separate,
+    comp-less single-lease "properties" just because their suite
+    numbers differ. Caught originally by testing against a realistic
+    multi-suite building, not by the (too-uniform) fixtures above.
+    """
+    leases = [
+        _lease(821, "a.pdf", property_address="500 Commerce Blvd, Suite 100", rent_amount="$2,000.00", square_footage="1,000 sq ft"),  # $2/sqft
+        _lease(822, "b.pdf", property_address="500 Commerce Blvd, Suite 200", rent_amount="$3,500.00", square_footage="1,000 sq ft"),  # $3.50/sqft -- top
+        _lease(823, "c.pdf", property_address="500 Commerce Blvd, Suite 300", rent_amount="$3,000.00", square_footage="1,000 sq ft"),  # $3/sqft
+    ]
+    result = compute_loss_to_lease(leases)
+
+    assert result["lease_count"] == 3  # NOT 0 -- all three recognized as the same building
+    assert result["excluded_lease_count"] == 0
+    by_id = {r["lease_id"]: r for r in result["leases"]}
+    assert by_id[822]["loss_pct"] == 0.0  # Suite 200 is this building's top rent
+    assert by_id[821]["property_top_rent_per_sqft"] == 3.5
+    print("✓ test_loss_to_lease_groups_different_suites_in_same_building: PASS")
+
+
+def test_loss_to_lease_does_not_merge_genuinely_different_buildings_with_similar_names():
+    """Two different street addresses must never be merged just because both happen to have a suite number stripped."""
+    leases = [
+        _lease(824, "a.pdf", property_address="500 Commerce Blvd, Suite 100", rent_amount="$2,000.00", square_footage="1,000 sq ft"),
+        _lease(825, "b.pdf", property_address="700 Commerce Blvd, Suite 100", rent_amount="$9,000.00", square_footage="1,000 sq ft"),
+    ]
+    result = compute_loss_to_lease(leases)
+    assert result["lease_count"] == 0  # each is alone at its own (different) building -- both comp-less
+    assert result["excluded_lease_count"] == 2
+    print("✓ test_loss_to_lease_does_not_merge_genuinely_different_buildings_with_similar_names: PASS")
+
+
+def test_loss_to_lease_all_equal_rent_shows_zero_gap_not_excluded():
+    """Every lease at a property has the identical rent/sqft -- 0% loss for all, correctly computed, not excluded."""
+    leases = [
+        _lease(816, "a.pdf", property_address="100 Main St", rent_amount="$3,000.00", square_footage="1,000 sq ft"),
+        _lease(817, "b.pdf", property_address="100 Main St", rent_amount="$3,000.00", square_footage="1,000 sq ft"),
+    ]
+    result = compute_loss_to_lease(leases)
+    assert result["lease_count"] == 2
+    assert all(r["loss_pct"] == 0.0 for r in result["leases"])
+    assert result["total_monthly_upside"] == 0.0
+    print("✓ test_loss_to_lease_all_equal_rent_shows_zero_gap_not_excluded: PASS")
+
+
+def test_loss_to_lease_sorted_by_monthly_upside_descending():
+    leases = [
+        _lease(818, "small_gap.pdf", property_address="100 Main St", rent_amount="$4,500.00", square_footage="1,000 sq ft"),
+        _lease(819, "big_gap.pdf", property_address="100 Main St", rent_amount="$1,000.00", square_footage="1,000 sq ft"),
+        _lease(820, "top.pdf", property_address="100 Main St", rent_amount="$5,000.00", square_footage="1,000 sq ft"),
+    ]
+    result = compute_loss_to_lease(leases)
+    upsides = [r["monthly_upside"] for r in result["leases"]]
+    assert upsides == sorted(upsides, reverse=True)
+    assert result["leases"][0]["lease_id"] == 819  # the biggest dollar gap first
+    print("✓ test_loss_to_lease_sorted_by_monthly_upside_descending: PASS")
+
+
+def test_loss_to_lease_empty_portfolio_does_not_crash():
+    result = compute_loss_to_lease([])
+    assert result["leases"] == []
+    assert result["lease_count"] == 0
+    assert result["total_monthly_upside"] is None
+    print("✓ test_loss_to_lease_empty_portfolio_does_not_crash: PASS")
+
+
+def test_rent_roll_reconciliation_agreement_produces_no_mismatches():
+    """Rent roll row and lease PDF for the same unit, everything agrees -- real reconciliation happened, zero mismatches is the correct (good news) answer."""
+    leases = [
+        _lease(900, "rentroll.csv", tenant="Acme Corp", property_address="500 Main St, Suite 100",
+               rent_amount="$4,500.00", lease_end_date="December 31, 2028"),
+        _lease(901, "lease.pdf", tenant="Acme Corp", property_address="500 Main St, Suite 100",
+               rent_amount="$4,500.00", lease_end_date="December 31, 2028"),
+    ]
+    result = compute_rent_roll_reconciliation(leases)
+    assert result["rent_roll_lease_count"] == 1
+    assert result["lease_document_count"] == 1
+    assert result["compared_pair_count"] == 1
+    assert result["mismatches"] == []
+    print("✓ test_rent_roll_reconciliation_agreement_produces_no_mismatches: PASS")
+
+
+def test_rent_roll_reconciliation_flags_tenant_mismatch():
+    leases = [
+        _lease(902, "rentroll.csv", tenant="Old Tenant LLC", property_address="500 Main St, Suite 100", rent_amount="$4,500.00"),
+        _lease(903, "lease.pdf", tenant="New Tenant Inc", property_address="500 Main St, Suite 100", rent_amount="$4,500.00"),
+    ]
+    result = compute_rent_roll_reconciliation(leases)
+    assert len(result["mismatches"]) == 1
+    m = result["mismatches"][0]
+    assert m["field"] == "tenant"
+    assert m["rent_roll_value"] == "Old Tenant LLC"
+    assert m["lease_document_value"] == "New Tenant Inc"
+    print("✓ test_rent_roll_reconciliation_flags_tenant_mismatch: PASS")
+
+
+def test_rent_roll_reconciliation_flags_stale_rent():
+    """The realistic case this feature exists for: PM system never got updated after a rent increase."""
+    leases = [
+        _lease(904, "rentroll.csv", tenant="Acme Corp", property_address="500 Main St, Suite 100", rent_amount="$4,000.00"),
+        _lease(905, "lease.pdf", tenant="Acme Corp", property_address="500 Main St, Suite 100", rent_amount="$4,800.00"),
+    ]
+    result = compute_rent_roll_reconciliation(leases)
+    rent_mismatches = [m for m in result["mismatches"] if m["field"] == "rent_amount"]
+    assert len(rent_mismatches) == 1
+    assert rent_mismatches[0]["rent_roll_value"] == "$4,000.00"
+    assert rent_mismatches[0]["lease_document_value"] == "$4,800.00"
+    print("✓ test_rent_roll_reconciliation_flags_stale_rent: PASS")
+
+
+def test_rent_roll_reconciliation_flags_stale_end_date():
+    """The other realistic case: rent roll still shows the pre-renewal expiration."""
+    leases = [
+        _lease(906, "rentroll.csv", tenant="Acme Corp", property_address="500 Main St, Suite 100", lease_end_date="December 31, 2025"),
+        _lease(907, "lease.pdf", tenant="Acme Corp", property_address="500 Main St, Suite 100", lease_end_date="December 31, 2030"),
+    ]
+    result = compute_rent_roll_reconciliation(leases)
+    date_mismatches = [m for m in result["mismatches"] if m["field"] == "lease_end_date"]
+    assert len(date_mismatches) == 1
+    print("✓ test_rent_roll_reconciliation_flags_stale_end_date: PASS")
+
+
+def test_rent_roll_reconciliation_rent_tolerance_absorbs_rounding_noise():
+    """A trivial $0.50 gap on a $4,500 rent must NOT be flagged -- well under both the % and $ tolerance."""
+    leases = [
+        _lease(908, "rentroll.csv", tenant="Acme Corp", property_address="500 Main St, Suite 100", rent_amount="$4,500.00"),
+        _lease(909, "lease.pdf", tenant="Acme Corp", property_address="500 Main St, Suite 100", rent_amount="$4,500.50"),
+    ]
+    result = compute_rent_roll_reconciliation(leases)
+    assert result["mismatches"] == []
+    print("✓ test_rent_roll_reconciliation_rent_tolerance_absorbs_rounding_noise: PASS")
+
+
+def test_rent_roll_reconciliation_small_dollar_gap_on_tiny_unit_not_flagged_by_pct_alone():
+    """A $2 gap on a $100/mo unit is 2% (over the pct tolerance) but under the $5 absolute floor -- must NOT be flagged; both tolerances are required together."""
+    leases = [
+        _lease(910, "rentroll.csv", tenant="Tiny Kiosk", property_address="500 Main St, Suite 200", rent_amount="$100.00"),
+        _lease(911, "lease.pdf", tenant="Tiny Kiosk", property_address="500 Main St, Suite 200", rent_amount="$102.00"),
+    ]
+    result = compute_rent_roll_reconciliation(leases)
+    assert result["mismatches"] == []
+    print("✓ test_rent_roll_reconciliation_small_dollar_gap_on_tiny_unit_not_flagged_by_pct_alone: PASS")
+
+
+def test_rent_roll_reconciliation_large_dollar_gap_on_huge_unit_still_flagged():
+    """A $500 gap on a $60,000/mo anchor tenant is under 1% but a real dollar discrepancy -- wait, must confirm this IS flagged since $500 clears the $5 floor and needs >1% too; use a gap that clears both."""
+    leases = [
+        _lease(912, "rentroll.csv", tenant="Anchor Co", property_address="500 Main St, Suite 300", rent_amount="$60,000.00"),
+        _lease(913, "lease.pdf", tenant="Anchor Co", property_address="500 Main St, Suite 300", rent_amount="$61,000.00"),
+    ]
+    result = compute_rent_roll_reconciliation(leases)
+    rent_mismatches = [m for m in result["mismatches"] if m["field"] == "rent_amount"]
+    assert len(rent_mismatches) == 1
+    print("✓ test_rent_roll_reconciliation_large_dollar_gap_on_huge_unit_still_flagged: PASS")
+
+
+def test_rent_roll_reconciliation_row_with_no_matching_lease_document_not_compared():
+    """Most rent roll rows won't have an uploaded lease PDF yet -- must not crash, and must not appear in compared_pair_count."""
+    leases = [
+        _lease(914, "rentroll.csv", tenant="No PDF Yet Co", property_address="999 Nowhere St", rent_amount="$1,000.00"),
+    ]
+    result = compute_rent_roll_reconciliation(leases)
+    assert result["rent_roll_lease_count"] == 1
+    assert result["lease_document_count"] == 0
+    assert result["compared_pair_count"] == 0
+    assert result["mismatches"] == []
+    print("✓ test_rent_roll_reconciliation_row_with_no_matching_lease_document_not_compared: PASS")
+
+
+def test_rent_roll_reconciliation_lease_document_with_no_rent_roll_row_excluded():
+    """A lease PDF at an address with no imported rent roll row -- correctly excluded, not compared against anything."""
+    leases = [
+        _lease(915, "lease.pdf", tenant="Standalone Co", property_address="123 Solo Ave", rent_amount="$2,000.00"),
+    ]
+    result = compute_rent_roll_reconciliation(leases)
+    assert result["lease_document_count"] == 1
+    assert result["compared_pair_count"] == 0
+    print("✓ test_rent_roll_reconciliation_lease_document_with_no_rent_roll_row_excluded: PASS")
+
+
+def test_rent_roll_reconciliation_missing_field_on_one_side_skips_only_that_field():
+    leases = [
+        _lease(916, "rentroll.csv", tenant="Acme Corp", property_address="500 Main St, Suite 100", rent_amount="$4,000.00"),  # no lease_end_date
+        _lease(917, "lease.pdf", tenant="Acme Corp", property_address="500 Main St, Suite 100", rent_amount="$4,800.00", lease_end_date="December 31, 2028"),
+    ]
+    result = compute_rent_roll_reconciliation(leases)
+    fields_flagged = {m["field"] for m in result["mismatches"]}
+    assert fields_flagged == {"rent_amount"}  # date comparison skipped (missing on one side), not a crash or a false mismatch
+    print("✓ test_rent_roll_reconciliation_missing_field_on_one_side_skips_only_that_field: PASS")
+
+
+def test_rent_roll_reconciliation_empty_portfolio_does_not_crash():
+    result = compute_rent_roll_reconciliation([])
+    assert result["mismatches"] == []
+    assert result["rent_roll_lease_count"] == 0
+    assert result["lease_document_count"] == 0
+    assert result["compared_pair_count"] == 0
+    print("✓ test_rent_roll_reconciliation_empty_portfolio_does_not_crash: PASS")
+
+
+def test_rent_roll_reconciliation_extension_matching_is_case_insensitive():
+    leases = [
+        _lease(918, "RENTROLL.CSV", tenant="Acme Corp", property_address="500 Main St, Suite 100", rent_amount="$4,000.00"),
+        _lease(919, "LEASE.PDF", tenant="Acme Corp", property_address="500 Main St, Suite 100", rent_amount="$4,800.00"),
+    ]
+    result = compute_rent_roll_reconciliation(leases)
+    assert result["rent_roll_lease_count"] == 1
+    assert result["lease_document_count"] == 1
+    assert len(result["mismatches"]) == 1
+    print("✓ test_rent_roll_reconciliation_extension_matching_is_case_insensitive: PASS")
+
+
+def test_rent_roll_reconciliation_multiple_leases_at_same_address_pairwise():
+    """2 rent roll rows and 2 lease PDFs at one address (e.g. a mis-imported duplicate) -- every pair compared, count reflects it."""
+    leases = [
+        _lease(920, "rentroll.csv", tenant="Acme Corp", property_address="500 Main St, Suite 100", rent_amount="$4,000.00"),
+        _lease(921, "rentroll2.csv", tenant="Acme Corp", property_address="500 Main St, Suite 100", rent_amount="$4,000.00"),
+        _lease(922, "lease.pdf", tenant="Acme Corp", property_address="500 Main St, Suite 100", rent_amount="$4,800.00"),
+    ]
+    result = compute_rent_roll_reconciliation(leases)
+    assert result["compared_pair_count"] == 2  # 2 rent-roll rows x 1 lease doc
+    rent_mismatches = [m for m in result["mismatches"] if m["field"] == "rent_amount"]
+    assert len(rent_mismatches) == 2
+    print("✓ test_rent_roll_reconciliation_multiple_leases_at_same_address_pairwise: PASS")
+
+
 if __name__ == "__main__":
     test_portfolio_totals_and_averages()
     test_year_table_escalation_contributes_a_derived_rate()
@@ -773,4 +1584,59 @@ if __name__ == "__main__":
     test_rent_variance_outliers_excludes_leases_within_normal_range()
     test_rent_variance_outliers_skips_leases_without_sqft()
     test_rent_variance_outliers_empty_portfolio_does_not_crash()
+    test_tenant_concentration_happy_path_multiple_distinct_tenants()
+    test_tenant_concentration_merges_same_tenant_across_multiple_leases()
+    test_tenant_concentration_name_normalization_merges_formatting_variants()
+    test_tenant_concentration_does_not_merge_genuinely_different_tenants()
+    test_tenant_concentration_excludes_lease_with_missing_tenant_name()
+    test_tenant_concentration_excludes_lease_with_unparseable_rent()
+    test_tenant_concentration_empty_portfolio_does_not_crash()
+    test_tenant_concentration_no_analyzable_leases_does_not_crash()
+    test_tenant_concentration_single_tenant_is_maximum_concentration()
+    test_tenant_concentration_evenly_split_is_low()
+    test_tenant_concentration_high_via_dominant_tenant_even_with_low_hhi()
+    test_tenant_concentration_moderate_via_top_tenant_threshold()
+    test_tenant_concentration_high_at_exact_threshold_boundary()
+    test_tenant_concentration_includes_legitimate_zero_rent_tenant()
+    test_tenant_concentration_all_zero_rent_does_not_crash()
+    test_tenant_concentration_rounding_does_not_compound_across_tenants()
+    test_walt_happy_path_weighted_by_rent()
+    test_walt_excludes_lease_missing_end_date()
+    test_walt_excludes_lease_missing_rent()
+    test_walt_excludes_already_expired_lease()
+    test_walt_includes_lease_expiring_exactly_today_at_zero_years()
+    test_walt_empty_portfolio_does_not_crash()
+    test_walt_no_analyzable_leases_does_not_crash()
+    test_rollover_schedule_happy_path_buckets_by_year()
+    test_rollover_schedule_already_expired_kept_separate_not_folded_into_year_1()
+    test_rollover_schedule_lease_expiring_today_lands_in_year_1()
+    test_rollover_schedule_percentages_sum_to_100_across_buckets()
+    test_rollover_schedule_high_risk_when_year_1_concentrated()
+    test_rollover_schedule_low_risk_when_evenly_laddered()
+    test_rollover_schedule_empty_portfolio_does_not_crash()
+    test_rollover_schedule_all_leases_already_expired_reports_real_data_not_none()
+    test_loss_to_lease_happy_path_top_rent_becomes_the_proxy()
+    test_loss_to_lease_excludes_property_with_only_one_lease()
+    test_loss_to_lease_different_properties_not_compared_against_each_other()
+    test_loss_to_lease_excludes_lease_missing_address()
+    test_loss_to_lease_excludes_lease_missing_sqft()
+    test_loss_to_lease_address_normalization_matches_formatting_variants()
+    test_loss_to_lease_groups_different_suites_in_same_building()
+    test_loss_to_lease_does_not_merge_genuinely_different_buildings_with_similar_names()
+    test_loss_to_lease_all_equal_rent_shows_zero_gap_not_excluded()
+    test_loss_to_lease_sorted_by_monthly_upside_descending()
+    test_loss_to_lease_empty_portfolio_does_not_crash()
+    test_rent_roll_reconciliation_agreement_produces_no_mismatches()
+    test_rent_roll_reconciliation_flags_tenant_mismatch()
+    test_rent_roll_reconciliation_flags_stale_rent()
+    test_rent_roll_reconciliation_flags_stale_end_date()
+    test_rent_roll_reconciliation_rent_tolerance_absorbs_rounding_noise()
+    test_rent_roll_reconciliation_small_dollar_gap_on_tiny_unit_not_flagged_by_pct_alone()
+    test_rent_roll_reconciliation_large_dollar_gap_on_huge_unit_still_flagged()
+    test_rent_roll_reconciliation_row_with_no_matching_lease_document_not_compared()
+    test_rent_roll_reconciliation_lease_document_with_no_rent_roll_row_excluded()
+    test_rent_roll_reconciliation_missing_field_on_one_side_skips_only_that_field()
+    test_rent_roll_reconciliation_empty_portfolio_does_not_crash()
+    test_rent_roll_reconciliation_extension_matching_is_case_insensitive()
+    test_rent_roll_reconciliation_multiple_leases_at_same_address_pairwise()
     print("\nAll portfolio tests passed.")

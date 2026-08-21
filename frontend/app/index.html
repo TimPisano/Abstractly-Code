@@ -298,6 +298,40 @@
                     <div id="uploadResultsList"></div>
                     <button class="btn-primary" data-goto="dashboard" type="button">Go to Dashboard</button>
                 </div>
+
+                <div class="view-header" style="margin-top:2.5rem;">
+                    <div>
+                        <h1>Import Rent Roll</h1>
+                        <p class="view-subtitle">Import a broker-built Excel or CSV rent roll — no fixed format required, we match your column headers automatically</p>
+                    </div>
+                </div>
+
+                <div class="rent-roll-import-form">
+                    <label class="rent-roll-field-label" for="rentRollPropertyAddress">Property address (recommended)</label>
+                    <input type="text" id="rentRollPropertyAddress" class="text-input" placeholder="e.g. 100 Main Street, Portland, ME">
+                    <p class="rent-roll-field-hint">Most rent rolls list the building once, not per row — enter it here so every imported unit gets a full address. If your file has a Unit/Suite column, it's combined automatically.</p>
+
+                    <div class="upload-box" id="rentRollUploadBox">
+                        <div class="upload-content">
+                            <svg class="upload-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                            <p class="upload-text">Drag and drop a rent roll file here, or click to browse</p>
+                            <p class="upload-subtext">.csv or .xlsx only, one file at a time</p>
+                            <input type="file" id="rentRollFileInput" accept=".csv,.xlsx" hidden>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="upload-progress" id="rentRollProgress" style="display:none;">
+                    <h3><span class="spinner-small"></span> Importing&hellip;</h3>
+                </div>
+
+                <div class="upload-results" id="rentRollResults" style="display:none;">
+                    <h3>Import Results</h3>
+                    <div id="rentRollResultsList"></div>
+                    <button class="btn-primary" data-goto="dashboard" type="button">Go to Dashboard</button>
+                </div>
             </section>
 
             <!-- LEASE DETAIL VIEW -->

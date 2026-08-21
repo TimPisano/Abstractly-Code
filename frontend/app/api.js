@@ -69,6 +69,13 @@ const Api = {
         return apiRequest('/leases/batch', { method: 'POST', body: formData });
     },
 
+    importRentRoll(file, propertyAddress) {
+        const formData = new FormData();
+        formData.append('file', file);
+        if (propertyAddress) formData.append('property_address', propertyAddress);
+        return apiRequest('/leases/import-rent-roll', { method: 'POST', body: formData });
+    },
+
     listLeases() {
         return apiRequest('/leases');
     },

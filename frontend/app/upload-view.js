@@ -34,6 +34,7 @@ const Upload = {
         document.getElementById('uploadResultsList').innerHTML = '';
         const fileInput = document.getElementById('fileInput');
         if (fileInput) fileInput.value = '';
+        RentRollImport.reset();
     },
 
     async handleFiles(fileList) {
@@ -207,6 +208,93 @@ const Upload = {
     },
 };
 
+/**
+ * Rent roll import: a single .csv/.xlsx file, parsed with no fixed
+ * column format assumed (see backend/app/rent_roll_import.py) into the
+ * same lease shape a PDF upload produces. Deliberately a separate flow
+ * from the PDF Upload object above rather than unified with it -- the
+ * two have genuinely different semantics (one file in, one lease out
+ * vs. one file in, potentially many leases out; an optional property
+ * address input that only makes sense here; a different accepted file
+ * type) and forcing them into one shared code path would make both
+ * harder to follow for what's actually a small amount of logic each.
+ */
+const RentRollImport = {
+    reset() {
+        document.getElementById('rentRollResults').style.display = 'none';
+        document.getElementById('rentRollProgress').style.display = 'none';
+        const fileInput = document.getElementById('rentRollFileInput');
+        if (fileInput) fileInput.value = '';
+    },
+
+    async handleFile(file) {
+        const name = file.name.toLowerCase();
+        if (!name.endsWith('.csv') && !name.endsWith('.xlsx')) {
+            showError('Please select a .csv or .xlsx rent roll file.');
+            return;
+        }
+
+        document.getElementById('rentRollResults').style.display = 'none';
+        document.getElementById('rentRollProgress').style.display = 'block';
+
+        const propertyAddress = document.getElementById('rentRollPropertyAddress').value.trim();
+
+        try {
+            const response = await Api.importRentRoll(file, propertyAddress);
+            this.showResults(file.name, response);
+            if (response.imported_count > 0) {
+                showToast(`${response.imported_count} lease(s) imported from ${file.name}.`, 'success');
+            }
+        } catch (err) {
+            showError(`Couldn't import ${file.name}: ${err.message}`);
+        } finally {
+            document.getElementById('rentRollProgress').style.display = 'none';
+        }
+    },
+
+    showResults(filename, response) {
+        const container = document.getElementById('rentRollResultsList');
+        const skipped = response.skipped_rows || [];
+
+        let html = `
+            <p class="upload-summary">
+                <strong>${response.imported_count}</strong> lease(s) imported from <strong>${escapeHtml(filename)}</strong>
+                ${skipped.length > 0 ? `&mdash; <strong>${skipped.length}</strong> row(s) skipped` : ''}
+            </p>
+        `;
+
+        html += response.leases.map(lease => `
+            <div class="upload-result-item success">
+                <span class="upload-result-icon">✓</span>
+                <span class="upload-result-name">${escapeHtml(lease.display_name)}</span>
+                <span class="upload-result-detail">${escapeHtml(fieldValue(lease, 'tenant') || 'Tenant not found')}</span>
+            </div>
+        `).join('');
+
+        // Every skipped row is shown, not just a count -- a real broker
+        // file commonly has several vacant/total rows, and a user
+        // relying on this import wants to see WHY a row they expected
+        // to see isn't there, not just a number that might mean
+        // anything.
+        if (skipped.length > 0) {
+            html += `
+                <div class="upload-result-item" style="margin-top:0.75rem;">
+                    <span class="upload-result-detail">Skipped rows:</span>
+                </div>
+            ` + skipped.map(s => `
+                <div class="upload-result-item">
+                    <span class="upload-result-icon">&mdash;</span>
+                    <span class="upload-result-name">Row ${s.row}</span>
+                    <span class="upload-result-detail">${escapeHtml(s.reason)}</span>
+                </div>
+            `).join('');
+        }
+
+        container.innerHTML = html;
+        document.getElementById('rentRollResults').style.display = 'block';
+    },
+};
+
 registerView('upload', Upload);
 
 // Loaded dynamically by access-gate.js after the gate passes, well after
@@ -233,6 +321,28 @@ function _initUploadViewBindings() {
         e.preventDefault();
         uploadBox.classList.remove('dragover');
         if (e.dataTransfer.files.length > 0) Upload.handleFiles(e.dataTransfer.files);
+    });
+
+    const rentRollBox = document.getElementById('rentRollUploadBox');
+    const rentRollInput = document.getElementById('rentRollFileInput');
+
+    rentRollBox.addEventListener('click', () => rentRollInput.click());
+    rentRollInput.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) RentRollImport.handleFile(e.target.files[0]);
+    });
+
+    rentRollBox.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        rentRollBox.classList.add('dragover');
+    });
+    rentRollBox.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        rentRollBox.classList.remove('dragover');
+    });
+    rentRollBox.addEventListener('drop', (e) => {
+        e.preventDefault();
+        rentRollBox.classList.remove('dragover');
+        if (e.dataTransfer.files.length > 0) RentRollImport.handleFile(e.dataTransfer.files[0]);
     });
 }
 if (document.readyState === 'loading') {

@@ -149,8 +149,19 @@ const LeaseDetail = {
         if (found && fieldData.source) {
             const sourceDiv = document.createElement('div');
             sourceDiv.className = 'field-source';
+            // Two possible citation shapes: {page, quote} from the PDF
+            // extractor, or {row, file, quote} from a rent roll import
+            // (rent_roll_import.py) -- there's no PDF page for a
+            // spreadsheet cell, so imported fields get a row/file
+            // citation instead. Checking for `row` specifically (rather
+            // than assuming "no page means row") keeps this forward-
+            // compatible with a third source shape later needing its
+            // own branch, instead of silently falling into the wrong one.
+            const locationHtml = 'row' in fieldData.source
+                ? `<div class="source-page">Row ${fieldData.source.row} of ${escapeHtml(fieldData.source.file)}</div>`
+                : `<div class="source-page">Page ${fieldData.source.page}</div>`;
             sourceDiv.innerHTML = `
-                <div class="source-page">Page ${fieldData.source.page}</div>
+                ${locationHtml}
                 <div class="source-quote">"${escapeHtml(fieldData.source.quote)}"</div>
             `;
             body.appendChild(sourceDiv);
