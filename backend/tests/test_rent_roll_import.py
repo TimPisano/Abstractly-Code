@@ -309,6 +309,221 @@ def test_specific_date_column_not_misattributed_to_rent_amount():
     print("✓ test_specific_date_column_not_misattributed_to_rent_amount: PASS")
 
 
+def test_header_row_auto_detection_skips_decorative_rows():
+    """
+    Real PMS canned reports (Yardi, AppFolio, ...) routinely open with a
+    few decorative rows -- property name, report title, an "As of" date
+    -- before the actual column-header row, unlike a broker's own
+    hand-built spreadsheet where row 1 almost always already is the
+    header. Includes a genuinely blank spacer row in the decorative
+    block too, since that's a real pattern and specifically exercises
+    the true-row-number tracking (not just index arithmetic) that fixes
+    citation drift when blank rows get dropped before the header.
+    """
+    csv_bytes = _csv_bytes([
+        ["Riverside Commons"],
+        ["Rent Roll"],
+        ["As of 08/01/2026"],
+        [],
+        ["Tenant", "Unit", "Rent"],
+        ["Acme Corp", "101", "2000.00"],
+    ])
+    result = parse_csv_rent_roll(csv_bytes, "yardi_style.csv", base_property_address="1 Main St")
+    assert result["column_mapping"] == {"tenant": 0, "unit": 1, "rent_amount": 2}, result["column_mapping"]
+    fields = result["leases"][0]["extracted_fields"]
+    assert fields["tenant"]["value"] == "Acme Corp"
+    # True file row 6, not 5 -- the dropped blank spacer row (file row 4)
+    # must not shift this citation off by one.
+    assert fields["tenant"]["source"]["row"] == 6, fields["tenant"]["source"]
+    print("✓ test_header_row_auto_detection_skips_decorative_rows: PASS")
+
+
+def test_header_row_already_at_top_is_unaffected():
+    """The common broker-spreadsheet case (header already row 1) must behave identically to before header detection existed -- no regression."""
+    csv_bytes = _csv_bytes([
+        ["Tenant", "Rent"],
+        ["Acme Corp", "$2,000.00"],
+    ])
+    result = parse_csv_rent_roll(csv_bytes, "rr.csv")
+    assert result["leases"][0]["extracted_fields"]["tenant"]["source"]["row"] == 2
+    print("✓ test_header_row_already_at_top_is_unaffected: PASS")
+
+
+def test_no_header_found_within_scan_window_gives_clear_error():
+    """
+    A file with no recognizable header row anywhere near the top (not a
+    rent roll at all, or a genuinely malformed export) must still fail
+    with the same clear, honest error as before -- not silently
+    misinterpret some deep decorative or data row as if it were the
+    header.
+    """
+    csv_bytes = _csv_bytes([["Notes"], ["This file has nothing recognizable in it"], ["Parking Spaces: 12"]])
+    try:
+        parse_csv_rent_roll(csv_bytes, "not_a_rent_roll.csv")
+        assert False, "should have raised RentRollImportError"
+    except RentRollImportError as e:
+        assert "recognizable" in str(e).lower()
+    print("✓ test_no_header_found_within_scan_window_gives_clear_error: PASS")
+
+
+def test_decorative_title_row_with_a_stray_recognizable_word_not_mistaken_for_header():
+    """
+    A decorative title row containing a word that partially overlaps a
+    real alias ("Rent Roll Report" contains "Rent") must NOT be mistaken
+    for the real header -- header detection requires BOTH a tenant AND
+    a rent match, and a title row has neither a real tenant column nor
+    a real rent column, just a word that happens to appear in one.
+    """
+    csv_bytes = _csv_bytes([
+        ["Rent Roll Report"],
+        ["Tenant", "Rent"],
+        ["Acme Corp", "$2,000.00"],
+    ])
+    result = parse_csv_rent_roll(csv_bytes, "rr.csv")
+    assert result["column_mapping"] == {"tenant": 0, "rent_amount": 1}
+    assert result["leases"][0]["extracted_fields"]["tenant"]["value"] == "Acme Corp"
+    print("✓ test_decorative_title_row_with_a_stray_recognizable_word_not_mistaken_for_header: PASS")
+
+
+def test_header_row_auto_detection_works_for_xlsx_too():
+    """Same decorative-header scenario, but through the .xlsx path -- both readers share _find_header_row, but that's exactly the kind of 'should be covered' assumption worth actually checking."""
+    xlsx_bytes = _xlsx_bytes([
+        ["Sunset Plaza"],
+        ["Rent Roll"],
+        ["Tenant", "Unit", "Rent"],
+        ["Beta LLC", "Suite 200", 3000],
+    ])
+    result = parse_xlsx_rent_roll(xlsx_bytes, "yardi_style.xlsx", base_property_address="2 Oak Ave")
+    fields = result["leases"][0]["extracted_fields"]
+    assert fields["tenant"]["value"] == "Beta LLC"
+    assert fields["property_address"]["value"] == "2 Oak Ave, Suite 200"
+    assert fields["tenant"]["source"]["row"] == 4
+    print("✓ test_header_row_auto_detection_works_for_xlsx_too: PASS")
+
+
+def test_per_row_property_column_overrides_base_address_for_multi_property_exports():
+    """
+    A portfolio-wide PMS export can cover several DIFFERENT properties
+    in one file, one row per unit -- unlike a single-property rent roll
+    where one uploader-typed base_property_address is correct for every
+    row. When the file has its own Property column, each row's real
+    building must win, not be flattened into whatever address the
+    uploader happened to type (which would be actively wrong for every
+    row except whichever property they were thinking of).
+    """
+    csv_bytes = _csv_bytes([
+        ["Property", "Tenant", "Unit", "Rent"],
+        ["100 Alpha St", "Acme Corp", "101", "2000.00"],
+        ["200 Beta Ave", "Beta LLC", "5", "3000.00"],
+    ])
+    result = parse_csv_rent_roll(csv_bytes, "multi_property.csv", base_property_address="Should Not Be Used")
+    addresses = {l["extracted_fields"]["tenant"]["value"]: l["extracted_fields"]["property_address"]["value"] for l in result["leases"]}
+    assert addresses["Acme Corp"] == "100 Alpha St, Suite 101", addresses
+    assert addresses["Beta LLC"] == "200 Beta Ave, Suite 5", addresses
+    print("✓ test_per_row_property_column_overrides_base_address_for_multi_property_exports: PASS")
+
+
+def test_property_column_falls_back_to_base_address_when_a_row_is_blank():
+    """A mostly-complete Property column shouldn't lose the uploader's fallback for the rows it's actually missing on."""
+    csv_bytes = _csv_bytes([
+        ["Property", "Tenant", "Unit", "Rent"],
+        ["100 Alpha St", "Acme Corp", "101", "2000.00"],
+        ["", "Beta LLC", "5", "3000.00"],
+    ])
+    result = parse_csv_rent_roll(csv_bytes, "multi_property.csv", base_property_address="200 Beta Ave")
+    addresses = {l["extracted_fields"]["tenant"]["value"]: l["extracted_fields"]["property_address"]["value"] for l in result["leases"]}
+    assert addresses["Acme Corp"] == "100 Alpha St, Suite 101", addresses
+    assert addresses["Beta LLC"] == "200 Beta Ave, Suite 5", addresses
+    print("✓ test_property_column_falls_back_to_base_address_when_a_row_is_blank: PASS")
+
+
+def test_market_rent_is_never_used_as_rent_amount():
+    """
+    Regression/design test for a real risk caught during design, not
+    found broken in production: "Market Rent" is a theoretical
+    achievable-at-100%-occupancy figure, not what a tenant is actually,
+    contractually paying. The bare "rent" alias would otherwise match
+    it via substring containment. A file with ONLY a Market Rent column
+    (no real rent column) must fail the same honest way as a file with
+    no rent column at all -- silently treating market rent as if it
+    were actual rent would be systematically wrong, not just imprecise.
+    """
+    csv_bytes = _csv_bytes([["Tenant", "Market Rent"], ["Acme Corp", "2500.00"]])
+    try:
+        parse_csv_rent_roll(csv_bytes, "market_only.csv")
+        assert False, "should have raised -- Market Rent must never be treated as rent_amount"
+    except RentRollImportError:
+        pass
+
+    # With BOTH a market rent column and a real one, the real one must
+    # win -- market rent must not even be considered a lower-priority
+    # fallback candidate.
+    csv_bytes2 = _csv_bytes([
+        ["Tenant", "Market Rent", "Current Rent"],
+        ["Acme Corp", "2500.00", "2000.00"],
+    ])
+    result = parse_csv_rent_roll(csv_bytes2, "market_and_real.csv")
+    assert result["leases"][0]["extracted_fields"]["rent_amount"]["value"] == "$2,000.00", \
+        result["leases"][0]["extracted_fields"]["rent_amount"]
+    print("✓ test_market_rent_is_never_used_as_rent_amount: PASS")
+
+
+def test_yardi_appfolio_terminology_aliases():
+    """PMS-specific column names (Resident, Unit SF, Scheduled Rent, Lease From/To) map to the same fields as their broker-spreadsheet equivalents."""
+    csv_bytes = _csv_bytes([
+        ["Resident", "Unit SF", "Scheduled Rent", "Lease From", "Lease To"],
+        ["Gamma Inc", "1200", "3200.00", "01/01/2024", "12/31/2026"],
+    ])
+    result = parse_csv_rent_roll(csv_bytes, "pms_terms.csv")
+    fields = result["leases"][0]["extracted_fields"]
+    assert fields["tenant"]["value"] == "Gamma Inc"
+    assert fields["square_footage"]["value"] == "1,200 sq ft"
+    assert fields["rent_amount"]["value"] == "$3,200.00"
+    assert fields["lease_start_date"]["value"] == "01/01/2024"
+    assert fields["lease_end_date"]["value"] == "12/31/2026"
+    print("✓ test_yardi_appfolio_terminology_aliases: PASS")
+
+
+def test_property_manager_column_not_mistaken_for_property_address():
+    """
+    Regression test caught during self-review, not found broken in
+    production: "Property Manager" (a real, common rent-roll column --
+    the on-site PM's name) contains the bare "property" alias as a
+    whole word, which pass 2's substring matching would otherwise grab.
+    A file with BOTH a real "Property" column and a "Property Manager"
+    column must use the real one for the address, not the person's name.
+    """
+    csv_bytes = _csv_bytes([
+        ["Property", "Property Manager", "Tenant", "Unit", "Rent"],
+        ["100 Alpha St", "Jane Smith", "Acme Corp", "101", "2000.00"],
+    ])
+    result = parse_csv_rent_roll(csv_bytes, "pm_test.csv")
+    assert result["column_mapping"]["property"] == 0, result["column_mapping"]  # the real "Property" column, not "Property Manager"
+    address = result["leases"][0]["extracted_fields"]["property_address"]["value"]
+    assert address == "100 Alpha St, Suite 101", address
+    print("✓ test_property_manager_column_not_mistaken_for_property_address: PASS")
+
+
+def test_move_in_move_out_not_mistaken_for_lease_dates():
+    """
+    Move-in/move-out are occupancy dates (when a tenant physically took/
+    vacated possession) -- a different real-world fact from the lease's
+    own contractual start/end. Deliberately not aliased to lease_start_
+    date/lease_end_date, so a file with ONLY these (no real lease-date
+    columns) must leave those fields honestly unset, not silently
+    conflate the two.
+    """
+    csv_bytes = _csv_bytes([
+        ["Tenant", "Rent", "Move-in", "Move-out"],
+        ["Acme Corp", "$2,000.00", "01/15/2024", "12/20/2026"],
+    ])
+    result = parse_csv_rent_roll(csv_bytes, "moveinout.csv")
+    fields = result["leases"][0]["extracted_fields"]
+    assert fields["lease_start_date"]["value"] is None, fields["lease_start_date"]
+    assert fields["lease_end_date"]["value"] is None, fields["lease_end_date"]
+    print("✓ test_move_in_move_out_not_mistaken_for_lease_dates: PASS")
+
+
 if __name__ == "__main__":
     test_csv_happy_path_standard_headers()
     test_xlsx_happy_path_with_real_numeric_and_date_cell_types()
@@ -327,4 +542,15 @@ if __name__ == "__main__":
     test_empty_xlsx_raises()
     test_row_numbers_reflect_actual_file_position()
     test_specific_date_column_not_misattributed_to_rent_amount()
+    test_header_row_auto_detection_skips_decorative_rows()
+    test_header_row_already_at_top_is_unaffected()
+    test_no_header_found_within_scan_window_gives_clear_error()
+    test_decorative_title_row_with_a_stray_recognizable_word_not_mistaken_for_header()
+    test_header_row_auto_detection_works_for_xlsx_too()
+    test_per_row_property_column_overrides_base_address_for_multi_property_exports()
+    test_property_column_falls_back_to_base_address_when_a_row_is_blank()
+    test_market_rent_is_never_used_as_rent_amount()
+    test_yardi_appfolio_terminology_aliases()
+    test_property_manager_column_not_mistaken_for_property_address()
+    test_move_in_move_out_not_mistaken_for_lease_dates()
     print("\nAll rent roll import tests passed.")

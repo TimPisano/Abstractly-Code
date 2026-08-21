@@ -2888,3 +2888,127 @@ Registered in `run_all_tests.py`'s `LIVE_API_TESTS` list so this
 exact class of regression gets caught automatically on every future
 `--live` run, rather than depending on a human happening to test the
 exact right input by hand again.
+
+## PMS-specific rent roll import: Yardi and AppFolio (Platform feature, using synthetic fixtures)
+
+**Status: done, pending real vendor files.** The last two originally-
+blocked Platform items (PMS-specific import; T12 cross-check) genuinely
+needed either real sample files from the user or an explicit decision
+to build against fabricated ones -- per this whole batch's own rule
+("if a feature needs something from me... stop and ask rather than
+guessing or faking it"), this was asked, and the user explicitly chose
+to have realistic synthetic fixtures generated instead of waiting on
+real files, to be swapped in later. This entry covers the PMS import
+half; T12 is a separate entry below.
+
+**Design.** The existing generic broker-CSV/Excel importer
+(`rent_roll_import.py`, already shipped) assumes row 1 is the header
+row and covers one property per import. Neither assumption holds for a
+real PMS canned report: Yardi Voyager and AppFolio rent roll exports
+both routinely open with several decorative rows (property name,
+report title, an "As Of" date) before the real column-header row, use
+their own terminology ("Resident" for tenant, "Lease From"/"Lease To",
+"Unit SF", "Scheduled Rent"/"Rent Charge" for actual rent vs. "Market
+Rent" for the theoretical achievable rate), and a portfolio-wide export
+can cover several DIFFERENT properties in one file via a per-row
+Property/Community column, not just one building via a single
+uploader-typed address.
+
+Three additions, all inside the same existing module (no new file --
+this is the same importer gaining PMS awareness, not a separate PMS-
+specific code path):
+
+1. **Header-row auto-detection** (`_find_header_row`): scans the first
+   20 rows for the first one where BOTH a tenant and a rent column are
+   recognizable, treats everything before it as decorative. Requiring
+   BOTH (not just one) is what keeps a title row like "Rent Roll
+   Report" -- which contains the word "Rent" but has no tenant column
+   -- from being mistaken for the real header. Falls back to today's
+   existing "no recognizable columns" error if nothing in the scan
+   window qualifies, rather than silently misinterpreting a data row as
+   a header.
+2. **Per-row Property column** overrides the uploader's single
+   `base_property_address` for that row specifically, falling back to
+   it only when a row's own cell is blank -- makes a portfolio-wide,
+   multi-property export group correctly by each unit's REAL building
+   for downstream loss-to-lease/T12 comp grouping, instead of every row
+   being incorrectly flattened into whichever address the uploader
+   happened to type.
+3. **PMS terminology aliases**, plus one deliberate exclusion and one
+   deliberate denylist:
+   - Added: "Resident" (tenant), "Unit SF" (square footage), "Scheduled
+     Rent"/"Rent Charge" (rent_amount), "Lease From"/"Lease To" (dates).
+   - Deliberately NOT added: "Move-in"/"Move-out" -- these are
+     occupancy dates (when a tenant physically took/vacated possession),
+     a different real-world fact from the lease's own contractual
+     start/end. Conflating them would be wrong in either direction (a
+     tenant can move in days after lease start; a lease can renew past
+     an original move-in date).
+   - Denylisted: any rent-like header containing "market"/"potential"/
+     "asking"/"projected"/"proforma" alongside "rent" is NEVER matched
+     to rent_amount, even with no better rent column present in the
+     file. Market rent is a theoretical, vacancy-inclusive achievable
+     rate, not what a tenant is actually, contractually paying --
+     silently using it as if it were actual rent would corrupt every
+     downstream computation that reads rent_amount, systematically in
+     one direction. The honest behavior is to treat the file as if it
+     has no recognizable rent column at all.
+
+**A real accuracy bug, found and fixed during self-review, not in
+production**: the new bare "property" alias (needed for AppFolio's own
+common bare "Property" header) would also match "Property Manager" --
+a real, common column holding the on-site PM's PERSON'S NAME, not a
+building address -- via pass 2's whole-word substring matching.
+Fixed with the same denylist pattern already used for market rent
+("manager"/"management"/"type"/"tax"/"id"/"code" alongside "property"
+is never eligible), rather than removing the bare "property" alias
+(which would have broken the common, legitimate bare-"Property" case
+this whole addition exists for). Regression test added.
+
+**A precision bug, found while building the header-detection feature
+itself**: with header auto-detection in play, a decorative block
+containing a genuinely blank spacer row (a very common real pattern --
+title, blank, subtitle, blank, real header) was silently shifting every
+later row's `source.row` citation off by one, because blank rows get
+dropped before parsing and the old citation math assumed a fixed
+row-1-is-header offset. Fixed by tracking each surviving row's TRUE
+original file line number end to end (both CSV and xlsx readers),
+rather than reconstructing it from position + an offset. Directly
+serves the project's own quality bar ("every extracted field must show
+its source... so a human can verify it") -- a citation pointing at the
+wrong row is a real trust failure, not a cosmetic one.
+
+**Synthetic fixtures** (clearly labeled as such in each file's own
+first row, `backend/tests/synthetic_yardi_rent_roll.csv`/`.xlsx` and
+`synthetic_appfolio_rent_roll.csv`): built to match the real, publicly-
+documented structure of each platform's standard rent roll report as
+closely as reasonably possible -- decorative header block, PMS
+terminology, a Market-Rent-alongside-actual-rent column, a VACANT unit
+row, a trailing Total row, and (AppFolio) a genuine multi-property
+export with no single base address supplied at all, relying purely on
+the Property column. Verified end to end against all three: correct
+header detection, correct rent column chosen over market rent, correct
+per-row addresses (including a "Unit 12" cell that already spells out
+its own designator, confirming the earlier double-"Suite" fix also
+holds for real PMS-shaped unit values), correct VACANT/Total skipping,
+and downstream `/portfolio/tenant-concentration` correctly consuming
+the combined imported data with zero special-casing -- run against the
+REAL live server (not just Flask's `test_client()`), restarting it
+first to make sure of it this time (see the addendum immediately
+above).
+
+**Tests**: 6 new unit tests for header-detection specifically, 6 for
+property-column/aliases/denylists, 4 fixture-driven tests (including
+one that round-trips both fixtures through the real
+`POST /leases/import-rent-roll` route via `test_client()`) in a new
+`test_pms_synthetic_fixtures.py`. Full suite: 34/34.
+
+Platform copy updated: Yardi/AppFolio import moved from "Coming soon"
+to a checkmark, with the copy explicitly disclosing it's validated
+against synthetic fixtures, not yet a real customer file from either
+platform. RealPage/MRI/Buildium remain "Coming soon" -- not specifically
+tested, and per this batch's own standing rule, not something to guess
+at. Two other places on the landing page overclaiming all five PMS
+platforms as already-live were also corrected for accuracy while making
+this change (a hero step-card and a FAQ answer), independent of this
+specific feature's own Platform-section bullet.

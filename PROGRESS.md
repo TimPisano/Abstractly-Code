@@ -1,6 +1,28 @@
 # Progress Summary
 
-**Last updated**: 5 of the Platform page's original "Coming soon" items (6
+**Last updated**: Yardi and AppFolio rent roll import is now live, closing
+half of what was previously a hard blocker (no real vendor sample files were
+available; the user explicitly chose to have realistic synthetic fixtures
+generated instead of waiting, clearly labeled as such so real files can be
+swapped in later — see `backend/tests/synthetic_yardi_rent_roll.csv`/`.xlsx`
+and `synthetic_appfolio_rent_roll.csv`). Required real new capability, not
+just more aliases: auto-detecting a canned report's real header row past its
+decorative title/date block, a per-row Property column for portfolio-wide
+multi-property exports, PMS terminology (Resident, Lease From/To, Scheduled
+Rent), and a denylist so a "Market Rent" column is never mistaken for what a
+tenant is actually paying. Two real accuracy bugs caught during self-review
+before shipping (a "Property Manager" column would have been mistaken for
+the building address; blank spacer rows in a decorative header block were
+silently shifting citation row numbers). Full suite 34/34, verified against
+the real running server, not just Flask's test client. RealPage/MRI/Buildium
+remain "Coming soon" — not specifically tested, per this whole batch's
+standing rule against guessing at formats. See DECISIONS.md's "PMS-specific
+rent roll import: Yardi and AppFolio" entry for the full write-up.
+
+The T12 operating-statement cross-check — the other originally-blocked item,
+also unblocked the same way (synthetic fixture, clearly labeled) — is next.
+
+Before that: 5 of the Platform page's original "Coming soon" items (6
 underlying pieces of work) are now genuinely working, tested, and live: tenant
 concentration analysis (Herfindahl-Hirschman Index), WALT + a year-by-year
 rollover schedule, loss-to-lease (portfolio-internal comp, since there's no
@@ -44,11 +66,11 @@ running the suite going forward, not by luck. Full suite including live
 tests: 33/33. See DECISIONS.md's "Dashboard UI for the 4 new portfolio
 metrics" entry (and its addendum) for the full write-up.
 
-**Blocked, needs the user**: PMS-specific rent roll imports (Yardi/AppFolio/
-RealPage/MRI/Buildium — needs real sample export files, can't be built
-accurately by guessing at proprietary formats) and the T12 operating-
-statement cross-check (likely
-needs a real sample T12).
+**Still open**: RealPage/MRI/Buildium import (no synthetic fixtures built for
+these yet — Yardi and AppFolio were prioritized as the two most commonly
+requested) and the T12 cross-check (in progress, see above). Real vendor
+sample files for any of these, whenever available, are still preferred over
+synthetic ones and should replace them.
 
 Before that: the admin login page (`/admin/`) no longer has any
 session-based bypass of the credentials form — it used to show a

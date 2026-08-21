@@ -47,6 +47,7 @@ UNIT_TESTS = [
     "test_rent_roll_import.py",
     "test_rent_roll_import_api.py",
     "test_rent_roll_reconciliation_api.py",
+    "test_pms_synthetic_fixtures.py",
 ]
 
 LIVE_API_TESTS = [

@@ -52,10 +52,24 @@ class RentRollImportError(Exception):
 # broker rent rolls routinely have extra columns (notes, parking,
 # CAM, etc.) that aren't an error to skip.
 _COLUMN_ALIASES: Dict[str, List[str]] = {
-    "tenant": ["tenant name", "tenant", "lessee", "occupant", "customer"],
+    # "Resident" is Yardi/AppFolio's own term for a tenant even in
+    # mixed/commercial portfolios (both platforms originated in
+    # multifamily) -- added for PMS export support, alongside the
+    # existing broker-spreadsheet terms.
+    "tenant": ["tenant name", "tenant", "lessee", "occupant", "customer", "resident"],
     "unit": ["unit number", "unit #", "suite #", "unit", "suite", "space"],
-    "square_footage": ["square footage", "square feet", "sq ft", "sqft", "sf", "rsf", "size", "area"],
-    "rent_amount": ["monthly base rent", "monthly rent", "base rent", "current rent", "rent/mo", "rent"],
+    # "Unit SF" is Yardi/AppFolio's own compact form of "square feet".
+    "square_footage": ["square footage", "square feet", "sq ft", "sqft", "sf", "rsf", "size", "area", "unit sf"],
+    # "Scheduled Rent"/"Rent Charge" are Yardi/AppFolio's own terms for
+    # the tenant's actual contracted rent (as opposed to "Market Rent",
+    # which is the theoretical achievable rate at 100% occupancy --
+    # explicitly denylisted below, see _MARKET_RENT_WORDS, since using
+    # market rent as if it were actual rent would silently corrupt
+    # every downstream computation that reads rent_amount).
+    "rent_amount": [
+        "monthly base rent", "monthly rent", "base rent", "current rent", "rent/mo", "rent",
+        "scheduled rent", "rent charge", "scheduled charges",
+    ],
     # "Rent Commencement"/"Rent Start" are real, standard commercial
     # lease terms distinct from "Lease Commencement" -- rent can start
     # later than the lease itself during a free-rent/build-out period.
@@ -65,15 +79,72 @@ _COLUMN_ALIASES: Dict[str, List[str]] = {
     # accidentally collide with rent_amount's "rent" alias (a real bug
     # caught in testing: "Rent Commencement" was getting matched to
     # rent_amount via the bare "rent" substring before this was added).
+    # "Lease From"/"Lease To" are Yardi/AppFolio's own terms.
+    # Deliberately does NOT include "Move-in"/"Move-out" -- those are
+    # occupancy dates (when a tenant physically took/vacated
+    # possession), a different real-world fact from the lease's own
+    # contractual start/end (a tenant can move in days after lease
+    # start, or a lease can renew past an original move-in date), the
+    # same "don't conflate two different things" care already applied
+    # elsewhere in this module (see _normalize_building_address in
+    # portfolio.py for the same principle applied to addresses).
     "lease_start_date": [
-        "lease commencement", "commencement date", "commence date", "lease start", "start date",
+        "lease commencement", "commencement date", "commence date", "lease start", "start date", "lease from",
         "rent commencement", "rent commencement date", "rent start", "rent start date",
     ],
     "lease_end_date": [
-        "lease expiration", "expiration date", "lease end", "end date", "expire",
+        "lease expiration", "expiration date", "lease end", "end date", "expire", "lease to",
         "rent expiration", "rent expiration date", "rent end", "rent end date",
     ],
+    # Per-row property identifier -- most rent rolls (broker-built or a
+    # single-property PMS pull) state the building once, outside the
+    # table, handled by the uploader-supplied base_property_address
+    # parameter. A portfolio-wide PMS export can instead cover several
+    # properties in one file, one row per unit; when a column like this
+    # is present, its value overrides base_property_address for that
+    # row specifically (see parse_rent_roll_rows). Deliberately doesn't
+    # include a bare "building" alias -- some rent rolls have an
+    # unrelated "Building Type" (construction type) column, and a bare
+    # "building" substring match would risk grabbing that instead.
+    "property": ["property", "property name", "property address", "community", "community name"],
 }
+
+# Header words that mean a rent-like column is a THEORETICAL/aspirational
+# figure -- the achievable rate at 100% occupancy or asking price -- not
+# what a tenant is actually, contractually paying. A column whose header
+# contains "rent" together with any of these is never matched to
+# rent_amount, even if no better rent column exists in the file:
+# comparing a rent roll's real dollars against an unrelated aspirational
+# figure (as if they were the same thing) would be systematically wrong
+# in one direction, and silently so -- the honest behavior is to treat
+# the file as if it has no recognizable rent column at all, same as if
+# the column were simply named something this module doesn't recognize.
+_MARKET_RENT_WORDS = {"market", "potential", "asking", "projected", "proforma"}
+
+
+def _is_market_rent_header(normalized_header: str) -> bool:
+    words = set(normalized_header.split())
+    return "rent" in words and bool(words & _MARKET_RENT_WORDS)
+
+
+# "Property" alone is a genuinely common, useful column header (see the
+# "property" alias above, and this module's own synthetic AppFolio
+# fixture) -- but it's also a common WORD inside several other, very
+# different real rent-roll columns that have nothing to do with a
+# building's address: "Property Manager" (a person's name), "Property
+# Type" (Retail/Office/Industrial), "Property Tax", "Property ID" (an
+# internal PMS record id). Pass 2's substring matching would otherwise
+# grab any of these via the bare "property" alias -- caught during
+# self-review, not found broken in production. Denylisted the same way
+# as _MARKET_RENT_WORDS, rather than removing the bare "property" alias
+# entirely (which would break the common, legitimate bare-"Property"
+# case this feature exists for in the first place).
+_NON_ADDRESS_PROPERTY_WORDS = {"manager", "management", "type", "tax", "id", "code"}
+
+
+def _is_non_address_property_header(normalized_header: str) -> bool:
+    words = set(normalized_header.split())
+    return "property" in words and bool(words & _NON_ADDRESS_PROPERTY_WORDS)
 
 # A row is skipped (not imported as a tenant) if its tenant cell, once
 # normalized, is blank or matches one of these. Broker rent rolls
@@ -108,6 +179,10 @@ def _match_columns(headers: List[Any]) -> Dict[str, int]:
         for i, h in enumerate(normalized):
             if i in used_columns:
                 continue
+            if field_name == "rent_amount" and _is_market_rent_header(h):
+                continue  # see _MARKET_RENT_WORDS -- never eligible for rent_amount, exact match or not
+            if field_name == "property" and _is_non_address_property_header(h):
+                continue  # see _NON_ADDRESS_PROPERTY_WORDS -- never eligible for property, exact match or not
             if h in alias_norms:
                 mapping[field_name] = i
                 used_columns.add(i)
@@ -135,6 +210,10 @@ def _match_columns(headers: List[Any]) -> Dict[str, int]:
             for i, h in enumerate(normalized):
                 if i in used_columns:
                     continue
+                if field_name == "rent_amount" and _is_market_rent_header(h):
+                    continue  # see _MARKET_RENT_WORDS -- e.g. "Market Rent" must not fall through to the bare "rent" alias
+                if field_name == "property" and _is_non_address_property_header(h):
+                    continue  # see _NON_ADDRESS_PROPERTY_WORDS -- e.g. "Property Manager" must not fall through to the bare "property" alias
                 if pattern.search(h):
                     candidates.append((len(alias_norm), field_name, i))
 
@@ -146,6 +225,40 @@ def _match_columns(headers: List[Any]) -> Dict[str, int]:
         used_columns.add(i)
 
     return mapping
+
+
+_HEADER_SCAN_WINDOW = 20  # generous bound for decorative title/date rows before the real header
+
+
+def _find_header_row(all_rows: List[List[Any]]) -> int:
+    """
+    Returns the index (into all_rows) of the row that looks like the
+    real column-header row -- the first one, scanning from the top
+    within a bounded window, that _match_columns can find BOTH a
+    tenant and a rent column in.
+
+    A hand-built broker spreadsheet's row 0 is almost always already
+    the real header. A canned PMS report (Yardi, AppFolio, ...) is
+    different: it routinely opens with several decorative rows --
+    property name, report title, "As of" date -- before the actual
+    column-header row. Requiring BOTH a tenant AND a rent match (not
+    just one) is what keeps this from false-matching a decorative row
+    that happens to contain a stray recognizable word on its own (e.g.
+    a title like "Rent Roll Report" contains "Rent" but has no tenant
+    column, so it correctly isn't mistaken for the real header).
+
+    Bounded to the first _HEADER_SCAN_WINDOW rows so a file with no
+    real header at all (or one buried implausibly deep -- almost
+    certainly not actually a rent roll) fails fast by falling back to
+    row 0, which then produces parse_rent_roll_rows' existing, clear
+    "no recognizable columns" error -- not a silent misinterpretation
+    of what's actually a data row as if it were a header.
+    """
+    for i, row in enumerate(all_rows[:_HEADER_SCAN_WINDOW]):
+        mapping = _match_columns(row)
+        if "tenant" in mapping and "rent_amount" in mapping:
+            return i
+    return 0
 
 
 def _cell_to_str(value: Any) -> Optional[str]:
@@ -207,6 +320,8 @@ def parse_rent_roll_rows(
     rows: List[List[Any]],
     filename: str,
     base_property_address: Optional[str] = None,
+    header_row_offset: int = 0,
+    row_numbers: Optional[List[int]] = None,
 ) -> Dict[str, Any]:
     """
     Core parsing logic, independent of file format -- both the CSV and
@@ -227,36 +342,69 @@ def parse_rent_roll_rows(
     property_address is left unset for every row (honest "not found",
     not a guess).
 
+    A portfolio-wide PMS export can instead cover several DIFFERENT
+    properties in one file -- if the file has its own per-row Property/
+    Community column, that row's own value overrides
+    base_property_address for that row specifically (falling back to
+    base_property_address only for rows where the per-row cell is
+    blank), so those rows correctly group by their own actual building
+    rather than all being incorrectly merged into whatever the uploader
+    happened to type.
+
+    `header_row_offset` is how many rows were skipped BEFORE `headers`
+    itself -- 0 for a file whose row 1 already is the header (the
+    common broker-spreadsheet case), or however many decorative rows
+    _find_header_row skipped over for a PMS-style canned report. Used
+    (via simple arithmetic: row_index + header_row_offset + 2) only
+    when `row_numbers` isn't given, so each row's `source.row` citation
+    still reflects roughly its real position in the original file.
+
+    `row_numbers`, when given, is the TRUE 1-indexed original file row
+    number for each entry in `rows`, positionally matched -- more
+    precise than header_row_offset's arithmetic, which silently drifts
+    wrong by however many fully-blank rows got dropped before parsing
+    (both callers below drop blank rows anywhere in the file, and a
+    real PMS report's decorative header block routinely has one between
+    the title and the actual column-header row). Preferred whenever the
+    caller can provide it; header_row_offset alone remains supported so
+    existing direct callers/tests that don't pass row_numbers keep
+    working unchanged.
+
     Returns `{leases: [...], skipped_rows: [{row, reason}, ...],
     column_mapping: {field_name: column_index, ...}}`. `leases` entries
     are `{extracted_fields, display_name}`, ready to hand to
     database.insert_lease() exactly like a PDF-extracted result.
 
-    Raises RentRollImportError (fatal, nothing imported) only if the
-    header row has no recognizable tenant name column AND no
-    recognizable rent column -- without at least those two, there's
-    nothing to import. Everything else (a missing square footage
-    column, an unparseable date in one row, a vacant-unit row) is
-    handled per-row: either that one field is "not found" for that
-    row, or that one row is skipped and reported, never a reason to
-    fail the whole file.
+    Raises RentRollImportError (fatal, nothing imported) only if NO row
+    within the header-detection scan window has a recognizable tenant
+    name column AND a recognizable rent column -- without at least
+    those two, there's nothing to import. Everything else (a missing
+    square footage column, an unparseable date in one row, a vacant-
+    unit row) is handled per-row: either that one field is "not found"
+    for that row, or that one row is skipped and reported, never a
+    reason to fail the whole file.
     """
     column_mapping = _match_columns(headers)
 
     if "tenant" not in column_mapping or "rent_amount" not in column_mapping:
         raise RentRollImportError(
-            "Couldn't find a recognizable tenant name column and rent column in this "
-            "file's header row. Recognized headers include things like \"Tenant\", "
-            "\"Tenant Name\", \"Rent\", \"Monthly Rent\", \"Base Rent\" -- check that "
-            "the first row of the file actually contains column headers, not a blank "
-            "or decorative row."
+            "Couldn't find a row with a recognizable tenant name column and rent "
+            "column anywhere in the first rows of this file. Recognized headers "
+            "include things like \"Tenant\", \"Tenant Name\", \"Rent\", \"Monthly "
+            "Rent\", \"Base Rent\" -- check that the file actually has a real column-"
+            "header row (a title/date block before it is fine and is skipped "
+            "automatically, but the header row itself must be within the first "
+            f"{_HEADER_SCAN_WINDOW} rows)."
         )
 
     parsed_leases = []
     skipped_rows = []
 
     for row_index, row in enumerate(rows):
-        row_num = row_index + 2  # +1 for 1-indexing, +1 because row 1 is the header
+        if row_numbers is not None:
+            row_num = row_numbers[row_index]
+        else:
+            row_num = row_index + header_row_offset + 2  # +1 for 1-indexing, +1 because the header row itself precedes the data
 
         def cell(field_name: str) -> Any:
             idx = column_mapping.get(field_name)
@@ -278,7 +426,18 @@ def parse_rent_roll_rows(
         start_str = _cell_to_str(cell("lease_start_date"))
         end_str = _cell_to_str(cell("lease_end_date"))
 
-        if base_property_address and unit_str:
+        # A per-row Property column (portfolio-wide PMS exports covering
+        # several buildings in one file) takes priority over the single
+        # uploader-typed base_property_address for THIS row specifically
+        # -- it's the more specific, row-level source of truth. Falls
+        # back to base_property_address when the file has no property
+        # column, or this particular row's cell is blank, so a mostly-
+        # complete property column doesn't lose the uploader-supplied
+        # fallback for the rows it's actually missing on.
+        property_str = _cell_to_str(cell("property"))
+        effective_base = property_str or base_property_address
+
+        if effective_base and unit_str:
             # Many rent rolls' Unit/Suite column already spells out the
             # designator itself (e.g. "Suite 101", "Unit 5", "#12"), not
             # just a bare number -- unconditionally prepending "Suite "
@@ -287,11 +446,11 @@ def parse_rent_roll_rows(
             # compute_rent_roll_reconciliation's exact-address matching).
             # Only prepend "Suite" when the cell is a bare identifier.
             if _UNIT_DESIGNATOR_RE.match(unit_str):
-                address = f"{base_property_address}, {unit_str}"
+                address = f"{effective_base}, {unit_str}"
             else:
-                address = f"{base_property_address}, Suite {unit_str}"
-        elif base_property_address:
-            address = base_property_address
+                address = f"{effective_base}, Suite {unit_str}"
+        elif effective_base:
+            address = effective_base
         else:
             address = unit_str  # better than nothing if no base address was given at all
 
@@ -307,7 +466,7 @@ def parse_rent_roll_rows(
             }
 
         set_field("tenant", tenant_raw, tenant_raw)
-        set_field("property_address", address, unit_str if unit_str else base_property_address)
+        set_field("property_address", address, unit_str if unit_str else (property_str or base_property_address))
         if rent is not None:
             set_field("rent_amount", f"${rent:,.2f}", _cell_to_str(cell("rent_amount")))
         if sqft_str is not None and parse_square_footage(sqft_str) is not None:
@@ -328,33 +487,69 @@ def parse_rent_roll_rows(
 
 
 def parse_csv_rent_roll(file_bytes: bytes, filename: str, base_property_address: Optional[str] = None) -> Dict[str, Any]:
-    """Reads a CSV file's bytes and parses it via parse_rent_roll_rows. Raises RentRollImportError for a genuinely empty file."""
+    """
+    Reads a CSV file's bytes and parses it via parse_rent_roll_rows.
+    Raises RentRollImportError for a genuinely empty file. Auto-detects
+    which row is the real header (see _find_header_row) rather than
+    assuming row 1 always is -- a canned PMS export routinely has a few
+    decorative rows (property name, report title, date range) above it.
+    """
     text = file_bytes.decode("utf-8-sig", errors="replace")  # utf-8-sig strips a leading BOM, common from Excel's own CSV export
     reader = csv.reader(io.StringIO(text))
-    all_rows = [row for row in reader if any(cell.strip() for cell in row)]  # drop fully-blank rows anywhere in the file
+    # (true 1-indexed file row number, row) pairs, blank rows dropped --
+    # tracking the TRUE row number here (rather than just dropping blank
+    # rows and recomputing a citation from position alone) matters once
+    # a decorative PMS-report header block is in play: those routinely
+    # have a blank spacer row in them, which would otherwise silently
+    # shift every later row's citation off by one.
+    numbered_rows = [(i, row) for i, row in enumerate(reader, start=1) if any(cell.strip() for cell in row)]
 
-    if not all_rows:
+    if not numbered_rows:
         raise RentRollImportError("This CSV file is empty -- nothing to import.")
 
-    headers, data_rows = all_rows[0], all_rows[1:]
-    return parse_rent_roll_rows(headers, data_rows, filename, base_property_address)
+    row_contents = [row for _, row in numbered_rows]
+    header_idx = _find_header_row(row_contents)
+    headers = row_contents[header_idx]
+    data_entries = numbered_rows[header_idx + 1:]
+    data_rows = [row for _, row in data_entries]
+    data_row_numbers = [n for n, _ in data_entries]
+    return parse_rent_roll_rows(
+        headers, data_rows, filename, base_property_address,
+        header_row_offset=header_idx, row_numbers=data_row_numbers,
+    )
 
 
 def parse_xlsx_rent_roll(file_bytes: bytes, filename: str, base_property_address: Optional[str] = None) -> Dict[str, Any]:
-    """Reads an .xlsx file's bytes and parses it via parse_rent_roll_rows. Uses the first (active) worksheet. Raises RentRollImportError for a genuinely empty or unreadable file."""
+    """
+    Reads an .xlsx file's bytes and parses it via parse_rent_roll_rows.
+    Uses the first (active) worksheet. Raises RentRollImportError for a
+    genuinely empty or unreadable file. Auto-detects which row is the
+    real header (see _find_header_row) -- same reasoning as
+    parse_csv_rent_roll.
+    """
     try:
         workbook = load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
     except Exception as exc:
         raise RentRollImportError(f"Couldn't read this file as an Excel workbook: {exc}")
 
     sheet = workbook.active
-    all_rows = [
-        list(row) for row in sheet.iter_rows(values_only=True)
+    # Same true-row-number tracking as parse_csv_rent_roll, and for the
+    # same reason -- see the comment there.
+    numbered_rows = [
+        (i, list(row)) for i, row in enumerate(sheet.iter_rows(values_only=True), start=1)
         if any(cell is not None and str(cell).strip() for cell in row)
     ]
 
-    if not all_rows:
+    if not numbered_rows:
         raise RentRollImportError("This Excel file is empty -- nothing to import.")
 
-    headers, data_rows = all_rows[0], all_rows[1:]
-    return parse_rent_roll_rows(list(headers), data_rows, filename, base_property_address)
+    row_contents = [row for _, row in numbered_rows]
+    header_idx = _find_header_row(row_contents)
+    headers = row_contents[header_idx]
+    data_entries = numbered_rows[header_idx + 1:]
+    data_rows = [row for _, row in data_entries]
+    data_row_numbers = [n for n, _ in data_entries]
+    return parse_rent_roll_rows(
+        list(headers), data_rows, filename, base_property_address,
+        header_row_offset=header_idx, row_numbers=data_row_numbers,
+    )

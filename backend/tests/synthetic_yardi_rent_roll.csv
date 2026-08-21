@@ -1,0 +1,13 @@
+SYNTHETIC TEST FIXTURE -- fabricated data for testing only, not a real Yardi export
+Yardi Voyager
+Rent Roll - Commercial
+Property: Riverside Commons Shopping Center
+As Of Date: 08/01/2026
+
+Unit,Unit Type,Resident,Unit SF,Lease From,Lease To,Market Rent,Rent Charge
+101,Retail,Riverside Coffee Roasters LLC,1200,03/01/2022,02/28/2027,3600.00,3200.00
+102,Retail,Bright Path Dental Group,1800,06/15/2021,06/14/2026,5400.00,4950.00
+103,Retail,VACANT,900,,,2700.00,0.00
+104,Retail,Meridian Fitness Studio,2400,01/01/2024,12/31/2029,7200.00,6800.00
+
+Total,,,6300,,,18900.00,14950.00
