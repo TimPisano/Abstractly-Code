@@ -43,6 +43,7 @@ from app import email_service
 from app.risk_analysis import analyze_lease_risks
 from app.qa_engine import answer_question
 from app.rent_roll_import import RentRollImportError, parse_csv_rent_roll, parse_xlsx_rent_roll
+from app.t12_import import T12ImportError, parse_csv_t12, parse_xlsx_t12
 from app.portfolio import (
     compute_portfolio_metrics,
     compute_expiration_timeline,
@@ -56,6 +57,7 @@ from app.portfolio import (
     compute_rent_roll_reconciliation,
     compute_rent_variance_outliers,
     compute_rollover_schedule,
+    compute_t12_reconciliation,
     compute_tenant_concentration,
     compute_walt,
     portfolio_context_for_risk_analysis,
@@ -1075,6 +1077,62 @@ def portfolio_rent_roll_reconciliation():
     """Cross-checks an imported rent roll (see /leases/import-rent-roll) against the actual lease PDFs on file for the same units, flagging tenant/rent/end-date disagreements. See compute_rent_roll_reconciliation."""
     leases = database.get_all_effective_leases()
     return jsonify(compute_rent_roll_reconciliation(leases)), 200
+
+
+@app.route('/portfolio/t12-reconciliation', methods=['POST'])
+def portfolio_t12_reconciliation():
+    """
+    Uploads a T12 (trailing 12-month operating statement) and cross-
+    checks its actual rental income against the rent roll's own
+    annualized rent for the same property. See t12_import.py for the
+    parsing (always the ACTUAL collected-income line, never a "Gross
+    Potential Rent"/market figure) and compute_t12_reconciliation in
+    portfolio.py for the comparison itself.
+
+    Expects multipart form data: 'file' (.csv or .xlsx) and a REQUIRED
+    'property_address' field -- unlike rent roll import, there's no
+    optional fallback here: a T12 covers exactly one property, and
+    without knowing which one, there's nothing to compare it against.
+
+    Stateless: the T12 is parsed and compared in this one request only,
+    never persisted anywhere. A T12 doesn't represent a lease or
+    tenant -- inserting it into the leases table the way a rent roll
+    import does would corrupt tenant concentration, WALT, and every
+    other per-lease computation with a fake non-lease row.
+
+    A file-level problem (wrong extension, empty file, no recognizable
+    way to compute an annual total, no recognizable actual-rental-
+    income line) is a 400.
+    """
+    if 'file' not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
+    file_storage = request.files['file']
+    if file_storage.filename == '':
+        return jsonify({"error": "No file selected"}), 400
+
+    property_address = (request.form.get('property_address') or '').strip()
+    if not property_address:
+        return jsonify({"error": "property_address is required -- a T12 covers one property, and without it there's nothing to compare against."}), 400
+
+    filename = file_storage.filename
+    extension = filename.rsplit('.', 1)[1].lower() if '.' in filename else ''
+    if extension not in ('csv', 'xlsx'):
+        return jsonify({"error": "Invalid file type. Only .csv and .xlsx T12 statements are supported."}), 400
+
+    file_bytes = file_storage.read()
+
+    try:
+        if extension == 'csv':
+            parsed = parse_csv_t12(file_bytes, filename)
+        else:
+            parsed = parse_xlsx_t12(file_bytes, filename)
+    except T12ImportError as e:
+        return jsonify({"error": str(e)}), 400
+
+    leases = database.get_all_effective_leases()
+    result = compute_t12_reconciliation(leases, property_address, parsed["annual_rental_income"])
+    result["t12_source"] = parsed["source"]
+    return jsonify(result), 200
 
 
 @app.route('/activity', methods=['GET'])

@@ -1496,3 +1496,126 @@ def compute_rent_roll_reconciliation(leases: List[Dict[str, Any]]) -> Dict[str, 
         "lease_document_count": len(lease_documents),
         "compared_pair_count": compared_pair_count,
     }
+
+
+# A T12 discrepancy must clear BOTH a percentage and an absolute-dollar
+# bar before being flagged -- same dual-tolerance reasoning as
+# _RENT_DISAGREEMENT_TOLERANCE_* above, just recalibrated for this
+# comparison's very different scale: an ANNUAL, BUILDING-WIDE dollar
+# figure (tens of thousands to millions), not one lease's monthly rent.
+# A percentage-only rule would flag ordinary rounding/timing noise on a
+# large property; a dollar-only rule would flag routine noise on a
+# small one. 5% keeps a large property from over-triggering on a minor
+# timing difference (e.g. a mid-period rent step); $3,000/year keeps a
+# small property from over-triggering on the kind of rounding that's
+# unavoidable when a T12 covers a slightly different trailing-12 window
+# than "right now."
+_T12_DISAGREEMENT_TOLERANCE_PCT = 5.0
+_T12_DISAGREEMENT_TOLERANCE_ABS = 3000.0
+
+
+def compute_t12_reconciliation(
+    leases: List[Dict[str, Any]],
+    property_address: str,
+    t12_annual_rental_income: float,
+) -> Dict[str, Any]:
+    """
+    Cross-checks the rent roll's own annualized rent for one property
+    against that property's T12 (trailing 12-month operating
+    statement) actual rental income line -- the real due-diligence
+    question this exists for: does what the rent roll claims the
+    building collects match what the operating statement says it
+    actually collected. `t12_annual_rental_income` is the number
+    t12_import.py already extracted (see that module for how it's
+    chosen -- always the ACTUAL collected income line, never "Gross
+    Potential Rent" or another theoretical figure, which would make
+    this comparison wrong in one direction by definition rather than
+    catching a real discrepancy).
+
+    Unlike compute_rent_roll_reconciliation (same UNIT, exact address,
+    one rent roll row vs. one lease PDF), this is a whole-BUILDING
+    comparison -- a T12 covers an entire property, not one unit, so
+    grouping uses _normalize_building_address (suite/unit stripped),
+    the same convention compute_loss_to_lease uses for the same reason.
+    Every lease at that building counts toward the rent roll side,
+    regardless of source (PDF or imported rent roll) -- get_all_
+    effective_leases already handles amendment overrides upstream, same
+    as every other function in this module.
+
+    A T12 is NOT persisted anywhere (unlike a rent roll import, it
+    doesn't represent a lease or tenant -- inserting it into the leases
+    table would corrupt tenant concentration, WALT, and every other
+    per-lease computation with a fake non-lease row). It's parsed fresh
+    from the uploaded file and compared in the same request; nothing
+    about the T12 itself survives past this one response.
+
+    Returns `{property_address, matched_lease_count,
+    excluded_lease_count, rent_roll_annual_rent,
+    t12_annual_rental_income, difference, difference_pct, direction,
+    flagged}`. `rent_roll_annual_rent` (and everything derived from it)
+    is None if NO lease at this building has a usable rent_amount --
+    an honest "not enough data on the rent roll side to compare,"
+    distinct from a real comparison that happens to agree (difference
+    of 0, flagged False). `direction` is "rent_roll_higher",
+    "t12_higher", or "agree" -- which side is bigger matters for how a
+    human reads the result (a rent roll UNDER-stating collected income
+    is a very different story, e.g. a stale export, than a rent roll
+    OVER-stating it, e.g. leases signed after the T12's own trailing
+    window closed -- this function reports the fact, not a guess at
+    which explanation applies).
+    """
+    normalized_target = _normalize_building_address(property_address)
+
+    matched_leases = [
+        lease for lease in leases
+        if _normalize_building_address(field_value(lease, "property_address")) == normalized_target
+    ] if normalized_target else []
+
+    matched_rents = []
+    excluded_lease_count = 0
+    for lease in matched_leases:
+        rent = parse_currency(field_value(lease, "rent_amount"))
+        if rent is None:
+            excluded_lease_count += 1
+            continue
+        matched_rents.append(rent)
+
+    if not matched_rents:
+        return {
+            "property_address": property_address,
+            "matched_lease_count": 0,
+            "excluded_lease_count": excluded_lease_count,
+            "rent_roll_annual_rent": None,
+            "t12_annual_rental_income": round(t12_annual_rental_income, 2),
+            "difference": None,
+            "difference_pct": None,
+            "direction": None,
+            "flagged": None,
+        }
+
+    rent_roll_annual_rent = round(sum(matched_rents) * 12, 2)
+    t12_value = round(t12_annual_rental_income, 2)
+    difference = round(rent_roll_annual_rent - t12_value, 2)
+    larger = max(abs(rent_roll_annual_rent), abs(t12_value))
+    difference_pct = round(abs(difference) / larger * 100, 2) if larger > 0 else 0.0
+
+    if difference > 0:
+        direction = "rent_roll_higher"
+    elif difference < 0:
+        direction = "t12_higher"
+    else:
+        direction = "agree"
+
+    flagged = abs(difference) > _T12_DISAGREEMENT_TOLERANCE_ABS and difference_pct > _T12_DISAGREEMENT_TOLERANCE_PCT
+
+    return {
+        "property_address": property_address,
+        "matched_lease_count": len(matched_rents),
+        "excluded_lease_count": excluded_lease_count,
+        "rent_roll_annual_rent": rent_roll_annual_rent,
+        "t12_annual_rental_income": t12_value,
+        "difference": difference,
+        "difference_pct": difference_pct,
+        "direction": direction,
+        "flagged": flagged,
+    }

@@ -39,6 +39,7 @@ from app.portfolio import (
     compute_rent_roll_reconciliation,
     compute_rent_variance_outliers,
     compute_rollover_schedule,
+    compute_t12_reconciliation,
     compute_tenant_concentration,
     compute_walt,
     portfolio_context_for_risk_analysis,
@@ -1550,6 +1551,120 @@ def test_rent_roll_reconciliation_multiple_leases_at_same_address_pairwise():
     print("✓ test_rent_roll_reconciliation_multiple_leases_at_same_address_pairwise: PASS")
 
 
+def test_t12_reconciliation_agreement():
+    leases = [
+        _lease(1, "a.pdf", tenant="Acme Corp", property_address="100 Main St, Suite 101", rent_amount="$10,000.00"),
+        _lease(2, "b.pdf", tenant="Beta LLC", property_address="100 Main St, Suite 102", rent_amount="$8,000.00"),
+    ]
+    result = compute_t12_reconciliation(leases, "100 Main St", 216000.0)  # (10000+8000)*12
+    assert result["rent_roll_annual_rent"] == 216000.0
+    assert result["difference"] == 0.0
+    assert result["direction"] == "agree"
+    assert result["flagged"] is False
+    print("✓ test_t12_reconciliation_agreement: PASS")
+
+
+def test_t12_reconciliation_flags_real_discrepancy_rent_roll_higher():
+    leases = [_lease(1, "a.pdf", tenant="Acme Corp", property_address="100 Main St, Suite 101", rent_amount="$10,000.00")]
+    # rent roll annual = 120000, T12 says only 90000 -- a real, large gap
+    result = compute_t12_reconciliation(leases, "100 Main St", 90000.0)
+    assert result["direction"] == "rent_roll_higher"
+    assert result["flagged"] is True
+    print("✓ test_t12_reconciliation_flags_real_discrepancy_rent_roll_higher: PASS")
+
+
+def test_t12_reconciliation_flags_real_discrepancy_t12_higher():
+    leases = [_lease(1, "a.pdf", tenant="Acme Corp", property_address="100 Main St, Suite 101", rent_amount="$5,000.00")]
+    # rent roll annual = 60000, T12 says 100000 -- T12 higher this time
+    result = compute_t12_reconciliation(leases, "100 Main St", 100000.0)
+    assert result["direction"] == "t12_higher"
+    assert result["flagged"] is True
+    print("✓ test_t12_reconciliation_flags_real_discrepancy_t12_higher: PASS")
+
+
+def test_t12_reconciliation_small_gap_not_flagged():
+    """A trivial gap (well under both tolerance bars) must not be flagged -- rounding/timing noise, not a real discrepancy."""
+    leases = [_lease(1, "a.pdf", tenant="Acme Corp", property_address="100 Main St, Suite 101", rent_amount="$10,000.00")]
+    result = compute_t12_reconciliation(leases, "100 Main St", 119500.0)  # 120000 vs 119500 -- $500 gap, 0.4%
+    assert result["flagged"] is False
+    print("✓ test_t12_reconciliation_small_gap_not_flagged: PASS")
+
+
+def test_t12_reconciliation_dual_tolerance_absolute_alone_not_enough():
+    """A gap that clears the absolute-dollar bar but not the percentage bar (a huge property) must not be flagged -- both thresholds required, same principle as compute_rent_roll_reconciliation's rent tolerance."""
+    leases = [_lease(1, "a.pdf", tenant="Acme Corp", property_address="100 Main St, Suite 101", rent_amount="$500,000.00")]
+    rent_roll_annual = 500000.0 * 12  # 6,000,000
+    t12 = rent_roll_annual - 4000.0  # clears the $3,000 absolute bar, but nowhere near 5%
+    result = compute_t12_reconciliation(leases, "100 Main St", t12)
+    assert result["flagged"] is False, result
+    print("✓ test_t12_reconciliation_dual_tolerance_absolute_alone_not_enough: PASS")
+
+
+def test_t12_reconciliation_dual_tolerance_percentage_alone_not_enough():
+    """A gap that clears the percentage bar but not the absolute-dollar bar (a tiny property) must not be flagged."""
+    leases = [_lease(1, "a.pdf", tenant="Acme Corp", property_address="100 Main St, Suite 101", rent_amount="$500.00")]
+    rent_roll_annual = 500.0 * 12  # 6,000
+    t12 = rent_roll_annual - 500.0  # 8.3% gap, comfortably clears 5% -- but only a $500 absolute gap
+    result = compute_t12_reconciliation(leases, "100 Main St", t12)
+    assert result["flagged"] is False, result
+    print("✓ test_t12_reconciliation_dual_tolerance_percentage_alone_not_enough: PASS")
+
+
+def test_t12_reconciliation_building_level_not_unit_level():
+    """Different suites in the same building must all count toward the same T12 comparison -- building-level grouping, not exact-unit matching (same convention as compute_loss_to_lease, for the same reason)."""
+    leases = [
+        _lease(1, "a.pdf", tenant="Acme Corp", property_address="100 Main St, Suite 101", rent_amount="$5,000.00"),
+        _lease(2, "b.pdf", tenant="Beta LLC", property_address="100 Main St, Suite 202", rent_amount="$5,000.00"),
+    ]
+    result = compute_t12_reconciliation(leases, "100 Main St", 120000.0)
+    assert result["matched_lease_count"] == 2
+    assert result["rent_roll_annual_rent"] == 120000.0  # (5000+5000)*12
+    print("✓ test_t12_reconciliation_building_level_not_unit_level: PASS")
+
+
+def test_t12_reconciliation_different_building_not_included():
+    leases = [
+        _lease(1, "a.pdf", tenant="Acme Corp", property_address="100 Main St, Suite 101", rent_amount="$5,000.00"),
+        _lease(2, "b.pdf", tenant="Unrelated Co", property_address="999 Other Ave, Suite 1", rent_amount="$9,999.00"),
+    ]
+    result = compute_t12_reconciliation(leases, "100 Main St", 60000.0)
+    assert result["matched_lease_count"] == 1
+    assert result["rent_roll_annual_rent"] == 60000.0  # only the 100 Main St lease
+    print("✓ test_t12_reconciliation_different_building_not_included: PASS")
+
+
+def test_t12_reconciliation_no_matching_leases_returns_honest_not_found():
+    """No lease at all matches the T12's property -- honest 'not enough data on the rent roll side,' distinct from a real comparison that happens to agree."""
+    leases = [_lease(1, "a.pdf", tenant="Acme Corp", property_address="999 Other Ave, Suite 1", rent_amount="$5,000.00")]
+    result = compute_t12_reconciliation(leases, "100 Main St", 120000.0)
+    assert result["matched_lease_count"] == 0
+    assert result["rent_roll_annual_rent"] is None
+    assert result["difference"] is None
+    assert result["flagged"] is None
+    assert result["t12_annual_rental_income"] == 120000.0  # the T12 side is still real and reported
+    print("✓ test_t12_reconciliation_no_matching_leases_returns_honest_not_found: PASS")
+
+
+def test_t12_reconciliation_lease_missing_rent_excluded_not_zero():
+    """A matching-building lease with no parseable rent must be excluded from the sum, not silently treated as $0 (which would understate the rent roll side)."""
+    leases = [
+        _lease(1, "a.pdf", tenant="Acme Corp", property_address="100 Main St, Suite 101", rent_amount="$5,000.00"),
+        _lease(2, "b.pdf", tenant="Beta LLC", property_address="100 Main St, Suite 102", rent_amount=None),
+    ]
+    result = compute_t12_reconciliation(leases, "100 Main St", 60000.0)
+    assert result["matched_lease_count"] == 1
+    assert result["excluded_lease_count"] == 1
+    assert result["rent_roll_annual_rent"] == 60000.0  # just the one usable lease, not counting the missing one as $0
+    print("✓ test_t12_reconciliation_lease_missing_rent_excluded_not_zero: PASS")
+
+
+def test_t12_reconciliation_empty_portfolio_does_not_crash():
+    result = compute_t12_reconciliation([], "100 Main St", 120000.0)
+    assert result["rent_roll_annual_rent"] is None
+    assert result["flagged"] is None
+    print("✓ test_t12_reconciliation_empty_portfolio_does_not_crash: PASS")
+
+
 if __name__ == "__main__":
     test_portfolio_totals_and_averages()
     test_year_table_escalation_contributes_a_derived_rate()
@@ -1639,4 +1754,15 @@ if __name__ == "__main__":
     test_rent_roll_reconciliation_empty_portfolio_does_not_crash()
     test_rent_roll_reconciliation_extension_matching_is_case_insensitive()
     test_rent_roll_reconciliation_multiple_leases_at_same_address_pairwise()
+    test_t12_reconciliation_agreement()
+    test_t12_reconciliation_flags_real_discrepancy_rent_roll_higher()
+    test_t12_reconciliation_flags_real_discrepancy_t12_higher()
+    test_t12_reconciliation_small_gap_not_flagged()
+    test_t12_reconciliation_dual_tolerance_absolute_alone_not_enough()
+    test_t12_reconciliation_dual_tolerance_percentage_alone_not_enough()
+    test_t12_reconciliation_building_level_not_unit_level()
+    test_t12_reconciliation_different_building_not_included()
+    test_t12_reconciliation_no_matching_leases_returns_honest_not_found()
+    test_t12_reconciliation_lease_missing_rent_excluded_not_zero()
+    test_t12_reconciliation_empty_portfolio_does_not_crash()
     print("\nAll portfolio tests passed.")

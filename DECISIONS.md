@@ -3012,3 +3012,136 @@ at. Two other places on the landing page overclaiming all five PMS
 platforms as already-live were also corrected for accuracy while making
 this change (a hero step-card and a FAQ answer), independent of this
 specific feature's own Platform-section bullet.
+
+## Rent-roll-vs-T12 cross-check (Platform feature, using a synthetic fixture)
+
+**Status: done, pending a real vendor file.** The last originally-
+blocked Platform item, unblocked the same way as the PMS import feature
+above -- the user was asked, and explicitly chose to have a realistic
+synthetic T12 fixture generated instead of waiting for a real one, to
+be swapped in later.
+
+**Design.** "Cross-checks the rent roll against the T12" is a due-
+diligence question, not a full financial-statement feature: does what
+the rent roll claims a property collects match what its trailing-12
+operating statement says it actually collected. Deliberately scoped to
+extracting and comparing exactly ONE number -- actual annual rental
+income -- not building a general T12/P&L ingestion pipeline (vacancy
+loss, expense categories by CAM/tax/insurance, NOI). Nobody asked for a
+full operating-statement parser; the Platform feature asked for a
+specific cross-check, and that's what got built.
+
+**New document type, new module** (`t12_import.py`), since a T12's
+shape is fundamentally different from a rent roll's: one row per
+TENANT with fields-as-columns (rent roll) vs. one row per LINE ITEM
+with months (and often a Total/Annual column) as columns (T12). Reuses
+the rent roll importer's proven patterns where they genuinely transfer
+-- decorative-header-row auto-detection (a T12 export routinely opens
+with a property name/title/date-range block too), tolerant bare-number
+currency parsing, true-row-number citation tracking (built correctly
+from the start here, having already found and fixed that exact bug in
+the rent roll importer earlier in this same session -- see that
+entry's addendum) -- and introduces what's genuinely new: label-based
+row matching (instead of header-based column matching) to find the
+actual-rental-income line, and a Total-column-or-sum-of-12-months
+fallback for computing each row's annual figure.
+
+**The one design decision that actually matters here**: a T12 routinely
+has BOTH a "Gross Potential Rent" line (the theoretical, vacancy-
+inclusive maximum at 100% occupancy) and an actual "Rental Income"/
+"Rent Revenue" line (what was really collected). Only the latter is the
+correct comparison -- using gross potential would make a perfectly
+healthy, fully-consistent property look "short" by definition, since
+potential exceeds actual by construction (that's what vacancy loss
+means). A denylist (`_POTENTIAL_INCOME_WORDS`) excludes any rent/income
+label containing "potential"/"market"/"proforma"/"projected"/"asking",
+mirroring the exact same principle (and near-identical implementation)
+as rent_roll_import.py's "Market Rent" denylist from earlier in this
+batch. "Gross Rental Income" is deliberately NOT excluded -- "Gross"
+there contrasts with "Net" (before vs. after operating expenses), not
+"Actual" vs. "Potential," standard operating-statement terminology, a
+real accounting distinction this implementation has to get right rather
+than pattern-match on the word "Gross" alone.
+
+**A real logic bug, caught by the test suite before shipping, not in
+production**: "scheduled" was denylisted (T12s commonly use "Scheduled
+Gross Income" for the potential/asking figure), but "Scheduled Rent
+Income" was ALSO meant to be an explicit, unambiguous allow-listed
+alias for ACTUAL income (documented in a code comment) -- except the
+denylist check ran unconditionally before the allow-list check was ever
+reached, so the documented exception was never actually implemented.
+`test_scheduled_gross_income_excluded_but_scheduled_rent_income_allowed`
+failed on first run, exactly as it should have. Fixed by checking for
+an EXACT allow-listed alias match first, which now correctly overrides
+the denylist -- only a non-exact, substring-based match is subject to
+it. A genuine example of why "write the test, run it, don't assume it
+passes" matters even when the code and its own comment both look
+internally consistent at a glance.
+
+**Reconciliation** (`compute_t12_reconciliation` in portfolio.py):
+building-level comparison (via `_normalize_building_address`, same
+convention as `compute_loss_to_lease` and for the same reason -- a T12
+covers a whole property, not one unit), summing every matching lease's
+rent regardless of source (PDF or imported rent roll) and annualizing
+it, then comparing against the T12's actual income with a NEW dual-
+tolerance pair (5% AND $3,000/year) recalibrated for this comparison's
+much larger scale (annual, building-wide dollars, not one lease's
+monthly rent) -- reusing `compute_rent_roll_reconciliation`'s exact
+$5/1% constants here would have either over-triggered on ordinary
+timing noise for a large property or under-triggered for a small one.
+Reports `direction` (`rent_roll_higher`/`t12_higher`/`agree`) rather
+than just a flag, since which side is bigger changes how a human should
+read the result (understating collected income vs. overstating it are
+different stories) -- deliberately does NOT guess at WHY a real gap
+exists, same restraint already established by the rent-roll-vs-lease-
+document reconciliation feature.
+
+**Not persisted anywhere, unlike a rent roll import**: a T12 doesn't
+represent a lease or tenant. `POST /portfolio/t12-reconciliation`
+parses the uploaded file and compares it against the CURRENT rent roll
+in the same request; nothing about the T12 survives past that one
+response. Inserting it into the `leases` table the way rent roll import
+does would corrupt tenant concentration, WALT, and every other per-
+lease computation with a fake non-lease row -- confirmed with a
+dedicated test (`test_t12_route_does_not_persist_anything`) and live,
+by checking `GET /leases` before and after a real upload.
+
+**Synthetic fixture** (`synthetic_t12_operating_statement.csv`, clearly
+labeled as fabricated in its own first row): deliberately built for the
+SAME property as the earlier Yardi rent roll fixture (Riverside Commons
+Shopping Center), so this exercises the real end-to-end story -- import
+a rent roll through one real route, upload a T12 through another, get a
+genuine cross-check back -- not two unrelated fixtures tested in
+isolation. Its actual rental income ($187,900) sits a small, realistic
+4.5% above the rent roll's own annualized total ($179,400, the same 3
+real tenants from the Yardi fixture) -- close enough to correctly NOT
+be flagged, proving the tolerance logic on believable numbers rather
+than a hand-picked clean example, plus a separate large-gap variant
+confirming the flagged path too. Verified against the REAL running
+server (restarted first to make sure of it, per the lesson from
+earlier in this session): real rent roll import, real T12 upload, real
+cross-check, real cleanup, real confirmation nothing was persisted.
+
+**Tests**: 12 unit tests for the T12 parser (including the "scheduled"
+bug above), 11 for `compute_t12_reconciliation` (agreement, both
+discrepancy directions, both tolerance-bar-alone-not-enough cases,
+building-vs-unit-level grouping, missing-data honesty), 7 for the
+Flask route, 3 fixture-driven tests, and a new permanent live-HTTP
+regression file (`test_live_t12_api.py`, following the exact convention
+established by `test_live_composition_api.py` earlier this session --
+runs against the actually-running server, not `test_client()`, so a
+future "code is right but nobody restarted the server" regression gets
+caught automatically). Full suite: 38/38.
+
+Platform copy updated: T12 cross-check moves from "Coming soon" to a
+checkmark, explicitly disclosing synthetic-fixture validation, not yet
+a real customer T12. The FAQ answer describing this as something being
+"built toward" was also corrected now that it's real.
+
+Not built (explicitly out of scope, not an oversight): a UI panel for
+uploading a T12 from the dashboard. This ships API-only, consistent
+with how tenant concentration, rollover, and loss-to-lease also shipped
+API-only first before a dedicated dashboard panel was added as a
+separate, later piece of work (see "Dashboard UI for the 4 new
+portfolio metrics" above) -- a natural next step if wanted, not
+required by "cross-checks the rent roll against the T12" as stated.
