@@ -617,6 +617,134 @@ generate → dismiss → regenerate-stays-dismissed lifecycle, and
 resolving the underlying discrepancy causing its alert to genuinely
 auto-resolve). Full suite 48/48 including live tests.
 
+## Investment memo export (PDF / Excel, per property or per portfolio)
+
+A backend-generated, professional export meant to be attached to a
+real investment committee memo or forwarded to a lender/partner who
+will never open this app -- key lease terms, flagged discrepancies AND
+their resolutions, a T12 cross-check summary, and a rollover risk
+summary. Requested with explicit instructions to design the data
+structure first, then generate a sample and review it critically
+before calling it done -- that review caught a real, serious bug (see
+below), not a hypothetical one.
+
+### Built on existing infrastructure, not from scratch
+
+Two existing modules already did adjacent work, and this reuses their
+established machinery rather than inventing new patterns:
+`summary_memo.py` (a one-lease or whole-portfolio "everything,
+briefly" PDF memo, built for the same "forward this to someone outside
+the app" purpose) supplies the low-level reportlab building blocks --
+`_header_flowables`, `_key_terms_table`, `_confidence_summary_
+flowables`, `_build_pdf`, the shared `_styles`/color constants -- all
+imported directly rather than duplicated, so this new document renders
+in the exact same visual language as every other PDF this app
+produces. `rent_roll_export.py`/`sheets_export.py` establish the "one
+shared computation, multiple export formats" convention this module
+follows too: `build_investment_memo_data()` is the single canonical
+data structure BOTH `generate_investment_memo_pdf` and `generate_
+investment_memo_excel` render from, so the two formats can never
+disagree about what they're reporting for the same request (verified
+directly: `test_excel_has_all_five_sheets_with_correct_dedup` and the
+live suite both check the Excel and PDF outputs agree on the same
+numbers for the same scenario).
+
+### What's genuinely new: property-level scope, and discrepancy RESOLUTIONS not just flags
+
+Neither `summary_memo.py` nor `report.py` can produce "just this one
+building" -- both are per-lease or whole-portfolio only. This adds a
+`property_address` scope (building-level matched via `_normalize_
+building_address`, same convention `compute_loss_to_lease`/`compute_
+t12_reconciliation` already use) alongside the existing whole-
+portfolio option. And where `summary_memo.py`'s "Top Risk Flags"
+section shows `risk_analysis`'s live-computed flags with no resolution
+status, this document reads from Item 2's discrepancies table instead
+-- an outside reader sees not just "here's a red flag" but "here's
+what we found, here's who resolved it, when, and why," which is the
+actual point of bringing something to an IC: demonstrating the
+diligence was done, not just that a question exists.
+
+### A real, serious bug found during the critical-review pass, not a hypothetical one
+
+Generating the first sample export against a realistic scenario (a
+real PDF lease AND a real rent-roll snapshot on file for the exact
+same unit -- precisely the situation rent-roll reconciliation exists
+to catch) surfaced a genuine data-accuracy problem: `compute_
+portfolio_metrics`, `compute_walt`, and `compute_rollover_schedule` all
+just sum over whatever's in the scoped lease list, with zero
+deduplication logic anywhere for "the same unit represented twice."
+Total monthly rent for a 2-unit property showed $21,250 instead of the
+real $15,250 -- Suite 110's $6,250 lease PLUS its own $6,000 rent-roll
+cross-check snapshot, double-counted as if they were two different
+units. The T12 cross-check section had the identical bug (passed the
+undeduped lease list into `compute_t12_reconciliation`), which made a
+genuinely healthy property (2.7% real variance) render as "FLAGGED —
+MATERIAL DISCREPANCY" at a fabricated 30.2% gap. Both would have been
+materially wrong numbers in a document specifically meant for a real
+lender or investment committee -- exactly the kind of error this
+project's "never guess, never silently produce a misleading number"
+quality bar exists to catch, and it was only caught because the
+request explicitly asked for a self-generated sample to be reviewed
+critically before shipping, not assumed correct from the design alone.
+
+**Fix**: `_dedupe_for_financial_computation()` -- prefers the real PDF
+lease over a rent-roll snapshot when both exist for the exact same
+unit (`_normalize_address`, suite-inclusive); among multiple records
+of the SAME source type for one unit, keeps whichever was uploaded
+most recently. Applied to every SUMMED figure (portfolio metrics,
+confidence tally, WALT, rollover schedule, T12 cross-check) -- but
+deliberately NOT to the "Key Lease Terms" section, which still lists
+every record on file, each labeled with its source ("Lease Document"
+vs "Rent Roll Import — cross-check record, not counted in totals
+above") so a reader understands why two entries for one unit might
+appear rather than the duplicate being silently hidden. The Overview
+section explicitly states how many records were excluded and why.
+Covered by 4 dedicated tests (`test_dedupes_rent_roll_duplicate_of_a_
+pdf_lease_for_financial_totals`, `test_dedupe_prefers_pdf_lease_
+regardless_of_upload_order`, `test_dedupe_keeps_most_recent_when_
+both_are_the_same_source_type`) plus the live suite's full end-to-end
+version of the exact scenario that first caught it.
+
+### T12: fresh upload preferred, falls back to the last persisted cross-check
+
+The export routes accept an OPTIONAL `t12_file` alongside
+`property_address` (multipart POST, not GET, since a file may be
+attached) -- if given, computes a live `compute_t12_reconciliation`
+right there (and this fresh result is what appears in the memo, though
+deliberately NOT also synced into the discrepancies table from this
+export path, to keep "generating a memo" and "running a reconciliation
+check" as separate actions with separate intent). Without a fresh
+upload, falls back to the most recently-seen PERSISTED
+`t12_reconciliation` discrepancy for that property (Item 2 and the
+alerting system both already populate this when a real mismatch was
+found) -- so a memo generated without a file in hand still shows the
+last known cross-check rather than nothing. Honestly reports
+unavailable when neither exists, and portfolio-wide memos never offer
+T12 at all (a T12 covers exactly one building by definition) --
+verified directly rather than assumed
+(`test_t12_unavailable_for_portfolio_scope`).
+
+### New endpoints
+
+`POST /portfolio/investment-memo.pdf` and `POST /portfolio/investment-
+memo.xlsx` -- both accept the same optional multipart fields
+(`property_address`, `t12_file`), return the file as a real
+`attachment` download with a real filename. 400 if `t12_file` is
+supplied without `property_address`, or if it's not a `.csv`/`.xlsx`.
+
+### Verified
+
+`test_investment_memo.py` (17 tests: the data structure's scoping/
+dedup/T12-fallback logic, PDF and Excel rendering for both empty and
+populated scopes, both routes, both error paths) and
+`test_live_investment_memo_api.py` (22 checks against the real running
+server: the exact real double-count scenario end to end -- a real PDF
+upload, a real rent-roll import of the same unit, a real reconciliation
+mismatch, a real resolution, a real T12 file attached to the export
+request -- confirming the PDF and Excel outputs agree with each other
+and correctly show the deduped, non-inflated numbers). Full suite
+50/50 including live tests.
+
 ### Summary: all four items shipped this pass
 
 Full audit trail (item 1), discrepancy resolution (item 2), portfolio

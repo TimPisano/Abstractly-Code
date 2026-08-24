@@ -67,6 +67,7 @@ from app.comparison import compare_leases, benchmark_lease
 from app.discrepancies import sync_lease_risk_flags, sync_rent_roll_reconciliation, sync_t12_reconciliation
 from app.portfolio_history import compute_property_trends
 from app.alerts import generate_alerts, get_alert_digest
+from app.investment_memo import build_investment_memo_data, generate_investment_memo_pdf, generate_investment_memo_excel
 from app.rent_roll_export import generate_rent_roll_csv, generate_rent_roll_excel
 from app.report import generate_portfolio_report_html
 from app.summary_memo import generate_lease_summary_pdf, generate_portfolio_summary_pdf, monthly_report_extra_sections
@@ -1657,6 +1658,89 @@ def lease_summary_pdf(lease_id):
         pdf_bytes,
         mimetype='application/pdf',
         headers={"Content-Disposition": f"attachment; filename={safe_name}_summary.pdf"},
+    )
+
+
+def _parse_investment_memo_request():
+    """
+    Shared by both investment-memo export routes. POST (not GET) because
+    a T12 file may be attached. `property_address` is optional --
+    omitted means a whole-portfolio memo; a T12 file is only usable
+    (and only accepted) alongside a property_address, since a T12
+    covers exactly one building. Returns (property_address, t12_parsed,
+    error_response) -- error_response is None on success.
+    """
+    property_address = (request.form.get('property_address') or '').strip() or None
+
+    file_storage = request.files.get('t12_file')
+    if file_storage is None or file_storage.filename == '':
+        return property_address, None, None
+
+    if not property_address:
+        return None, None, (jsonify({"error": "t12_file requires property_address -- a T12 covers exactly one property."}), 400)
+
+    filename = file_storage.filename
+    extension = filename.rsplit('.', 1)[1].lower() if '.' in filename else ''
+    if extension not in ('csv', 'xlsx'):
+        return None, None, (jsonify({"error": "Invalid t12_file type. Only .csv and .xlsx T12 statements are supported."}), 400)
+
+    file_bytes = file_storage.read()
+    try:
+        parsed = parse_csv_t12(file_bytes, filename) if extension == 'csv' else parse_xlsx_t12(file_bytes, filename)
+    except T12ImportError as e:
+        return None, None, (jsonify({"error": str(e)}), 400)
+
+    return property_address, parsed, None
+
+
+@app.route('/portfolio/investment-memo.pdf', methods=['POST'])
+def investment_memo_pdf():
+    """
+    A clean, professional PDF suitable for an investment committee,
+    lender, or partner -- key lease terms, flagged discrepancies AND
+    their resolutions, a T12 cross-check summary, and a rollover risk
+    summary. See app/investment_memo.py for the full design.
+
+    Optional multipart form fields: 'property_address' (omit for a
+    whole-portfolio memo), 't12_file' (.csv/.xlsx -- only usable
+    alongside property_address; without one, the T12 section falls
+    back to the last persisted T12 cross-check on file for that
+    property, if any).
+    """
+    property_address, t12_parsed, error = _parse_investment_memo_request()
+    if error:
+        return error
+
+    data = build_investment_memo_data(property_address=property_address, t12_parsed=t12_parsed)
+    pdf_bytes = generate_investment_memo_pdf(data)
+
+    scope_label = property_address or "portfolio"
+    database.insert_activity("investment_memo_exported", f"Exported investment memo (PDF) for {scope_label}")
+    safe_name = re.sub(r'[^A-Za-z0-9_.-]', '_', scope_label)
+    return Response(
+        pdf_bytes,
+        mimetype='application/pdf',
+        headers={"Content-Disposition": f"attachment; filename=investment_memo_{safe_name}.pdf"},
+    )
+
+
+@app.route('/portfolio/investment-memo.xlsx', methods=['POST'])
+def investment_memo_excel():
+    """Same data and scope rules as POST /portfolio/investment-memo.pdf, rendered as a multi-sheet workbook instead."""
+    property_address, t12_parsed, error = _parse_investment_memo_request()
+    if error:
+        return error
+
+    data = build_investment_memo_data(property_address=property_address, t12_parsed=t12_parsed)
+    excel_bytes = generate_investment_memo_excel(data)
+
+    scope_label = property_address or "portfolio"
+    database.insert_activity("investment_memo_exported", f"Exported investment memo (Excel) for {scope_label}")
+    safe_name = re.sub(r'[^A-Za-z0-9_.-]', '_', scope_label)
+    return Response(
+        excel_bytes,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        headers={"Content-Disposition": f"attachment; filename=investment_memo_{safe_name}.xlsx"},
     )
 
 

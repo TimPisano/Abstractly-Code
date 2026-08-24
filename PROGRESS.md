@@ -1,6 +1,36 @@
 # Progress Summary
 
-**Last updated**: A proactive alerting system, backend-only (frontend
+**Last updated**: Investment memo export, backend-only. `POST
+/portfolio/investment-memo.pdf` and `.xlsx` generate a professional,
+attachment-ready export (per property or whole portfolio) with key
+lease terms, flagged discrepancies AND their resolutions, a T12
+cross-check summary, and a rollover risk summary -- meant to actually
+be forwarded to a lender or investment committee, not opened only
+inside the app. Reuses `summary_memo.py`'s existing PDF style/
+building-block machinery and the "one shared computation, multiple
+export formats" convention `rent_roll_export.py` already established,
+so the PDF and Excel outputs can never disagree with each other.
+
+Per explicit instruction, a real sample was generated and reviewed
+critically before calling this done -- and that review caught a real,
+serious bug, not a hypothetical one: a unit with both a real PDF lease
+and a rent-roll cross-check snapshot on file (the exact scenario
+rent-roll reconciliation exists to catch) was double-counted in every
+summed figure -- total rent, WALT, the rollover schedule, and the T12
+cross-check all overstated. A genuinely healthy property (2.7% real
+T12 variance) rendered as "FLAGGED — MATERIAL DISCREPANCY" at a
+fabricated 30.2% gap purely from the double-count. Fixed with a
+dedup step that prefers the real lease document over a rent-roll
+snapshot for every summed number, while still listing both records
+(clearly labeled by source) in the Key Lease Terms section so nothing
+is silently hidden. A sample PDF/Excel pair (generated after the fix)
+was sent directly to you to look at. Full suite 50/50 including live
+tests. See DECISIONS.md's "Investment memo export" entry for the full
+writeup.
+
+---
+
+Before that: a proactive alerting system, backend-only (frontend
 not built yet for this one), on top of the four-item acquisitions-
 infrastructure batch below. `POST /alerts/generate` scans the current
 portfolio for four situations and persists a record of each: upcoming
