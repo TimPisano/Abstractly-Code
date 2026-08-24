@@ -66,6 +66,7 @@ from app.portfolio import (
 from app.comparison import compare_leases, benchmark_lease
 from app.discrepancies import sync_lease_risk_flags, sync_rent_roll_reconciliation, sync_t12_reconciliation
 from app.portfolio_history import compute_property_trends
+from app.alerts import generate_alerts, get_alert_digest
 from app.rent_roll_export import generate_rent_roll_csv, generate_rent_roll_excel
 from app.report import generate_portfolio_report_html
 from app.summary_memo import generate_lease_summary_pdf, generate_portfolio_summary_pdf, monthly_report_extra_sections
@@ -1398,6 +1399,73 @@ def add_discrepancy_comment(discrepancy_id):
 
     database.add_comment(author_name, body, discrepancy_id=discrepancy_id, author_email=author_email)
     return jsonify(database.get_discrepancy_comments(discrepancy_id)), 201
+
+
+@app.route('/alerts/generate', methods=['POST'])
+def alerts_generate():
+    """
+    Runs all four alert detectors (lease expirations, new discrepancies,
+    below-market rent, tenant concentration) against the current
+    portfolio state and persists the results -- see app/alerts.py's
+    generate_alerts for exactly what "persists" means for an already-
+    dismissed or already-auto-resolved alert. Idempotent: re-running
+    against unchanged data creates nothing new. No request body.
+    Intended to be called on a schedule (a cron job, eventually) or
+    manually -- email delivery of these alerts is explicitly out of
+    scope for this pass, see DECISIONS.md.
+    """
+    return jsonify(generate_alerts()), 200
+
+
+@app.route('/alerts', methods=['GET'])
+def list_alerts_route():
+    """GET /alerts?status=active|dismissed|auto_resolved&type=lease_expiration|new_discrepancy|below_market_rent|tenant_concentration&severity=high|medium|low&lease_id=N. Every filter optional and combinable. Lists what's already been persisted -- does not itself trigger a fresh generation pass."""
+    status = request.args.get('status')
+    if status and status not in ('active', 'dismissed', 'auto_resolved'):
+        return jsonify({"error": "status must be 'active', 'dismissed', or 'auto_resolved'"}), 400
+    severity = request.args.get('severity')
+    if severity and severity not in ('high', 'medium', 'low'):
+        return jsonify({"error": "severity must be 'high', 'medium', or 'low'"}), 400
+
+    alert_type = request.args.get('type')
+    lease_id = request.args.get('lease_id', type=int)
+    return jsonify(database.list_alerts(status=status, alert_type=alert_type, severity=severity, lease_id=lease_id)), 200
+
+
+@app.route('/alerts/summary', methods=['GET'])
+def alerts_summary():
+    """A digest suitable for a notification-feed header or a future email digest: active-alert counts by severity and by type. Reflects whatever was persisted as of the last /alerts/generate run, not a fresh computation."""
+    return jsonify(get_alert_digest()), 200
+
+
+@app.route('/alerts/<int:alert_id>', methods=['GET'])
+def get_alert_route(alert_id):
+    alert = database.get_alert(alert_id)
+    if not alert:
+        return jsonify({"error": "Alert not found"}), 404
+    return jsonify(alert), 200
+
+
+@app.route('/alerts/<int:alert_id>/dismiss', methods=['POST'])
+def dismiss_alert_route(alert_id):
+    """
+    Body: {"dismissed_by": "...", "note": "..." (optional)}. Always
+    allowed regardless of current status. There's no real per-user
+    login in this app yet (see DECISIONS.md) -- dismissed_by is exactly
+    what the caller supplies, trusted as-is, same convention as
+    discrepancy resolutions and comments.
+    """
+    if not database.get_alert(alert_id):
+        return jsonify({"error": "Alert not found"}), 404
+
+    payload = request.get_json(silent=True) or {}
+    dismissed_by = (payload.get('dismissed_by') or '').strip()
+    note = (payload.get('note') or '').strip() or None
+    if not dismissed_by:
+        return jsonify({"error": "Missing required field: dismissed_by"}), 400
+
+    database.dismiss_alert(alert_id, dismissed_by, note)
+    return jsonify(database.get_alert(alert_id)), 200
 
 
 @app.route('/qa', methods=['POST'])

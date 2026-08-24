@@ -1,6 +1,39 @@
 # Progress Summary
 
-**Last updated**: The frontend half of the same four-item acquisitions-
+**Last updated**: A proactive alerting system, backend-only (frontend
+not built yet for this one), on top of the four-item acquisitions-
+infrastructure batch below. `POST /alerts/generate` scans the current
+portfolio for four situations and persists a record of each: upcoming
+lease expirations (30/60/90 days, reusing the existing
+`compute_expiration_alerts` bucketing), newly detected discrepancies
+(reusing Item 2's discrepancies table below -- one alert per
+currently-open discrepancy), rent significantly below this portfolio's
+own internal market proxy (reusing `compute_loss_to_lease`), and a
+single tenant crossing 25% of portfolio rent (reusing
+`compute_tenant_concentration`'s existing threshold constant). Each
+alert has a severity, a plain-English message explaining what's wrong
+and why it matters, and a stable identity so it survives being
+recomputed -- an alert can be dismissed by a person (permanent, never
+silently un-dismissed by recomputation) or auto-resolved by the system
+itself when the underlying condition genuinely clears (a materially
+different, separately-tracked situation). `GET /alerts`,
+`GET /alerts/<id>`, `GET /alerts/summary` (a digest for a future
+notification feed or email digest), and `POST /alerts/<id>/dismiss`
+round out the API. Email delivery is explicitly NOT built yet --
+generation and storage only, per the request.
+
+A real design bug was found and fixed before shipping, caught by the
+"no alerts on a healthy portfolio" edge case the request explicitly
+asked for: alerting at both the 25% AND 15% tenant-concentration
+thresholds made a healthy, evenly-diversified 5-tenant portfolio (20%
+each) alert on every single tenant. Fixed to alert only at 25%,
+matching the concrete threshold the request itself named. Full suite
+48/48 including live tests. See DECISIONS.md's "Proactive alerting
+system" entry for the full writeup.
+
+---
+
+Before that: the frontend half of the same four-item acquisitions-
 infrastructure batch (see the entry below) — built directly against the
 real backend endpoints that batch shipped, not the localStorage
 stopgaps this pass started with before that backend work landed mid-

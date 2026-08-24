@@ -469,6 +469,154 @@ missing-clause risk flags to comment on, two independent team members'
 notes both visible to a third fresh reader, the 400/404 paths). Full
 suite 46/46 including live tests.
 
+## Proactive alerting system
+
+A new, fifth backend system on top of the four above, requested as a
+follow-up in the same session: instead of a human having to open the
+app and go looking, scan the current portfolio for four specific
+situations and persist a record of each one -- upcoming lease
+expirations (30/60/90 days), newly detected discrepancies, rent
+significantly below this portfolio's own internal market proxy, and
+tenant concentration crossing a risk threshold.
+
+### Reused, not re-derived
+
+Every one of the four detectors calls an EXISTING computation rather
+than re-deriving its own version of the same logic, which would risk
+silently disagreeing with what the dashboard already shows for the
+same thing: `compute_expiration_alerts` (already built, already
+30/60/90-bucketed) for expirations; `database.list_discrepancies(status
+="open")` (Item 2, this same session) for discrepancies;
+`compute_loss_to_lease` (already built, explicitly the portfolio's own
+internal best-achieved-rent proxy since there's no external market-
+rate data source -- see that function's own docstring) for below-
+market rent; `compute_tenant_concentration`'s already-defined
+`TOP_TENANT_HIGH_RISK_PCT` constant (25%, borrowed from DOJ/FTC merger
+guideline thresholds, not invented fresh) for concentration. An alert
+is a NOTIFICATION about a condition computed elsewhere, not a second
+parallel computation of the same fact.
+
+### Data model: `alerts`, extending the natural-key upsert pattern from Item 2
+
+Same `natural_key`-based identity/upsert approach as `discrepancies`
+(see that section above), with one real addition: alert `status` is
+`'active'` / `'dismissed'` / `'auto_resolved'`, not just active/
+dismissed. A discrepancy always needs an explicit human resolve
+action; an alert's underlying condition can genuinely clear on its own
+(a lease gets renewed further out, a re-imported rent roll shows the
+rent caught up, a tenant's share drops back under 25%) -- that's a
+materially different situation from a human saying "I've seen this,
+stop showing it to me," so it gets its own status rather than being
+conflated with a manual dismiss.
+
+`upsert_alert`'s status-transition rules, the actual core logic of this
+feature: an `'active'` alert recomputing stays `'active'` (snapshot
+refreshes); an `'auto_resolved'` alert whose condition recurs flips
+back to `'active'` (it wasn't a human decision, so there's nothing to
+silently overturn -- it's just true again); a `'dismissed'` alert NEVER
+flips back automatically, no matter how many times the condition
+recurs -- a human decision is never silently overturned by
+recomputation, the same non-negotiable rule Item 2's discrepancy
+resolutions already established. `generate_alerts()` auto-resolves any
+previously-`'active'` alert whose natural key doesn't appear in the
+current run's candidates -- scoped to only the 4 alert types this pass
+manages (`_MANAGED_ALERT_TYPES`), specifically so a future 5th alert
+type added by different code can't get every one of its own alerts
+incorrectly auto-resolved just because this generation pass never
+asked about it.
+
+### A real bug found and fixed before shipping: the tenant-concentration threshold
+
+The first version alerted at BOTH `TOP_TENANT_HIGH_RISK_PCT` (25%,
+severity high) AND `TOP_TENANT_MODERATE_RISK_PCT` (15%, severity
+medium) -- reusing both of `compute_tenant_concentration`'s existing
+thresholds seemed consistent at first. Writing the "healthy portfolio
+produces zero alerts" edge case the request explicitly asked for
+caught the real problem immediately: a healthy, evenly-diversified
+5-tenant portfolio (20% each, a genuinely LOW-risk shape by any
+reasonable read) alerted on all 5 tenants, since 20% clears the 15%
+"moderate" bar. That's exactly the wrong behavior for a proactive
+alerting system -- noisy on a healthy portfolio undermines trust in
+every other alert it raises. Fixed by alerting only at the 25% bar
+(severity always `high`), matching the concrete threshold the request
+itself named as its example ("e.g. one tenant now >25%") rather than
+inventing a second, noisier tier. Covered by
+`test_tenant_concentration_evenly_split_stays_quiet` (must stay silent)
+and `test_tenant_concentration_exactly_at_threshold_still_alerts`
+(>=, not >, still fires exactly at 25%).
+
+### `below_market_rent`'s severity thresholds are this module's own judgment call
+
+`compute_loss_to_lease` deliberately reports raw loss-percentage
+numbers with NO severity label of its own -- its docstring explains why
+directly: an internal-proxy "market rate" (best-achieved rent at the
+same building, not a real external comp) doesn't have a defensible
+enough reference point to responsibly attach a risk level to. An alert
+is a stronger claim than a raw metric, so this module defines its own
+thresholds (`BELOW_MARKET_ALERT_HIGH_PCT` = 20%, `_MEDIUM_PCT` = 10%)
+rather than retrofitting a label onto a function that intentionally
+doesn't have one -- keeping that boundary intact means
+`compute_loss_to_lease` still means exactly what its docstring says
+everywhere else it's used (the dashboard panel, the property-trends
+work), and only the alerting layer's own added interpretation lives
+here.
+
+### Idempotent by design, verified directly
+
+`generate_alerts()` is meant to be called on a schedule (a cron job,
+eventually) or manually -- re-running against unchanged data must
+create zero new rows. Verified both in isolation
+(`test_generate_alerts_is_idempotent`) and live against the real
+running server (`test_live_alerts_api.py`: a second `/alerts/generate`
+call creates 0, refreshes what's still true).
+
+### Observed during live verification, not a bug: discrepancies/alerts accumulate across every past test run in this dev DB
+
+Running the live alert test against the real dev server surfaced 281
+already-`open` `new_discrepancy`-eligible discrepancies sitting in the
+database, accumulated from every prior live-test session this whole
+project has ever run (discrepancies are permanent records by Item 2's
+own design -- test cleanup only ever deletes the LEASES it created,
+never the discrepancies those leases generated, which is the entire
+point of "permanently logged, never lost"). This is working exactly as
+designed, not a bug -- caught a real bug in the LIVE TEST ITSELF, not
+the app: an early version of `test_live_alerts_api.py` compared the
+`/alerts/summary` digest's `active_count` against the length of an
+UNFILTERED `GET /alerts` call, which naturally exceeds the active
+count once any alert has been dismissed or auto-resolved, including
+ones from unrelated prior runs. Fixed by comparing against
+`GET /alerts?status=active` instead. Worth knowing for whoever
+maintains this dev environment long-term: this database's discrepancy/
+alert history will keep growing indefinitely unless a real cleanup/
+archival policy is deliberately added later -- not needed yet at this
+project's current scale, but flagged here rather than silently
+building up unnoticed.
+
+### New endpoints
+
+`POST /alerts/generate` (no body -- runs all 4 detectors, upserts,
+auto-resolves, returns a summary), `GET /alerts` (filterable by
+`status`, `type`, `severity`, `lease_id`, sorted severity-first then
+most-recently-seen -- a notification feed's natural reading order),
+`GET /alerts/<id>`, `GET /alerts/summary` (a digest of active-alert
+counts by severity/type, explicitly designed for a future notification-
+feed header or email digest -- email delivery itself is explicitly out
+of scope for this pass, per the request), `POST /alerts/<id>/dismiss`
+(body: `dismissed_by`, optional `note` -- same self-reported-identity
+convention as discrepancy resolutions and comments).
+
+### Verified
+
+`test_alerts.py` (23 tests: CRUD status-transition rules, each
+detector individually, the explicit "no alerts"/"many alerts at once"/
+"resolved (auto)"/"dismissed (manual)" edge cases the request named,
+all 5 routes) and `test_live_alerts_api.py` (26 checks against the
+real running server: a real portfolio genuinely tripping all 4 alert
+types via real rent-roll imports and a real messy PDF, the full
+generate → dismiss → regenerate-stays-dismissed lifecycle, and
+resolving the underlying discrepancy causing its alert to genuinely
+auto-resolve). Full suite 48/48 including live tests.
+
 ### Summary: all four items shipped this pass
 
 Full audit trail (item 1), discrepancy resolution (item 2), portfolio
