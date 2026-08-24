@@ -1,6 +1,49 @@
 # Progress Summary
 
-**Last updated**: Investment memo export, backend-only. `POST
+**Last updated**: Portfolio Health Score, backend-only. `GET
+/portfolio/health-score` returns a single, defensible 0-100 number
+(plus a letter rating) for how much a user can trust their portfolio's
+data right now -- a weighted formula across confidence distribution,
+source verification completeness, unresolved discrepancies, and data
+freshness, fully documented in `app/portfolio_health_score.py`'s
+module docstring. Deliberately distinct from the existing `/portfolio/
+health` dashboard strip (that one answers "what needs attention
+today"; this one answers "how much can I trust the data itself").
+Tested against genuinely different portfolio states (a real perfect
+one, a real messy one, a real 50/50 mixed one), per explicit
+instruction.
+
+That live testing surfaced three real, serious bugs, one of them
+significant enough to warrant its own writeup here: this project's
+real dev database had been running with a live, silently-corrupting
+schema bug for the entire rest of this session. Item 2 (discrepancy
+resolution) deliberately removed the foreign key on `discrepancies.
+lease_id` earlier this session specifically so a discrepancy would
+survive its lease being deleted -- but `CREATE TABLE IF NOT EXISTS`
+never retroactively fixes an already-existing table, so the real dev
+database kept the OLD `ON DELETE SET NULL` constraint the whole time,
+silently nulling out 343 real discrepancy rows' `lease_id` every time
+a referenced lease was deleted -- discarding exactly the information a
+permanent record exists to keep. Fixed with a real migration
+(`database._migrate_discrepancies_table_drop_lease_fk`, SQLite's
+standard rename/recreate/copy/drop table-rebuild dance, since SQLite
+has no `DROP CONSTRAINT`) that runs safely and idempotently on every
+`init_db()`. Two further bugs in the health score's own discrepancy-
+counting logic (both downstream of the same "discrepancies
+permanently outlive their lease" design) were also found and fixed:
+discrepancies tied to since-deleted leases, and discrepancies about
+tenant names/addresses that no longer appear anywhere in the current
+portfolio, were both being counted forever instead of only while still
+relevant -- together these had made the health score's discrepancy
+component nearly meaningless in any long-lived database (351
+accumulated open discrepancies were dragging down what should have
+been a genuinely healthy, brand-new test portfolio). Full suite 52/52
+including live tests. See DECISIONS.md's "Portfolio Health Score"
+entry for the full writeup, including the exact debugging trail.
+
+---
+
+Before that: investment memo export, backend-only. `POST
 /portfolio/investment-memo.pdf` and `.xlsx` generate a professional,
 attachment-ready export (per property or whole portfolio) with key
 lease terms, flagged discrepancies AND their resolutions, a T12

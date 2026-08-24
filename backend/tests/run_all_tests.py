@@ -57,6 +57,7 @@ UNIT_TESTS = [
     "test_comments.py",
     "test_alerts.py",
     "test_investment_memo.py",
+    "test_portfolio_health_score.py",
 ]
 
 LIVE_API_TESTS = [
@@ -73,6 +74,7 @@ LIVE_API_TESTS = [
     "test_live_comments_api.py",
     "test_live_alerts_api.py",
     "test_live_investment_memo_api.py",
+    "test_live_health_score_api.py",
 ]
 
 

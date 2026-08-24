@@ -68,6 +68,7 @@ from app.discrepancies import sync_lease_risk_flags, sync_rent_roll_reconciliati
 from app.portfolio_history import compute_property_trends
 from app.alerts import generate_alerts, get_alert_digest
 from app.investment_memo import build_investment_memo_data, generate_investment_memo_pdf, generate_investment_memo_excel
+from app.portfolio_health_score import compute_portfolio_health_score, DEFAULT_STALENESS_THRESHOLD_MONTHS
 from app.rent_roll_export import generate_rent_roll_csv, generate_rent_roll_excel
 from app.report import generate_portfolio_report_html
 from app.summary_memo import generate_lease_summary_pdf, generate_portfolio_summary_pdf, monthly_report_extra_sections
@@ -1098,6 +1099,30 @@ def portfolio_confidence_summary():
     """The trust-mechanism number: field counts by confidence tier across the whole portfolio, plus how many were flagged for review during validation. See compute_portfolio_confidence_summary."""
     leases = database.get_all_effective_leases()
     return jsonify(compute_portfolio_confidence_summary(leases)), 200
+
+
+@app.route('/portfolio/health-score', methods=['GET'])
+def portfolio_health_score_route():
+    """
+    GET /portfolio/health-score?staleness_threshold_months=6 (optional,
+    defaults to 6). A single, defensible 0-100 trust score for the
+    current portfolio's DATA, not the same thing as GET /portfolio/
+    health's "what needs attention today" strip -- see
+    app/portfolio_health_score.py's module docstring for the full,
+    explicitly documented formula behind this number.
+    """
+    threshold_raw = request.args.get('staleness_threshold_months')
+    if threshold_raw is not None:
+        try:
+            threshold_months = float(threshold_raw)
+        except ValueError:
+            return jsonify({"error": "staleness_threshold_months must be a number"}), 400
+        if threshold_months <= 0:
+            return jsonify({"error": "staleness_threshold_months must be positive"}), 400
+    else:
+        threshold_months = DEFAULT_STALENESS_THRESHOLD_MONTHS
+
+    return jsonify(compute_portfolio_health_score(staleness_threshold_months=threshold_months)), 200
 
 
 @app.route('/portfolio/tenant-concentration', methods=['GET'])

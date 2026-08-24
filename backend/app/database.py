@@ -69,6 +69,81 @@ def _migrate_schema(conn: sqlite3.Connection) -> None:
             conn.execute(f"ALTER TABLE leases ADD COLUMN {column} {sql_type}")
 
 
+def _migrate_discrepancies_table_drop_lease_fk(conn: sqlite3.Connection) -> None:
+    """
+    Rebuilds an already-existing `discrepancies` table that still has
+    the ORIGINAL `FOREIGN KEY (lease_id) REFERENCES leases(id) ON
+    DELETE SET NULL` constraint (and the same for related_lease_id)
+    this table shipped with initially, into the corrected schema with
+    no such constraint at all.
+
+    That original constraint was a real, live bug, not just a design
+    change: a discrepancy is meant to be a PERMANENT record that
+    survives its lease being deleted (see this table's own module
+    comment above, and the "Discrepancies from deleted leases" fix in
+    portfolio_health_score.py) -- but `ON DELETE SET NULL` meant
+    deleting a lease silently NULLED OUT every discrepancy's lease_id
+    that had ever referenced it, discarding exactly the information
+    ("which lease was this about") that made the permanent record
+    useful. `CREATE TABLE IF NOT EXISTS` never retroactively fixes an
+    already-existing table's constraints, so any database created
+    before the FK was removed from this file keeps enforcing the old
+    behavior forever unless explicitly migrated -- confirmed this
+    exact scenario happening for real, live, in this project's own dev
+    database (343 discrepancies silently lost their lease_id this way)
+    before this migration was added.
+
+    SQLite has no ALTER TABLE ... DROP CONSTRAINT, so this uses the
+    standard rebuild dance: rename the old table aside, create a fresh
+    one with the correct (no-FK) shape, copy every row across
+    verbatim, drop the old one -- with PRAGMA foreign_keys OFF for the
+    duration so SQLite doesn't try to "helpfully" rewrite `comments`'s
+    FK text mid-rebuild (it targets `discrepancies` by name, and
+    resolves correctly again once the real table exists again under
+    that name at the end). A no-op, safe to call every time init_db()
+    runs, if the table doesn't exist yet or has already been migrated.
+    """
+    existing = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='discrepancies'"
+    ).fetchone()
+    if not existing:
+        return
+
+    has_old_fk = any(row[2] == "leases" for row in conn.execute("PRAGMA foreign_key_list(discrepancies)"))
+    if not has_old_fk:
+        return
+
+    conn.execute("PRAGMA foreign_keys = OFF")
+    conn.execute("ALTER TABLE discrepancies RENAME TO discrepancies_pre_fk_migration")
+    conn.execute("""
+        CREATE TABLE discrepancies (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            discrepancy_type TEXT NOT NULL,
+            natural_key TEXT NOT NULL UNIQUE,
+            lease_id INTEGER,
+            related_lease_id INTEGER,
+            category TEXT NOT NULL,
+            field TEXT,
+            severity TEXT,
+            message TEXT NOT NULL,
+            details TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'open',
+            first_detected_at TEXT NOT NULL,
+            last_seen_at TEXT NOT NULL
+        )
+    """)
+    conn.execute("""
+        INSERT INTO discrepancies (id, discrepancy_type, natural_key, lease_id, related_lease_id,
+            category, field, severity, message, details, status, first_detected_at, last_seen_at)
+        SELECT id, discrepancy_type, natural_key, lease_id, related_lease_id,
+            category, field, severity, message, details, status, first_detected_at, last_seen_at
+        FROM discrepancies_pre_fk_migration
+    """)
+    conn.execute("DROP TABLE discrepancies_pre_fk_migration")
+    conn.execute("PRAGMA foreign_keys = ON")
+    conn.commit()
+
+
 def init_db() -> None:
     """Create tables if they don't already exist, and migrate any existing `leases` table to the current schema. Safe to call repeatedly."""
     conn = get_connection()
@@ -133,6 +208,7 @@ def init_db() -> None:
                 last_seen_at TEXT NOT NULL
             )
         """)
+        _migrate_discrepancies_table_drop_lease_fk(conn)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS discrepancy_resolutions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,

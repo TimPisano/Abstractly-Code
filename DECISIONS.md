@@ -745,6 +745,148 @@ request -- confirming the PDF and Excel outputs agree with each other
 and correctly show the deduped, non-inflated numbers). Full suite
 50/50 including live tests.
 
+## Portfolio Health Score
+
+A single, defensible 0-100 number (plus a letter rating) summarizing
+how much a user can trust their portfolio's data RIGHT NOW -- meant to
+be the number that makes someone check the app regularly, the way a
+credit score or an uptime SLA number works. The full formula is
+documented in `app/portfolio_health_score.py`'s module docstring (per
+explicit instruction to document it clearly, not just implement it) --
+summarized here.
+
+**Explicitly NOT the same thing as the existing `compute_portfolio_
+health`** (the dashboard's "morning glance" strip: verified-vs-needs-
+review counts, renewal urgency, rent on the clock over the next two
+windows). That function answers "what needs attention today." This one
+answers a narrower, different question: "how much can I trust the DATA
+itself, right now." Deliberately kept as two separate functions with
+two separate names rather than merged or renamed to avoid confusion --
+they measure genuinely different things and a caller wanting one
+should never accidentally get the other.
+
+**The formula**: a weighted sum of four 0-100 sub-scores --
+Confidence Distribution (30%, reuses `compute_portfolio_confidence_
+summary`'s existing high/medium/low/not_found tally with weighted
+partial credit: high=1.0, medium=0.6, low=0.3), Source Verification
+(25%, % of leases with every `CORE_FIELDS_FOR_COMPLETENESS` field
+present AND zero fields flagged during extraction validation),
+Unresolved Discrepancies (25%, a smooth diminishing-returns curve --
+`100 / (1 + open_discrepancies_per_lease)` -- rather than a hard
+cutoff, so it degrades gracefully instead of cliff-dropping at an
+arbitrary count), and Data Freshness (20%, % of leases refreshed --
+uploaded or amended -- within a configurable staleness window,
+default 6 months). The weights are explicitly documented as this
+module's own judgment call, not a market-tested standard -- same
+honesty standard `compute_loss_to_lease`/`compute_tenant_concentration`
+already hold their own thresholds to. An empty portfolio returns
+`score: None, rating: "No Data"` -- an unscored portfolio is not a
+known-zero one, the same convention every aggregate in `portfolio.py`
+already follows.
+
+**Tested against genuinely different portfolio states, per explicit
+instruction** -- not just unit-level component checks:
+`test_perfect_portfolio_scores_near_100_excellent` (every field found,
+high confidence, zero discrepancies, uploaded today -- scores 95+,
+"Excellent"), `test_messy_portfolio_scores_low_critical` (sparse
+fields, low confidence, 6 real open discrepancies, uploads 400 days
+stale -- scores under 40, "Critical"), `test_mixed_portfolio_scores_
+in_the_middle` (half genuinely good, half genuinely bad -- lands
+strictly between the two extremes, with the 50/50 split's arithmetic
+directly verified, not just "somewhere in the middle").
+
+### Two real, serious bugs found live -- neither reproducible by a fresh-temp-DB unit test
+
+Both concern the Unresolved Discrepancies component specifically, and
+both share the same root cause: `database.list_discrepancies(status=
+"open")` is deliberately unscoped (Item 2's discrepancies are
+permanent records, by design, that outlive the lease they were about).
+A health score computed over an unscoped count of "every open
+discrepancy this database has EVER accumulated" is not the same thing
+as "how much can I trust the CURRENT portfolio" -- and this project's
+own real dev database, after months of accumulated test runs, made
+that gap concrete rather than theoretical.
+
+1. **Lease-scoped discrepancies whose lease no longer exists.**
+   `lease_risk_flag`/`cross_lease_mismatch`/`rent_roll_reconciliation`
+   discrepancies from leases deleted in prior sessions kept counting
+   against the CURRENT portfolio's score forever. Fixed by only
+   counting a lease-scoped discrepancy if its `lease_id`/`related_
+   lease_id` still appears in the current lease set
+   (`test_discrepancies_from_deleted_leases_do_not_count_against_a_
+   healthy_current_portfolio`).
+
+2. **Portfolio-wide discrepancies (no lease_id at all) whose subject no
+   longer exists.** `tenant_concentration`/`t12_reconciliation`
+   discrepancies are facts about a TENANT NAME or an ADDRESS, not a
+   lease row -- fix #1 didn't touch these at all, since they were
+   never lease-scoped to begin with. 351 of them had accumulated live,
+   from tenant names and properties used across this whole project's
+   entire test history, none of which exist in the current portfolio.
+   Fixed by requiring the tenant_concentration's tenant (normalized)
+   or the t12_reconciliation's address (normalized, building-level) to
+   still appear somewhere in the current portfolio
+   (`test_portfolio_wide_discrepancy_counts_only_if_its_subject_is_
+   still_current`). Together, fix #1 and #2 dropped the live test's
+   open-discrepancy count from 351 (an empty CURRENT portfolio showing
+   351 "open" discrepancies!) to the real, current number.
+
+### A THIRD bug, upstream of both: `discrepancies.lease_id` had a live `ON DELETE SET NULL` foreign key nobody meant to still be there
+
+Debugging bug #1 above (resolving real discrepancies wasn't moving the
+score at all) traced back further than expected: the real dev database
+still had the ORIGINAL `discrepancies` table schema -- including
+`FOREIGN KEY (lease_id) REFERENCES leases(id) ON DELETE SET NULL` --
+from before that constraint was deliberately removed earlier this same
+session (see Item 2's entry above: "a discrepancy is a permanent
+record, and `discrepancies.lease_id`/`related_lease_id` were built
+WITHOUT a foreign key for exactly this reason"). `CREATE TABLE IF NOT
+EXISTS` never retroactively fixes an ALREADY-EXISTING table's
+constraints, so that removal only ever took effect for brand-new
+databases (every unit test's fresh temp DB) -- the real, long-lived
+dev database kept the old FK the whole time, and kept silently
+NULLING OUT `lease_id` on 343 real discrepancy rows every time a lease
+they referenced was deleted, discarding exactly the information a
+permanent record exists to keep. This was a real, live, silently-
+corrupting bug that had been happening for the entire rest of this
+session without being noticed, until the health score's own scoping
+logic made its effect visible.
+
+**Fixed with a real migration**, `database._migrate_discrepancies_
+table_drop_lease_fk`: detects an already-existing `discrepancies` table
+still carrying the old FK (`PRAGMA foreign_key_list`) and rebuilds it
+via SQLite's standard rename/recreate/copy/drop dance (SQLite has no
+`ALTER TABLE ... DROP CONSTRAINT`), with `PRAGMA foreign_keys OFF` for
+the duration so SQLite doesn't try to "helpfully" rewrite `comments`'s
+own FK text mid-rebuild (verified directly that `comments.discrepancy_
+id`'s FK still enforces correctly against the rebuilt table afterward,
+not just assumed). Idempotent and safe to run on every `init_db()` --
+a no-op once already migrated, verified by running it twice against
+the same copied database file. Confirmed live: 390 discrepancy rows,
+zero data loss, `PRAGMA integrity_check` clean. The 343 already-lost
+`lease_id` values from before this fix are genuinely gone (there's no
+way to recover which lease a NULL used to point to), which is exactly
+why bug #1's fix treats a lease-scoped discrepancy with a null
+lease_id as "can't verify relevance, exclude" rather than "count it
+anyway" -- the honest response to unrecoverable data, not a guess.
+
+### New endpoint
+
+`GET /portfolio/health-score?staleness_threshold_months=6` (optional,
+defaults to 6) -- 400 for a non-numeric or non-positive threshold.
+
+### Verified
+
+`test_portfolio_health_score.py` (14 tests: all four components
+individually, the three portfolio-state scenarios, both migration-
+adjacent scoping bugs, the route) and `test_live_health_score_api.py`
+(18 checks against the real running server: an empty portfolio, a real
+clean lease, a real messy fixture with real open discrepancies,
+confirming the score measurably drops when they're added and
+measurably recovers when they're resolved -- the exact check that
+originally caught bugs #1/#2/#3 above). Full suite 52/52 including
+live tests.
+
 ### Summary: all four items shipped this pass
 
 Full audit trail (item 1), discrepancy resolution (item 2), portfolio
