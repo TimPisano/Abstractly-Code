@@ -562,6 +562,16 @@
     font-weight: 600;
 }
 
+.discrepancy-resolve-hint {
+    display: block;
+    margin-top: 0.25rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    opacity: 0.85;
+}
+
 /* Portfolio Composition & Risk panel (tenant concentration, WALT/
    rollover, loss-to-lease, rent roll reconciliation) -- reuses the
    .attention-group/.attention-item family above for every list it
@@ -2057,4 +2067,502 @@
 
 .access-gate-link:hover {
     text-decoration: underline;
+}
+
+/* ===================== Click-to-verify popover =====================
+   See verify-popover.js. A single reusable overlay, positioned next to
+   whichever .verify-trigger opened it -- borrows .field-source's own
+   content styling (source-page/source-quote) so a popover citation
+   looks identical to the always-visible one on the Lease Detail view,
+   rather than inventing a second visual language for the same kind of
+   content. */
+
+.verify-trigger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    border: none;
+    background: none;
+    padding: 0.125rem;
+    margin-left: 0.375rem;
+    border-radius: var(--radius-sm);
+    color: var(--text-light);
+    vertical-align: middle;
+    transition: color 0.15s, background-color 0.15s;
+}
+
+.verify-trigger svg {
+    width: 0.9375rem;
+    height: 0.9375rem;
+}
+
+.verify-trigger:hover {
+    color: var(--primary-color);
+    background-color: var(--primary-light);
+}
+
+.verify-popover {
+    position: fixed;
+    z-index: 1401;
+    width: 320px;
+    max-width: calc(100vw - 2rem);
+    background-color: var(--white);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-xl);
+    padding: 1rem;
+    animation: verifyPopoverIn 0.12s ease-out;
+}
+
+@keyframes verifyPopoverIn {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.verify-popover-title {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-medium);
+    margin-bottom: 0.75rem;
+}
+
+.verify-popover-close {
+    cursor: pointer;
+    color: var(--text-light);
+    background: none;
+    border: none;
+    font-size: 1.125rem;
+    line-height: 1;
+    padding: 0.125rem 0.25rem;
+    flex-shrink: 0;
+}
+
+.verify-popover-close:hover {
+    color: var(--text-dark);
+}
+
+.verify-popover-source {
+    margin-top: 0;
+}
+
+.verify-popover-confidence {
+    margin-top: 0.625rem;
+}
+
+.verify-popover-empty {
+    font-size: 0.8125rem;
+    color: var(--text-light);
+    padding: 0.25rem 0;
+}
+
+.verify-popover-subtitle {
+    font-size: 0.8125rem;
+    color: var(--text-medium);
+    margin-bottom: 0.625rem;
+}
+
+.verify-popover-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+    max-height: 280px;
+    overflow-y: auto;
+}
+
+.verify-popover-row {
+    padding: 0.625rem 0.75rem;
+    background-color: var(--background);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: background-color 0.15s;
+}
+
+.verify-popover-row:hover {
+    background-color: var(--primary-light);
+}
+
+.verify-popover-row-title {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--text-dark);
+}
+
+.verify-popover-row-value {
+    font-size: 0.8125rem;
+    color: var(--text-medium);
+    margin-top: 0.125rem;
+}
+
+/* ===================== Discrepancy resolution modal =====================
+   See discrepancy-modal.js. The app's first true modal dialog -- reuses
+   .field-source for citation content and .btn-primary/.btn-danger for
+   actions rather than inventing new button styles. */
+
+.discrepancy-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background-color: rgba(10, 10, 11, 0.45);
+    z-index: 1500;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+}
+
+.discrepancy-modal {
+    background-color: var(--white);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-xl);
+    padding: 1.75rem;
+    width: 100%;
+    max-width: 640px;
+    max-height: calc(100vh - 3rem);
+    overflow-y: auto;
+    animation: verifyPopoverIn 0.15s ease-out;
+}
+
+.discrepancy-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1rem;
+    margin-bottom: 1.25rem;
+}
+
+.discrepancy-modal-header h2 {
+    font-size: 1.25rem;
+    font-weight: 700;
+}
+
+.discrepancy-modal-subtitle {
+    font-size: 0.875rem;
+    color: var(--text-medium);
+    margin-top: 0.25rem;
+}
+
+.discrepancy-modal-close {
+    font-size: 1.5rem;
+}
+
+.discrepancy-resolved-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    padding: 0.75rem 0.875rem;
+    background-color: var(--confidence-high-bg);
+    color: var(--confidence-high);
+    border-radius: var(--radius-sm);
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    margin-bottom: 1.25rem;
+}
+
+.discrepancy-resolved-banner svg {
+    width: 1.125rem;
+    height: 1.125rem;
+    flex-shrink: 0;
+    margin-top: 0.0625rem;
+}
+
+.discrepancy-compare {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-bottom: 1.25rem;
+}
+
+@media (max-width: 620px) {
+    .discrepancy-compare { grid-template-columns: 1fr; }
+}
+
+.discrepancy-side {
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.625rem;
+}
+
+.discrepancy-side-chosen {
+    border-color: var(--confidence-high);
+    background-color: var(--confidence-high-bg);
+}
+
+.discrepancy-side-label {
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-medium);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.discrepancy-side-value {
+    font-size: 1.0625rem;
+    font-weight: 600;
+    color: var(--text-dark);
+}
+
+.discrepancy-side .discrepancy-pick-btn {
+    margin-top: auto;
+}
+
+.discrepancy-note-row {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+    margin-bottom: 1rem;
+}
+
+.discrepancy-note-row label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-medium);
+}
+
+.discrepancy-note-row textarea.text-input {
+    resize: vertical;
+    font-family: inherit;
+}
+
+.discrepancy-local-warning {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    padding: 0.625rem 0.75rem;
+    background-color: var(--confidence-medium-bg);
+    color: var(--confidence-medium);
+    border-radius: var(--radius-sm);
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    margin-bottom: 1.25rem;
+}
+
+.discrepancy-local-warning svg {
+    width: 1.125rem;
+    height: 1.125rem;
+    flex-shrink: 0;
+    margin-top: 0.0625rem;
+}
+
+.discrepancy-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.75rem;
+}
+
+.discrepancy-discussion {
+    margin-top: 1.5rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--border-color);
+}
+
+.discrepancy-discussion h3 {
+    font-size: 0.9375rem;
+    font-weight: 700;
+    margin-bottom: 0.875rem;
+}
+
+/* ===================== Team Notes / comment threads =====================
+   See comments.js -- shared by the Lease Detail sidebar panel and the
+   Discrepancy Resolution modal's "Discussion" section. */
+
+.comments-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.625rem;
+    max-height: 260px;
+    overflow-y: auto;
+    margin-bottom: 0.875rem;
+}
+
+.comment-item {
+    padding: 0.625rem 0.75rem;
+    background-color: var(--background);
+    border-radius: var(--radius-sm);
+}
+
+.comment-item-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 0.5rem;
+    margin-bottom: 0.25rem;
+}
+
+.comment-author {
+    font-size: 0.8125rem;
+    font-weight: 700;
+    color: var(--text-dark);
+}
+
+.comment-time {
+    font-size: 0.6875rem;
+    color: var(--text-light);
+    white-space: nowrap;
+}
+
+.comment-body {
+    font-size: 0.8125rem;
+    color: var(--text-medium);
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+.comment-add-row {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.comment-add-row textarea.text-input {
+    resize: vertical;
+    font-family: inherit;
+}
+
+.comment-add-actions {
+    display: flex;
+    justify-content: flex-end;
+}
+
+/* ===================== Portfolio Trends charts ===================== */
+
+.trends-filter-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+}
+
+.trends-filter-row label {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--text-medium);
+}
+
+.trend-chart-svg {
+    width: 100%;
+    height: auto;
+    display: block;
+    margin-top: 0.5rem;
+}
+
+.trend-chart-baseline {
+    stroke: var(--border-color);
+    stroke-width: 1;
+}
+
+.trend-chart-value-label {
+    font-size: 13px;
+    font-weight: 700;
+    fill: var(--text-dark);
+    font-family: var(--font-sans);
+}
+
+.trend-chart-axis-label {
+    font-size: 12px;
+    font-weight: 600;
+    fill: var(--text-medium);
+    font-family: var(--font-sans);
+}
+
+.trend-chart-sublabel {
+    font-size: 10px;
+    fill: var(--text-light);
+    font-family: var(--font-sans);
+}
+
+.trends-chart-summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 0.875rem;
+    margin-bottom: 0.5rem;
+}
+
+.trends-legend-line {
+    font-size: 0.8125rem;
+    color: var(--text-medium);
+    margin-top: 0.75rem;
+    line-height: 1.6;
+}
+
+.trends-gap-note {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.625rem;
+    padding: 0.875rem 1rem;
+    background-color: var(--confidence-none-bg);
+    color: var(--text-medium);
+    border-radius: var(--radius-md);
+    font-size: 0.8125rem;
+    line-height: 1.6;
+}
+
+.trends-gap-note svg {
+    width: 1.25rem;
+    height: 1.25rem;
+    flex-shrink: 0;
+    margin-top: 0.0625rem;
+    color: var(--text-light);
+}
+
+.rent-growth-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+}
+
+.rent-growth-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    padding: 0.625rem 0.875rem;
+    background-color: var(--background);
+    border-radius: var(--radius-sm);
+    font-size: 0.875rem;
+}
+
+.rent-growth-item-main {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.rent-growth-item-address {
+    font-weight: 600;
+    color: var(--text-dark);
+}
+
+.rent-growth-item-values {
+    color: var(--text-medium);
+}
+
+.rent-growth-pct {
+    font-weight: 700;
+    padding: 0.0625rem 0.5rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+}
+
+.rent-growth-up { background-color: var(--confidence-high-bg); color: var(--confidence-high); }
+.rent-growth-down { background-color: var(--confidence-low-bg); color: var(--confidence-low); }
+
+.rent-growth-item-date {
+    font-size: 0.75rem;
+    color: var(--text-light);
+    white-space: nowrap;
 }

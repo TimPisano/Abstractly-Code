@@ -31,9 +31,14 @@
     // Order matters: api.js and app.js must load before the view modules
     // that depend on their globals (Api, AppState, registerView, etc).
     const APP_SCRIPTS = [
-        'api.js', 'app.js', 'upload-view.js', 'dashboard-view.js',
+        // verify-popover.js and discrepancy-modal.js are shared utility
+        // globals (VerifyPopover, DiscrepancyModal, verifyTriggerHtml,
+        // etc.) used by several of the view modules below -- loaded
+        // right after app.js, before any view that calls into them.
+        'api.js', 'app.js', 'verify-popover.js', 'comments.js', 'discrepancy-modal.js',
+        'upload-view.js', 'dashboard-view.js',
         'detail-view.js', 'timeline-view.js', 'rentroll-view.js', 'comparison-view.js',
-        'qa-view.js', 'report-view.js',
+        'qa-view.js', 'report-view.js', 'trends-view.js',
     ];
 
     const bootLoadingEl = document.getElementById('appBootLoading');

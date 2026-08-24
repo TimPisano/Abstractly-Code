@@ -340,7 +340,12 @@ const T12CrossCheck = {
         return value == null ? '—' : `$${value.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
     },
 
+    lastResponse: null,
+    lastFilename: null,
+
     showResult(filename, response) {
+        this.lastResponse = response;
+        this.lastFilename = filename;
         const container = document.getElementById('t12ResultContent');
 
         if (response.matched_lease_count === 0) {
@@ -352,9 +357,12 @@ const T12CrossCheck = {
             return;
         }
 
-        const badge = response.flagged
-            ? '<span class="severity-badge severity-high">Discrepancy Flagged</span>'
-            : '<span class="severity-badge severity-low">Matches</span>';
+        const isResolved = response.resolution_status === 'resolved';
+        const badge = isResolved
+            ? '<span class="severity-badge severity-low">Resolved</span>'
+            : response.flagged
+                ? '<span class="severity-badge severity-high">Discrepancy Flagged</span>'
+                : '<span class="severity-badge severity-low">Matches</span>';
 
         const directionText = {
             rent_roll_higher: 'the rent roll is higher than the T12\'s actual income',
@@ -366,7 +374,7 @@ const T12CrossCheck = {
             <p class="upload-summary">${badge} &mdash; <strong>${escapeHtml(response.property_address)}</strong></p>
             <div class="health-strip">
                 <div class="health-metric">
-                    <div class="health-metric-value">${this._money(response.rent_roll_annual_rent)}</div>
+                    <div class="health-metric-value">${this._money(response.rent_roll_annual_rent)}${verifyTriggerHtml('t12-rentroll-verify')}</div>
                     <div class="health-metric-label">Rent roll (annualized)</div>
                     <div class="health-metric-sub">${response.matched_lease_count} lease(s)${response.excluded_lease_count ? `, ${response.excluded_lease_count} excluded (no usable rent)` : ''}</div>
                 </div>
@@ -381,8 +389,51 @@ const T12CrossCheck = {
                     <div class="health-metric-sub">${directionText}</div>
                 </div>
             </div>
+            ${response.discrepancy_id != null ? `
+                <button class="btn-secondary" id="t12ResolveBtn" type="button">${isResolved ? 'View Resolution' : 'Resolve Discrepancy'}</button>
+            ` : ''}
         `;
         document.getElementById('t12Results').style.display = 'block';
+
+        const verifyBtn = container.querySelector('.t12-rentroll-verify');
+        if (verifyBtn) {
+            verifyBtn.addEventListener('click', async () => {
+                const leases = await Api.listLeases().catch(() => AppState.leases);
+                AppState.leases = leases;
+                const normalizedTarget = normalizeBuildingAddress(response.property_address);
+                const matching = leases
+                    .filter(l => normalizeBuildingAddress(fieldValue(l, 'property_address')) === normalizedTarget)
+                    .map(l => ({ id: l.id, name: l.display_name || lease_filename(l), value: fieldValue(l, 'rent_amount') }));
+                VerifyPopover.showAggregate(verifyBtn, { title: 'Rent Roll (Annualized) — Contributing Leases', leases: matching });
+            });
+        }
+
+        const resolveBtn = document.getElementById('t12ResolveBtn');
+        if (resolveBtn) resolveBtn.addEventListener('click', () => this._openResolveModal());
+    },
+
+    _openResolveModal() {
+        const response = this.lastResponse;
+        DiscrepancyModal.open({
+            title: 'Resolve Discrepancy',
+            subtitle: `${response.property_address} — Annual Rental Income`,
+            discrepancyId: response.discrepancy_id,
+            resolutionStatus: response.resolution_status,
+            resolution: response.resolution,
+            sides: [
+                {
+                    key: 'rent_roll', label: 'Rent Roll', displayValue: this._money(response.rent_roll_annual_rent),
+                    sourceNote: `Aggregated across ${response.matched_lease_count} lease(s) at this property — use the "Rent roll (annualized)" verify icon on the result panel for the per-lease breakdown.`,
+                },
+                {
+                    key: 't12', label: 'T12', displayValue: this._money(response.t12_annual_rental_income),
+                    source: response.t12_source,
+                },
+            ],
+        }, { onResolved: (updated) => {
+            this.lastResponse = { ...response, resolution_status: updated.status, resolution: updated.latest_resolution || response.resolution };
+            this.showResult(this.lastFilename, this.lastResponse);
+        } });
     },
 };
 

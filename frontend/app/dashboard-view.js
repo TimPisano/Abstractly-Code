@@ -69,14 +69,12 @@ const Dashboard = {
             .catch(() => { document.getElementById('reconciliationContent').innerHTML = '<p class="error-text">Failed to load rent roll reconciliation.</p>'; });
     },
 
-    // Shared "risk_level -> badge" mapping -- reuses the existing
-    // .severity-badge + .severity-high/medium/low classes the risk
-    // panel already uses elsewhere in this app, not a new badge style
-    // invented for these four panels.
+    // "risk_level -> badge" mapping -- delegates to the shared
+    // riskLevelBadgeHtml() in app.js (also used by trends-view.js) so
+    // both places agree on what "moderate" looks like, rather than two
+    // copies of the same mapping drifting apart.
     _riskBadgeHtml(level) {
-        const cls = level === 'high' ? 'severity-high' : level === 'moderate' ? 'severity-medium' : 'severity-low';
-        const label = level === 'high' ? 'High' : level === 'moderate' ? 'Moderate' : 'Low';
-        return `<span class="severity-badge ${cls}">${label}</span>`;
+        return riskLevelBadgeHtml(level);
     },
 
     renderTenantConcentration(data) {
@@ -89,8 +87,8 @@ const Dashboard = {
             return;
         }
 
-        const topTenants = data.tenants.slice(0, 3).map(t => `
-            <div class="attention-item">${escapeHtml(t.tenant)} — ${t.pct_of_total.toFixed(1)}% of total rent</div>
+        const topTenants = data.tenants.slice(0, 3).map((t, i) => `
+            <div class="attention-item verify-item" data-tenant-index="${i}">${escapeHtml(t.tenant)} — ${t.pct_of_total.toFixed(1)}% of total rent ${verifyTriggerHtml()}</div>
         `).join('');
 
         el.innerHTML = `
@@ -100,6 +98,26 @@ const Dashboard = {
             <p class="attention-summary-line">Top tenant is <strong>${data.top_1_pct.toFixed(1)}%</strong> of total rent (HHI: ${data.hhi.toFixed(0)})</p>
             <div class="attention-items">${topTenants}</div>
         `;
+
+        // No lease_id on a tenant-concentration row (a tenant can span
+        // several leases, grouped by normalized name -- see
+        // compute_tenant_concentration's own docstring) -- so this opens
+        // the aggregate popover (every lease matching that tenant name)
+        // rather than jumping straight to one lease the way a single-
+        // lease row elsewhere in this panel does.
+        el.querySelectorAll('.verify-item').forEach(item => {
+            const t = data.tenants[parseInt(item.dataset.tenantIndex, 10)];
+            const trigger = item.querySelector('.verify-trigger');
+            const open = (e) => {
+                e.stopPropagation();
+                const norm = (s) => (s || '').toLowerCase().replace(/[.,]/g, '').replace(/\s+/g, ' ').trim();
+                const matching = AppState.leases
+                    .filter(l => norm(fieldValue(l, 'tenant')) === norm(t.tenant))
+                    .map(l => ({ id: l.id, name: l.display_name || lease_filename(l), value: fieldValue(l, 'rent_amount') }));
+                VerifyPopover.showAggregate(trigger, { title: `${t.tenant} — Rent by Lease`, leases: matching });
+            };
+            item.addEventListener('click', open);
+        });
     },
 
     renderRollover(data) {
@@ -137,7 +155,7 @@ const Dashboard = {
         }
 
         const topOpportunities = data.leases.filter(l => l.monthly_upside > 0).slice(0, 3).map(l => `
-            <div class="attention-item">${escapeHtml(l.display_name)} — $${l.monthly_upside.toLocaleString(undefined, {maximumFractionDigits: 0})}/mo upside (${l.loss_pct.toFixed(1)}% below this building's top rent)</div>
+            <div class="attention-item" data-lease-id="${l.lease_id}">${escapeHtml(l.display_name)} — $${l.monthly_upside.toLocaleString(undefined, {maximumFractionDigits: 0})}/mo upside (${l.loss_pct.toFixed(1)}% below this building's top rent)</div>
         `).join('');
 
         el.innerHTML = `
@@ -148,6 +166,9 @@ const Dashboard = {
             </p>
             <div class="attention-items">${topOpportunities || '<div class="attention-item">Every unit is already at its building\'s top rate.</div>'}</div>
         `;
+        el.querySelectorAll('.attention-item[data-lease-id]').forEach(item => {
+            item.addEventListener('click', () => showLeaseDetail(parseInt(item.dataset.leaseId, 10)));
+        });
     },
 
     renderReconciliation(data) {
@@ -168,32 +189,73 @@ const Dashboard = {
             return;
         }
 
-        if (data.mismatches.length === 0) {
+        // Each mismatch already carries its own resolution_status --
+        // sync_rent_roll_reconciliation() (backend/app/discrepancies.py)
+        // annotates it in place on every response, so a resolution from
+        // a previous visit doesn't keep showing up as open here.
+        const unresolved = data.mismatches.filter(m => m.resolution_status !== 'resolved');
+        const resolvedCount = data.mismatches.length - unresolved.length;
+
+        if (unresolved.length === 0) {
             el.innerHTML = `
                 <div class="attention-clear">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                    <span>Rent Roll Reconciliation — everything matches (${data.compared_pair_count} unit${data.compared_pair_count === 1 ? '' : 's'} checked against a lease document).</span>
+                    <span>Rent Roll Reconciliation — everything matches (${data.compared_pair_count} unit${data.compared_pair_count === 1 ? '' : 's'} checked against a lease document)${resolvedCount > 0 ? `, ${resolvedCount} resolved` : ''}.</span>
                 </div>
             `;
             return;
         }
 
         const fieldLabels = { tenant: 'Tenant', rent_amount: 'Rent', lease_end_date: 'Lease end date' };
-        const items = data.mismatches.slice(0, 5).map(m => `
-            <div class="attention-item attention-item-overdue">
+        const items = unresolved.slice(0, 5).map((m, i) => `
+            <div class="attention-item attention-item-overdue" data-mismatch-index="${i}">
                 ${escapeHtml(m.address || 'Unknown address')} — ${fieldLabels[m.field] || m.field}:
                 rent roll says "${escapeHtml(m.rent_roll_value)}", lease document says "${escapeHtml(m.lease_document_value)}"
+                <span class="discrepancy-resolve-hint">Click to resolve &rarr;</span>
             </div>
         `).join('');
-        const more = data.mismatches.length > 5 ? `<p class="attention-more">+${data.mismatches.length - 5} more disagreement(s)</p>` : '';
+        const more = unresolved.length > 5 ? `<p class="attention-more">+${unresolved.length - 5} more disagreement(s)</p>` : '';
+        const resolvedNote = resolvedCount > 0 ? `<p class="attention-more">${resolvedCount} already resolved.</p>` : '';
 
         el.innerHTML = `
             <div class="attention-group-title">
-                Rent Roll Reconciliation <span class="attention-count">${data.mismatches.length}</span>
+                Rent Roll Reconciliation <span class="attention-count">${unresolved.length}</span>
             </div>
             <div class="attention-items">${items}</div>
             ${more}
+            ${resolvedNote}
         `;
+        el.querySelectorAll('.attention-item[data-mismatch-index]').forEach(item => {
+            item.addEventListener('click', () => {
+                const m = unresolved[parseInt(item.dataset.mismatchIndex, 10)];
+                this._openReconciliationModal(m, data);
+            });
+        });
+    },
+
+    _openReconciliationModal(mismatch, data) {
+        const rrLease = AppState.leases.find(l => l.id === mismatch.rent_roll_lease_id);
+        const docLease = AppState.leases.find(l => l.id === mismatch.lease_document_id);
+        const fieldLabels = { tenant: 'Tenant', rent_amount: 'Rent', lease_end_date: 'Lease end date' };
+        const label = fieldLabels[mismatch.field] || mismatch.field;
+
+        DiscrepancyModal.open({
+            title: 'Resolve Discrepancy',
+            subtitle: `${mismatch.address || 'Unknown address'} — ${label}`,
+            discrepancyId: mismatch.discrepancy_id,
+            resolutionStatus: mismatch.resolution_status,
+            resolution: mismatch.resolution,
+            sides: [
+                {
+                    key: 'rent_roll', label: 'Rent Roll', displayValue: mismatch.rent_roll_value,
+                    source: rrLease && rrLease.extracted_fields[mismatch.field] && rrLease.extracted_fields[mismatch.field].source,
+                },
+                {
+                    key: 'lease_document', label: 'Lease Document', displayValue: mismatch.lease_document_value,
+                    source: docLease && docLease.extracted_fields[mismatch.field] && docLease.extracted_fields[mismatch.field].source,
+                },
+            ],
+        }, { onResolved: () => Api.portfolioRentRollReconciliation().then(d => this.renderReconciliation(d)) });
     },
 
     renderAttentionSkeleton() {
@@ -388,20 +450,35 @@ const Dashboard = {
 
     renderMetrics(metrics) {
         const row = document.getElementById('metricsRow');
+        // fieldKey names which extracted field each tile rolls up, so its
+        // number can be click-to-verified back to the leases that fed it
+        // (see VerifyPopover.showAggregate) -- null for tiles that aren't
+        // a rollup of one field (a plain lease count has nothing to cite).
         const tiles = [
-            { label: 'Leases', value: metrics.lease_count },
-            { label: 'Total Monthly Rent', value: fmtMoney(metrics.total_monthly_rent) },
-            { label: 'Avg. Monthly Rent', value: fmtMoney(metrics.avg_monthly_rent) },
-            { label: 'Avg. Rent / Sq Ft', value: metrics.avg_rent_per_sqft != null ? `$${metrics.avg_rent_per_sqft.toFixed(2)}` : '—' },
-            { label: 'Total CAM Exposure', value: fmtMoney(metrics.total_cam_exposure) },
-            { label: 'Total Sq Ft', value: metrics.total_square_footage != null ? metrics.total_square_footage.toLocaleString() : '—' },
+            { label: 'Leases', value: metrics.lease_count, fieldKey: null },
+            { label: 'Total Monthly Rent', value: fmtMoney(metrics.total_monthly_rent), fieldKey: 'rent_amount' },
+            { label: 'Avg. Monthly Rent', value: fmtMoney(metrics.avg_monthly_rent), fieldKey: 'rent_amount' },
+            { label: 'Avg. Rent / Sq Ft', value: metrics.avg_rent_per_sqft != null ? `$${metrics.avg_rent_per_sqft.toFixed(2)}` : '—', fieldKey: 'square_footage' },
+            { label: 'Total CAM Exposure', value: fmtMoney(metrics.total_cam_exposure), fieldKey: 'cam_charges' },
+            { label: 'Total Sq Ft', value: metrics.total_square_footage != null ? metrics.total_square_footage.toLocaleString() : '—', fieldKey: 'square_footage' },
         ];
         row.innerHTML = tiles.map(t => `
             <div class="metric-tile">
-                <div class="metric-value">${t.value}</div>
+                <div class="metric-value">${t.value}${t.fieldKey ? verifyTriggerHtml() : ''}</div>
                 <div class="metric-label">${t.label}</div>
             </div>
         `).join('');
+        row.querySelectorAll('.metric-tile').forEach((tileEl, i) => {
+            const t = tiles[i];
+            const trigger = tileEl.querySelector('.verify-trigger');
+            if (!trigger) return;
+            trigger.addEventListener('click', () => {
+                VerifyPopover.showAggregate(trigger, {
+                    title: t.label,
+                    leases: AppState.leases.map(l => ({ id: l.id, name: l.display_name || lease_filename(l), value: fieldValue(l, t.fieldKey) })),
+                });
+            });
+        });
     },
 
     renderTable(leases) {

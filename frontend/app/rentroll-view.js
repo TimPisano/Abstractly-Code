@@ -65,11 +65,11 @@ const RentRoll = {
                 <tr data-lease-id="${lease.id}">
                     <td>${escapeHtml(name)}</td>
                     <td>${escapeHtml(address) || '<span class="muted">Not found</span>'}</td>
-                    <td>${sqft !== null ? sqft.toLocaleString() : '<span class="muted">—</span>'}</td>
-                    <td>${rent !== null ? fmtMoney(rent) : '<span class="muted">—</span>'}</td>
+                    <td>${sqft !== null ? sqft.toLocaleString() : '<span class="muted">—</span>'}${cellVerifyTriggerHtml(lease, 'square_footage')}</td>
+                    <td>${rent !== null ? fmtMoney(rent) : '<span class="muted">—</span>'}${cellVerifyTriggerHtml(lease, 'rent_amount')}</td>
                     <td>${psf !== null ? `$${psf.toFixed(2)}` : '<span class="muted">—</span>'}</td>
-                    <td>${escapeHtml(fieldValue(lease, 'lease_start_date')) || '<span class="muted">—</span>'}</td>
-                    <td>${escapeHtml(fieldValue(lease, 'lease_end_date')) || '<span class="muted">—</span>'}</td>
+                    <td>${escapeHtml(fieldValue(lease, 'lease_start_date')) || '<span class="muted">—</span>'}${cellVerifyTriggerHtml(lease, 'lease_start_date')}</td>
+                    <td>${escapeHtml(fieldValue(lease, 'lease_end_date')) || '<span class="muted">—</span>'}${cellVerifyTriggerHtml(lease, 'lease_end_date')}</td>
                 </tr>
             `;
         }).join('');
@@ -78,6 +78,7 @@ const RentRoll = {
         document.querySelectorAll('#rentRollTableBody tr[data-lease-id]').forEach(tr => {
             tr.addEventListener('click', () => showLeaseDetail(parseInt(tr.dataset.leaseId, 10)));
         });
+        bindCellVerifyTriggers('#rentRollTableBody');
 
         const weightedAvgPsf = weightedSqft > 0 ? weightedRent / weightedSqft : null;
         document.getElementById('rentRollTableFoot').innerHTML = `

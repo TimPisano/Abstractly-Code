@@ -68,6 +68,11 @@ const Comparison = {
     render(comparison, ids, benchmarks) {
         const rows = FIELD_GROUPS.flatMap(g => g.fields);
         const benchmarkableFields = { rent_amount: 'rent_amount', cam_charges: 'cam_charges', security_deposit: 'security_deposit' };
+        // comparison.fields[field] carries plain display values only, in
+        // the same order as `ids` -- for a citation, look the same lease
+        // up in AppState.leases (already loaded with full extracted_fields
+        // by load() above) rather than fetching anything new.
+        const leasesById = new Map(AppState.leases.map(l => [l.id, l]));
 
         let html = `<div class="panel"><div class="table-scroll"><table class="data-table comparison-table">`;
         html += `<thead><tr><th>Field</th>${comparison.display_names.map(n => `<th>${escapeHtml(n)}</th>`).join('')}</tr></thead><tbody>`;
@@ -77,13 +82,15 @@ const Comparison = {
             html += `<tr><td class="field-name-cell">${FIELD_LABELS[field] || field}</td>`;
             values.forEach((value, i) => {
                 const benchmark = benchmarks[i] && benchmarkableFields[field] ? benchmarks[i][benchmarkableFields[field]] : null;
-                html += `<td>${escapeHtml(value) || '<span class="muted">Not found</span>'}${benchmarkBadge(benchmark)}</td>`;
+                const lease = leasesById.get(ids[i]);
+                html += `<td>${escapeHtml(value) || '<span class="muted">Not found</span>'}${benchmarkBadge(benchmark)}${cellVerifyTriggerHtml(lease, field)}</td>`;
             });
             html += `</tr>`;
         });
 
         html += `</tbody></table></div></div>`;
         document.getElementById('comparisonResults').innerHTML = html;
+        bindCellVerifyTriggers('#comparisonResults');
     },
 };
 

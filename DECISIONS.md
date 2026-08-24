@@ -1,5 +1,140 @@
 # Implementation Decisions
 
+## Acquisitions-grade UI: click-to-verify, discrepancy resolution modal, portfolio trends, team notes
+
+The frontend half of the same four-item batch as the "Acquisitions-
+grade infrastructure" entry below — that entry's backend work landed
+mid-session, in parallel, as expected (the user confirmed a backend
+session was building it concurrently). Rather than building a
+frontend-only approximation and leaving integration as follow-up work,
+each of the four pieces below was rewired to the real endpoint the
+moment it landed, verified against it live, and only left as a
+client-side stopgap where no backend endpoint exists at all (there
+isn't one, anywhere in this batch, by the time this entry was
+written).
+
+### Feature 1 scope call: don't touch the Lease Detail view's citations
+
+CLAUDE.md's quality bar states every extracted field must show its
+source — the Lease Detail view already does this, always-visible,
+inline (`detail-view.js`'s `.field-source` block). The ask was to make
+every number in the app "clickable, opening a clear view" of its
+source. Read literally, that could mean collapsing the Detail view's
+inline citation behind a click too, matching the rest of the app. Not
+done — an always-visible citation is strictly more trustworthy than
+one requiring a click, and hiding it to be consistent with newly-added
+click affordances elsewhere would be a regression dressed up as
+consistency. The new `verify-popover.js` component was instead applied
+only to the places that had NO source display at all before this pass:
+portfolio dashboard tiles, the Rent Roll rollup table, the Comparison
+table, and the T12 cross-check panel.
+
+Two popover modes: `showSource()` for one field's own citation (used
+on Rent Roll/Comparison table cells, via `AppState.leases` — already
+loaded with full `extracted_fields` including `source`, confirmed by
+reading `_lease_summary()` in `api.py`, so no extra fetch is needed),
+and `showAggregate()` for a portfolio-level number, which lists the
+contributing leases (same already-loaded data) rather than fabricating
+a single citation for a sum/average that was never extracted from one
+document. Clicking a lease in that list navigates to it, where its own
+real citation is already visible.
+
+### Feature 2: built as a localStorage stopgap first, then fully rewired
+
+At the point this pass started building the discrepancy-resolution
+modal, `backend/app/discrepancies.py` did not exist yet — no stable
+discrepancy ID, no resolve/reopen endpoint, nothing to persist a
+resolution against. Rather than waiting, the modal was built complete
+and testable against a localStorage-only resolution store (keyed by
+the mismatch's natural key: `rent_roll_lease_id:lease_document_id:field`),
+clearly labeled in the UI as "saved to this browser only, not yet
+synced to your team." Partway through this same session, the backend
+batch's discrepancy-persistence commit landed
+(`5e75b26 Add discrepancy resolution system`). The modal was then
+rewritten to call the real `POST /discrepancies/<id>/resolve`/`/reopen`
+endpoints directly — every mismatch object returned by
+`/portfolio/rent-roll-reconciliation` and `/portfolio/t12-reconciliation`
+already carries `discrepancy_id`/`resolution_status`/`resolution`
+inline (see `sync_rent_roll_reconciliation`/`sync_t12_reconciliation`),
+so the modal just acts on that id — no separate lookup needed. The
+localStorage code was deleted entirely, not left behind as a fallback;
+a resolution that isn't actually shared with the team is a worse user
+experience than a clear error, not a safer one.
+
+Generalized to cover the T12 cross-check panel (Upload view) too, once
+that endpoint started returning `discrepancy_id`/`t12_source` (the
+latter had been silently dropped by `compute_t12_reconciliation`
+before the backend's audit-trail-adjacent fix) — same modal, a second
+call site, `sourceNote` added as an alternative to `source` on a
+"side" for the rent-roll figure, which is an aggregate across however
+many leases matched that property, not a single citation.
+
+### Feature 3: no portfolio-wide trends endpoint exists — merged client-side
+
+`GET /portfolio/property-trends` (the backend batch's item 3) is
+scoped to one building at a time (`?property_address=X`); there is no
+portfolio-wide equivalent. For the Trends view's "All Properties"
+selection, this pass fetches that endpoint once per distinct building
+address found across the loaded leases and merges the results
+client-side (`_mergePropertyTrends` in `trends-view.js`) — string-
+concatenating unit lists and turnover events, summing the by-month/
+by-year rollover-pattern histograms. Straightforward because each
+building's trends are already independent of every other's; flagged
+here rather than left silent since a portfolio-wide backend endpoint
+would be a more efficient way to get the same answer if this feature
+sees real usage at portfolio sizes where N sequential-ish fetches
+matters.
+
+Rollover Risk Timeline (forward-looking, unrelated to the
+property-trends endpoint) still uses the real portfolio-wide
+`/portfolio/rollover` response for "All Properties," and only falls
+back to a client-side recomputation (`computeRolloverBuckets`,
+deliberately mirroring `portfolio.py`'s `compute_rollover_schedule`
+bucket-by-bucket, including its exact risk thresholds) when one
+specific property is selected, since that endpoint also has no
+per-property filter.
+
+Chart rendering is hand-rolled inline SVG (`renderBarChart`), not a
+charting library — this app has had zero JS dependencies until now,
+and introducing one would be the project's first; confirmed with the
+user as a deliberate choice before building rather than defaulted to.
+
+### Feature 4: one shared identity, not one localStorage key per feature
+
+Team Notes (`comments.js`) is a single widget shared by the Lease
+Detail sidebar and the Discrepancy modal's "Discussion" section,
+rather than two separate implementations. It reads/writes the same
+`getUserIdentity()`/`setUserIdentity()` pair now in `app.js`, which
+also replaced the Feature 2 modal's own separate
+`leaseAbstractionResolverName` localStorage key from its earlier
+build. One name, cached once, reused everywhere a self-reported
+identity is needed in this app — matching the backend's own choice to
+use one `resolved_by`/`author_name` convention across resolutions and
+comments rather than two.
+
+### Two bugs found via live-browser verification (not caught by static review)
+
+1. **Test-harness stale cache, not an app bug.** The hand-rolled CDP
+   test client reused one Chrome profile directory across repeated
+   navigations within the same session; Chrome's disk cache kept
+   serving an old `detail-view.js` even after it was edited on disk,
+   making `LeaseDetail.loadComments` look undefined mid-debugging
+   before the actual cause (stale cache, not stale code) was found.
+   Fixed with `Network.setCacheDisabled(true)` in the CDP client, not
+   by touching any app file. Documented here because it cost real
+   debugging time and would trip up the same way again otherwise.
+2. **Real CSS bug**: `.trends-legend-line` still carried
+   `display:flex; align-items:center` from an earlier version of the
+   Tenant Turnover summary line that rendered colored swatches next to
+   short labels. Once that line became a single sentence
+   (`<strong>0</strong> tenant turnover events...`), the flex layout's
+   whitespace handling collapsed the space between the `<strong>` tag
+   and the word after it, rendering as "0tenant" in a real screenshot
+   — not something a static read of the template string would have
+   caught, since the space is right there in the source. Fixed by
+   dropping the now-unnecessary flex layout; `.trend-legend-swatch`
+   (now unused) was deleted rather than left as dead CSS.
+
 ## Acquisitions-grade infrastructure: audit trail, discrepancy resolution, portfolio history, collaboration
 
 Four backend systems, requested together as the next step from "useful"

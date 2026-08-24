@@ -43,6 +43,7 @@ const LeaseDetail = {
             ]);
             this.renderRisks(risks);
             this.renderAmendments(amendments);
+            this.loadComments(leaseId);
 
             // Best-effort: powers the tag-input autocomplete, not
             // essential to the page working if it fails.
@@ -213,6 +214,19 @@ const LeaseDetail = {
             if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
             else if (e.key === 'Escape') { e.preventDefault(); input.value = currentValue; input.blur(); }
         });
+    },
+
+    async loadComments(leaseId) {
+        const el = document.getElementById('detailCommentsThread');
+        try {
+            const comments = await Api.listLeaseComments(leaseId);
+            if (!this.lease || this.lease.id !== leaseId) return; // navigated away while loading
+            renderCommentsThread(el, comments, {
+                onSubmit: (author, body) => Api.addLeaseComment(leaseId, { authorName: author, body }),
+            });
+        } catch (err) {
+            el.innerHTML = `<p class="error-text">Failed to load notes: ${escapeHtml(err.message)}</p>`;
+        }
     },
 
     renderAmendments(amendments) {

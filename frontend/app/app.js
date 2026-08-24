@@ -360,6 +360,43 @@ function severityBadgeHtml(severity) {
 }
 
 /**
+ * Same badge family as severityBadgeHtml above, but for the "high" /
+ * "moderate" / "low" risk-level vocabulary portfolio.py's rollover and
+ * tenant-concentration functions use (note "moderate", not "medium").
+ * Shared by dashboard-view.js's composition panel and trends-view.js's
+ * rollover chart so both agree on what each level looks like.
+ */
+function riskLevelBadgeHtml(level) {
+    const cls = level === 'high' ? 'severity-high' : level === 'moderate' ? 'severity-medium' : 'severity-low';
+    const label = level === 'high' ? 'High' : level === 'moderate' ? 'Moderate' : 'Low';
+    return `<span class="severity-badge ${cls}">${label}</span>`;
+}
+
+/**
+ * Shared self-reported identity: one name/email cached across the
+ * whole app (discrepancy resolutions, team comments), not a separate
+ * localStorage key per feature -- "who you are" shouldn't need
+ * retyping every time you touch a different feature. Same self-
+ * reported convention the access gate already uses; there's no real
+ * per-user login in this app yet.
+ */
+const USER_IDENTITY_KEY = 'leaseAbstractionUserIdentity';
+
+function getUserIdentity() {
+    try {
+        return JSON.parse(localStorage.getItem(USER_IDENTITY_KEY) || '{}');
+    } catch (e) {
+        return {};
+    }
+}
+
+function setUserIdentity(name, email) {
+    try {
+        localStorage.setItem(USER_IDENTITY_KEY, JSON.stringify({ name: name || '', email: email || '' }));
+    } catch (e) { /* localStorage unavailable -- just won't persist across reloads */ }
+}
+
+/**
  * App initialization
  */
 function init() {

@@ -1,6 +1,79 @@
 # Progress Summary
 
-**Last updated**: Four new backend infrastructure systems shipped this
+**Last updated**: The frontend half of the same four-item acquisitions-
+infrastructure batch (see the entry below) — built directly against the
+real backend endpoints that batch shipped, not the localStorage
+stopgaps this pass started with before that backend work landed mid-
+session. All four verified live in a real browser (headless Chrome +
+a hand-rolled CDP client, screenshotted and interacted with, not just
+asserted):
+
+1. **Click-to-verify audit trail**: a new reusable popover
+   (`verify-popover.js`) makes every number that previously had NO
+   visible source — portfolio dashboard tiles, the Rent Roll rollup
+   table, the Comparison table, the T12 cross-check panel — click-to-
+   verify. Portfolio aggregates open a breakdown of the contributing
+   leases (drawn from already-loaded lease data, no extra fetch);
+   single-cell numbers open the field's own citation directly. The
+   Lease Detail view's existing always-visible inline citation was
+   deliberately left alone — it already satisfies CLAUDE.md's "every
+   extracted field must show its source" bar without requiring a
+   click, which is strictly better than gating it behind one.
+2. **One-click discrepancy resolution**: a new modal
+   (`discrepancy-modal.js`) shows both conflicting values side by side
+   with their real sources, lets a reviewer pick which is correct, and
+   requires a name + note. Wired to the real
+   `POST /discrepancies/<id>/resolve`/`/reopen` endpoints the backend
+   batch below added — this pass started by building a localStorage-
+   only stopgap (no persistence endpoint existed yet when work began),
+   then fully rewired it to the real API the moment that endpoint
+   landed, including the discrepancy's own "Discussion" comment thread.
+   Covers both rent-roll-vs-lease-PDF mismatches (Dashboard) and
+   rent-roll-vs-T12 mismatches (Upload view) — same modal, generalized.
+3. **Portfolio Trends** (new nav item + view, `trends-view.js`):
+   forward-looking Rollover Risk Timeline (real `/portfolio/rollover`
+   data, or recomputed client-side for a single selected property,
+   since that endpoint has no per-property filter), plus real Rent
+   Growth Over Time and historical Lease Expirations/Tenant Turnover —
+   both built on the new `/portfolio/property-trends` endpoint below.
+   That endpoint is scoped to one building; "All Properties" merges one
+   response per distinct building client-side (no portfolio-wide
+   version exists). Charts are hand-rolled inline SVG, matching this
+   app's zero-JS-dependency approach — a deliberate choice confirmed
+   with the user rather than introducing the project's first charting
+   library.
+4. **Team Notes** (`comments.js`, a shared widget): a threaded,
+   attributed comment box on the Lease Detail sidebar and inside the
+   Discrepancy modal, wired to the real comments endpoints below. One
+   shared self-reported identity (`getUserIdentity`/`setUserIdentity`
+   in `app.js`) is now cached across discrepancy resolution AND
+   comments, replacing an earlier per-feature localStorage key —
+   "who you are" shouldn't need retyping per feature.
+
+Two real bugs caught during live-browser verification, not just
+unit-test-clean: (1) a stale-cache trap in the CDP test harness itself
+— headless Chrome kept serving an old cached `detail-view.js` across
+navigations within the same profile, making a real method
+(`LeaseDetail.loadComments`) look undefined; fixed by disabling the
+network cache in the test client, not by touching app code. (2) a
+real CSS bug: the turnover summary line rendered as "0tenant turnover
+events..." with no space — `.trends-legend-line`'s leftover
+`display:flex` (from an earlier version of that line that used colored
+swatches) was collapsing the whitespace between a `<strong>` tag and
+the text after it, a well-known flex-layout quirk. Fixed by dropping
+the flex layout now that the line is just text.
+
+**Backend coordination note**: this pass ran in parallel with a backend
+session building the exact same four-item batch (confirmed by the user
+in advance) — the git history shows their four commits landing mid-
+session, each of which this pass immediately re-verified against and
+rewired to, rather than shipping a frontend-only approximation and
+leaving the integration for later. No backend files were touched by
+this pass.
+
+---
+
+Before that: Four new backend infrastructure systems shipped this
 pass, aimed at moving the product from "useful" to something an
 acquisitions team can't work without -- built, tested, and live-
 verified sequentially, one milestone/commit per item:

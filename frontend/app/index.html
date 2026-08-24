@@ -91,6 +91,10 @@
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h8v8H3V3zm10 0h8v5h-8V3zm0 8h8v10h-8V11zM3 14h8v7H3v-7z"/></svg>
                 Dashboard
             </button>
+            <button class="nav-item" data-view="trends" type="button">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3v18h18M7 15l4-5 3 3 5-7"/></svg>
+                Portfolio Trends
+            </button>
             <button class="nav-item" data-view="upload" type="button">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v12m0 0l-4-4m4 4l4-4M4 20h16"/></svg>
                 Upload Leases
@@ -282,6 +286,49 @@
                 </div>
             </section>
 
+            <!-- PORTFOLIO TRENDS VIEW -->
+            <section class="view" id="view-trends">
+                <div class="view-header">
+                    <div>
+                        <h1>Portfolio Trends</h1>
+                        <p class="view-subtitle">Rollover risk and lease expirations over time — the reason to check in even without a new document to upload</p>
+                    </div>
+                </div>
+
+                <div class="trends-filter-row">
+                    <label for="trendsPropertyFilter">Property</label>
+                    <select id="trendsPropertyFilter" class="text-input select-input"></select>
+                </div>
+
+                <div class="panel">
+                    <div class="panel-header">
+                        <h2>Rollover Risk Timeline</h2>
+                    </div>
+                    <div class="trends-chart-summary" id="trendsRolloverSummary"></div>
+                    <div id="trendsRolloverChart"></div>
+                </div>
+
+                <div class="panel">
+                    <div class="panel-header">
+                        <h2>Rent Growth Over Time</h2>
+                    </div>
+                    <div id="trendsRentGrowthContent"></div>
+                </div>
+
+                <div class="panel">
+                    <div class="panel-header">
+                        <h2>Lease Expirations &amp; Tenant Turnover</h2>
+                    </div>
+                    <div id="trendsTurnoverChart"></div>
+                    <div class="trends-legend-line" id="trendsTurnoverSummary"></div>
+                </div>
+
+                <div class="trends-gap-note">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/></svg>
+                    <span><strong>Rent growth and turnover here are only as deep as the upload history on file.</strong> Every lease/rent-roll upload is a permanent record, so re-importing a rent roll periodically (or re-uploading a renewed lease) builds real trend data over time — a property with only one upload ever won't show a trend yet, and deleting a lease removes its history along with it.</span>
+                </div>
+            </section>
+
             <!-- UPLOAD VIEW -->
             <section class="view" id="view-upload">
                 <div class="view-header">
@@ -425,6 +472,10 @@
                             <div id="amendmentsList"></div>
                             <button class="btn-secondary btn-block" id="addAmendmentBtn" type="button">+ Add Amendment</button>
                             <input type="file" id="amendmentFileInput" accept=".pdf" hidden>
+                        </div>
+                        <div class="panel">
+                            <h3>Team Notes</h3>
+                            <div id="detailCommentsThread"><p class="loading-inline"><span class="spinner-small"></span> Loading...</p></div>
                         </div>
                         <div class="panel">
                             <h3>Ask About This Lease</h3>

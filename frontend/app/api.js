@@ -182,6 +182,84 @@ const Api = {
         return apiRequest('/portfolio/rent-roll-reconciliation');
     },
 
+    // Discrepancies: a stable, persisted identity for a flag/mismatch
+    // that's otherwise recomputed fresh on every request (risk flags,
+    // cross-lease mismatches, rent-roll-vs-lease and rent-roll-vs-T12
+    // reconciliation) -- see backend/app/discrepancies.py. The flag/
+    // mismatch objects returned by /portfolio/risks, /leases/<id>/risks,
+    // /portfolio/rent-roll-reconciliation, and /portfolio/t12-reconciliation
+    // already carry discrepancy_id/resolution_status/resolution inline;
+    // these are for acting on one directly.
+    listDiscrepancies({ status, leaseId, type } = {}) {
+        const params = new URLSearchParams();
+        if (status) params.set('status', status);
+        if (leaseId != null) params.set('lease_id', leaseId);
+        if (type) params.set('type', type);
+        const qs = params.toString();
+        return apiRequest(`/discrepancies${qs ? `?${qs}` : ''}`);
+    },
+
+    getDiscrepancy(discrepancyId) {
+        return apiRequest(`/discrepancies/${discrepancyId}`);
+    },
+
+    resolveDiscrepancy(discrepancyId, { correctSource, note, resolvedBy, resolvedByEmail }) {
+        return apiRequest(`/discrepancies/${discrepancyId}/resolve`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ correct_source: correctSource, note, resolved_by: resolvedBy, resolved_by_email: resolvedByEmail }),
+        });
+    },
+
+    reopenDiscrepancy(discrepancyId, { note, resolvedBy, resolvedByEmail }) {
+        return apiRequest(`/discrepancies/${discrepancyId}/reopen`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ note, resolved_by: resolvedBy, resolved_by_email: resolvedByEmail }),
+        });
+    },
+
+    // Full audit-trail source chain for one field -- effective value/source
+    // plus every prior value this field held across amendments (see
+    // backend/app/database.py's get_field_source_chain).
+    leaseFieldSource(leaseId, fieldName) {
+        return apiRequest(`/leases/${leaseId}/fields/${fieldName}/source`);
+    },
+
+    // Portfolio history & trends for one property (rent growth, tenant
+    // turnover, historical rollover pattern) -- see
+    // backend/app/portfolio_history.py.
+    portfolioPropertyTrends(propertyAddress) {
+        return apiRequest(`/portfolio/property-trends?property_address=${encodeURIComponent(propertyAddress)}`);
+    },
+
+    // Team comments/notes -- visible to everyone (this app has no per-
+    // account scoping yet), self-reported author identity same as
+    // discrepancy resolutions.
+    listLeaseComments(leaseId) {
+        return apiRequest(`/leases/${leaseId}/comments`);
+    },
+
+    addLeaseComment(leaseId, { authorName, body, authorEmail }) {
+        return apiRequest(`/leases/${leaseId}/comments`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ author_name: authorName, body, author_email: authorEmail }),
+        });
+    },
+
+    listDiscrepancyComments(discrepancyId) {
+        return apiRequest(`/discrepancies/${discrepancyId}/comments`);
+    },
+
+    addDiscrepancyComment(discrepancyId, { authorName, body, authorEmail }) {
+        return apiRequest(`/discrepancies/${discrepancyId}/comments`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ author_name: authorName, body, author_email: authorEmail }),
+        });
+    },
+
     recentActivity(limit = 10) {
         return apiRequest(`/activity?limit=${limit}`);
     },
