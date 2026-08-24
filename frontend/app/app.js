@@ -65,6 +65,79 @@ function showView(viewName, params) {
     }
 }
 
+/**
+ * Sidebar collapse/expand + collapsed-mode hover tooltips. The sidebar
+ * itself is never re-rendered by any of this -- only a `.collapsed`
+ * class toggling on the one persistent <nav> element, and a single
+ * shared tooltip element created once and repositioned per hover. See
+ * the `.sidebar`/`.nav-label`/`.sidebar-tooltip` CSS for how each of
+ * those reacts to the class.
+ */
+const SIDEBAR_COLLAPSED_KEY = 'leaseAbstractionSidebarCollapsed';
+
+function initSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    const toggleBtn = document.getElementById('sidebarCollapseToggle');
+
+    let collapsed = false;
+    try { collapsed = localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1'; } catch (e) { /* localStorage unavailable -- just won't persist */ }
+    setSidebarCollapsed(collapsed);
+
+    toggleBtn.addEventListener('click', () => {
+        setSidebarCollapsed(!sidebar.classList.contains('collapsed'));
+    });
+
+    document.querySelectorAll('.sidebar .nav-item[data-tooltip]').forEach(item => {
+        item.addEventListener('mouseenter', () => {
+            if (!sidebar.classList.contains('collapsed')) return;
+            showSidebarTooltip(item, item.dataset.tooltip);
+        });
+        item.addEventListener('mouseleave', hideSidebarTooltip);
+        item.addEventListener('click', hideSidebarTooltip);
+    });
+
+    // A fixed-position tooltip stays visually "attached" to its trigger
+    // only until the trigger scrolls -- hide rather than let it drift.
+    const navScroll = document.querySelector('.nav-scroll');
+    if (navScroll) navScroll.addEventListener('scroll', hideSidebarTooltip);
+}
+
+function setSidebarCollapsed(collapsed) {
+    const sidebar = document.getElementById('sidebar');
+    const toggleBtn = document.getElementById('sidebarCollapseToggle');
+    sidebar.classList.toggle('collapsed', collapsed);
+    toggleBtn.setAttribute('aria-expanded', String(!collapsed));
+    const label = collapsed ? 'Expand sidebar' : 'Collapse sidebar';
+    toggleBtn.setAttribute('aria-label', label);
+    toggleBtn.dataset.tooltip = label;
+    hideSidebarTooltip();
+    try { localStorage.setItem(SIDEBAR_COLLAPSED_KEY, collapsed ? '1' : '0'); } catch (e) { /* ignore */ }
+}
+
+let _sidebarTooltipEl = null;
+
+function showSidebarTooltip(triggerEl, text) {
+    if (!_sidebarTooltipEl) {
+        _sidebarTooltipEl = document.createElement('div');
+        _sidebarTooltipEl.className = 'sidebar-tooltip';
+        document.body.appendChild(_sidebarTooltipEl);
+    }
+    const el = _sidebarTooltipEl;
+    el.classList.remove('show');
+    el.textContent = text;
+    const rect = triggerEl.getBoundingClientRect();
+    el.style.left = `${rect.right + 10}px`;
+    // Vertically centered on the trigger -- measured after textContent
+    // is set so offsetHeight reflects this tooltip's real rendered size,
+    // not the previous one's.
+    el.style.top = `${rect.top + rect.height / 2 - el.offsetHeight / 2}px`;
+    requestAnimationFrame(() => el.classList.add('show'));
+}
+
+function hideSidebarTooltip() {
+    if (_sidebarTooltipEl) _sidebarTooltipEl.classList.remove('show');
+}
+
 function showLeaseDetail(leaseId) {
     AppState.currentLeaseId = leaseId;
     showView('detail', { leaseId });
@@ -437,6 +510,8 @@ function init() {
     document.getElementById('closeStatsBtn').addEventListener('click', () => {
         document.getElementById('statsPanel').style.display = 'none';
     });
+
+    initSidebar();
 
     // Kick off the initial view (dashboard, marked active in the HTML)
     showView('dashboard');

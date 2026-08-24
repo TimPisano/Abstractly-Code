@@ -1,6 +1,50 @@
 # Progress Summary
 
-**Last updated**: Frontend for three more backend features shipped
+**Last updated**: Sidebar navigation interaction polish -- frontend-
+only, no backend involved. Three things asked for: (1) instant view
+switching with a subtle fade/slide instead of a hard snap, the sidebar
+itself never re-rendering, and a clear always-visible active indicator;
+(2) the flat 9-item nav list grouped into three labeled sections
+(Overview / Leases / Insights) with small uppercase headings; (3) a
+collapse/expand toggle (icon-only, ~76px) with a smooth width
+transition, state persisted in `localStorage`, and hover tooltips in
+collapsed mode.
+
+The tooltips are JS-positioned (`showSidebarTooltip` in `app.js`), not
+a pure-CSS `::after` -- `.sidebar` needs `overflow:hidden` for the
+width-collapse animation not to show a scrollbar mid-transition, which
+would also clip a CSS tooltip trying to escape past the sidebar's own
+right edge. A `position:fixed` tooltip appended to `<body>` and
+positioned from the trigger's real `getBoundingClientRect()` sidesteps
+that entirely.
+
+Verified live: every one of the 9 views clicked through individually
+(exactly one active nav button + one active view after each, checked
+programmatically, not just eyeballed), then 6 rapid back-and-forth
+clicks between two views with no stale double-active state; collapse
+→ hover-tooltip → expand; collapse state surviving a full page reload.
+
+**A real bug, caught only by testing at a narrower width, not assumed
+fixed from reading the CSS**: this app already had a `@media (max-width:
+768px)` rule turning the sidebar into a horizontal wrapped top bar,
+written for the OLD flat structure where every nav button was a direct
+child of `.sidebar`. The new grouping wrapped buttons inside
+`.nav-scroll > .nav-group` divs, which that pre-existing rule knew
+nothing about -- at 640px the middle of the sidebar was blank, most nav
+items simply not there. Fixed with `display: contents` on the two new
+wrapper levels at that breakpoint, unwrapping them back to a flat
+button list matching what the mobile rule originally expected, plus
+forcing labels visible and hiding the (meaningless in a horizontal bar)
+collapse toggle there. Re-verified at 640px, 500px, and 375px, and the
+edge case of collapsing at desktop width then shrinking to mobile width
+(labels correctly reappear; expanding back to desktop width correctly
+restores the collapsed preference rather than losing it).
+
+See DECISIONS.md for the full writeup.
+
+---
+
+Before that: Frontend for three more backend features shipped
 this session, each built and live-verified in a real browser right
 after finding its endpoint via `git log` (a parallel backend session
 kept shipping mid-turn, twice landing while this pass was mid-build on

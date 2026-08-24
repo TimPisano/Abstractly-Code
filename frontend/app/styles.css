@@ -29,8 +29,18 @@
     position: sticky;
     top: 0;
     height: 100vh;
-    overflow-y: auto;
+    overflow: hidden;
     border-right: 1px solid rgba(255, 255, 255, 0.06);
+    /* Width is the only thing that animates on collapse/expand -- every
+       child that needs to fade/shrink along with it (labels, group
+       headings) reacts to the .collapsed class on this same element via
+       its own transition, timed close to this one, rather than the
+       sidebar itself being swapped for a different layout. */
+    transition: width 0.22s ease;
+}
+
+.sidebar.collapsed {
+    width: 76px;
 }
 
 .brand {
@@ -38,11 +48,12 @@
     align-items: center;
     gap: 0.625rem;
     padding: 0 0.5rem;
-    margin-bottom: 2rem;
+    margin-bottom: 1.5rem;
     color: var(--white);
     font-weight: 700;
     font-size: 1.0625rem;
     letter-spacing: -0.01em;
+    flex-shrink: 0;
 }
 
 .brand-icon {
@@ -56,7 +67,47 @@
     box-shadow: 0 2px 8px rgba(182, 138, 78, 0.45);
 }
 
+/* Scrollable middle section only -- the brand header and footer stay
+   fixed in place. Scrolling here (not on .sidebar itself) is also what
+   keeps a JS tooltip anchored to a nav item visually correct: the
+   tooltip is a fixed-position element appended to <body>, positioned
+   from the trigger's real on-screen rect, so it's unaffected by
+   whichever ancestor happens to clip/scroll. */
+.nav-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+.nav-group {
+    margin-bottom: 0.5rem;
+}
+
+.nav-group-label {
+    font-size: 0.6875rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: rgba(255, 255, 255, 0.32);
+    padding: 0 0.75rem;
+    margin: 1.125rem 0 0.375rem;
+    max-height: 20px;
+    transition: margin 0.2s ease, max-height 0.2s ease, opacity 0.15s ease;
+}
+
+.nav-group:first-child .nav-group-label {
+    margin-top: 0;
+}
+
+.sidebar.collapsed .nav-group-label {
+    margin: 0.75rem 0 0.25rem;
+    max-height: 0;
+    opacity: 0;
+}
+
 .nav-item {
+    position: relative;
     display: flex;
     align-items: center;
     gap: 0.75rem;
@@ -71,7 +122,13 @@
     font-weight: 500;
     text-align: left;
     cursor: pointer;
-    transition: background-color 0.15s, color 0.15s;
+    transition: background-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.sidebar.collapsed .nav-item {
+    justify-content: center;
+    gap: 0;
+    padding: 0.625rem;
 }
 
 .nav-item svg {
@@ -80,9 +137,33 @@
     flex-shrink: 0;
 }
 
+.nav-item-icon-wrap {
+    position: relative;
+    display: inline-flex;
+    flex-shrink: 0;
+}
+
+/* Left highlight bar -- always present, just transparent until active/
+   hovered, so it never contributes to a layout shift when it appears. */
+.nav-item::before {
+    content: '';
+    position: absolute;
+    left: -1rem;
+    top: 0.25rem;
+    bottom: 0.25rem;
+    width: 3px;
+    border-radius: 0 3px 3px 0;
+    background-color: transparent;
+    transition: background-color 0.18s ease;
+}
+
 .nav-item:hover {
     background-color: rgba(255, 255, 255, 0.06);
     color: var(--sidebar-text-active);
+}
+
+.nav-item:hover::before {
+    background-color: rgba(255, 255, 255, 0.18);
 }
 
 .nav-item.active {
@@ -91,14 +172,104 @@
     box-shadow: 0 2px 10px rgba(182, 138, 78, 0.35);
 }
 
+.nav-item.active::before {
+    background-color: var(--white);
+}
+
+/* .btn-text version of the icon-badge (unread count) -- text is a
+   .nav-label so it collapses with everything else; a separate dot
+   (below) takes over as the collapsed-mode indicator. */
+.nav-badge {
+    background-color: var(--severity-high);
+    color: var(--white);
+    font-size: 0.6875rem;
+    font-weight: 700;
+    line-height: 1;
+    padding: 0.25rem 0.4375rem;
+    border-radius: 9999px;
+    flex-shrink: 0;
+    margin-left: auto;
+}
+
+.nav-badge-dot {
+    display: none;
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: var(--severity-high);
+    border: 2px solid var(--lux-charcoal);
+}
+
+.sidebar.collapsed .nav-item-alerts.has-alerts .nav-badge-dot {
+    display: block;
+}
+
 .sidebar-footer {
-    margin-top: auto;
-    padding-top: 1rem;
+    flex-shrink: 0;
+    padding-top: 0.75rem;
+    margin-top: 0.75rem;
     border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-.sidebar-footer .btn-text {
-    color: var(--sidebar-text);
+.sidebar-collapse-icon {
+    transition: transform 0.22s ease;
+}
+
+.sidebar.collapsed .sidebar-collapse-icon {
+    transform: rotate(180deg);
+}
+
+/* ===================== Sidebar label collapse =====================
+   Every bit of text that disappears in collapsed mode shares this one
+   class -- brand wordmark, group headings, nav item labels, the badge
+   count -- so collapsing/expanding animates as one consistent motion
+   instead of each piece doing its own thing. */
+
+.nav-label {
+    display: inline-block;
+    white-space: nowrap;
+    overflow: hidden;
+    opacity: 1;
+    max-width: 220px;
+    transition: opacity 0.15s ease, max-width 0.2s ease;
+}
+
+.sidebar.collapsed .nav-label {
+    opacity: 0;
+    max-width: 0;
+    pointer-events: none;
+}
+
+/* ===================== Sidebar hover tooltip (collapsed mode) =====================
+   Rendered via JS (see showSidebarTooltip in app.js) as a fixed-position
+   element appended to <body>, not a CSS ::after pseudo-element on the
+   nav item -- .sidebar clips overflow-x for the width-collapse
+   animation above, which would clip a pure-CSS tooltip trying to
+   escape past the sidebar's own right edge. */
+
+.sidebar-tooltip {
+    position: fixed;
+    z-index: 1300;
+    background-color: var(--lux-charcoal-2);
+    color: var(--white);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    padding: 0.375rem 0.625rem;
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-lg);
+    pointer-events: none;
+    white-space: nowrap;
+    opacity: 0;
+    transform: translateX(-4px);
+    transition: opacity 0.12s ease, transform 0.12s ease;
+}
+
+.sidebar-tooltip.show {
+    opacity: 1;
+    transform: translateX(0);
 }
 
 .main-content {
@@ -116,6 +287,21 @@
 
 .view.active {
     display: block;
+    animation: viewFadeIn 0.2s ease;
+}
+
+@keyframes viewFadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sidebar, .nav-label, .nav-group-label, .sidebar-collapse-icon, .nav-item, .sidebar-tooltip {
+        transition: none;
+    }
+    .view.active {
+        animation: none;
+    }
 }
 
 .view-header {
@@ -1929,13 +2115,21 @@
         flex-direction: column;
     }
 
-    .sidebar {
+    /* Below this width the sidebar becomes a wrapped horizontal bar
+       instead of a tall column -- a different layout from the desktop
+       collapse feature, not a smaller version of it, so it always wins
+       here regardless of whatever collapsed/expanded state was left
+       over from a wider window (see the two overrides below). */
+    .sidebar,
+    .sidebar.collapsed {
         width: 100%;
         height: auto;
         position: static;
         flex-direction: row;
         flex-wrap: wrap;
         padding: 1rem;
+        overflow: visible;
+        transition: none;
     }
 
     .brand {
@@ -1943,15 +2137,45 @@
         margin-bottom: 0.5rem;
     }
 
+    /* .nav-scroll/.nav-group exist to scroll and to hold the desktop
+       group headings -- both irrelevant to a wrapped horizontal bar.
+       display:contents unwraps them so their button children become
+       direct flex items of .sidebar again, same flat arrangement this
+       breakpoint used before those wrappers existed. */
+    .nav-scroll, .nav-group {
+        display: contents;
+    }
+
+    .nav-group-label {
+        display: none;
+    }
+
     .nav-item {
         width: auto;
         flex: 1 1 auto;
+    }
+
+    /* Labels/badge text stay visible here even if the sidebar was left
+       collapsed from a wider window -- icon-only doesn't suit a
+       wrapped bar of same-sized buttons the way it suits a narrow
+       column, and there's no separate mobile "collapse" concept. */
+    .sidebar.collapsed .nav-label {
+        opacity: 1;
+        max-width: 220px;
+        pointer-events: auto;
+    }
+
+    .sidebar-collapse-toggle {
+        display: none;
     }
 
     .sidebar-footer {
         margin-top: 0.5rem;
         border-top: none;
         padding-top: 0;
+        width: 100%;
+        display: flex;
+        flex-wrap: wrap;
     }
 
     .main-content {

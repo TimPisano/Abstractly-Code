@@ -80,52 +80,77 @@
 
     <div class="app-shell" id="appShell" style="display:none;">
         <!-- Sidebar Navigation -->
-        <nav class="sidebar">
+        <nav class="sidebar" id="sidebar">
             <div class="brand">
                 <svg class="brand-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5" />
                 </svg>
-                <span>Lease Portfolio</span>
+                <span class="nav-label">Lease Portfolio</span>
             </div>
-            <button class="nav-item active" data-view="dashboard" type="button">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h8v8H3V3zm10 0h8v5h-8V3zm0 8h8v10h-8V11zM3 14h8v7H3v-7z"/></svg>
-                Dashboard
-            </button>
-            <button class="nav-item nav-item-alerts" data-view="alerts" type="button">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0"/></svg>
-                Alerts
-                <span class="nav-badge" id="alertsNavBadge" style="display:none;">0</span>
-            </button>
-            <button class="nav-item" data-view="trends" type="button">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3v18h18M7 15l4-5 3 3 5-7"/></svg>
-                Portfolio Trends
-            </button>
-            <button class="nav-item" data-view="upload" type="button">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v12m0 0l-4-4m4 4l4-4M4 20h16"/></svg>
-                Upload Leases
-            </button>
-            <button class="nav-item" data-view="timeline" type="button">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-                Expirations
-            </button>
-            <button class="nav-item" data-view="rentroll" type="button">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18M7 6h10a2 2 0 012 2v8a2 2 0 01-2 2H7a2 2 0 01-2-2V8a2 2 0 012-2z"/></svg>
-                Rent Roll
-            </button>
-            <button class="nav-item" data-view="comparison" type="button">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17V9m0 8H5a2 2 0 01-2-2V9a2 2 0 012-2h4m0 10h6m-6 0V5a2 2 0 012-2h2a2 2 0 012 2v12m0 0h4a2 2 0 002-2V11a2 2 0 00-2-2h-4"/></svg>
-                Compare
-            </button>
-            <button class="nav-item" data-view="qa" type="button">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
-                Ask a Question
-            </button>
-            <button class="nav-item" data-view="report" type="button">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-                Portfolio Report
-            </button>
+
+            <div class="nav-scroll">
+                <div class="nav-group">
+                    <div class="nav-group-label nav-label">Overview</div>
+                    <button class="nav-item active" data-view="dashboard" data-tooltip="Dashboard" type="button">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h8v8H3V3zm10 0h8v5h-8V3zm0 8h8v10h-8V11zM3 14h8v7H3v-7z"/></svg>
+                        <span class="nav-label">Dashboard</span>
+                    </button>
+                    <button class="nav-item nav-item-alerts" data-view="alerts" data-tooltip="Alerts" type="button">
+                        <span class="nav-item-icon-wrap">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0"/></svg>
+                            <span class="nav-badge-dot" id="alertsNavBadgeDot"></span>
+                        </span>
+                        <span class="nav-label">Alerts</span>
+                        <span class="nav-badge nav-label" id="alertsNavBadge" style="display:none;">0</span>
+                    </button>
+                    <button class="nav-item" data-view="trends" data-tooltip="Portfolio Trends" type="button">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3v18h18M7 15l4-5 3 3 5-7"/></svg>
+                        <span class="nav-label">Portfolio Trends</span>
+                    </button>
+                </div>
+
+                <div class="nav-group">
+                    <div class="nav-group-label nav-label">Leases</div>
+                    <button class="nav-item" data-view="upload" data-tooltip="Upload Leases" type="button">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v12m0 0l-4-4m4 4l4-4M4 20h16"/></svg>
+                        <span class="nav-label">Upload Leases</span>
+                    </button>
+                    <button class="nav-item" data-view="timeline" data-tooltip="Expirations" type="button">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                        <span class="nav-label">Expirations</span>
+                    </button>
+                    <button class="nav-item" data-view="rentroll" data-tooltip="Rent Roll" type="button">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18M7 6h10a2 2 0 012 2v8a2 2 0 01-2 2H7a2 2 0 01-2-2V8a2 2 0 012-2z"/></svg>
+                        <span class="nav-label">Rent Roll</span>
+                    </button>
+                    <button class="nav-item" data-view="comparison" data-tooltip="Compare" type="button">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17V9m0 8H5a2 2 0 01-2-2V9a2 2 0 012-2h4m0 10h6m-6 0V5a2 2 0 012-2h2a2 2 0 012 2v12m0 0h4a2 2 0 002-2V11a2 2 0 00-2-2h-4"/></svg>
+                        <span class="nav-label">Compare</span>
+                    </button>
+                </div>
+
+                <div class="nav-group">
+                    <div class="nav-group-label nav-label">Insights</div>
+                    <button class="nav-item" data-view="qa" data-tooltip="Ask a Question" type="button">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+                        <span class="nav-label">Ask a Question</span>
+                    </button>
+                    <button class="nav-item" data-view="report" data-tooltip="Portfolio Report" type="button">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                        <span class="nav-label">Portfolio Report</span>
+                    </button>
+                </div>
+            </div>
+
             <div class="sidebar-footer">
-                <button class="btn-text" id="statsToggleBtn" type="button">Session Stats</button>
+                <button class="nav-item" id="statsToggleBtn" data-tooltip="Session Stats" type="button">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    <span class="nav-label">Session Stats</span>
+                </button>
+                <button class="nav-item sidebar-collapse-toggle" id="sidebarCollapseToggle" data-tooltip="Collapse sidebar" type="button" aria-label="Collapse sidebar" aria-expanded="true">
+                    <svg class="sidebar-collapse-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7"/></svg>
+                    <span class="nav-label">Collapse</span>
+                </button>
             </div>
         </nav>
 
@@ -383,7 +408,7 @@
                 <div class="view-header">
                     <div>
                         <h1>Upload Leases</h1>
-                        <p class="view-subtitle">Drop one or more PDF lease documents to extract and add them to your portfolio</p>
+                        <p class="view-subtitle">Drop one or more lease documents to extract and add them to your portfolio</p>
                     </div>
                 </div>
 
@@ -392,9 +417,9 @@
                         <svg class="upload-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                         </svg>
-                        <p class="upload-text">Drag and drop PDF files here, or click to browse</p>
-                        <p class="upload-subtext">PDF files only, max 16MB each — multiple files allowed</p>
-                        <input type="file" id="fileInput" accept=".pdf" multiple hidden>
+                        <p class="upload-text">Drag and drop lease files here, or click to browse</p>
+                        <p class="upload-subtext">PDF, Excel, Word, image, CSV/TSV, or text files, max 16MB each — multiple files allowed</p>
+                        <input type="file" id="fileInput" accept=".pdf,.xlsx,.xls,.xlsm,.csv,.tsv,.docx,.doc,.jpg,.jpeg,.png,.tif,.tiff,.txt" multiple hidden>
                     </div>
                 </div>
 
@@ -521,7 +546,7 @@
                             <h3>Amendments</h3>
                             <div id="amendmentsList"></div>
                             <button class="btn-secondary btn-block" id="addAmendmentBtn" type="button">+ Add Amendment</button>
-                            <input type="file" id="amendmentFileInput" accept=".pdf" hidden>
+                            <input type="file" id="amendmentFileInput" accept=".pdf,.xlsx,.xls,.xlsm,.csv,.tsv,.docx,.doc,.jpg,.jpeg,.png,.tif,.tiff,.txt" hidden>
                         </div>
                         <div class="panel">
                             <h3>Team Notes</h3>

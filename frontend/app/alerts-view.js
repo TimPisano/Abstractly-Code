@@ -180,7 +180,13 @@ async function refreshAlertsBadge() {
     try {
         const summary = await Api.alertsSummary();
         const badge = document.getElementById('alertsNavBadge');
-        if (summary.active_count > 0) {
+        const navItem = document.querySelector('.nav-item-alerts');
+        const hasAlerts = summary.active_count > 0;
+        // .has-alerts also drives the collapsed-sidebar dot indicator
+        // (see .nav-badge-dot's CSS) -- one flag, two visual forms
+        // depending on whether the sidebar is expanded or collapsed.
+        navItem.classList.toggle('has-alerts', hasAlerts);
+        if (hasAlerts) {
             badge.textContent = summary.active_count > 99 ? '99+' : String(summary.active_count);
             badge.style.display = '';
         } else {

@@ -1,5 +1,73 @@
 # Implementation Decisions
 
+## Sidebar navigation: grouping, collapse/expand, and transition polish
+
+Pure interaction/organization polish on the existing sidebar, no
+backend involved and no visual redesign -- same palette, same
+typography, same `.nav-item`/`.brand` component shapes, just restructured
+and given real transitions.
+
+### Why the tooltip is JS, not CSS
+`.sidebar` needed `overflow: hidden` added so the width-collapse
+animation doesn't show a scrollbar flash mid-transition. That same
+`overflow:hidden` would clip a pure-CSS `::after` tooltip trying to
+render past the sidebar's own right edge in collapsed (76px) mode --
+confirmed by reasoning through the CSS before writing any tooltip code,
+not discovered as a bug afterward. `showSidebarTooltip()`/
+`hideSidebarTooltip()` in `app.js` instead create one shared
+`position:fixed` element appended to `<body>`, positioned via the
+trigger's `getBoundingClientRect()` on `mouseenter` -- unaffected by
+any ancestor's overflow/clipping, and only one DOM node is ever
+created/reused rather than one tooltip per nav item.
+
+### Why label collapse uses `max-width` + `opacity`, not `display:none`
+Every piece of text that needs to disappear when the sidebar collapses
+(brand wordmark, group headings, nav item labels, the alert count)
+shares one `.nav-label` class, animated via `opacity` + `max-width`
+rather than toggling `display`. `display:none` can't be transitioned at
+all (an element with it either has a box or doesn't, nothing in
+between) -- the max-width approach lets the label visibly shrink away
+as part of the same motion as the sidebar's own width change, instead
+of text vanishing instantly partway through the container's animation.
+
+### Left accent bar: present but transparent by default
+`.nav-item::before` (the left highlight bar) always exists in the DOM/
+layout as a 3px-wide, zero-opacity-equivalent (transparent
+background-color) element, not conditionally rendered only when
+active/hovered. Reserving the space up front means the bar fading in on
+hover/active never shifts any other content by appearing -- only its
+own `background-color` transitions, nothing about layout does.
+
+### The pre-existing 768px mobile breakpoint, and the bug found testing under it
+This app already collapses the sidebar into a horizontal wrapped top
+bar below 768px (`@media (max-width: 768px)`), written before this
+pass for a flat list of `.nav-item` buttons as direct children of
+`.sidebar`. The new grouping/scrolling wrappers (`.nav-scroll`,
+`.nav-group`) broke that rule silently -- at 640px width the sidebar's
+own middle was blank, most nav buttons not rendering at all, discovered
+only by actually resizing the viewport and screenshotting, not by
+reading the new CSS and assuming it composed cleanly with the old rule.
+Root cause: the mobile rule's `.nav-item { flex: 1 1 auto }` expected
+`.nav-item` to be a direct flex child of `.sidebar` (now
+`flex-direction: row` at that width); with two intervening wrapper divs
+neither participating in that row-flex layout as expected, the buttons
+inside them weren't laid out as intended.
+
+Fixed with `display: contents` on `.nav-scroll` and `.nav-group` at
+that same breakpoint -- removes those two wrapper elements' own boxes
+from layout entirely while keeping their children in the DOM, so the
+buttons become direct flex children of `.sidebar` again, exactly
+matching what the original mobile rule assumed. Also: forced
+`.nav-label` back to fully visible at this breakpoint (a desktop
+"collapsed" preference carried into a resize otherwise left icon-only
+buttons in a context with no room for a separate mobile collapse
+concept) and hid the collapse toggle entirely (meaningless once the
+sidebar's shape itself already changes for mobile). Verified at 640px/
+500px/375px and the specific edge case of collapsing at desktop width
+then shrinking the window -- labels correctly reappear, and widening
+back out correctly restores the desktop collapsed preference rather
+than silently losing it.
+
 ## Alerts UI, investment memo export UI, and portfolio health score UI
 
 Three separate frontend asks, arriving mid-session while the backend
