@@ -91,6 +91,11 @@
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h8v8H3V3zm10 0h8v5h-8V3zm0 8h8v10h-8V11zM3 14h8v7H3v-7z"/></svg>
                 Dashboard
             </button>
+            <button class="nav-item nav-item-alerts" data-view="alerts" type="button">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0"/></svg>
+                Alerts
+                <span class="nav-badge" id="alertsNavBadge" style="display:none;">0</span>
+            </button>
             <button class="nav-item" data-view="trends" type="button">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3v18h18M7 15l4-5 3 3 5-7"/></svg>
                 Portfolio Trends
@@ -168,8 +173,16 @@
                         <h1>Portfolio Dashboard</h1>
                         <p class="view-subtitle">All uploaded leases at a glance</p>
                     </div>
-                    <button class="btn-primary" data-goto="upload" type="button">+ Upload Leases</button>
+                    <div class="view-header-actions">
+                        <button class="btn-secondary" id="dashboardExportReportBtn" type="button">Export Report</button>
+                        <button class="btn-primary" data-goto="upload" type="button">+ Upload Leases</button>
+                    </div>
                 </div>
+
+                <!-- Portfolio Health Score: the reason to check in daily -- how much the
+                     current DATA can be trusted, distinct from the "what needs attention
+                     today" panel below. Always first, above the fold. -->
+                <div class="panel health-score-panel" id="healthScorePanel"></div>
 
                 <!-- Portfolio-wide confidence summary: the trust mechanism -- real, computed field-confidence counts across every lease, not a decorative badge -->
                 <div class="panel" id="portfolioConfidenceSummaryPanel"></div>
@@ -284,6 +297,42 @@
                     </div>
                     <div id="activityFeed"></div>
                 </div>
+            </section>
+
+            <!-- ALERTS VIEW -->
+            <section class="view" id="view-alerts">
+                <div class="view-header">
+                    <div>
+                        <h1>Alerts</h1>
+                        <p class="view-subtitle">Upcoming expirations, new discrepancies, below-market rent, and tenant concentration risk — surfaced automatically, not something you have to go looking for</p>
+                    </div>
+                    <div class="view-header-actions">
+                        <button class="btn-secondary" id="alertsRefreshBtn" type="button">Refresh</button>
+                    </div>
+                </div>
+
+                <div class="health-strip" id="alertsSummaryStrip"></div>
+
+                <div class="alerts-filter-row">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="alertsShowDismissed"> Show dismissed
+                    </label>
+                    <select id="alertsSeverityFilter" class="text-input select-input">
+                        <option value="">All severities</option>
+                        <option value="high">High</option>
+                        <option value="medium">Medium</option>
+                        <option value="low">Low</option>
+                    </select>
+                    <select id="alertsTypeFilter" class="text-input select-input">
+                        <option value="">All types</option>
+                        <option value="lease_expiration">Lease Expirations</option>
+                        <option value="new_discrepancy">New Discrepancies</option>
+                        <option value="below_market_rent">Below-Market Rent</option>
+                        <option value="tenant_concentration">Tenant Concentration</option>
+                    </select>
+                </div>
+
+                <div id="alertsFeedContent"></div>
             </section>
 
             <!-- PORTFOLIO TRENDS VIEW -->
@@ -437,6 +486,7 @@
                         <p class="view-subtitle" id="detailSubtitle"></p>
                     </div>
                     <div class="detail-actions">
+                        <button class="btn-secondary" id="detailExportReportBtn" type="button">Export Report</button>
                         <button class="btn-secondary" id="detailExportBtn" type="button">Export JSON</button>
                         <a class="btn-secondary" id="detailExportExcelBtn" href="#" download>Download Excel</a>
                         <button class="btn-secondary" id="detailExportSheetsBtn" type="button">Export to Google Sheets</button>

@@ -1,6 +1,80 @@
 # Progress Summary
 
-**Last updated**: Portfolio Health Score, backend-only. `GET
+**Last updated**: Frontend for three more backend features shipped
+this session, each built and live-verified in a real browser right
+after finding its endpoint via `git log` (a parallel backend session
+kept shipping mid-turn, twice landing while this pass was mid-build on
+the very feature it added):
+
+1. **Alerts** (`alerts-view.js`): a bell-icon nav item ("Alerts") with
+   an unread-style badge (active-alert count, capped "99+"), and a
+   dedicated feed with a by-severity summary strip (click a tile to
+   filter to it), status/severity/type filters, and per-alert Dismiss.
+   Calls `POST /alerts/generate` itself on app boot and every visit --
+   no scheduled backend job exists yet, so this is what keeps the
+   badge/feed current. "Unread" maps onto the backend's real `active`
+   status (no separate read/unread flag exists); dismissing IS marking
+   read, a real attributed `POST /alerts/<id>/dismiss` call, not a
+   client-only flag. Alerts with a `lease_id` link straight to that
+   lease.
+
+   Live-testing against the shared dev database's real accumulated
+   history surfaced 357 active alerts, most `new_discrepancy` alerts
+   for discrepancies whose leases had since been deleted -- exactly the
+   "343 discrepancy rows silently corrupted by a schema bug" the very
+   next backend commit (Portfolio Health Score) found and fixed. That
+   fix updated the health score's own discrepancy-counting to exclude
+   orphaned rows, but not `alerts.py`'s `_detect_new_discrepancy_alerts`
+   (unchanged in that commit) -- so the Alerts feed can likely still
+   surface a `new_discrepancy` alert per orphaned row. Flagged here as a
+   probable remaining backend gap, not fixed (not this pass's file to
+   touch); the by-severity summary strip was added specifically because
+   this real-data volume would otherwise fail this feature's own "not a
+   raw log dump" bar.
+
+2. **Investment memo export** (`export-modal.js`): an "Export Report"
+   button on the Dashboard (whole-portfolio scope) and Lease Detail
+   (scoped to that lease's `property_address`), opening an options
+   screen -- format (PDF/Excel), and for a property-scoped export, an
+   optional fresh-T12 attachment. No section-level include/exclude
+   exists on the backend, so the screen states what's included as plain
+   text rather than decorative checkboxes that wouldn't do anything.
+   Real loading state, then a success screen naming the downloaded file.
+
+   A real bug caught by testing the actual download, not just that the
+   button didn't error: `Content-Disposition` isn't readable from the
+   fetch `Response` cross-origin (the backend's CORS config doesn't
+   list it in `Access-Control-Expose-Headers`), so the real filename
+   silently came back `null` every time. Fixed by building the same
+   scope-labeled, sanitized filename client-side instead of depending
+   on an unreadable header -- verified with a screenshot showing the
+   real address-derived filename. Also verified outside the browser
+   entirely: fetched both formats directly, opened the PDF with PyPDF2
+   (2 real pages, readable text) and the Excel file with openpyxl (5
+   real sheets) -- confirms the files genuinely open, not just that
+   they're correctly-typed blobs.
+
+3. **Portfolio Health Score**: a hero card at the very top of the
+   Dashboard -- above the confidence panel, above everything -- with a
+   hand-rolled SVG ring gauge (score, rating, colored by band reusing
+   the existing confidence green/amber/red tokens) and an expandable
+   breakdown of all four components, sorted by how much each is
+   actually dragging the score down (`(100-score)*weight`) rather than
+   a fixed order, so the real biggest driver reads first. Each
+   component gets a plain-language detail line and, below 80, a
+   concrete suggestion -- the Unresolved Discrepancies one links
+   straight into the new Alerts feed. Tested against three real
+   portfolio states (empty -- a "No Data" empty state, not a 0/100;
+   and populated at both 87.3 and 74, the latter showing all four
+   components including the color-coded score chips) by actually
+   changing the database between screenshots, not by editing the
+   response in devtools.
+
+See DECISIONS.md's entries for all three for the full writeup.
+
+---
+
+Before that: Portfolio Health Score, backend-only. `GET
 /portfolio/health-score` returns a single, defensible 0-100 number
 (plus a letter rating) for how much a user can trust their portfolio's
 data right now -- a weighted formula across confidence distribution,

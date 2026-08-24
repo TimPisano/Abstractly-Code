@@ -1,5 +1,88 @@
 # Implementation Decisions
 
+## Alerts UI, investment memo export UI, and portfolio health score UI
+
+Three separate frontend asks, arriving mid-session while the backend
+for each landed in parallel (`578ecd8`, `9b887fa`, `6b5f800`) -- each
+built by reading the actual committed endpoint first via `git log`/
+`git show`, never guessed at.
+
+### Alerts: "unread" = the backend's real `active` status, not a new flag
+No read/unread concept exists in the `alerts` table -- only `active`/
+`dismissed`/`auto_resolved`. Rather than inventing a client-only "read"
+flag (which would either drift from what the team actually did, or
+need its own fake persistence), the badge counts `active` alerts and
+Dismiss is the one real action, doing double duty as both "acted on"
+and "read." Same identity convention as discrepancy resolutions/
+comments (self-reported name, `getUserIdentity()`/`setUserIdentity()`
+in `app.js`) -- Dismiss reuses it rather than asking for a name again.
+
+Generation (`POST /alerts/generate`) has no scheduled backend trigger
+yet, so the frontend calls it itself -- once at app boot (for the nav
+badge, so it's never far from fresh even without a visit to the Alerts
+view) and again on every Alerts-view load/refresh. Documented safe by
+the backend to call this often (idempotent against unchanged data).
+
+**Real-data finding, not fixed here**: live-testing surfaced 357 active
+alerts against the shared dev database, the bulk of them
+`new_discrepancy` alerts for discrepancies whose lease had since been
+deleted. The very next backend commit (Portfolio Health Score)
+independently found and partially fixed the same root cause (a schema
+bug that had silently corrupted 343 discrepancy rows) -- but only in
+the health score's own counting logic, not in `alerts.py`'s
+`_detect_new_discrepancy_alerts`, which still calls
+`database.list_discrepancies(status="open")` unfiltered. The Alerts
+feed likely still surfaces one alert per orphaned row. Flagged in
+PROGRESS.md as a probable remaining backend gap rather than patched
+here (backend logic, not this pass's file). The by-severity summary
+strip at the top of the Alerts view exists specifically because this
+real volume, not a contrived one, would otherwise read as exactly the
+"raw log dump" the feature was asked not to be.
+
+### Investment memo export: no section toggles, because none exist server-side
+The options screen offers format (PDF/Excel) and, for a property-scoped
+export, an optional T12 attachment -- not per-section include/exclude
+checkboxes, because `build_investment_memo_data` always returns every
+section (key terms, discrepancies, T12, rollover). Showing toggles that
+don't actually change the request would be a UI that lies about what
+it does; the screen states what's included as plain text instead.
+
+**Real bug, caught by testing the actual download**: `Content-
+Disposition` isn't readable via `response.headers.get()` on this
+cross-origin request -- the backend's `CORS(...)` call has no
+`expose_headers`, and that header isn't on the small always-exposed
+CORS allowlist by default. `filenameFromResponse()`'s header read
+silently returned `null` every time (confirmed by logging it live, not
+assumed from reading the CORS config alone). Fixed client-side: the
+same scope label already known to the modal (`this.scopeLabel`) is
+sanitized the identical way the backend's own `safe_name` does
+(`api.py`), producing the real descriptive filename without needing
+the header at all. Not filed as a "please expose the header" backend
+ask, since the client-side fix is strictly sufficient and doesn't
+depend on a CORS config change landing first.
+
+### Portfolio health score: breakdown ordered by actual drag, not fixed order
+The four components render in the fixed order the backend returns them
+in its JSON, but the UI re-sorts them by `(100 - score) * weight`
+(descending) before display -- the component actually costing the most
+points reads first, not whichever the backend happened to compute
+first. A suggestion line only appears below a component scoring under
+80, so a portfolio that's fine on 3 of 4 axes doesn't get three
+unnecessary "here's how to improve" nags under things that aren't
+actually a problem -- matches the "actionable, not alarming" brief:
+only the real drag gets a call to action, and the Unresolved
+Discrepancies one links directly into the new Alerts view rather than
+just naming the problem.
+
+Verified against three genuinely different states by changing the
+actual database between screenshots (empty portfolio -- confirmed
+`score: null`/`rating: "No Data"` renders as a real empty state, not a
+0/100; then two different populated states, 87.3 and 74, the second
+specifically chosen live because the alert-seeding data from the same
+session had 10 open discrepancies on 4 leases, driving that component
+down and reordering the breakdown to put it first) -- not screenshotted
+once and assumed to generalize.
+
 ## Acquisitions-grade UI: click-to-verify, discrepancy resolution modal, portfolio trends, team notes
 
 The frontend half of the same four-item batch as the "Acquisitions-

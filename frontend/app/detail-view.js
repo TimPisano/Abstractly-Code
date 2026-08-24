@@ -420,6 +420,15 @@ registerView('detail', LeaseDetail);
 // DOMContentLoaded already fired -- see the comment in app.js for why a
 // readyState check is needed here instead of a plain addEventListener.
 function _initDetailViewBindings() {
+    document.getElementById('detailExportReportBtn').addEventListener('click', () => {
+        if (!LeaseDetail.lease) return;
+        const address = fieldValue(LeaseDetail.lease, 'property_address');
+        if (!address) {
+            showError("This lease doesn't have a property address on file, so it can't be scoped to one property for a report -- try the portfolio-wide Export Report on the Dashboard instead.");
+            return;
+        }
+        ExportModal.open({ scopeLabel: address, propertyAddress: address });
+    });
     document.getElementById('detailExportBtn').addEventListener('click', () => LeaseDetail.exportJson());
     document.getElementById('detailExportSheetsBtn').addEventListener('click', () => LeaseDetail.exportToGoogleSheets());
     document.getElementById('detailDeleteBtn').addEventListener('click', () => LeaseDetail.deleteLease());

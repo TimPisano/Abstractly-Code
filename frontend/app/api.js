@@ -158,6 +158,13 @@ const Api = {
         return apiRequest('/portfolio/health');
     },
 
+    // Distinct from portfolioHealth() above -- that's "what needs
+    // attention today"; this is "how much can I trust the data itself"
+    // (see backend/app/portfolio_health_score.py).
+    portfolioHealthScore() {
+        return apiRequest('/portfolio/health-score');
+    },
+
     portfolioExpirationAlerts() {
         return apiRequest('/portfolio/expiration-alerts');
     },
@@ -361,5 +368,60 @@ const Api = {
 
     health() {
         return apiRequest('/health');
+    },
+
+    // Proactive alerts (see backend/app/alerts.py) -- lease expirations,
+    // new discrepancies, below-market rent, tenant concentration. No
+    // scheduled generation exists yet (explicitly out of scope on the
+    // backend), so the frontend calls generateAlerts() itself on load
+    // to keep the feed/badge current -- safe to call as often as
+    // needed, idempotent against unchanged data.
+    generateAlerts() {
+        return apiRequest('/alerts/generate', { method: 'POST' });
+    },
+
+    listAlerts({ status, type, severity, leaseId } = {}) {
+        const params = new URLSearchParams();
+        if (status) params.set('status', status);
+        if (type) params.set('type', type);
+        if (severity) params.set('severity', severity);
+        if (leaseId != null) params.set('lease_id', leaseId);
+        const qs = params.toString();
+        return apiRequest(`/alerts${qs ? `?${qs}` : ''}`);
+    },
+
+    alertsSummary() {
+        return apiRequest('/alerts/summary');
+    },
+
+    dismissAlert(alertId, { dismissedBy, note }) {
+        return apiRequest(`/alerts/${alertId}/dismiss`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ dismissed_by: dismissedBy, note }),
+        });
+    },
+
+    // Investment memo export (PDF/Excel, per-property or whole-
+    // portfolio -- see backend/app/investment_memo.py). POST because an
+    // optional T12 file may be attached; content is fixed (key lease
+    // terms, discrepancies + resolutions, T12 cross-check, rollover
+    // risk) -- there's no section-level include/exclude on the backend,
+    // only scope (property vs portfolio) and format. Returns the raw
+    // Response (apiRequest passes non-JSON responses through
+    // unmodified) so the caller can read filename off the
+    // Content-Disposition header and call .blob() itself.
+    exportInvestmentMemoPdf({ propertyAddress, t12File } = {}) {
+        const formData = new FormData();
+        if (propertyAddress) formData.append('property_address', propertyAddress);
+        if (t12File) formData.append('t12_file', t12File);
+        return apiRequest('/portfolio/investment-memo.pdf', { method: 'POST', body: formData });
+    },
+
+    exportInvestmentMemoExcel({ propertyAddress, t12File } = {}) {
+        const formData = new FormData();
+        if (propertyAddress) formData.append('property_address', propertyAddress);
+        if (t12File) formData.append('t12_file', t12File);
+        return apiRequest('/portfolio/investment-memo.xlsx', { method: 'POST', body: formData });
     },
 };

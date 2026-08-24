@@ -233,6 +233,31 @@ function timeAgo(isoString) {
     return formatDate(isoString);
 }
 
+/**
+ * Triggers a real browser download for an in-memory blob, the same
+ * createObjectURL + temporary-<a> + revoke pattern detail-view.js's
+ * exportJson() already used for a client-built JSON blob -- shared
+ * here since the investment-memo export (export-modal.js) needs the
+ * identical dance for a server-returned PDF/Excel blob.
+ */
+function triggerBlobDownload(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+}
+
+/** Reads the filename out of a fetch Response's Content-Disposition header, falling back if the header's missing/unparseable. */
+function filenameFromResponse(response, fallback) {
+    const header = response.headers.get('content-disposition') || '';
+    const match = header.match(/filename="?([^";]+)"?/i);
+    return match ? match[1] : fallback;
+}
+
 const MONTHS_MAP = {
     jan: 0, january: 0, feb: 1, february: 1, mar: 2, march: 2, apr: 3, april: 3,
     may: 4, jun: 5, june: 5, jul: 6, july: 6, aug: 7, august: 7,
@@ -415,6 +440,13 @@ function init() {
 
     // Kick off the initial view (dashboard, marked active in the HTML)
     showView('dashboard');
+
+    // Best-effort, non-blocking: regenerate + refresh the Alerts nav
+    // badge right at boot, not only after a visit to the Alerts view
+    // itself -- see alerts-view.js's own comment for why generation is
+    // triggered client-side at all (no scheduled backend job exists
+    // yet).
+    Api.generateAlerts().catch(() => {}).then(() => refreshAlertsBadge());
 }
 
 // init() is deliberately NOT self-invoked here (no DOMContentLoaded

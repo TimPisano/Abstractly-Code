@@ -10,6 +10,7 @@ const Dashboard = {
     risksByLeaseId: {},
 
     async load() {
+        this.renderHealthScoreSkeleton();
         this.renderMetricsSkeleton();
         this.renderAttentionSkeleton();
         this.renderExpirationAlertsSkeleton();
@@ -39,6 +40,9 @@ const Dashboard = {
         // Independent of the block above and of each other — one
         // panel's data being briefly unavailable shouldn't block or
         // blank out the rest of the dashboard.
+        Api.portfolioHealthScore()
+            .then(h => this.renderHealthScore(h))
+            .catch(err => { document.getElementById('healthScorePanel').innerHTML = `<p class="error-text">Failed to load health score: ${escapeHtml(err.message)}</p>`; });
         Api.portfolioAttention()
             .then(a => this.renderAttention(a))
             .catch(() => { document.getElementById('attentionContent').innerHTML = '<p class="error-text">Failed to load.</p>'; });
@@ -75,6 +79,152 @@ const Dashboard = {
     // copies of the same mapping drifting apart.
     _riskBadgeHtml(level) {
         return riskLevelBadgeHtml(level);
+    },
+
+    // ===================== Portfolio Health Score =====================
+    // Distinct from renderHealth()/healthStrip below (that's "what needs
+    // attention today"; this is "how much can I trust the data right
+    // now" -- see backend/app/portfolio_health_score.py). Deliberately
+    // the first panel on the dashboard, above the fold.
+
+    renderHealthScoreSkeleton() {
+        document.getElementById('healthScorePanel').innerHTML = `
+            <div class="health-score-card">
+                <div class="skeleton" style="width:120px;height:120px;border-radius:50%;flex-shrink:0;"></div>
+                <div class="health-score-info">
+                    <div class="skeleton skeleton-text" style="width:40%;margin-bottom:0.5rem;"></div>
+                    <div class="skeleton skeleton-text" style="width:60%;"></div>
+                </div>
+            </div>
+        `;
+    },
+
+    _healthScoreRatingClass(rating) {
+        if (rating === 'Excellent' || rating === 'Good') return 'health-score-good';
+        if (rating === 'Fair') return 'health-score-fair';
+        if (rating === 'Poor' || rating === 'Critical') return 'health-score-poor';
+        return 'health-score-none';
+    },
+
+    renderHealthScore(data) {
+        const panel = document.getElementById('healthScorePanel');
+
+        if (data.score === null) {
+            panel.innerHTML = `
+                <div class="health-score-card health-score-none">
+                    <div class="health-score-empty-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    </div>
+                    <div class="health-score-info">
+                        <h2>Portfolio Health Score</h2>
+                        <p class="health-score-subtitle">Upload your first lease to see how much you can trust your portfolio's data.</p>
+                    </div>
+                </div>
+            `;
+            return;
+        }
+
+        const ratingClass = this._healthScoreRatingClass(data.rating);
+        const r = 52;
+        const circumference = 2 * Math.PI * r;
+        const offset = circumference * (1 - data.score / 100);
+
+        panel.innerHTML = `
+            <div class="health-score-card ${ratingClass}">
+                <div class="health-score-ring-wrap">
+                    <svg class="health-score-ring" viewBox="0 0 120 120">
+                        <circle class="health-score-ring-bg" cx="60" cy="60" r="${r}" />
+                        <circle class="health-score-ring-fg" cx="60" cy="60" r="${r}"
+                            stroke-dasharray="${circumference.toFixed(1)}"
+                            stroke-dashoffset="${offset.toFixed(1)}" />
+                    </svg>
+                    <div class="health-score-ring-label">
+                        <div class="health-score-value">${Math.round(data.score)}</div>
+                        <div class="health-score-max">/ 100</div>
+                    </div>
+                </div>
+                <div class="health-score-info">
+                    <span class="health-score-rating-badge">${escapeHtml(data.rating)}</span>
+                    <h2>Portfolio Health Score</h2>
+                    <p class="health-score-subtitle">${data.lease_count} lease${data.lease_count === 1 ? '' : 's'} · how much you can trust the data right now</p>
+                    <button class="btn-text" id="healthScoreToggleBtn" type="button">See what's driving this score &rarr;</button>
+                </div>
+            </div>
+            <div class="health-score-breakdown" id="healthScoreBreakdown" style="display:none;"></div>
+        `;
+
+        document.getElementById('healthScoreToggleBtn').addEventListener('click', (e) => {
+            const breakdown = document.getElementById('healthScoreBreakdown');
+            const isHidden = breakdown.style.display === 'none';
+            breakdown.style.display = isHidden ? 'block' : 'none';
+            e.target.textContent = isHidden ? 'Hide breakdown ↑' : "See what's driving this score →";
+            if (isHidden && !breakdown.dataset.rendered) {
+                breakdown.innerHTML = this._healthScoreBreakdownHtml(data.components);
+                breakdown.dataset.rendered = '1';
+                breakdown.querySelectorAll('.health-score-goto-alerts').forEach(btn => {
+                    btn.addEventListener('click', () => showView('alerts'));
+                });
+            }
+        });
+    },
+
+    // Ordered by how much each component is actually dragging the
+    // overall score down (weight * gap-from-100), not by a fixed order
+    // -- the biggest real driver reads first, which is the whole point
+    // of a "what's driving this" breakdown.
+    _healthScoreBreakdownHtml(components) {
+        const defs = [
+            {
+                key: 'confidence_distribution', label: 'Confidence Distribution',
+                detail: (c) => `${c.high} high, ${c.medium} medium, ${c.low} low, and ${c.not_found} not-found, out of ${c.total_fields} fields checked across the portfolio.`,
+                suggestion: 'Review low-confidence and not-found fields on the affected leases and correct them against their source citation.',
+            },
+            {
+                key: 'source_verification', label: 'Source Verification',
+                detail: (c) => `${c.fully_verified_count} of ${c.total_count} lease${c.total_count === 1 ? '' : 's'} have every core field found (tenant, landlord, rent, dates) with nothing flagged.`,
+                suggestion: 'Fill in missing core fields, or double-check flagged ones, on the leases pulling this down.',
+            },
+            {
+                key: 'unresolved_discrepancies', label: 'Unresolved Discrepancies',
+                detail: (c) => `${c.open_count} open discrepanc${c.open_count === 1 ? 'y' : 'ies'} across the portfolio (${c.discrepancies_per_lease ?? 0} per lease on average).`,
+                suggestion: 'Resolve open discrepancies to improve this.',
+                action: c => c.open_count > 0 ? `<button class="btn-secondary health-score-goto-alerts" type="button">Review in Alerts &rarr;</button>` : '',
+            },
+            {
+                key: 'data_freshness', label: 'Data Freshness',
+                detail: (c) => `${c.fresh_count} of ${c.total_count} lease${c.total_count === 1 ? '' : 's'} refreshed within the last ${c.threshold_months} month${c.threshold_months === 1 ? '' : 's'}; ${c.stale_count} ${c.stale_count === 1 ? 'is' : 'are'} stale.`,
+                suggestion: 'Re-upload or amend leases that haven’t been touched in a while so their data reflects reality.',
+            },
+        ];
+
+        const drag = (c) => (100 - c.score) * c.weight;
+        const rows = defs
+            .map(def => ({ def, c: components[def.key] }))
+            .filter(({ c }) => c.score !== null)
+            .sort((a, b) => drag(b.c) - drag(a.c));
+
+        return rows.map(({ def, c }) => `
+            <div class="health-score-component">
+                <div class="health-score-component-head">
+                    <span class="health-score-component-label">${def.label}</span>
+                    <span class="health-score-component-weight">${Math.round(c.weight * 100)}% of score</span>
+                    <span class="health-score-component-score ${this._healthScoreRatingClass(this._healthScoreScoreRating(c.score))}">${Math.round(c.score)}</span>
+                </div>
+                <p class="health-score-component-detail">${escapeHtml(def.detail(c))}</p>
+                ${c.score < 80 ? `
+                    <p class="health-score-component-suggestion">${escapeHtml(def.suggestion)}</p>
+                    ${def.action ? def.action(c) : ''}
+                ` : ''}
+            </div>
+        `).join('');
+    },
+
+    _healthScoreScoreRating(score) {
+        if (score >= 90) return 'Excellent';
+        if (score >= 75) return 'Good';
+        if (score >= 60) return 'Fair';
+        if (score >= 40) return 'Poor';
+        return 'Critical';
     },
 
     renderTenantConcentration(data) {
@@ -904,6 +1054,10 @@ registerView('dashboard', Dashboard);
 // DOMContentLoaded already fired -- see the comment in app.js for why a
 // readyState check is needed here instead of a plain addEventListener.
 function _initDashboardViewBindings() {
+    document.getElementById('dashboardExportReportBtn').addEventListener('click', () => {
+        ExportModal.open({ scopeLabel: 'Whole Portfolio' });
+    });
+
     document.getElementById('dashboardFilter').addEventListener('input', () => {
         Dashboard.renderTable(AppState.leases);
     });
