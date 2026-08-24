@@ -52,6 +52,7 @@ UNIT_TESTS = [
     "test_t12_reconciliation_api.py",
     "test_t12_synthetic_fixture.py",
     "test_audit_trail.py",
+    "test_discrepancies.py",
 ]
 
 LIVE_API_TESTS = [
@@ -63,6 +64,7 @@ LIVE_API_TESTS = [
     "test_live_composition_api.py",
     "test_live_t12_api.py",
     "test_live_audit_trail_api.py",
+    "test_live_discrepancies_api.py",
 ]
 
 

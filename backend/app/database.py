@@ -116,6 +116,36 @@ def init_db() -> None:
                 UNIQUE (lease_id, tag)
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS discrepancies (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                discrepancy_type TEXT NOT NULL,
+                natural_key TEXT NOT NULL UNIQUE,
+                lease_id INTEGER,
+                related_lease_id INTEGER,
+                category TEXT NOT NULL,
+                field TEXT,
+                severity TEXT,
+                message TEXT NOT NULL,
+                details TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'open',
+                first_detected_at TEXT NOT NULL,
+                last_seen_at TEXT NOT NULL
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS discrepancy_resolutions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                discrepancy_id INTEGER NOT NULL,
+                action TEXT NOT NULL,
+                correct_source TEXT,
+                note TEXT NOT NULL,
+                resolved_by TEXT NOT NULL,
+                resolved_by_email TEXT,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (discrepancy_id) REFERENCES discrepancies(id) ON DELETE CASCADE
+            )
+        """)
         conn.commit()
     finally:
         conn.close()
@@ -126,6 +156,8 @@ def reset_db() -> None:
     conn = get_connection()
     try:
         conn.execute("DROP TABLE IF EXISTS lease_tags")
+        conn.execute("DROP TABLE IF EXISTS discrepancy_resolutions")
+        conn.execute("DROP TABLE IF EXISTS discrepancies")
         conn.execute("DROP TABLE IF EXISTS leases")
         conn.execute("DROP TABLE IF EXISTS waitlist_signups")
         conn.execute("DROP TABLE IF EXISTS activity_log")
@@ -577,5 +609,193 @@ def get_lease_ids_with_tag(tag: str) -> List[int]:
             "SELECT lease_id FROM lease_tags WHERE tag = ?", (tag,)
         ).fetchall()
         return [row["lease_id"] for row in rows]
+    finally:
+        conn.close()
+
+
+# ----------------------------------------------------------------------
+# Discrepancies + resolutions.
+#
+# A "discrepancy" is a stable, persisted identity for something that's
+# otherwise computed fresh on every request (a risk flag, a cross-lease
+# mismatch, a rent-roll-vs-lease-PDF or rent-roll-vs-T12 reconciliation
+# disagreement). None of those computations have ever had a database
+# row of their own -- upsert_discrepancy is what gives one a permanent
+# identity (via natural_key, a deterministic string the caller derives
+# from the flag's own identifying fields) so a resolution attached to
+# it survives being recomputed. See app/discrepancies.py for how
+# natural keys are derived per discrepancy type, and how resolution
+# status gets merged back into the live-computed flags a caller sees.
+# ----------------------------------------------------------------------
+
+def upsert_discrepancy(
+    discrepancy_type: str,
+    natural_key: str,
+    category: str,
+    message: str,
+    details: Dict[str, Any],
+    lease_id: Optional[int] = None,
+    related_lease_id: Optional[int] = None,
+    field: Optional[str] = None,
+    severity: Optional[str] = None,
+) -> int:
+    """
+    Records that this discrepancy was seen in the current computation.
+    First time this natural_key is seen: inserts a new row, status
+    'open'. Every subsequent time: updates the latest-known snapshot
+    (category/field/severity/message/details/last_seen_at) but
+    deliberately leaves `status` untouched -- recomputing a flag must
+    never silently un-resolve or re-resolve it; only an explicit
+    resolve_discrepancy/reopen_discrepancy call changes status. Returns
+    the discrepancy's id either way.
+    """
+    now = datetime.now(timezone.utc).isoformat()
+    conn = get_connection()
+    try:
+        existing = conn.execute(
+            "SELECT id FROM discrepancies WHERE natural_key = ?", (natural_key,)
+        ).fetchone()
+        if existing:
+            conn.execute(
+                "UPDATE discrepancies SET category = ?, field = ?, severity = ?, message = ?, "
+                "details = ?, lease_id = ?, related_lease_id = ?, last_seen_at = ? WHERE id = ?",
+                (category, field, severity, message, json.dumps(details), lease_id, related_lease_id, now, existing["id"]),
+            )
+            conn.commit()
+            return existing["id"]
+
+        cur = conn.execute(
+            "INSERT INTO discrepancies (discrepancy_type, natural_key, lease_id, related_lease_id, "
+            "category, field, severity, message, details, status, first_detected_at, last_seen_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)",
+            (discrepancy_type, natural_key, lease_id, related_lease_id, category, field, severity, message, json.dumps(details), now, now),
+        )
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def _discrepancy_row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
+    d = dict(row)
+    d["details"] = json.loads(d["details"])
+    return d
+
+
+def get_discrepancy_by_natural_key(natural_key: str) -> Optional[Dict[str, Any]]:
+    conn = get_connection()
+    try:
+        row = conn.execute("SELECT * FROM discrepancies WHERE natural_key = ?", (natural_key,)).fetchone()
+        return _discrepancy_row_to_dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def get_discrepancy(discrepancy_id: int) -> Optional[Dict[str, Any]]:
+    conn = get_connection()
+    try:
+        row = conn.execute("SELECT * FROM discrepancies WHERE id = ?", (discrepancy_id,)).fetchone()
+        return _discrepancy_row_to_dict(row) if row else None
+    except OverflowError:
+        return None
+    finally:
+        conn.close()
+
+
+def list_discrepancies(
+    status: Optional[str] = None,
+    lease_id: Optional[int] = None,
+    discrepancy_type: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Most-recently-seen first. Any combination of filters may be applied together."""
+    conn = get_connection()
+    try:
+        clauses, params = [], []
+        if status:
+            clauses.append("status = ?")
+            params.append(status)
+        if lease_id is not None:
+            clauses.append("(lease_id = ? OR related_lease_id = ?)")
+            params.extend([lease_id, lease_id])
+        if discrepancy_type:
+            clauses.append("discrepancy_type = ?")
+            params.append(discrepancy_type)
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        rows = conn.execute(
+            f"SELECT * FROM discrepancies {where} ORDER BY last_seen_at DESC, id DESC", params
+        ).fetchall()
+        return [_discrepancy_row_to_dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def _add_resolution(
+    discrepancy_id: int,
+    action: str,
+    note: str,
+    resolved_by: str,
+    correct_source: Optional[str],
+    resolved_by_email: Optional[str],
+    new_status: str,
+) -> Optional[Dict[str, Any]]:
+    now = datetime.now(timezone.utc).isoformat()
+    conn = get_connection()
+    try:
+        exists = conn.execute("SELECT id FROM discrepancies WHERE id = ?", (discrepancy_id,)).fetchone()
+        if not exists:
+            return None
+        cur = conn.execute(
+            "INSERT INTO discrepancy_resolutions (discrepancy_id, action, correct_source, note, "
+            "resolved_by, resolved_by_email, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (discrepancy_id, action, correct_source, note, resolved_by, resolved_by_email, now),
+        )
+        conn.execute("UPDATE discrepancies SET status = ? WHERE id = ?", (new_status, discrepancy_id))
+        conn.commit()
+        return {
+            "id": cur.lastrowid,
+            "discrepancy_id": discrepancy_id,
+            "action": action,
+            "correct_source": correct_source,
+            "note": note,
+            "resolved_by": resolved_by,
+            "resolved_by_email": resolved_by_email,
+            "created_at": now,
+        }
+    except OverflowError:
+        return None
+    finally:
+        conn.close()
+
+
+def resolve_discrepancy(
+    discrepancy_id: int, correct_source: str, note: str, resolved_by: str, resolved_by_email: Optional[str] = None
+) -> Optional[Dict[str, Any]]:
+    """
+    Logs a resolution and marks the discrepancy 'resolved'. Always
+    allowed regardless of current status -- resolving an already-
+    resolved discrepancy again (e.g. a second reviewer confirming, or
+    updating the note) just appends another permanent entry to the log
+    rather than being rejected, since nothing about that should be
+    treated as an error. Returns None if discrepancy_id doesn't exist.
+    """
+    return _add_resolution(discrepancy_id, "resolved", note, resolved_by, correct_source, resolved_by_email, "resolved")
+
+
+def reopen_discrepancy(
+    discrepancy_id: int, note: str, resolved_by: str, resolved_by_email: Optional[str] = None
+) -> Optional[Dict[str, Any]]:
+    """Logs a reopen action and marks the discrepancy 'open' again. Returns None if discrepancy_id doesn't exist."""
+    return _add_resolution(discrepancy_id, "reopened", note, resolved_by, None, resolved_by_email, "open")
+
+
+def get_discrepancy_resolutions(discrepancy_id: int) -> List[Dict[str, Any]]:
+    """The full, permanent resolve/reopen history for one discrepancy, oldest first (a readable timeline)."""
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM discrepancy_resolutions WHERE discrepancy_id = ? ORDER BY created_at ASC, id ASC",
+            (discrepancy_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
     finally:
         conn.close()

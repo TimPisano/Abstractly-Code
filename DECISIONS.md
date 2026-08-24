@@ -77,6 +77,121 @@ non-effective) and the amendment's (marked effective), the 400/404
 paths, and a real rent-roll-imported lease citing row+file instead of
 page. Full suite 40/40 including live tests.
 
+### Item 2: Discrepancy resolution system
+
+**The core problem: none of this project's discrepancies have ever had
+a stable identity.** Single-lease risk flags (`risk_analysis.
+analyze_lease_risks`), cross-lease mismatches
+(`compute_cross_lease_mismatches`), rent-roll-vs-lease-PDF
+reconciliation (`compute_rent_roll_reconciliation`), and rent-roll-vs-
+T12 reconciliation (`compute_t12_reconciliation`) are all computed
+fresh, in memory, on every request -- no database row, no id, nothing
+a "resolved" flag could attach to. Building resolution required first
+inventing a way to recognize "the same real-world discrepancy" across
+repeated computations, since the numbers involved (a rent gap
+percentage, a dollar difference) shift slightly every time underlying
+data changes even when the disagreement itself is the same one a human
+already looked at.
+
+**Data model** (`database.py`): two new tables. `discrepancies` --
+one row per distinct discrepancy, identified by a deterministic
+`natural_key` string (never derived from the rendered message or
+dollar amounts, only from identifying fields: lease id(s), category,
+field) with a `status` ('open'/'resolved') and the latest computed
+snapshot (`details`, a JSON blob of the full flag/mismatch payload).
+`discrepancy_resolutions` -- an append-only permanent log, one row per
+resolve/reopen action (`action`, `correct_source`, `note`,
+`resolved_by`, `resolved_by_email`, `created_at`) -- nothing is ever
+overwritten or deleted, satisfying "permanently logged... never lost"
+literally: a discrepancy resolved, reopened, and resolved again keeps
+all three entries.
+
+**Natural keys, per discrepancy type** (`app/discrepancies.py`):
+- `lease_risk_flag`: `{lease_id}:{category}:{field}:{occurrence_index}`
+  -- the occurrence index (not just category+field) exists because a
+  single lease can legitimately raise more than one flag with the same
+  category AND field (`_check_date_range` and `_check_date_candidate_
+  conflicts` can both fire on `category="date_inconsistency",
+  field="lease_end_date"` for the same messy document) -- confirmed
+  this collision is real, not hypothetical, and covered by
+  `test_sync_lease_risk_flags_same_category_field_gets_distinct_
+  natural_keys`. The index is computed over `analyze_lease_risks`'
+  own output order, which is deterministic for the same input (a fixed
+  sequence of checks, then a stable sort).
+- `cross_lease_mismatch`: the SORTED `(lease_id, other_lease_id)` pair
+  plus field -- deliberately NOT keyed by whichever lease's flag list
+  happens to be rendered first, since the same mismatch appears twice
+  (once phrased from each lease's own perspective, see `_cross_lease_
+  flag_pair`). This makes viewing it from either lease resolve to the
+  SAME discrepancy row, verified directly
+  (`test_sync_cross_lease_mismatch_dedupes_across_both_leases_
+  perspectives`: resolving from lease A's list is immediately visible
+  as resolved from lease B's list too).
+- `rent_roll_reconciliation`: `{rent_roll_lease_id}:{lease_document_
+  id}:{field}` -- both ids are real, permanent lease rows, so this is
+  the cleanest of the four.
+- `t12_reconciliation`: address-only (`_normalize_building_address`),
+  since a T12 upload is never persisted anywhere (by original design --
+  see the "Rent-roll-vs-T12 cross-check" entry). **Honestly documented
+  limitation, not silently assumed away**: a DIFFERENT T12 file
+  uploaded later for the same building collides onto the same
+  discrepancy row, since there's no persisted T12 upload to key against
+  instead -- the coarsest identity of the four, a direct consequence of
+  T12s being intentionally stateless. Only synced when a real
+  discrepancy is flagged, or one already exists for that address
+  (an unflagged check with no prior history creates nothing --
+  verified: `test_sync_t12_reconciliation_only_persists_when_flagged_
+  or_already_tracked`).
+
+**Resolution never overwrites the underlying computation.**
+`upsert_discrepancy` refreshes the latest-seen snapshot every time a
+flag recomputes, but deliberately leaves `status` untouched --
+recomputing must never silently un-resolve or re-resolve something a
+human already decided. The read-side wiring (`_lease_risks`,
+`/portfolio/risks`, `/portfolio/rent-roll-reconciliation`,
+`/portfolio/t12-reconciliation`) all call the matching `sync_*`
+function before returning, which merges `discrepancy_id`/
+`resolution_status`/`resolution` directly into each flag/mismatch dict
+-- this is what actually delivers "resolving it once means no more
+manual re-reads": the existing risk/reconciliation views show resolved
+status automatically, with zero new endpoint the caller has to know to
+hit.
+
+**New endpoints**: `GET /discrepancies` (filterable by `status`,
+`lease_id`, `type`), `GET /discrepancies/<id>` (detail + full
+resolution history), `POST /discrepancies/<id>/resolve` (body:
+`correct_source`, `note`, `resolved_by`, optional `resolved_by_email`
+-- all three required fields validated non-empty, 400 otherwise;
+always allowed regardless of current status, so a second reviewer
+confirming or updating the note isn't rejected), `POST /discrepancies/
+<id>/reopen` (body: `note`, `resolved_by`; 400 if the discrepancy isn't
+currently resolved -- reopening something already open is a no-op that
+would just clutter the log for no reason).
+
+**A real bug found while writing the live test, not a hypothetical
+one**: `activity_log.lease_id` has a genuine foreign key to `leases`.
+A discrepancy's own `lease_id` can now outlive the lease it once
+pointed at -- deleting a lease does NOT delete or renumber the
+discrepancies that reference it (a deliberate design choice: a
+discrepancy is a permanent record, and `discrepancies.lease_id`/
+`related_lease_id` were built WITHOUT a foreign key for exactly this
+reason, unlike every other FK'd column in this schema). Calling
+`resolve`/`reopen` on a discrepancy whose lease had since been deleted
+crashed `insert_activity` with a raw `IntegrityError` the first time
+this was actually exercised end-to-end. Fixed with `_activity_lease_id`
+in `api.py`, which only passes `lease_id` through to the activity log
+if that lease still exists, logging the activity with no lease link
+otherwise rather than either crashing or blocking the resolution
+itself from succeeding.
+
+**Verified**: `test_discrepancies.py` (17 tests: upsert/list/resolve/
+reopen CRUD, natural-key collision and cross-lease dedup, all 4 API
+routes) and `test_live_discrepancies_api.py` (23 checks against the
+real running server: a real PDF upload's real missing-clause flags,
+resolve, confirm the resolution persists across a completely fresh
+`GET /leases/<id>/risks` call, reopen, the 400/404 paths). Full suite
+42/42 including live tests.
+
 ## Production-Readiness Hardening (session 4)
 
 A focused ~1-hour pass: real OCR verification, security/input-validation

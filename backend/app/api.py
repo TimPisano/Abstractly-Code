@@ -64,6 +64,7 @@ from app.portfolio import (
     portfolio_context_for_risk_analysis,
 )
 from app.comparison import compare_leases, benchmark_lease
+from app.discrepancies import sync_lease_risk_flags, sync_rent_roll_reconciliation, sync_t12_reconciliation
 from app.rent_roll_export import generate_rent_roll_csv, generate_rent_roll_excel
 from app.report import generate_portfolio_report_html
 from app.summary_memo import generate_lease_summary_pdf, generate_portfolio_summary_pdf, monthly_report_extra_sections
@@ -1018,7 +1019,7 @@ def _lease_risks(lease):
     date_candidates = lease.get("date_candidates")
     cross_lease_flags = compute_cross_lease_mismatches(all_leases).get(lease["id"], [])
     flags = analyze_lease_risks(lease["extracted_fields"], context, date_candidates, cross_lease_flags)
-    return flags
+    return sync_lease_risk_flags(lease["id"], flags)
 
 
 @app.route('/portfolio/summary', methods=['GET'])
@@ -1097,7 +1098,9 @@ def portfolio_loss_to_lease():
 def portfolio_rent_roll_reconciliation():
     """Cross-checks an imported rent roll (see /leases/import-rent-roll) against the actual lease PDFs on file for the same units, flagging tenant/rent/end-date disagreements. See compute_rent_roll_reconciliation."""
     leases = database.get_all_effective_leases()
-    return jsonify(compute_rent_roll_reconciliation(leases)), 200
+    result = compute_rent_roll_reconciliation(leases)
+    result["mismatches"] = sync_rent_roll_reconciliation(result["mismatches"])
+    return jsonify(result), 200
 
 
 @app.route('/portfolio/t12-reconciliation', methods=['POST'])
@@ -1153,6 +1156,7 @@ def portfolio_t12_reconciliation():
     leases = database.get_all_effective_leases()
     result = compute_t12_reconciliation(leases, property_address, parsed["annual_rental_income"])
     result["t12_source"] = parsed["source"]
+    result = sync_t12_reconciliation(result)
     return jsonify(result), 200
 
 
@@ -1175,6 +1179,7 @@ def portfolio_risks():
         date_candidates = lease.get("date_candidates")
         cross_lease_flags = cross_lease_mismatches.get(lease["id"], [])
         flags = analyze_lease_risks(lease["extracted_fields"], context, date_candidates, cross_lease_flags)
+        flags = sync_lease_risk_flags(lease["id"], flags)
         results.append({
             "lease_id": lease["id"],
             "filename": lease["filename"],
@@ -1191,6 +1196,123 @@ def lease_risks(lease_id):
         return jsonify({"error": "Lease not found"}), 404
     flags = _lease_risks(lease)
     return jsonify(flags), 200
+
+
+def _discrepancy_detail(discrepancy):
+    detail = dict(discrepancy)
+    detail["resolutions"] = database.get_discrepancy_resolutions(discrepancy["id"])
+    return detail
+
+
+def _activity_lease_id(lease_id):
+    """
+    activity_log.lease_id has a real FK to leases(id) -- a discrepancy's
+    own lease_id can outlive the lease it once pointed at (a discrepancy
+    is a permanent record; deleting a lease does not delete or
+    renumber the discrepancies that referenced it), so it can't be
+    passed straight through without checking the lease still exists.
+    """
+    return lease_id if lease_id is not None and database.get_lease(lease_id) else None
+
+
+@app.route('/discrepancies', methods=['GET'])
+def list_discrepancies():
+    """
+    GET /discrepancies?status=open|resolved&lease_id=N&type=lease_risk_flag|cross_lease_mismatch|rent_roll_reconciliation|t12_reconciliation
+
+    Every filter is optional and may be combined. A discrepancy only
+    exists here once it's been produced by one of the flag-computing
+    routes at least once (/portfolio/risks, /leases/<id>/risks,
+    /portfolio/rent-roll-reconciliation, /portfolio/t12-reconciliation)
+    -- this endpoint lists what's already been persisted, it doesn't
+    trigger a fresh computation of its own.
+    """
+    status = request.args.get('status')
+    if status and status not in ('open', 'resolved'):
+        return jsonify({"error": "status must be 'open' or 'resolved'"}), 400
+
+    lease_id = request.args.get('lease_id', type=int)
+    discrepancy_type = request.args.get('type')
+
+    discrepancies = database.list_discrepancies(status=status, lease_id=lease_id, discrepancy_type=discrepancy_type)
+    return jsonify(discrepancies), 200
+
+
+@app.route('/discrepancies/<int:discrepancy_id>', methods=['GET'])
+def get_discrepancy(discrepancy_id):
+    discrepancy = database.get_discrepancy(discrepancy_id)
+    if not discrepancy:
+        return jsonify({"error": "Discrepancy not found"}), 404
+    return jsonify(_discrepancy_detail(discrepancy)), 200
+
+
+@app.route('/discrepancies/<int:discrepancy_id>/resolve', methods=['POST'])
+def resolve_discrepancy(discrepancy_id):
+    """
+    Body: {"correct_source": "...", "note": "...", "resolved_by": "...", "resolved_by_email": "..." (optional)}
+
+    Resolving is always allowed regardless of current status -- a
+    second reviewer confirming, or updating the note, appends another
+    permanent entry to the resolution log rather than being rejected.
+    `correct_source`/`note`/`resolved_by` are free text: which of the
+    two disagreeing values is correct, why, and who says so. There's no
+    real per-user login in this app yet (see DECISIONS.md), so
+    `resolved_by` is exactly what the caller supplies, trusted as-is --
+    the same self-reported-identity convention the access gate already
+    uses.
+    """
+    if not database.get_discrepancy(discrepancy_id):
+        return jsonify({"error": "Discrepancy not found"}), 404
+
+    payload = request.get_json(silent=True) or {}
+    correct_source = (payload.get('correct_source') or '').strip()
+    note = (payload.get('note') or '').strip()
+    resolved_by = (payload.get('resolved_by') or '').strip()
+    resolved_by_email = (payload.get('resolved_by_email') or '').strip() or None
+
+    missing = [
+        field for field, value in (('correct_source', correct_source), ('note', note), ('resolved_by', resolved_by))
+        if not value
+    ]
+    if missing:
+        return jsonify({"error": f"Missing required field(s): {', '.join(missing)}"}), 400
+
+    resolution = database.resolve_discrepancy(discrepancy_id, correct_source, note, resolved_by, resolved_by_email)
+    discrepancy = database.get_discrepancy(discrepancy_id)
+    database.insert_activity(
+        "discrepancy_resolved",
+        f"Discrepancy #{discrepancy_id} ({discrepancy['category']}) resolved by {resolved_by}: {note}",
+        lease_id=_activity_lease_id(discrepancy.get("lease_id")),
+    )
+    return jsonify(_discrepancy_detail(discrepancy) | {"latest_resolution": resolution}), 200
+
+
+@app.route('/discrepancies/<int:discrepancy_id>/reopen', methods=['POST'])
+def reopen_discrepancy(discrepancy_id):
+    """Body: {"note": "...", "resolved_by": "...", "resolved_by_email": "..." (optional)}. Only valid on a currently-resolved discrepancy."""
+    discrepancy = database.get_discrepancy(discrepancy_id)
+    if not discrepancy:
+        return jsonify({"error": "Discrepancy not found"}), 404
+    if discrepancy["status"] != "resolved":
+        return jsonify({"error": "Only a resolved discrepancy can be reopened"}), 400
+
+    payload = request.get_json(silent=True) or {}
+    note = (payload.get('note') or '').strip()
+    resolved_by = (payload.get('resolved_by') or '').strip()
+    resolved_by_email = (payload.get('resolved_by_email') or '').strip() or None
+
+    missing = [field for field, value in (('note', note), ('resolved_by', resolved_by)) if not value]
+    if missing:
+        return jsonify({"error": f"Missing required field(s): {', '.join(missing)}"}), 400
+
+    resolution = database.reopen_discrepancy(discrepancy_id, note, resolved_by, resolved_by_email)
+    discrepancy = database.get_discrepancy(discrepancy_id)
+    database.insert_activity(
+        "discrepancy_reopened",
+        f"Discrepancy #{discrepancy_id} ({discrepancy['category']}) reopened by {resolved_by}: {note}",
+        lease_id=_activity_lease_id(discrepancy.get("lease_id")),
+    )
+    return jsonify(_discrepancy_detail(discrepancy) | {"latest_resolution": resolution}), 200
 
 
 @app.route('/qa', methods=['POST'])
