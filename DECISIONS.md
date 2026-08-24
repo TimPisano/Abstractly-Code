@@ -1,5 +1,82 @@
 # Implementation Decisions
 
+## Acquisitions-grade infrastructure: audit trail, discrepancy resolution, portfolio history, collaboration
+
+Four backend systems, requested together as the next step from "useful"
+to something an acquisitions team can't work without: (1) a full,
+queryable source-chain audit trail on every extracted field, (2) a real
+discrepancy-resolution workflow instead of re-reading the same flag
+every time, (3) permanent historical records with trend queries per
+property, (4) team comments/notes on leases and discrepancies. Built
+sequentially, each with its own data model, tests, and live
+verification, per explicit instruction. Sub-entries below cover each.
+
+### Identity model for resolutions/comments: self-reported name, not real accounts
+**Status: decision confirmed with the user before building anything.**
+This app has no real multi-user account system anywhere -- only a
+single hardcoded admin login (`auth.py`) and a client-side "self-
+reported email" access gate that isn't even sent to the backend on API
+calls (confirmed by reading `access-gate.js`/`api.js` directly). Asked
+directly rather than guessed: comments and discrepancy resolutions are
+attributed via a free-text `resolved_by`/`author_name` string the
+caller supplies with each request -- no password, no accounts table,
+backend trusts it as-is. This matches the existing product philosophy
+exactly (the waitlist access gate is already self-reported, unverified
+email) and needs zero new auth infrastructure. If/when real per-user
+login exists, these fields become natural candidates to populate from
+the authenticated session instead of a request body, without a schema
+change.
+
+### Item 1: Full audit trail
+
+**What already existed vs. what was missing.** Every extracted field
+already carried a `source` citation when it had a value -- PDF-derived
+fields as `{"page": N, "quote": "..."}` (`field_extractor.py`),
+rent-roll-imported fields as `{"row": N, "file": "...", "quote": "..."}`
+(`rent_roll_import.py`) -- so the underlying data was already there.
+What was missing: (a) no verification this invariant actually holds
+across every real extraction pathway rather than just being true by
+convention, (b) no way to query it -- a human had to open the lease
+detail JSON and find the field themselves, (c) no lineage across
+amendments -- `get_effective_fields()` already correctly picks the
+latest amendment's non-null value, but silently discarded which
+document (base lease vs. which amendment) that value came from and
+what the base lease originally said before being overridden.
+
+**Verification, not just trust.** `test_audit_trail.py` runs the real
+extraction pipeline (`FieldExtractor`, not a mock) against all 9 real
+PDF fixtures this project has, and the real rent-roll importer against
+all 6 PMS-format fixtures (Yardi CSV+XLSX, AppFolio, RealPage, MRI,
+Buildium), asserting for every field that has a value: a source exists,
+has a real quote, and has either a page or a row. Deliberately guards
+against a vacuous pass (extraction silently returning nothing would
+make every per-field check a no-op) by asserting a minimum count of
+sourced fields found overall (203 across both pathways) -- a test that
+can't fail because there was nothing to check isn't a real check.
+
+**New: `database.get_field_source_chain(lease_id, field_name)`.**
+Returns the effective value/source/confidence/origin document for one
+field, PLUS the full history across the base lease and every
+amendment -- not just the winner. Deliberately built as a fresh,
+read-only derivation (re-walking `get_lease` + `get_amendments`
+directly) rather than by modifying `get_effective_fields()`'s existing
+merge output, so every existing consumer of that function (portfolio
+metrics, risk analysis, exports, the Q&A engine, comparison) keeps
+its exact current dict shape -- no risk of a new key silently breaking
+an existing exact-shape assertion (e.g. `test_rent_roll_export.py`'s
+cell-by-cell diff).
+
+**New endpoint: `GET /leases/<id>/fields/<field_name>/source`.** 400
+for an unrecognized field name (lists the valid 15), 404 for a
+nonexistent lease, otherwise the full chain above. Live-verified
+end-to-end (`test_live_audit_trail_api.py`, 20/20 checks against the
+real running server, not `test_client()`): a real PDF upload's
+page+quote citation, a real amendment overriding `tenant` and the
+chain correctly showing both the base lease's original value (marked
+non-effective) and the amendment's (marked effective), the 400/404
+paths, and a real rent-roll-imported lease citing row+file instead of
+page. Full suite 40/40 including live tests.
+
 ## Production-Readiness Hardening (session 4)
 
 A focused ~1-hour pass: real OCR verification, security/input-validation

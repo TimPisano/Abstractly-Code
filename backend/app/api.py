@@ -45,6 +45,7 @@ from app.qa_engine import answer_question
 from app.rent_roll_import import RentRollImportError, parse_csv_rent_roll, parse_xlsx_rent_roll
 from app.t12_import import T12ImportError, parse_csv_t12, parse_xlsx_t12
 from app.portfolio import (
+    FIELD_NAMES,
     compute_portfolio_metrics,
     compute_expiration_timeline,
     compute_attention_items,
@@ -594,6 +595,26 @@ def get_lease_detail(lease_id):
         return jsonify({"error": "Lease not found"}), 404
     lease["tags"] = database.get_lease_tags(lease_id)
     return jsonify(_lease_summary(lease)), 200
+
+
+@app.route('/leases/<int:lease_id>/fields/<field_name>/source', methods=['GET'])
+def lease_field_source(lease_id, field_name):
+    """
+    The full audit trail for one extracted data point: the exact source
+    (page + quote for a PDF-derived field, row + file + quote for a
+    rent-roll-imported one) behind the value currently in effect for
+    this lease, plus every other value this same field has held across
+    the base lease and any amendments -- not just the winning one. See
+    database.get_field_source_chain for the full shape.
+    """
+    if field_name not in FIELD_NAMES:
+        return jsonify({
+            "error": f"Unknown field '{field_name}'. Valid fields: {', '.join(FIELD_NAMES)}"
+        }), 400
+    chain = database.get_field_source_chain(lease_id, field_name)
+    if chain is None:
+        return jsonify({"error": "Lease not found"}), 404
+    return jsonify(chain), 200
 
 
 @app.route('/leases/<int:lease_id>', methods=['DELETE'])

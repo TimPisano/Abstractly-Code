@@ -306,6 +306,66 @@ def get_all_effective_leases() -> List[Dict[str, Any]]:
     return [get_effective_lease(lease["id"]) for lease in get_all_leases(document_type="lease")]
 
 
+def get_field_source_chain(lease_id: int, field_name: str) -> Optional[Dict[str, Any]]:
+    """
+    The full audit trail for one extracted field on one lease: which
+    document currently governs its effective value (base lease, or
+    whichever amendment most recently overrode it -- same "latest
+    non-null amendment wins" rule get_effective_fields already uses),
+    that document's exact source citation (page/quote for a PDF-derived
+    field, row/file/quote for a rent-roll-imported one), AND the full
+    history of every value this field has ever held across the base
+    lease and every amendment -- not just the winning one. That full
+    history is the point: a reviewer can see a field was originally X
+    per the base lease, then changed to Y by a later amendment, with
+    each value's own citation, rather than only being able to see
+    today's answer.
+
+    Returns None if lease_id doesn't exist. Each history entry's
+    `value`/`source` is None if that document didn't state this field at
+    all (not an error -- just nothing to cite there).
+    """
+    base = get_lease(lease_id)
+    if not base:
+        return None
+
+    def _entry(document: Dict[str, Any]) -> Dict[str, Any]:
+        field = document["extracted_fields"].get(field_name) or {"value": None, "source": None, "confidence": None}
+        return {
+            "document_id": document["id"],
+            "document_type": document["document_type"],
+            "filename": document["filename"],
+            "display_name": document.get("display_name"),
+            "uploaded_at": document["uploaded_at"],
+            "value": field.get("value"),
+            "source": field.get("source"),
+            "confidence": field.get("confidence"),
+            "is_effective": False,
+        }
+
+    history = [_entry(base)]
+    for amendment in get_amendments(lease_id):
+        history.append(_entry(amendment))
+
+    winner_index = None
+    for i, entry in enumerate(history):
+        if entry["value"] is not None:
+            winner_index = i  # last non-null wins, walking in upload order
+
+    if winner_index is not None:
+        history[winner_index]["is_effective"] = True
+
+    return {
+        "lease_id": lease_id,
+        "field_name": field_name,
+        "effective_value": history[winner_index]["value"] if winner_index is not None else None,
+        "effective_source": history[winner_index]["source"] if winner_index is not None else None,
+        "effective_confidence": history[winner_index]["confidence"] if winner_index is not None else None,
+        "effective_document_id": history[winner_index]["document_id"] if winner_index is not None else None,
+        "history": history,
+    }
+
+
 def insert_waitlist_signup(email: str) -> Dict[str, Any]:
     """
     Add an email to the waitlist. Returns {"status": "created", "id": ...}
