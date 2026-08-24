@@ -1,6 +1,54 @@
 # Progress Summary
 
-**Last updated**: The T12 cross-check now has a real dashboard UI, closing
+**Last updated**: Four new backend infrastructure systems shipped this
+pass, aimed at moving the product from "useful" to something an
+acquisitions team can't work without -- built, tested, and live-
+verified sequentially, one milestone/commit per item:
+
+1. **Full audit trail**: verified the "value has a source" invariant
+   actually holds across every real extraction pathway (203 sourced
+   fields checked across 15 real PDF/rent-roll fixtures), and added
+   `GET /leases/<id>/fields/<field_name>/source` -- the full source
+   chain for one data point, including which document (base lease or
+   which amendment) currently governs its effective value, plus the
+   complete history of every value that field has ever held.
+2. **Discrepancy resolution system**: every computed discrepancy
+   (single-lease risk flags, cross-lease mismatches, rent-roll-vs-
+   lease-PDF and rent-roll-vs-T12 reconciliation) now gets a stable,
+   persisted identity so a resolution survives being recomputed.
+   `POST /discrepancies/<id>/resolve` (who/when/why, permanently
+   logged, never overwritten) and `/reopen`; existing risk/
+   reconciliation endpoints now merge resolution status directly in,
+   so a resolved discrepancy never needs a manual re-read.
+3. **Portfolio history & trends**: `GET /portfolio/property-trends`
+   turns this project's already-permanent, append-only upload history
+   into real trend queries per property -- rent growth (distinguishing
+   same-tenant escalation from turnover rent resets), tenant turnover
+   events, and a historical rollover pattern (which months/years this
+   building's expirations have clustered in).
+4. **Collaboration layer**: `GET`/`POST /leases/<id>/comments` and
+   `/discrepancies/<id>/comments` -- timestamped, author-attributed
+   team notes, visible to everyone (this app has no per-account data
+   scoping yet, so that's already true by construction).
+
+No real per-user account system exists in this app yet (only a single
+admin login + a self-reported-email access gate) -- confirmed directly
+with the user rather than guessed: resolutions/comments are attributed
+via a free-text name/email the caller supplies, trusted as-is, same
+convention the existing access gate already uses. Backend-only, as
+scoped; a concurrent session was independently building frontend
+pieces (a discrepancy-resolution modal, a "verify" popover, a trends
+view) while this batch was in progress. See DECISIONS.md's
+"Acquisitions-grade infrastructure" entry (and its four item
+sub-entries) for the full design writeup, including two real bugs
+found and fixed along the way: a foreign-key crash when resolving a
+discrepancy whose lease had since been deleted, and a same-category/
+field natural-key collision between two different risk checks.
+Full suite 46/46 including live tests.
+
+---
+
+Before that: the T12 cross-check now has a real dashboard UI, closing
 the "ships API-only for now" gap from when it first shipped. New "Cross-Check
 Against a T12" section on the Upload view, parallel to the existing Import
 Rent Roll section — upload a T12 + property address, get an inline result

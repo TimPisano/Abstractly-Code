@@ -283,6 +283,68 @@ two different points in time, with a real +10% rent increase on the
 same tenant correctly read as a renewal/escalation story, not a
 turnover). Full suite 44/44 including live tests.
 
+### Item 4: Collaboration layer
+
+**Data model** (`database.py`): one new table, `comments` --
+`lease_id`/`discrepancy_id` (exactly one set per comment, enforced at
+the API layer rather than a SQL CHECK constraint, consistent with how
+every other validation in this codebase is layered), `author_name`
+(required), `author_email` (optional), `body` (required), `created_at`.
+`lease_id`/`discrepancy_id` both carry real foreign keys with `ON
+DELETE CASCADE` -- unlike `discrepancies.lease_id` (deliberately
+un-FK'd in Item 2, since a discrepancy is meant to survive its lease
+being deleted), a comment is a note ABOUT a specific lease or
+discrepancy with no independent meaning once that thing is gone, so
+cascading its deletion is the correct behavior here, not an oversight
+of the Item 2 precedent. Verified directly
+(`test_lease_comments_deleted_with_lease`).
+
+**"Visible to the whole team" needed literally nothing extra to
+build.** This app has no per-account data scoping anywhere (every
+approved user already sees the same shared pool of leases -- see the
+Session 14 pre-sale audit's blocker #1 in PROGRESS.md, still true
+today), so a plain `GET` with no session-based filtering already IS
+"visible to everyone on the account" by construction. Verified this
+is genuinely true rather than assumed:
+`test_comments_are_visible_regardless_of_which_client_posted_them`
+(unit) and the live suite (two independent HTTP clients, no shared
+cookie/session state, posting to the same lease -- a third, completely
+fresh read sees both).
+
+**Author identity**: exactly the self-reported-name/email convention
+confirmed with the user at the start of this whole batch (see this
+file's "Identity model for resolutions/comments" entry above) --
+`author_name`/`author_email` are whatever the caller supplies in the
+request body, trusted as-is, no accounts table.
+
+**New endpoints**: `GET`/`POST /leases/<id>/comments`,
+`GET`/`POST /discrepancies/<id>/comments` -- 404 for a nonexistent
+lease/discrepancy on either verb, 400 if `author_name` or `body` is
+missing/blank on POST. Comments are intentionally separate from
+`discrepancy_resolutions` (Item 2's permanent resolve/reopen log,
+which is a formal decision record with a required `correct_source`) --
+a comment is a running discussion thread with no such structure, e.g.
+"confirmed with the broker this is fine" without that being a formal
+resolution action.
+
+**Verified**: `test_comments.py` (8 tests: CRUD, cascade-delete, both
+route pairs, cross-client visibility) and `test_live_comments_api.py`
+(15 checks against the real running server: a real lease upload, real
+missing-clause risk flags to comment on, two independent team members'
+notes both visible to a third fresh reader, the 400/404 paths). Full
+suite 46/46 including live tests.
+
+### Summary: all four items shipped this pass
+
+Full audit trail (item 1), discrepancy resolution (item 2), portfolio
+history & trends (item 3), and the collaboration layer (item 4) are
+all built, tested (unit + live against the real running server), and
+committed as four separate milestones. Backend-only, as scoped --
+frontend surfaces for all four are a natural next step (a concurrent
+session was already building a discrepancy-resolution modal and a
+"verify" popover while this batch was in progress, per this session's
+own note when that was first noticed).
+
 ## Production-Readiness Hardening (session 4)
 
 A focused ~1-hour pass: real OCR verification, security/input-validation

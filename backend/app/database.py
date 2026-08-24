@@ -146,6 +146,19 @@ def init_db() -> None:
                 FOREIGN KEY (discrepancy_id) REFERENCES discrepancies(id) ON DELETE CASCADE
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS comments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                lease_id INTEGER,
+                discrepancy_id INTEGER,
+                author_name TEXT NOT NULL,
+                author_email TEXT,
+                body TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (lease_id) REFERENCES leases(id) ON DELETE CASCADE,
+                FOREIGN KEY (discrepancy_id) REFERENCES discrepancies(id) ON DELETE CASCADE
+            )
+        """)
         conn.commit()
     finally:
         conn.close()
@@ -156,6 +169,7 @@ def reset_db() -> None:
     conn = get_connection()
     try:
         conn.execute("DROP TABLE IF EXISTS lease_tags")
+        conn.execute("DROP TABLE IF EXISTS comments")
         conn.execute("DROP TABLE IF EXISTS discrepancy_resolutions")
         conn.execute("DROP TABLE IF EXISTS discrepancies")
         conn.execute("DROP TABLE IF EXISTS leases")
@@ -795,6 +809,58 @@ def get_discrepancy_resolutions(discrepancy_id: int) -> List[Dict[str, Any]]:
         rows = conn.execute(
             "SELECT * FROM discrepancy_resolutions WHERE discrepancy_id = ? ORDER BY created_at ASC, id ASC",
             (discrepancy_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+# ----------------------------------------------------------------------
+# Comments: team notes on a lease or a discrepancy, visible to everyone
+# on the account (there's no per-account data scoping in this app at
+# all yet -- see the Session 14 pre-sale audit in PROGRESS.md -- so
+# "visible to the whole team" is already the natural behavior of any
+# plain list/read here, nothing extra to build for that specifically).
+# `author_name`/`author_email` are exactly what the caller supplies,
+# trusted as-is -- same self-reported-identity convention as
+# discrepancy resolutions; see DECISIONS.md.
+# ----------------------------------------------------------------------
+
+def add_comment(
+    author_name: str, body: str, lease_id: Optional[int] = None,
+    discrepancy_id: Optional[int] = None, author_email: Optional[str] = None,
+) -> int:
+    """Exactly one of lease_id/discrepancy_id is expected to be set -- enforced by the API layer, not here, consistent with how validation is layered throughout this module."""
+    conn = get_connection()
+    try:
+        cur = conn.execute(
+            "INSERT INTO comments (lease_id, discrepancy_id, author_name, author_email, body, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (lease_id, discrepancy_id, author_name, author_email, body, datetime.now(timezone.utc).isoformat()),
+        )
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def get_lease_comments(lease_id: int) -> List[Dict[str, Any]]:
+    """Oldest first -- a comment thread reads top-to-bottom like a conversation."""
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM comments WHERE lease_id = ? ORDER BY created_at ASC, id ASC", (lease_id,)
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def get_discrepancy_comments(discrepancy_id: int) -> List[Dict[str, Any]]:
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM comments WHERE discrepancy_id = ? ORDER BY created_at ASC, id ASC", (discrepancy_id,)
         ).fetchall()
         return [dict(r) for r in rows]
     finally:

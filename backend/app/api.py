@@ -767,6 +767,41 @@ def remove_lease_tag_route(lease_id, tag):
     return jsonify(database.get_lease_tags(lease_id)), 200
 
 
+def _validate_comment_payload(payload):
+    """Shared by both comment-creation routes. Returns (author_name, author_email, body, error_response)."""
+    author_name = (payload.get('author_name') or '').strip()
+    author_email = (payload.get('author_email') or '').strip() or None
+    body = (payload.get('body') or '').strip()
+
+    missing = [field for field, value in (('author_name', author_name), ('body', body)) if not value]
+    if missing:
+        return None, None, None, (jsonify({"error": f"Missing required field(s): {', '.join(missing)}"}), 400)
+    return author_name, author_email, body, None
+
+
+@app.route('/leases/<int:lease_id>/comments', methods=['GET'])
+def list_lease_comments(lease_id):
+    """Team notes on this lease, oldest first, visible to everyone -- this app has no per-account data scoping at all yet, so "the whole team" is just everyone who can reach this API."""
+    if not database.get_lease(lease_id):
+        return jsonify({"error": "Lease not found"}), 404
+    return jsonify(database.get_lease_comments(lease_id)), 200
+
+
+@app.route('/leases/<int:lease_id>/comments', methods=['POST'])
+def add_lease_comment(lease_id):
+    """Body: {"author_name": "...", "body": "...", "author_email": "..." (optional)}. No real per-user login exists in this app yet (see DECISIONS.md) -- author_name/author_email are exactly what the caller supplies, trusted as-is."""
+    if not database.get_lease(lease_id):
+        return jsonify({"error": "Lease not found"}), 404
+
+    payload = request.get_json(silent=True) or {}
+    author_name, author_email, body, error = _validate_comment_payload(payload)
+    if error:
+        return error
+
+    database.add_comment(author_name, body, lease_id=lease_id, author_email=author_email)
+    return jsonify(database.get_lease_comments(lease_id)), 201
+
+
 @app.route('/tags', methods=['GET'])
 def list_all_tags():
     """Every distinct tag currently in use across the whole portfolio — for filter dropdowns and tag-input autocomplete."""
@@ -1340,6 +1375,29 @@ def reopen_discrepancy(discrepancy_id):
         lease_id=_activity_lease_id(discrepancy.get("lease_id")),
     )
     return jsonify(_discrepancy_detail(discrepancy) | {"latest_resolution": resolution}), 200
+
+
+@app.route('/discrepancies/<int:discrepancy_id>/comments', methods=['GET'])
+def list_discrepancy_comments(discrepancy_id):
+    """Team notes on this discrepancy, oldest first -- separate from its resolution log (discrepancy_resolutions): a comment is a running discussion, a resolution is the final "here's which source is correct and why" decision."""
+    if not database.get_discrepancy(discrepancy_id):
+        return jsonify({"error": "Discrepancy not found"}), 404
+    return jsonify(database.get_discrepancy_comments(discrepancy_id)), 200
+
+
+@app.route('/discrepancies/<int:discrepancy_id>/comments', methods=['POST'])
+def add_discrepancy_comment(discrepancy_id):
+    """Body: {"author_name": "...", "body": "...", "author_email": "..." (optional)}."""
+    if not database.get_discrepancy(discrepancy_id):
+        return jsonify({"error": "Discrepancy not found"}), 404
+
+    payload = request.get_json(silent=True) or {}
+    author_name, author_email, body, error = _validate_comment_payload(payload)
+    if error:
+        return error
+
+    database.add_comment(author_name, body, discrepancy_id=discrepancy_id, author_email=author_email)
+    return jsonify(database.get_discrepancy_comments(discrepancy_id)), 201
 
 
 @app.route('/qa', methods=['POST'])

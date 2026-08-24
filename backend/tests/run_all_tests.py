@@ -54,6 +54,7 @@ UNIT_TESTS = [
     "test_audit_trail.py",
     "test_discrepancies.py",
     "test_portfolio_history.py",
+    "test_comments.py",
 ]
 
 LIVE_API_TESTS = [
@@ -67,6 +68,7 @@ LIVE_API_TESTS = [
     "test_live_audit_trail_api.py",
     "test_live_discrepancies_api.py",
     "test_live_portfolio_history_api.py",
+    "test_live_comments_api.py",
 ]
 
 
