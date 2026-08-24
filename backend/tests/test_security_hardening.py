@@ -255,7 +255,13 @@ def main():
     status, body, _ = _request(
         "POST", "/extract", data=body_bytes, headers={"Content-Type": content_type_header}
     )
-    check("corrupted PDF returns 500 with a clean error", status == 500 and isinstance(body, dict))
+    # 422 (not 500) since document_extractor.py's refactor for
+    # multi-format upload support: "this file's content can't be
+    # processed" is a client-actionable outcome (try a clean copy,
+    # re-export it, etc.), not evidence of a server bug -- the same
+    # reasoning the password-protected-PDF check below already applied
+    # before this file's content-problem paths were unified with it.
+    check("corrupted PDF returns 422 with a clean error", status == 422 and isinstance(body, dict), str(status))
     error_text = json.dumps(body)
     check("corrupted PDF error has no file path leak", "/tmp/" not in error_text and "/Users/" not in error_text, error_text)
     check("corrupted PDF error has no Python exception type leak", "Error:" not in error_text and "Traceback" not in error_text, error_text)
@@ -273,7 +279,7 @@ def main():
     status, body, _ = _request(
         "POST", "/extract", data=body_bytes, headers={"Content-Type": content_type_header}
     )
-    check("empty (0-page) PDF fails cleanly, not a 200 with fabricated data", status in (400, 500), str(status))
+    check("empty (0-page) PDF fails cleanly, not a 200 with fabricated data", status in (400, 422, 500), str(status))
     check(
         "empty PDF error has no path/traceback leak",
         isinstance(body, dict) and "/tmp/" not in json.dumps(body) and "Traceback" not in json.dumps(body),

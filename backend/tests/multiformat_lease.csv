@@ -1,0 +1,15 @@
+Field,Value
+Tenant,Cascade Outdoor Gear Co.
+Landlord,Timberline Properties LLC
+Property Address,"500 Pioneer Square, Suite 300, Portland, Oregon 97204"
+Lease Start Date,"May 1, 2025"
+Lease End Date,"April 30, 2032"
+Monthly Rent,"$7,800.00"
+Security Deposit,"$7,800.00"
+CAM Charges,$650.00
+Square Footage,"2,900 sq ft"
+Rent Escalation,3% annually
+Renewal Options,1 option of 5 years; 120 days notice
+Permitted Use,a retail outdoor equipment store
+Default Cure Period,15 days after written notice
+Insurance Requirements,"$1,500,000 per occurrence"

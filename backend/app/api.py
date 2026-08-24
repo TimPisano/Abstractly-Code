@@ -5,8 +5,10 @@ Three layers of endpoints:
   - Stateless single-document extraction (/extract) — unchanged from
     earlier sessions, for quick one-off use that doesn't need to persist
     anything.
-  - Persisted leases (/leases, /leases/batch, amendments) — upload PDFs,
-    store their extraction results (and amendments) in SQLite.
+  - Persisted leases (/leases, /leases/batch, amendments) — upload a
+    lease document in any supported format (PDF, Excel, CSV/TSV, Word,
+    image, or plain text -- see document_extractor.py), store their
+    extraction results (and amendments) in SQLite.
   - Portfolio analysis (/portfolio/*, /leases/<id>/risks, /qa,
     /leases/compare, /leases/<id>/benchmark) — everything downstream of
     persisted leases: metrics, timeline, risk flags, grounded Q&A,
@@ -35,9 +37,9 @@ import time
 # happens before that import.
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
-import PyPDF2
-from app.pdf_extractor import PDFExtractor
 from app.field_extractor import FieldExtractor
+from app import document_extractor
+from app.document_extractor import DocumentExtractionError
 from app import database
 from app import email_service
 from app.risk_analysis import analyze_lease_risks
@@ -128,7 +130,12 @@ app.permanent_session_lifetime = timedelta(hours=12)
 
 # Configure upload settings
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 MB max file size
-ALLOWED_EXTENSIONS = {'pdf'}
+# The single source of truth for "what can be uploaded as a lease
+# document" is document_extractor.SUPPORTED_EXTENSIONS -- this is just
+# its key set, kept as its own name here since ALLOWED_EXTENSIONS is
+# the established name every existing caller (allowed_file, error
+# messages) already uses.
+ALLOWED_EXTENSIONS = set(document_extractor.SUPPORTED_EXTENSIONS.keys())
 
 # Local-only bypass for the /app access gate (see frontend/app/access-gate.js).
 # Read once at process start from backend/.env (or a real env var in any
@@ -221,16 +228,22 @@ def _default_lease_name(fields, filename, index, total):
 def _extract_leases_from_file_storage(file_storage):
     """
     Shared pipeline: save an uploaded werkzeug FileStorage to a temp
-    path, run PDF text extraction, then FieldExtractor.
-    extract_multiple_leases() to split it into one or more per-lease
-    results — a genuine single-lease PDF always comes back as exactly
-    one result (same fields/confidence/citations extract_fields() alone
-    would have produced), so this replaced the old single-lease-only
-    _extract_fields_from_file_storage without changing behavior for the
-    common case. A real multi-lease PDF instead comes back as N
-    independent results, each extracted only from its own page range —
-    see DECISIONS.md for why that matters (fields and risk-relevant
-    date candidates used to bleed across the constituent leases).
+    path, run document_extractor.extract_pages() to get this file's
+    text into the one shape every format shares (see that module's
+    docstring), then FieldExtractor.extract_multiple_leases() to split
+    it into one or more per-lease results — a genuine single-lease
+    document always comes back as exactly one result (same fields/
+    confidence/citations extract_fields() alone would have produced).
+    A real multi-lease document instead comes back as N independent
+    results, each extracted only from its own page range — see
+    DECISIONS.md for why that matters (fields and risk-relevant date
+    candidates used to bleed across the constituent leases).
+
+    Every supported file format (PDF, Excel, CSV/TSV, Word, images,
+    plain text) goes through this exact same function and the exact
+    same FieldExtractor call below it — document_extractor.py's only
+    job is getting each format's raw content into the shared `pages`
+    shape; nothing downstream of that call is format-specific.
 
     Returns (leases, None) on success, where `leases` is a non-empty
     list of dicts: {"fields": {...}, "date_candidates": {...},
@@ -241,39 +254,18 @@ def _extract_leases_from_file_storage(file_storage):
     """
     temp_path = None
     try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_file:
+        extension = file_storage.filename.rsplit('.', 1)[1].lower() if '.' in file_storage.filename else ''
+        with tempfile.NamedTemporaryFile(delete=False, suffix=f'.{extension}') as temp_file:
             temp_path = temp_file.name
             file_storage.save(temp_path)
 
-        # Checked before extraction, not left to surface as a generic
-        # "corrupted or unsupported" failure: a password-protected PDF
-        # is structurally fine and has a specific, actionable fix (open
-        # it, remove the password, re-upload) that a vague corruption
-        # message would hide. PyPDF2.is_encrypted is true even for a
-        # PDF with only an *owner* password (no password needed to
-        # open/read it) -- decrypt("") succeeds for those, and only
-        # genuinely unreadable-without-a-real-password files fail here.
-        with open(temp_path, 'rb') as pdf_file:
-            try:
-                reader = PyPDF2.PdfReader(pdf_file)
-                if reader.is_encrypted and reader.decrypt("") == 0:
-                    return None, (
-                        "This PDF is password-protected. Remove the password (or save an "
-                        "unprotected copy) and upload it again.", 422,
-                    )
-            except Exception:
-                # Not our concern here -- extract_text() below runs its
-                # own extraction attempt and OCR fallback, and reports
-                # its own failure if the file turns out to be
-                # unreadable for some other reason.
-                pass
+        with open(temp_path, 'rb') as f:
+            file_bytes = f.read()
 
-        pdf_extractor = PDFExtractor()
-        with open(temp_path, 'rb') as pdf_file:
-            pages = pdf_extractor.extract_text(pdf_file, pdf_path=temp_path)
-
-        if not pages or len(pages) == 0:
-            return None, ("Failed to extract text from PDF. The file may be corrupted or unsupported.", 500)
+        try:
+            pages = document_extractor.extract_pages(file_bytes, file_storage.filename, temp_path)
+        except DocumentExtractionError as e:
+            return None, (str(e), 422)
 
         field_extractor = FieldExtractor()
         split_results = field_extractor.extract_multiple_leases(pages)
@@ -295,8 +287,8 @@ def _extract_leases_from_file_storage(file_storage):
         # The real exception (which can include the temp file's path,
         # e.g. a FileNotFoundError) is logged server-side only — the
         # client gets a generic message, never str(e) verbatim.
-        logger.exception("Error processing uploaded PDF")
-        return None, ("Error processing PDF. The file may be corrupted or unsupported.", 500)
+        logger.exception("Error processing uploaded document")
+        return None, ("Error processing this file. It may be corrupted or unsupported.", 500)
 
     finally:
         if temp_path and os.path.exists(temp_path):
@@ -314,7 +306,8 @@ def _validate_upload():
         return None, (jsonify({"error": "No file selected"}), 400)
 
     if not allowed_file(file.filename):
-        return None, (jsonify({"error": "Invalid file type. Only PDF files are allowed."}), 400)
+        supported = "PDF, Excel (.xlsx/.xls/.xlsm), CSV/TSV, Word (.docx/.doc), images (.jpg/.png/.tiff), or plain text (.txt)"
+        return None, (jsonify({"error": f"Unsupported file type. Please upload one of: {supported}."}), 400)
 
     return file, None
 
@@ -326,17 +319,26 @@ def _validate_upload():
 @app.route('/extract', methods=['POST'])
 def extract_lease_data():
     """
-    Extract lease data from an uploaded PDF without persisting it.
+    Extract lease data from an uploaded document without persisting it.
 
-    Expects: multipart form data with a 'file' field containing a PDF.
+    Expects: multipart form data with a 'file' field containing a
+    lease document in any supported format -- PDF, Excel (.xlsx/.xls/
+    .xlsm), CSV/TSV, Word (.docx/.doc), an image (.jpg/.png/.tiff, run
+    through OCR), or plain text (.txt). See document_extractor.py:
+    every format is converted to the same page-text shape before
+    extraction, so the response below looks identical regardless of
+    which format was uploaded.
     Returns: {"leases": [{"display_name":..., "source_page_start":...,
     "source_page_end":..., "fields": {one entry per extracted field,
     each shaped as {"value":..., "source": {"page":N, "quote":"..."} |
     null, "confidence": "high"|"medium"|"low"|null}}}, ...]} — always a
-    list, even for a single-lease PDF (a list of one), so a caller never
-    needs two different response shapes depending on whether the file
-    turned out to contain more than one lease.
-    Error responses: 400 (no/invalid file), 500 (extraction failure).
+    list, even for a single-lease document (a list of one), so a
+    caller never needs two different response shapes depending on
+    whether the file turned out to contain more than one lease.
+    Error responses: 400 (no/invalid file), 422 (a real, specific
+    reason this exact file can't be processed -- password-protected,
+    corrupted, no readable text/content, etc.), 500 (unexpected
+    extraction failure).
     """
     file, error = _validate_upload()
     if error:
@@ -419,10 +421,12 @@ def _persist_split_leases(filename, split_leases):
 @app.route('/leases', methods=['POST'])
 def upload_lease():
     """
-    Upload a single PDF, extract its fields, and persist it as one or
-    more base leases — one PER LEASE actually found in the file (see
-    FieldExtractor.extract_multiple_leases). An ordinary single-lease
-    PDF still produces exactly one lease, same as before.
+    Upload a single lease document (PDF, Excel, CSV/TSV, Word, image,
+    or plain text -- see document_extractor.py), extract its fields,
+    and persist it as one or more base leases — one PER LEASE actually
+    found in the file (see FieldExtractor.extract_multiple_leases). An
+    ordinary single-lease document still produces exactly one lease,
+    same as before, regardless of which format it arrived in.
     """
     file, error = _validate_upload()
     if error:
@@ -446,10 +450,11 @@ def upload_lease():
 @app.route('/leases/batch', methods=['POST'])
 def upload_leases_batch():
     """
-    Upload multiple PDFs in one request. Each file is processed
-    independently — if one fails (corrupted, wrong type, extraction
-    error), the rest still process. Any file that turns out to bundle
-    more than one lease is split into its own leases, same as
+    Upload multiple lease documents (any supported format -- see
+    document_extractor.py) in one request. Each file is processed
+    independently — if one fails (corrupted, unsupported format,
+    extraction error), the rest still process. Any file that turns out
+    to bundle more than one lease is split into its own leases, same as
     POST /leases — so one entry in `results` can carry several created
     leases in its `leases` list. Returns a per-file result list so the
     caller can see exactly what succeeded and what didn't.
@@ -462,8 +467,9 @@ def upload_leases_batch():
     for file_storage in files:
         filename = file_storage.filename
         if not filename or not allowed_file(filename):
+            supported = "PDF, Excel (.xlsx/.xls/.xlsm), CSV/TSV, Word (.docx/.doc), images (.jpg/.png/.tiff), or plain text (.txt)"
             results.append({"filename": filename or "(unnamed)", "success": False,
-                             "error": "Invalid file type. Only PDF files are allowed."})
+                             "error": f"Unsupported file type. Please upload one of: {supported}."})
             continue
 
         split_leases, error = _extract_leases_from_file_storage(file_storage)
@@ -669,7 +675,7 @@ def bulk_delete_leases():
 
 @app.route('/leases/<int:lease_id>/amendments', methods=['POST'])
 def upload_amendment(lease_id):
-    """Upload a PDF (amendment/addendum) and link it to an existing base lease."""
+    """Upload an amendment/addendum document (any supported format -- see document_extractor.py) and link it to an existing base lease."""
     base_lease = database.get_lease(lease_id)
     if not base_lease:
         return jsonify({"error": "Base lease not found"}), 404

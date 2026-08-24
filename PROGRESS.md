@@ -1,6 +1,35 @@
 # Progress Summary
 
-**Last updated**: Sidebar navigation interaction polish -- frontend-
+**Last updated**: The lease upload system now accepts any file format
+a real rent roll or lease might come in, not just PDF: Excel (.xlsx/
+.xls/.xlsm), CSV/TSV, Word (.docx/.doc), images (.jpg/.png/.tiff, via
+the same OCR pipeline scanned PDFs already use), and plain text. Every
+format converts to the exact same page-text shape PDF extraction
+already produced, so it feeds the identical downstream extraction/
+confidence/citation pipeline with zero format-specific logic anywhere
+past the new `app/document_extractor.py` dispatcher -- confirmed
+directly: every format extracts the IDENTICAL field values from
+matching real fixture files, not just "looks right per format."
+
+Tested end to end with real files in every format, per explicit
+instruction, both as direct pipeline calls (22 tests) and as real
+`POST /leases` uploads against the actually-running dev server (49
+checks, including a real mixed-format batch upload and real corrupted/
+empty/unsupported-file error responses over HTTP) -- the `.doc` fixture
+is a genuine binary Word file (macOS's own `textutil`, not a fake).
+Found and fixed one real bug before shipping: joining Excel/CSV cells
+with `" | "` broke the extractor's label-style matching outright (4 of
+9 fields came back missing) and leaked a stray `"| "` into one field's
+value -- switched to a plain-space join, which reads as the same
+natural "Label: Value" prose the patterns already expect. Frontend
+upload UI (`accept=` attributes, drag-drop messaging, client-side file
+filter) updated to match. Full suite 54/54 including live tests. See
+DECISIONS.md's "Multi-format upload support" entry for the full
+writeup.
+
+---
+
+Before that: sidebar navigation interaction polish -- frontend-
 only, no backend involved. Three things asked for: (1) instant view
 switching with a subtle fade/slide instead of a hard snap, the sidebar
 itself never re-rendering, and a clear always-visible active indicator;

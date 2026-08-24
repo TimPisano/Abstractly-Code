@@ -1,6 +1,10 @@
 /**
  * Upload View: drag-and-drop or click-to-browse upload of one or more
- * PDF leases.
+ * lease documents, in any of this project's supported formats (see
+ * SUPPORTED_EXTENSIONS below) -- not PDF-only. Every format is
+ * converted server-side into the same extraction pipeline (see
+ * backend/app/document_extractor.py), so this view's own logic never
+ * needs to know or care which format a given file turned out to be.
  *
  * Files are uploaded one at a time (POST /leases per file, sequential,
  * not the /leases/batch endpoint) specifically so each file's own
@@ -22,6 +26,21 @@
  * file), not a single `lease` object.
  */
 
+// Kept in sync with backend/app/document_extractor.py's
+// SUPPORTED_EXTENSIONS -- the single client-side list of what a lease
+// document upload will accept, used both for the pre-upload filter
+// below and to build the "Please select..." error message.
+const SUPPORTED_LEASE_EXTENSIONS = [
+    'pdf', 'xlsx', 'xls', 'xlsm', 'csv', 'tsv', 'docx', 'doc',
+    'jpg', 'jpeg', 'png', 'tif', 'tiff', 'txt',
+];
+const SUPPORTED_LEASE_FORMATS_LABEL = 'PDF, Excel (.xlsx/.xls/.xlsm), CSV/TSV, Word (.docx/.doc), images (.jpg/.png/.tiff), or plain text (.txt)';
+
+function hasSupportedLeaseExtension(filename) {
+    const ext = (filename || '').split('.').pop().toLowerCase();
+    return SUPPORTED_LEASE_EXTENSIONS.includes(ext);
+}
+
 const Upload = {
     load() {
         this.reset();
@@ -39,9 +58,9 @@ const Upload = {
     },
 
     async handleFiles(fileList) {
-        const files = Array.from(fileList).filter(f => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
+        const files = Array.from(fileList).filter(f => hasSupportedLeaseExtension(f.name));
         if (files.length === 0) {
-            showError('Please select PDF files only.');
+            showError(`Please select a supported file type: ${SUPPORTED_LEASE_FORMATS_LABEL}.`);
             return;
         }
 
@@ -99,8 +118,8 @@ const Upload = {
         const textEl = itemEl.querySelector('.upload-progress-status-text');
         const messages = [
             [0, 'Processing (running OCR / extracting fields)…'],
-            [6000, 'Still working — larger or scanned PDFs take longer…'],
-            [15000, 'Still working — a multi-lease PDF can take up to a minute to split and extract…'],
+            [6000, 'Still working — larger files, or scanned/photographed documents, take longer…'],
+            [15000, 'Still working — a multi-lease document can take up to a minute to split and extract…'],
         ];
         textEl.textContent = messages[0][1];
         const timers = messages.slice(1).map(([delay, text]) => setTimeout(() => { textEl.textContent = text; }, delay));
@@ -351,7 +370,7 @@ const T12CrossCheck = {
         if (response.matched_lease_count === 0) {
             container.innerHTML = `
                 <p class="upload-summary">No leases found at <strong>${escapeHtml(response.property_address)}</strong> to compare against.</p>
-                <p class="upload-result-detail">This T12's actual rental income is <strong>${this._money(response.t12_annual_rental_income)}</strong>/year, but nothing on file matches that property address yet -- upload a rent roll or lease PDFs for it first, or check the address matches exactly how it appears elsewhere in this app.</p>
+                <p class="upload-result-detail">This T12's actual rental income is <strong>${this._money(response.t12_annual_rental_income)}</strong>/year, but nothing on file matches that property address yet -- upload a rent roll or lease document for it first, or check the address matches exactly how it appears elsewhere in this app.</p>
             `;
             document.getElementById('t12Results').style.display = 'block';
             return;

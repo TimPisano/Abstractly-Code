@@ -1,5 +1,157 @@
 # Implementation Decisions
 
+## Multi-format upload support (PDF, Excel, CSV/TSV, Word, images, plain text)
+
+The lease upload system (`/extract`, `POST /leases`, `POST /leases/
+batch`, amendments) accepted only PDF. Real-world rent rolls and
+leases arrive in every format an office actually uses -- this expands
+upload to also accept Excel (.xlsx/.xls/.xlsm), CSV/TSV, Word (.docx/
+.doc), images (.jpg/.png/.tiff, via OCR), and plain text, with every
+format feeding the exact same downstream extraction/validation
+pipeline PDF already used.
+
+### Design: one shared `pages` shape, one dispatcher module
+
+New `app/document_extractor.py`: `extract_pages(file_bytes, filename,
+temp_path)` dispatches on file extension and returns the SAME shape
+`PDFExtractor` already produced -- `List[{"page": N, "text": "...",
+["ocr_confidence": N]}]` -- so `FieldExtractor.extract_fields()`/
+`extract_multiple_leases()` (confidence scoring, source citations, the
+audit trail, risk analysis, everything) runs completely unchanged
+regardless of which format the document arrived in. This is what
+"one consistent pipeline, not separate systems per file type" (the
+literal ask) actually means in code: there is exactly one place
+(`extract_pages`) that knows about file formats, and nothing
+downstream of it does. `api.py`'s `_extract_leases_from_file_storage`
+was refactored to call this instead of `PDFExtractor` directly --
+still saves to a temp file first (now with the real extension, not a
+hardcoded `.pdf` suffix), still calls the same
+`FieldExtractor.extract_multiple_leases()` afterward, unchanged.
+
+Per-format extraction, each returning the shared shape or raising
+`DocumentExtractionError` with a specific, user-facing message:
+- **PDF**: delegates to the existing `PDFExtractor` unchanged
+  (including the password-protected-PDF pre-check, moved here from
+  `api.py` verbatim).
+- **Excel (.xlsx/.xlsm)**: `openpyxl` (already a dependency). One
+  `pages` entry per sheet.
+- **Excel legacy (.xls)**: `openpyxl` dropped `.xls` support entirely;
+  `xlrd` 2.x dropped `.xlsx` support entirely in the other direction
+  -- both libraries are genuinely needed, one per format, not a choice
+  between them.
+- **CSV/TSV**: stdlib `csv`, delimiter picked by extension.
+- **Word (.docx)**: `python-docx` -- paragraphs + table cells.
+- **Word legacy (.doc)**: no full parser available in this environment
+  (no antiword/LibreOffice system binary -- this project has hit real
+  sudo/install constraints on this machine before, see the OCR-via-
+  conda-forge entry below) and no pure-Python library implements the
+  full binary Word format either. Uses `olefile` (pure Python, a real
+  maintained OLE2-compound-document reader) to pull the raw
+  `WordDocument` stream, then a documented best-effort heuristic
+  (decode as UTF-16LE, keep only printable-ASCII runs of 4+ chars) to
+  recover text -- meaningfully lower-fidelity than the real `.docx`
+  path, and honestly labeled as such in the code. If too little real
+  text comes back (under 50 chars) to be useful, fails clearly with a
+  real, actionable fix ("save as .docx") rather than silently feeding
+  noise into extraction.
+- **Images (.jpg/.png/.tiff)**: `PIL.Image.open` +
+  `PDFExtractor._ocr_page_with_confidence` -- the EXACT SAME OCR call
+  scanned PDFs already use, not a second OCR implementation. Carries
+  `ocr_confidence` in its page entry, same as an OCR'd PDF page, so
+  `field_extractor.py`'s existing confidence-downgrade logic for
+  low-legibility OCR applies identically regardless of whether the
+  source was a scanned PDF page or a standalone photo.
+- **Plain text (.txt)**: direct decode (utf-8-sig, falling back to
+  latin-1), one page.
+
+### A real bug found and fixed before shipping: pipe-joined table cells silently broke label-style field matching
+
+The first version of the Excel/CSV row-to-text renderer joined cells
+with `" | "` for readability. Running the real fixture files through
+the pipeline (not just trusting the code) immediately surfaced a real
+problem: `FieldExtractor`'s label-style patterns (tenant, landlord,
+both dates) require the value to sit immediately after the label with
+only whitespace in between, so a row like `["Tenant:", "Acme Corp"]`
+rendered as `"Tenant: | Acme Corp"` failed to match at all (4 of 9
+fields came back `None`), and `property_address` (matched by a looser
+pattern) picked up a literal stray `"| "` into its captured value.
+Fixed by joining cells with a single space instead -- `"Tenant: Acme
+Corp"` reads as genuine label-style prose the existing patterns
+already handle, with zero changes needed to `field_extractor.py`
+itself. All 4 tabular formats (.xlsx, .xls, .csv, .tsv) re-verified
+correct afterward.
+
+### Testing: real fixture files in every format, not just PDF, with the SAME content
+
+`tests/create_multiformat_fixtures.py` generates real, on-disk files
+in every new format -- via the real library for that format
+(`openpyxl`, `xlwt`, `python-docx`, `PIL`, stdlib `csv`) -- all
+carrying the EXACT SAME lease content, so results are directly
+comparable: if the pipeline is genuinely format-agnostic, every format
+should extract identical values, and the test suite asserts exactly
+that rather than eyeballing each format separately. The `.doc` fixture
+is a GENUINE binary legacy Word file, produced by converting the real
+`.docx` fixture with macOS's own built-in `textutil -convert doc` --
+not a hand-crafted blob with the right extension and wrong internal
+structure, which would have tested nothing real about the `olefile`
+path. Images are real rendered photos of the same lease text (PIL,
+reusing `create_scanned_lease.py`'s established technique), genuinely
+OCR'd, not fed pre-extracted text.
+
+`test_document_extractor.py` (22 tests) runs every format through
+`extract_pages` + `FieldExtractor` directly and asserts all 9 expected
+field values match, plus the specific failure modes requirement 4
+asked for (empty file, corrupted file per format, unsupported
+extension, no extension at all) each with its own clear message.
+`test_live_multiformat_upload_api.py` (49 checks) goes further, per
+explicit instruction to actually upload real files rather than trust
+the code: every real fixture POSTed to the actually-running dev server
+over real HTTP (`POST /leases`), confirming persisted extraction
+results, real source citations, retrievability via `GET`, that every
+format converged on the IDENTICAL tenant value (the literal proof of
+"one consistent pipeline"), real error responses over HTTP for
+unsupported/empty/corrupted files, and a mixed-format batch upload
+(.xlsx + .docx + .txt in one `POST /leases/batch` request) all
+succeeding together.
+
+### A real, pre-existing test's status-code expectations needed updating -- not a regression
+
+`test_security_hardening.py` (written when only PDF was supported)
+hard-coded `status == 500` for "corrupted PDF" and `status in (400,
+500)` for "empty PDF" -- `document_extractor.py` deliberately unifies
+every content-level failure (corrupted, empty, wrong format) onto 422
+("Unprocessable Entity": the request was well-formed, but this file's
+content can't be processed -- a client-actionable outcome, not
+evidence of a server bug), the same status the password-protected-PDF
+path already used before this refactor. Updated both assertions to
+match the new, more consistent status codes rather than reverting the
+better status code choice to satisfy an old assertion.
+
+### Frontend
+
+`frontend/app/index.html`'s two file inputs (`fileInput`,
+`amendmentFileInput`) now accept
+`.pdf,.xlsx,.xls,.xlsm,.csv,.tsv,.docx,.doc,.jpg,.jpeg,.png,.tif,.tiff,.txt`
+instead of `.pdf` alone; `upload-view.js`'s client-side pre-filter and
+its "Please select PDF files only" error message were doing the exact
+same PDF-only gatekeeping one layer up and needed the same fix (a new
+`SUPPORTED_LEASE_EXTENSIONS`/`SUPPORTED_LEASE_FORMATS_LABEL` pair, kept
+in comment-documented sync with `document_extractor.py`'s own
+`SUPPORTED_EXTENSIONS`), plus the upload page's own "PDF files only"
+subtext and progress-message copy ("larger or scanned PDFs take
+longer" -> "larger files, or scanned/photographed documents, take
+longer").
+
+### New dependencies
+
+`xlrd` (legacy `.xls` reading), `python-docx` (`.docx`), `olefile`
+(legacy `.doc`'s best-effort OLE2 stream access) -- all pure-Python,
+no new system-level binaries required (unlike the OCR/poppler
+dependency, which already needed a conda-forge workaround on this
+machine -- see below; deliberately did not add a second such
+dependency for `.doc` support when a pure-Python best-effort path was
+available instead).
+
 ## Sidebar navigation: grouping, collapse/expand, and transition polish
 
 Pure interaction/organization polish on the existing sidebar, no
