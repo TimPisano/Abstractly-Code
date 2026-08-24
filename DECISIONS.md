@@ -192,6 +192,97 @@ resolve, confirm the resolution persists across a completely fresh
 `GET /leases/<id>/risks` call, reopen, the 400/404 paths). Full suite
 42/42 including live tests.
 
+### Item 3: Portfolio history & trends
+
+**The underlying data was already permanent -- the gap was that it
+wasn't queryable as a timeline.** `leases` has always been append-only:
+a lease PDF upload and a rent-roll import both always INSERT a new
+row; the only UPDATE path in the entire schema is a display_name
+rename via PATCH. So every rent-roll re-import a firm has ever done
+has always been silently accumulating a real historical record --
+nothing new had to be persisted for this item. What was actually
+missing was the ability to query that accumulated history as a trend,
+which is what `app/portfolio_history.py` (pure read/aggregation, zero
+new tables) and the new `GET /portfolio/property-trends` endpoint
+provide.
+
+**Two different address-matching granularities, reused deliberately
+from existing code rather than invented fresh**: building-level
+matching (`_normalize_building_address`, suite-insensitive -- same
+convention `compute_loss_to_lease`/`compute_t12_reconciliation` already
+use) decides which historical records belong to "this property" at
+all. Unit-level matching (`_normalize_address`, suite-INCLUSIVE -- same
+convention `compute_rent_roll_reconciliation`/`compute_cross_lease_
+mismatches` already use) decides which records are the SAME unit's
+history over time, for rent growth and tenant turnover specifically.
+Using the building-level match for the unit-level trends would blend
+different units' independent rent/tenant histories into one nonsense
+timeline -- confirmed this distinction actually matters with
+`test_rent_growth_different_units_tracked_independently` (two
+different suites at the same building, opposite rent trends, tracked
+as two separate unit timelines, not averaged together into a
+meaningless number).
+
+**Rent growth and tenant turnover are reported separately, on purpose,
+even though they're related.** A rent change at the exact same
+transition as a tenant change is a market reset at turnover; a rent
+change with the SAME tenant is a scheduled escalation or renewal.
+Collapsing both into one undifferentiated "rent grew X%" number would
+hide which story actually happened. Every rent-growth transition
+carries its own `tenant_changed` flag so a caller never has to guess
+which kind of change they're looking at -- verified directly
+(`test_rent_growth_flags_tenant_change_at_transition`: a real tenant
+swap alongside a rent DECREASE, the honest opposite of the "growth"
+name, deliberately chosen as a test case so the function is proven to
+report what actually happened rather than what the feature's name
+might imply).
+
+**Rollover pattern is historical, not forward-looking -- deliberately
+distinct from the existing `compute_rollover_schedule`.** That
+existing feature (portfolio.py) already reports the CURRENT,
+forward-looking expiration schedule from today. This is the opposite
+direction: a building-level bucket of every lease_end_date this
+building's full historical record has ever shown, by month and by
+year, surfacing a pattern (e.g. a disproportionate cluster of
+expirations in one calendar month across multiple years) that's only
+visible at all because every past upload was retained -- exactly the
+"something firms can't get anywhere else without redoing the work
+manually" the request asked for.
+
+**Honestly documented limitation, not silently avoided**: `DELETE
+/leases/<id>` (`database.delete_lease`) is still a real hard delete --
+deleting a lease also deletes its history from this feature, confirmed
+directly (`test_deletion_removes_history_documented_limitation`).
+Deliberately NOT changed to a soft-delete for this pass: doing so would
+mean touching `get_all_leases`/`get_all_effective_leases`'s filtering
+semantics, which every existing "current portfolio state" computation
+in `portfolio.py` (metrics, risk analysis, WALT, tenant concentration,
+loss-to-lease, every reconciliation) depends on -- a materially larger
+and riskier change than this feature asked for, and one that would
+touch dozens of already-tested, already-shipped code paths for a
+concern (permanence through deletion specifically) that wasn't the
+literal ask. Flagged here as a legitimate follow-up if permanence
+through deletion turns out to matter in practice.
+
+**New endpoint**: `GET /portfolio/property-trends?property_address=X`
+-- 400 if the address is missing/blank, otherwise 200 always,
+including zero matching records (an honest "no history yet," not an
+error -- a real address with no data and a garbled/invalid address are
+different situations, and only the second is a 400). Returns the raw
+history timeline plus all three trend sections (`rent_growth`,
+`tenant_turnover`, `rollover_pattern`) in one response, rather than
+three separate endpoints -- kept the surface small since a UI
+reasonably wants all three together for one property.
+
+**Verified**: `test_portfolio_history.py` (18 tests covering all three
+trend computations plus the combined endpoint) and
+`test_live_portfolio_history_api.py` (15 checks against the real
+running server, simulating the actual real-world workflow this feature
+exists for: the SAME rent roll re-imported for the same property at
+two different points in time, with a real +10% rent increase on the
+same tenant correctly read as a renewal/escalation story, not a
+turnover). Full suite 44/44 including live tests.
+
 ## Production-Readiness Hardening (session 4)
 
 A focused ~1-hour pass: real OCR verification, security/input-validation

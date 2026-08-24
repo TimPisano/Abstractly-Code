@@ -65,6 +65,7 @@ from app.portfolio import (
 )
 from app.comparison import compare_leases, benchmark_lease
 from app.discrepancies import sync_lease_risk_flags, sync_rent_roll_reconciliation, sync_t12_reconciliation
+from app.portfolio_history import compute_property_trends
 from app.rent_roll_export import generate_rent_roll_csv, generate_rent_roll_excel
 from app.report import generate_portfolio_report_html
 from app.summary_memo import generate_lease_summary_pdf, generate_portfolio_summary_pdf, monthly_report_extra_sections
@@ -1092,6 +1093,32 @@ def portfolio_loss_to_lease():
     """Upside vs. this portfolio's own best-achieved rent/sqft per building (no external market-rent data source exists -- see compute_loss_to_lease's docstring for why this is an internal proxy, not true market rent)."""
     leases = database.get_all_effective_leases()
     return jsonify(compute_loss_to_lease(leases)), 200
+
+
+@app.route('/portfolio/property-trends', methods=['GET'])
+def portfolio_property_trends():
+    """
+    GET /portfolio/property-trends?property_address=X
+
+    Every historical upload (lease PDF or rent-roll row, base leases
+    only -- amendments are folded into their base lease's current
+    values, not separately timelined) for one building, plus rent
+    growth, tenant turnover, and rollover-pattern trends computed from
+    it. Building-level matched (suite-insensitive) -- see
+    compute_property_trends's own docstring for the full shape and the
+    unit-vs-building matching distinction. 400 if property_address is
+    missing/blank; otherwise 200 even when zero records match (an
+    honest "no history yet" result, not an error).
+    """
+    property_address = (request.args.get('property_address') or '').strip()
+    if not property_address:
+        return jsonify({"error": "property_address is required"}), 400
+
+    leases = database.get_all_effective_leases()
+    trends = compute_property_trends(leases, property_address)
+    if trends is None:
+        return jsonify({"error": "property_address did not normalize to a usable address"}), 400
+    return jsonify(trends), 200
 
 
 @app.route('/portfolio/rent-roll-reconciliation', methods=['GET'])
