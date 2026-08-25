@@ -60,6 +60,8 @@ UNIT_TESTS = [
     "test_portfolio_health_score.py",
     "test_document_extractor.py",
     "test_cache.py",
+    "test_concurrency.py",
+    "test_performance.py",
 ]
 
 LIVE_API_TESTS = [
@@ -79,6 +81,7 @@ LIVE_API_TESTS = [
     "test_live_health_score_api.py",
     "test_live_multiformat_upload_api.py",
     "test_live_sidebar_endpoints_api.py",
+    "test_live_performance_api.py",
 ]
 
 

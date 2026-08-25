@@ -179,6 +179,22 @@ def init_db() -> None:
             )
         """)
         _migrate_schema(conn)
+        # get_amendments()'s `WHERE base_lease_id = ?` (called by
+        # get_effective_lease/get_effective_fields, both on the
+        # single-lease read path AND once per row during a rent-roll
+        # import) has no index to use without this -- SQLite doesn't
+        # auto-index a bare FOREIGN KEY column, only PRIMARY KEY/UNIQUE
+        # ones. Without it, that query full-table-scans `leases` on
+        # every call, so cost grows with total row count: importing
+        # row N does an O(N) scan just to confirm row N has no
+        # amendments yet, making an M-row import O(M^2) overall.
+        # Measured directly: a 20,000-row synthetic rent-roll import
+        # (not the real 500-unit stress file, which imports in ~2s and
+        # was never actually slow) took over 2 minutes and was still
+        # climbing before this index existed. `CREATE INDEX IF NOT
+        # EXISTS` is safe to run on every init_db() call, including
+        # against an already-populated table from before this fix.
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_leases_base_lease_id ON leases(base_lease_id)")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS waitlist_signups (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -408,6 +424,10 @@ def delete_lease(lease_id: int) -> None:
         conn.execute("DELETE FROM leases WHERE base_lease_id = ?", (lease_id,))
         conn.execute("DELETE FROM leases WHERE id = ?", (lease_id,))
         conn.commit()
+    except OverflowError:
+        # An out-of-range id (see get_lease) can never match a real
+        # row, so this is a no-op rather than a 500.
+        pass
     finally:
         conn.close()
 
@@ -420,6 +440,8 @@ def get_amendments(base_lease_id: int) -> List[Dict[str, Any]]:
             (base_lease_id,),
         ).fetchall()
         return [_row_to_dict(r) for r in rows]
+    except OverflowError:
+        return []
     finally:
         conn.close()
 
@@ -458,8 +480,51 @@ def get_effective_lease(lease_id: int) -> Optional[Dict[str, Any]]:
 
 
 def get_all_effective_leases() -> List[Dict[str, Any]]:
-    """All base leases (not amendments) with their fields amendment-merged."""
-    return [get_effective_lease(lease["id"]) for lease in get_all_leases(document_type="lease")]
+    """
+    All base leases (not amendments) with their fields amendment-merged
+    -- same output shape as calling get_effective_lease() on every base
+    lease individually, but in a single query instead of one connection
+    per lease per amendment lookup.
+
+    This function is the read path behind nearly every portfolio-wide
+    endpoint (dashboard, risks, trends, health-score, alerts, Q&A,
+    investment memos, ...), so its cost multiplies across the whole
+    app. The naive per-lease version (get_effective_lease in a loop)
+    opens 4 new SQLite connections per lease -- get_lease x2,
+    get_amendments x2 -- which is fine for a handful of leases but was
+    measured at ~1.7s for 831 leases (a real rent-roll-import-scale
+    portfolio) purely from connection/round-trip overhead, well before
+    the number of leases gets anywhere close to what would actually
+    strain SQLite itself. Fetching every lease (base + amendments) in
+    one query and merging in Python removes the N+1 pattern entirely.
+    """
+    conn = get_connection()
+    try:
+        rows = conn.execute("SELECT * FROM leases ORDER BY uploaded_at").fetchall()
+    finally:
+        conn.close()
+
+    all_leases = [_row_to_dict(r) for r in rows]
+    amendments_by_base: Dict[int, List[Dict[str, Any]]] = {}
+    for lease in all_leases:
+        if lease["document_type"] != "lease" and lease.get("base_lease_id") is not None:
+            amendments_by_base.setdefault(lease["base_lease_id"], []).append(lease)
+
+    results = []
+    for base in all_leases:
+        if base["document_type"] != "lease":
+            continue
+        amendments = amendments_by_base.get(base["id"], [])
+        effective = dict(base["extracted_fields"])
+        for amendment in amendments:
+            for field_name, field_data in amendment["extracted_fields"].items():
+                if isinstance(field_data, dict) and field_data.get("value") is not None:
+                    effective[field_name] = field_data
+        result = dict(base)
+        result["extracted_fields"] = effective
+        result["amendment_count"] = len(amendments)
+        results.append(result)
+    return results
 
 
 def get_field_source_chain(lease_id: int, field_name: str) -> Optional[Dict[str, Any]]:
@@ -667,7 +732,7 @@ def add_lease_tag(lease_id: int, tag: str) -> None:
             (lease_id, tag),
         )
         conn.commit()
-    except sqlite3.IntegrityError:
+    except (sqlite3.IntegrityError, OverflowError):
         pass
     finally:
         conn.close()
@@ -681,6 +746,8 @@ def remove_lease_tag(lease_id: int, tag: str) -> None:
             (lease_id, tag),
         )
         conn.commit()
+    except OverflowError:
+        pass
     finally:
         conn.close()
 
@@ -693,6 +760,8 @@ def get_lease_tags(lease_id: int) -> List[str]:
             (lease_id,),
         ).fetchall()
         return [row["tag"] for row in rows]
+    except OverflowError:
+        return []
     finally:
         conn.close()
 
@@ -772,32 +841,147 @@ def upsert_discrepancy(
     never silently un-resolve or re-resolve it; only an explicit
     resolve_discrepancy/reopen_discrepancy call changes status. Returns
     the discrepancy's id either way.
+
+    A single atomic `INSERT ... ON CONFLICT DO UPDATE` statement, NOT
+    a "SELECT to check, then INSERT or UPDATE" pair -- that older
+    pattern has a real, confirmed race: two concurrent requests
+    syncing the SAME natural_key (e.g. two people uploading the same
+    file at once, or two tabs hitting /portfolio/risks together) could
+    both see "doesn't exist yet" and both attempt to INSERT, and the
+    loser would hit the `natural_key` UNIQUE constraint as an uncaught
+    `IntegrityError` -- reproduced directly with 5 concurrent SQLite
+    connections racing the old two-step pattern before this fix (4 of
+    5 failed). `ON CONFLICT` pushes the check-and-act into SQLite
+    itself, which is what's actually safe to do it atomically.
     """
     now = datetime.now(timezone.utc).isoformat()
     conn = get_connection()
     try:
-        existing = conn.execute(
-            "SELECT id FROM discrepancies WHERE natural_key = ?", (natural_key,)
-        ).fetchone()
-        if existing:
-            conn.execute(
-                "UPDATE discrepancies SET category = ?, field = ?, severity = ?, message = ?, "
-                "details = ?, lease_id = ?, related_lease_id = ?, last_seen_at = ? WHERE id = ?",
-                (category, field, severity, message, json.dumps(details), lease_id, related_lease_id, now, existing["id"]),
-            )
-            conn.commit()
-            return existing["id"]
-
-        cur = conn.execute(
-            "INSERT INTO discrepancies (discrepancy_type, natural_key, lease_id, related_lease_id, "
-            "category, field, severity, message, details, status, first_detected_at, last_seen_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)",
+        conn.execute(
+            """
+            INSERT INTO discrepancies (discrepancy_type, natural_key, lease_id, related_lease_id,
+                category, field, severity, message, details, status, first_detected_at, last_seen_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)
+            ON CONFLICT(natural_key) DO UPDATE SET
+                category = excluded.category,
+                field = excluded.field,
+                severity = excluded.severity,
+                message = excluded.message,
+                details = excluded.details,
+                lease_id = excluded.lease_id,
+                related_lease_id = excluded.related_lease_id,
+                last_seen_at = excluded.last_seen_at
+            """,
             (discrepancy_type, natural_key, lease_id, related_lease_id, category, field, severity, message, json.dumps(details), now, now),
         )
         conn.commit()
-        return cur.lastrowid
+        # A second SELECT after the atomic upsert above is race-free --
+        # the row is now guaranteed to exist under this natural_key
+        # (the race this fixes was in the OLD check-then-act pattern,
+        # not here).
+        row = conn.execute("SELECT id FROM discrepancies WHERE natural_key = ?", (natural_key,)).fetchone()
+        return row["id"]
     finally:
         conn.close()
+
+
+def upsert_discrepancies_bulk(items: List[Dict[str, Any]]) -> Dict[str, int]:
+    """
+    Same atomic upsert as upsert_discrepancy, for many discrepancies at
+    once, sharing ONE connection and ONE commit instead of one
+    connect()+commit() pair per item. Each item in `items` is a dict
+    with the same keys as upsert_discrepancy's params (natural_key,
+    discrepancy_type, category, message, details, and optionally
+    lease_id/related_lease_id/field/severity). Returns
+    {natural_key: discrepancy_id} for every item.
+
+    Exists purely for the full-portfolio risk-flag resync
+    (GET /portfolio/risks), which upserts one discrepancy per flag --
+    thousands at real portfolio scale (measured: 3142 flags across 831
+    leases). Profiling that resync found sqlite3.Connection.commit()
+    and .connect() alone accounted for ~1.4s of a ~2.9s request purely
+    from being called thousands of times, with the actual SQL execute()
+    time being comparable -- i.e. per-call overhead, not query
+    complexity, was the bottleneck. This function is that hot path's
+    replacement; upsert_discrepancy itself is untouched and still used
+    everywhere a single discrepancy is upserted (a single lease's own
+    risk flags, rent-roll/T12 reconciliation, etc.), where that
+    overhead is negligible.
+    """
+    if not items:
+        return {}
+    now = datetime.now(timezone.utc).isoformat()
+    conn = get_connection()
+    try:
+        for item in items:
+            conn.execute(
+                """
+                INSERT INTO discrepancies (discrepancy_type, natural_key, lease_id, related_lease_id,
+                    category, field, severity, message, details, status, first_detected_at, last_seen_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)
+                ON CONFLICT(natural_key) DO UPDATE SET
+                    category = excluded.category,
+                    field = excluded.field,
+                    severity = excluded.severity,
+                    message = excluded.message,
+                    details = excluded.details,
+                    lease_id = excluded.lease_id,
+                    related_lease_id = excluded.related_lease_id,
+                    last_seen_at = excluded.last_seen_at
+                """,
+                (
+                    item["discrepancy_type"], item["natural_key"], item.get("lease_id"), item.get("related_lease_id"),
+                    item["category"], item.get("field"), item.get("severity"), item["message"],
+                    json.dumps(item["details"]), now, now,
+                ),
+            )
+        conn.commit()
+
+        natural_keys = [item["natural_key"] for item in items]
+        placeholders = ",".join("?" for _ in natural_keys)
+        rows = conn.execute(
+            f"SELECT id, natural_key FROM discrepancies WHERE natural_key IN ({placeholders})", natural_keys
+        ).fetchall()
+        return {row["natural_key"]: row["id"] for row in rows}
+    finally:
+        conn.close()
+
+
+def get_discrepancies_by_ids(discrepancy_ids: List[int]) -> Dict[int, Dict[str, Any]]:
+    """Batched version of get_discrepancy for many ids at once — {id: discrepancy}. Same OverflowError safety as get_discrepancy (an out-of-range id just won't match any row)."""
+    if not discrepancy_ids:
+        return {}
+    conn = get_connection()
+    try:
+        placeholders = ",".join("?" for _ in discrepancy_ids)
+        rows = conn.execute(f"SELECT * FROM discrepancies WHERE id IN ({placeholders})", discrepancy_ids).fetchall()
+        return {row["id"]: _discrepancy_row_to_dict(row) for row in rows}
+    except OverflowError:
+        return {}
+    finally:
+        conn.close()
+
+
+def get_discrepancy_resolutions_bulk(discrepancy_ids: List[int]) -> Dict[int, List[Dict[str, Any]]]:
+    """Batched version of get_discrepancy_resolutions for many ids at once — {discrepancy_id: [resolutions, oldest first]}."""
+    if not discrepancy_ids:
+        return {}
+    conn = get_connection()
+    try:
+        placeholders = ",".join("?" for _ in discrepancy_ids)
+        rows = conn.execute(
+            f"SELECT * FROM discrepancy_resolutions WHERE discrepancy_id IN ({placeholders}) ORDER BY created_at ASC, id ASC",
+            discrepancy_ids,
+        ).fetchall()
+    except OverflowError:
+        return {}
+    finally:
+        conn.close()
+
+    result: Dict[int, List[Dict[str, Any]]] = {}
+    for row in rows:
+        result.setdefault(row["discrepancy_id"], []).append(dict(row))
+    return result
 
 
 def _discrepancy_row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
@@ -921,6 +1105,8 @@ def get_discrepancy_resolutions(discrepancy_id: int) -> List[Dict[str, Any]]:
             (discrepancy_id,),
         ).fetchall()
         return [dict(r) for r in rows]
+    except OverflowError:
+        return []
     finally:
         conn.close()
 
@@ -993,6 +1179,8 @@ def get_lease_comments(lease_id: int) -> List[Dict[str, Any]]:
             "SELECT * FROM comments WHERE lease_id = ? ORDER BY created_at ASC, id ASC", (lease_id,)
         ).fetchall()
         return [dict(r) for r in rows]
+    except OverflowError:
+        return []
     finally:
         conn.close()
 
@@ -1004,6 +1192,8 @@ def get_discrepancy_comments(discrepancy_id: int) -> List[Dict[str, Any]]:
             "SELECT * FROM comments WHERE discrepancy_id = ? ORDER BY created_at ASC, id ASC", (discrepancy_id,)
         ).fetchall()
         return [dict(r) for r in rows]
+    except OverflowError:
+        return []
     finally:
         conn.close()
 
@@ -1102,28 +1292,110 @@ def upsert_alert(
         recurred; that's what makes dismiss meaningfully different
         from the system's own auto-resolve.
     Returns the alert's id either way.
+
+    A single atomic `INSERT ... ON CONFLICT DO UPDATE`, not a
+    "SELECT to check, then INSERT or UPDATE" pair -- the old two-step
+    pattern has a real, confirmed race between concurrent requests
+    syncing the same natural_key (see upsert_discrepancy for the full
+    writeup and reproduction). The status-transition rule above is
+    expressed directly in the SET clause via a CASE so it still holds
+    under the atomic path.
     """
     now = datetime.now(timezone.utc).isoformat()
     conn = get_connection()
     try:
-        existing = conn.execute("SELECT id, status FROM alerts WHERE natural_key = ?", (natural_key,)).fetchone()
-        if existing:
-            new_status = "active" if existing["status"] == "auto_resolved" else existing["status"]
-            conn.execute(
-                "UPDATE alerts SET severity = ?, title = ?, message = ?, details = ?, lease_id = ?, "
-                "status = ?, last_seen_at = ? WHERE id = ?",
-                (severity, title, message, json.dumps(details), lease_id, new_status, now, existing["id"]),
-            )
-            conn.commit()
-            return existing["id"]
-
-        cur = conn.execute(
-            "INSERT INTO alerts (alert_type, natural_key, lease_id, severity, title, message, details, "
-            "status, first_detected_at, last_seen_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)",
+        conn.execute(
+            """
+            INSERT INTO alerts (alert_type, natural_key, lease_id, severity, title, message, details,
+                status, first_detected_at, last_seen_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
+            ON CONFLICT(natural_key) DO UPDATE SET
+                severity = excluded.severity,
+                title = excluded.title,
+                message = excluded.message,
+                details = excluded.details,
+                lease_id = excluded.lease_id,
+                status = CASE WHEN alerts.status = 'auto_resolved' THEN 'active' ELSE alerts.status END,
+                last_seen_at = excluded.last_seen_at
+            """,
             (alert_type, natural_key, lease_id, severity, title, message, json.dumps(details), now, now),
         )
         conn.commit()
-        return cur.lastrowid
+        row = conn.execute("SELECT id FROM alerts WHERE natural_key = ?", (natural_key,)).fetchone()
+        return row["id"]
+    finally:
+        conn.close()
+
+
+def get_alerts_existing_natural_keys(natural_keys: List[str]) -> set:
+    """Which of these natural_keys already have an alert row -- used to compute created-vs-refreshed counts around upsert_alerts_bulk without a get_alert_by_natural_key round trip per candidate."""
+    if not natural_keys:
+        return set()
+    conn = get_connection()
+    try:
+        placeholders = ",".join("?" for _ in natural_keys)
+        rows = conn.execute(f"SELECT natural_key FROM alerts WHERE natural_key IN ({placeholders})", natural_keys).fetchall()
+        return {row["natural_key"] for row in rows}
+    finally:
+        conn.close()
+
+
+def upsert_alerts_bulk(items: List[Dict[str, Any]]) -> None:
+    """
+    Same atomic upsert as upsert_alert (including the auto_resolved ->
+    active status-transition rule), for many alerts at once, sharing
+    ONE connection and ONE commit instead of one connect()+commit() per
+    item. Each item is a dict with the same keys as upsert_alert's
+    params. Exists for the same reason as upsert_discrepancies_bulk --
+    see that function's docstring; app/alerts.py's generate_alerts()
+    is the caller, upserting one candidate per detected condition
+    across the whole portfolio in one pass.
+    """
+    if not items:
+        return
+    now = datetime.now(timezone.utc).isoformat()
+    conn = get_connection()
+    try:
+        for item in items:
+            conn.execute(
+                """
+                INSERT INTO alerts (alert_type, natural_key, lease_id, severity, title, message, details,
+                    status, first_detected_at, last_seen_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
+                ON CONFLICT(natural_key) DO UPDATE SET
+                    severity = excluded.severity,
+                    title = excluded.title,
+                    message = excluded.message,
+                    details = excluded.details,
+                    lease_id = excluded.lease_id,
+                    status = CASE WHEN alerts.status = 'auto_resolved' THEN 'active' ELSE alerts.status END,
+                    last_seen_at = excluded.last_seen_at
+                """,
+                (
+                    item["alert_type"], item["natural_key"], item.get("lease_id"), item["severity"],
+                    item["title"], item["message"], json.dumps(item["details"]), now, now,
+                ),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def auto_resolve_alerts_bulk(alert_ids: List[int]) -> int:
+    """Batched version of auto_resolve_alert for many ids at once, one connection/commit. Returns how many were actually transitioned (already-non-'active' ids are silently skipped, same as the single-id version)."""
+    if not alert_ids:
+        return 0
+    conn = get_connection()
+    try:
+        placeholders = ",".join("?" for _ in alert_ids)
+        cur = conn.execute(
+            f"UPDATE alerts SET status = 'auto_resolved' WHERE id IN ({placeholders}) AND status = 'active'",
+            alert_ids,
+        )
+        conn.commit()
+        return cur.rowcount
+    except OverflowError:
+        return 0
     finally:
         conn.close()
 

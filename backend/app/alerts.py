@@ -240,32 +240,37 @@ def generate_alerts(reference_date=None) -> Dict[str, Any]:
     leases = database.get_all_effective_leases()
     candidates = detect_all_candidates(leases, reference_date=reference_date)
 
-    seen_keys = set()
-    created = 0
-    refreshed = 0
-    for candidate in candidates:
-        natural_key = candidate["natural_key"]
-        seen_keys.add(natural_key)
-        existing = database.get_alert_by_natural_key(natural_key)
-        database.upsert_alert(
-            alert_type=candidate["alert_type"],
-            natural_key=natural_key,
-            severity=candidate["severity"],
-            title=candidate["title"],
-            message=candidate["message"],
-            details=candidate["details"],
-            lease_id=candidate.get("lease_id"),
-        )
-        if existing is None:
-            created += 1
-        else:
-            refreshed += 1
+    # Bulk path: one batched existence check, one batched upsert, one
+    # batched auto-resolve UPDATE, instead of 2-3 connect()+commit()
+    # round trips per candidate. At real portfolio scale (hundreds of
+    # leases, each capable of raising several alert candidates) that
+    # per-call overhead was the dominant cost of this endpoint -- same
+    # root cause as GET /portfolio/risks, see
+    # database.upsert_discrepancies_bulk's docstring for the full
+    # profiling writeup of the identical pattern.
+    seen_keys = {c["natural_key"] for c in candidates}
+    existing_keys = database.get_alerts_existing_natural_keys(list(seen_keys))
+    created = sum(1 for c in candidates if c["natural_key"] not in existing_keys)
+    refreshed = len(candidates) - created
 
-    auto_resolved = 0
-    for alert in database.list_alerts(status="active"):
-        if alert["alert_type"] in _MANAGED_ALERT_TYPES and alert["natural_key"] not in seen_keys:
-            if database.auto_resolve_alert(alert["id"]):
-                auto_resolved += 1
+    database.upsert_alerts_bulk([
+        {
+            "alert_type": c["alert_type"],
+            "natural_key": c["natural_key"],
+            "severity": c["severity"],
+            "title": c["title"],
+            "message": c["message"],
+            "details": c["details"],
+            "lease_id": c.get("lease_id"),
+        }
+        for c in candidates
+    ])
+
+    to_auto_resolve = [
+        alert["id"] for alert in database.list_alerts(status="active")
+        if alert["alert_type"] in _MANAGED_ALERT_TYPES and alert["natural_key"] not in seen_keys
+    ]
+    auto_resolved = database.auto_resolve_alerts_bulk(to_auto_resolve)
 
     active_alerts = database.list_alerts(status="active")
     by_severity: Dict[str, int] = {"high": 0, "medium": 0, "low": 0}

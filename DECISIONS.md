@@ -1,5 +1,299 @@
 # Implementation Decisions
 
+## Reliability hardening pass: error handling, performance, data integrity, security
+
+Requested: an explicit 4-part hardening pass over the system built so
+far -- (1) audit every endpoint's error handling (malformed files,
+empty uploads, missing fields, concurrent uploads of the same file,
+extremely large files -- nothing should ever 500 with a raw
+traceback), (2) a real performance check against the 500-unit
+synthetic rent roll (`~/Rent-Roll_AI/input/STRESS_TEST_500pg.xlsx`),
+(3) confirm no corrupted/half-written records survive a mid-request
+crash, (4) a security pass on auth, sessions, and upload paths. Write
+tests for each, run the full suite, report what was found/fixed vs.
+already solid. Full detail below; short version: two real bugs found
+and fixed (a concurrency race, an O(n^2) missing index), two real
+performance bottlenecks found and fixed (both N+1-shaped), everything
+else audited was already solid or (in one case) is flagged as a known
+residual risk rather than fixed.
+
+### 1. Error handling: a real, confirmed concurrency race in the discrepancy/alert upsert functions
+
+`database.upsert_discrepancy()` and `upsert_alert()` used a
+non-atomic "SELECT to check if this natural_key exists, then INSERT
+or UPDATE" pattern across two separate statements. Two concurrent
+requests re-syncing the SAME natural_key (the literal scenario named
+in the request: two people uploading the same messy lease file at
+once, both triggering a risk-flag sync for the same flags) could both
+see "doesn't exist yet" and both attempt to INSERT, and the loser
+would hit the `natural_key` UNIQUE constraint as an uncaught
+`IntegrityError`. Reproduced directly first with a bare 5-thread race
+against a throwaway SQLite table sharing the same pattern (4 of 5
+threads failed), then against the real functions
+(`tests/test_concurrency.py`).
+
+Because of the global `@app.errorhandler(Exception)` catch-all, this
+was never a raw-traceback crash -- but it WAS a generic, unhelpful
+500 on that one concurrent request instead of it succeeding cleanly,
+which is exactly the gap the request's "every failure should return a
+clear, specific error message" bar is about.
+
+**Fix**: rewrote both functions to use a single atomic `INSERT ... ON
+CONFLICT(natural_key) DO UPDATE SET ...` statement instead of the
+two-step check-then-act, followed by a `SELECT id ... WHERE
+natural_key = ?` to retrieve the row's id (deliberately NOT using
+SQLite's `RETURNING` clause -- needs 3.35.0+, less portable than `ON
+CONFLICT`, which only needs 3.24.0+; this machine has 3.51.0 but
+that's not guaranteed elsewhere). `upsert_discrepancy`'s SET clause
+omits `status` entirely, preserving "recomputing a flag never
+silently un/re-resolves it." `upsert_alert`'s SET clause expresses the
+existing 3-way status-transition rule (active stays active,
+auto_resolved flips to active, dismissed stays dismissed) as a SQL
+`CASE`. Verified the race is closed with 25-thread concurrent-upsert
+tests against both real functions (`test_concurrency.py`, unit-level)
+and a live 6-thread concurrent-identical-file-upload test against the
+real running server (`test_security_hardening.py`) -- both green.
+
+### 1b. Error handling: completed the OverflowError-guard audit
+
+An id path parameter outside SQLite's signed-64-bit INTEGER column
+range (e.g. `GET /leases/999999999999999999999999`) raises Python's
+`OverflowError` when bound as a query parameter -- Flask's `<int:...>`
+converter accepts any Python int, unbounded. Most id-taking
+`database.py` functions already caught this and treated it as "not
+found" (same as any other out-of-range id), but eight did not:
+`delete_lease`, `get_amendments`, `add_lease_tag`, `remove_lease_tag`,
+`get_lease_tags`, `get_discrepancy_resolutions`, `get_lease_comments`,
+`get_discrepancy_comments`. Added the same `except OverflowError:
+return None/[]/False` (matching each function's existing "not found"
+return shape) to all eight. Verified every id-taking path in
+`database.py` (14 total, including ones that delegate like
+`resolve_discrepancy`/`reopen_discrepancy` -> `_add_resolution`, and
+ones that are safe transitively because they call an already-guarded
+function like `get_effective_fields` -> `get_lease`) degrades cleanly
+on a deliberately huge id, via a direct script exercising all 14.
+
+### 2. Performance: two real N+1/per-call-overhead bottlenecks, and a real O(n^2) missing index
+
+Measured against the real 500-unit stress file (831 leases actually
+imported) with the backend's own dashboard endpoints:
+
+**`database.get_all_effective_leases()`** -- the read path behind
+nearly every portfolio-wide endpoint (dashboard, risks, trends,
+health-score, alerts, Q&A, investment memos, ...) -- called
+`get_lease()`/`get_amendments()` (each opening its OWN
+`sqlite3.connect()`) up to 4x per lease. At 831 leases: ~1.7s on
+`GET /leases`, `/portfolio/summary`, `/portfolio/trends`,
+`/portfolio/rent-roll-reconciliation`, EVERY SINGLE CALL (no caching
+possible on `/leases` or `/summary`; `/trends` and `/health-score`
+are cached but still paid this cost on every cache miss). **Fix**:
+rewrote it to fetch every lease (base + amendments) in ONE query and
+merge amendments in Python, instead of looping `get_effective_lease`
+per base lease. Single-lease functions (`get_effective_lease`,
+`get_effective_fields`, `get_amendments`) are untouched -- only the
+"get ALL effective leases" bulk path changed. Result: ~1.7s -> 0.03-
+0.1s across the board.
+
+**`GET /portfolio/risks` and `POST /alerts/generate`** individually
+upserted one discrepancy/alert row per flag/candidate -- each its own
+`connect()` + `commit()`. Profiled directly (cProfile): at 831 leases
+/ 3142 flags, `sqlite3.Connection.commit()` and `.connect()` alone
+accounted for ~1.4s of a ~2.9s request, purely from being called
+thousands of times -- per-call overhead, not query complexity (a
+micro-benchmark of connect+write+commit against the same db file
+showed ~0.16ms each; the real cost only shows up in aggregate at
+thousands of calls, plus each flag was ALSO individually re-read via
+`get_discrepancy`/`get_discrepancy_resolutions` to annotate resolution
+status, doubling the per-call overhead). **Fix**: added
+`upsert_discrepancies_bulk`/`upsert_alerts_bulk` (one shared
+connection, one commit, for the whole batch) and
+`get_discrepancies_by_ids`/`get_discrepancy_resolutions_bulk`/
+`get_alerts_existing_natural_keys`/`auto_resolve_alerts_bulk` (batched
+reads), plus `sync_all_lease_risk_flags_bulk` in `discrepancies.py`
+(a deliberate line-for-line copy of `sync_lease_risk_flags`'
+natural-key derivation, not a shared helper -- see its docstring for
+why). The single-item functions are untouched and still used
+everywhere a single discrepancy/alert is synced (a lone lease's own
+risk flags, rent-roll/T12 reconciliation). Result: `/portfolio/risks`
+~2.4-3.6s -> ~0.15-0.2s; `/alerts/generate` ~2.7-2.9s -> ~0.15-0.4s.
+Verified: resolving a discrepancy and re-checking `/portfolio/risks`
+still shows the correct resolved status/resolution details through
+the new bulk path (not just "it's fast," but "it's still correct").
+
+**A genuine O(n^2) bug, found while stress-testing beyond the real
+file's 831 rows**: `leases.base_lease_id` had no index (SQLite
+doesn't auto-index a bare FOREIGN KEY column, only PRIMARY
+KEY/UNIQUE ones). `get_amendments()`'s `WHERE base_lease_id = ?` --
+called once per row during a rent-roll import, via
+`get_effective_lease` -- therefore full-table-scanned `leases` on
+every call. Importing row N did an O(N) scan just to confirm row N
+has no amendments yet, making an M-row import O(M^2) overall. The
+real 831-row file was never actually slow (1.87s, well before the
+quadratic cost becomes visible) -- this was only caught by
+deliberately stress-testing past it, with a 20,000-row synthetic CSV:
+import time was still climbing past 2 minutes when killed. **Fix**:
+`CREATE INDEX IF NOT EXISTS idx_leases_base_lease_id ON
+leases(base_lease_id)` in `init_db()` (safe to run against an
+already-populated table). Result: the same 20,000-row import went
+from ">2 minutes, still climbing" to 30.7s. Regression-guarded with an
+exact schema check (`test_performance.py`) rather than a timing
+threshold -- a quadratic blowup only becomes visibly slow at
+thousands of rows, so a timing assertion tight enough to catch a
+regression would be slow to run and scale-dependent/flaky; checking
+the index itself exists is instant and exact.
+
+Wrote `tests/test_performance.py` (portable, synthetic 600-lease
+fixture, no external file dependency -- safe to run in CI or on
+another machine) and `tests/test_live_performance_api.py` (the real
+500-unit file, gracefully skipped if not present on the current
+machine, since it's a large user-generated fixture, not a repo
+asset).
+
+### 3. Data integrity: crash-safety re-confirmed, specifically for the newer bulk-import/bulk-sync paths
+
+Session 14's earlier crash-safety audit (kill -9 mid-single-PDF-
+upload, 5 concurrent uploads) predates the bulk rent-roll import path
+and this pass's new bulk-upsert functions, so it needed re-checking
+against those specifically, not just re-trusted.
+
+Killed the live server (`kill -9`) mid-request twice against a large
+in-flight rent-roll import (once at 1230 leases, once at 12,500,
+using a 20,000-row synthetic CSV to get a wide enough window to land
+the kill reliably) and inspected the raw db file directly with the
+server down: `PRAGMA integrity_check` = `ok` both times, zero foreign-
+key violations, and every one of the persisted rows' `extracted_fields`
+JSON parsed cleanly (no partial/garbled JSON from an interrupted
+write) both times. The server restarted cleanly against the
+mid-crash db state and every previously-committed row was immediately
+queryable via the API. No new safeguard was needed -- `insert_lease`
+already commits one row at a time, so each row is its own atomic
+transaction; a crash between rows can only ever produce "N rows fully
+committed, the rest simply never inserted," never a half-written row.
+
+One thing worth noting about this pass's own bulk-upsert functions
+(`upsert_discrepancies_bulk`/`upsert_alerts_bulk`): they intentionally
+batch many INSERTs into ONE transaction with ONE commit at the end,
+which is a STRONGER crash-safety property than the old per-item
+version, not a weaker one -- if the server crashes mid-batch (after
+some `execute()` calls but before the single `commit()`), SQLite's
+rollback discards the entire uncommitted batch atomically, so a
+`/portfolio/risks` or `/alerts/generate` call interrupted mid-flight
+leaves the discrepancies/alerts tables exactly as they were before
+that call started, never partially updated. This is safe specifically
+because that data is fully re-derived from scratch on the next
+successful call anyway (nothing there is durability-critical
+per-request state).
+
+### 4. Security pass
+
+**SQL injection: audited clean.** Every dynamic SQL statement in the
+codebase lives in `database.py` (confirmed no other module calls
+`.execute()` on a SQL string). Every `WHERE`/`IN (...)` clause built
+with an f-string only interpolates either (a) a run of `?`
+placeholders whose COUNT is data-derived but whose actual VALUES are
+always passed through `execute()`'s parameter list, never string-
+formatted in, or (b) hardcoded literal clause text
+(`"status = ?"`, etc.) from a small fixed set, never a user-supplied
+column/table name. The one non-parameterized f-string
+(`ALTER TABLE leases ADD COLUMN {column} {sql_type}` in
+`_migrate_schema`) interpolates values from a hardcoded dict literal
+in the same function, never request data. Re-verified specifically
+against the newer dynamic-WHERE-clause functions
+(`list_discrepancies`, `list_alerts`) added since the last audit --
+same safe pattern.
+
+**Q&A engine (`qa_engine.py`): audited clean.** The free-text
+`question` from `POST /qa` is only ever the SUBJECT being matched
+against a fixed set of hardcoded regex cue patterns (`re.search(cue,
+question)`), never used as a pattern itself, and never reaches SQL,
+`eval`/`exec`, or a shell. No injection surface.
+
+**Path traversal: audited clean, on both upload and export paths.**
+Upload: the temp file `NamedTemporaryFile(suffix=f'.{extension}')`
+that document extraction writes to derives `extension` from the
+UPLOADED filename's text after its last `.` -- which, in principle,
+means a crafted filename containing `/` or `..` after that last dot
+could suffix its way outside the intended temp directory. In
+practice this is closed by `allowed_file()`'s WHITELIST check (an
+exact match against `document_extractor.SUPPORTED_EXTENSIONS`'s fixed
+key set -- `pdf`, `xlsx`, `csv`, `docx`, ... none containing a path
+separator), which every call site (`/leases`, `/leases/batch`,
+`/extract`, `/leases/<id>/amendments`) runs BEFORE the temp-file code
+executes; any malicious extension string is rejected with 400 first.
+Export: `Content-Disposition` filenames built from user-supplied
+lease/scope names (`safe_name = re.sub(r'[^A-Za-z0-9_.-]', '_',
+display_name)`) are already whitelist-sanitized against CRLF/header-
+injection and path-traversal characters -- confirmed this covers
+every dynamic-filename export route.
+
+**XXE (XML External Entity): a genuinely new risk surface from the
+multi-format upload work, investigated and confirmed safe --
+empirically, not just by reading the library source.** `.xlsx` and
+`.docx` are both ZIP archives of XML that `openpyxl`/`python-docx`
+parse internally; a malicious file could in principle embed a DOCTYPE
+declaring an external entity to exfiltrate a local file's contents
+into the "extracted" output. Built real, malicious `.xlsx` and
+`.docx` files by hand (a plain zip with a crafted `sharedStrings.xml`/
+`document.xml` -- openpyxl's/python-docx's own writer APIs won't let
+you inject this kind of payload) targeting a real local file with a
+known secret marker string, and uploaded them through the actual
+`POST /extract` route on the live server. Result: the secret never
+appeared in the response either time. Root cause confirmed in both
+libraries' source: `openpyxl/xml/functions.py` and `docx/oxml/
+parser.py` both construct their lxml parser with
+`resolve_entities=False` explicitly, specifically to prevent this --
+already hardened at the library level, nothing to fix here. The two
+formats fail differently (the crafted `.xlsx` 422s cleanly as
+"corrupted", since the parser errors on the resulting undefined
+entity reference; the crafted `.docx` still 200s, with the unresolved
+entity silently dropped -- `Permitted Use: &xxe;` extracts as
+`Permitted Use:`) but neither leaks anything or 500s. Regression-
+tested for real in `test_security_hardening.py` (not just
+documented) -- both payloads, both via the actual live HTTP route.
+
+**Admin auth (`auth.py`): re-reviewed, no regression.** bcrypt
+password hashing, `bcrypt.checkpw`'s constant-time comparison always
+runs even on a known-wrong email (so response timing can't leak which
+of email/password was wrong), fails closed on a malformed
+`ADMIN_PASSWORD_HASH` rather than 500ing, signed Flask session cookie
+(`SESSION_COOKIE_SAMESITE=None` + `SECURE=True` + `HTTPONLY=True`,
+unchanged), generic 401 (no user enumeration). All three
+genuinely-privileged admin routes (`GET /waitlist`, `POST
+/waitlist/<id>/approve`, `POST /waitlist/<id>/deny`) are still
+decorated with `@require_admin` -- reconfirmed LIVE (not just by
+reading the decorator), all three 401 with no session. `CORS(app,
+supports_credentials=True, origins=ALLOWED_ORIGINS)` still uses an
+explicit origin allowlist, never a wildcard (required for
+credentialed CORS to work at all -- browsers reject wildcard+
+credentials regardless). `FLASK_DEBUG` still opt-in-only (Werkzeug's
+interactive debugger stays off unless an operator explicitly sets it),
+confirmed via `run.py`/`api.py`'s own `app.run(debug=...)` call.
+
+**"No per-account data scoping" limitation: re-confirmed still
+accurately documented, not silently worse.** This app has no
+multi-tenant data scoping anywhere by explicit, longstanding design
+(every approved user shares one pool of leases -- see this file's
+"Visible to the whole team needed literally nothing extra to build"
+entry). Nothing in this pass added or removed any scoping logic, so
+there's no "unauthorized access to another account's data" surface to
+audit beyond the admin-only routes above, which are the one place
+real privilege separation exists in this app and are confirmed
+correctly enforced.
+
+**Found but NOT fixed -- flagged as a residual risk**: `.xlsx`/`.docx`
+uploads are ZIP archives, and `MAX_CONTENT_LENGTH` (16MB) only bounds
+the COMPRESSED input size. A maliciously crafted small zip (a "zip
+bomb") can still decompress to a much larger size in memory during
+parsing -- not investigated to the same empirical standard as the XXE
+check above (no actual zip-bomb was built and thrown at the live
+route), so this is a plausible-but-unconfirmed DoS-class risk, not a
+confirmed one. Deliberately not fixed in this pass: a real guard
+needs to check each ZIP member's compressed-vs-uncompressed size
+ratio (or its uncompressed size outright) before/while extracting,
+which is more design work than a quick patch, and wasn't itself part
+of the request. Worth a dedicated look if file-upload hardening
+continues.
+
 ## Real-file test: a genuine 500+-unit Excel rent roll through both upload pipelines
 
 Requested test: confirm the multi-format upload work is genuinely

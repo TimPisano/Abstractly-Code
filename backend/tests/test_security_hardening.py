@@ -52,6 +52,111 @@ def _multipart_body(files):
     return b"".join(parts), f"multipart/form-data; boundary={boundary}"
 
 
+def _multipart_body_with_content_type(files):
+    """Like _multipart_body, but each file carries its own Content-Type -- needed for the XXE checks below, which upload .xlsx/.docx rather than .pdf. (The server itself only ever dispatches on the filename's extension, never this header, but sending an honest one keeps the request realistic.)"""
+    boundary = "----SecurityTestBoundaryCT"
+    parts = []
+    for field_name, filename, content, content_type in files:
+        parts.append((
+            f"--{boundary}\r\n"
+            f'Content-Disposition: form-data; name="{field_name}"; filename="{filename}"\r\n'
+            f"Content-Type: {content_type}\r\n\r\n"
+        ).encode() + content + b"\r\n")
+    parts.append(f"--{boundary}--\r\n".encode())
+    return b"".join(parts), f"multipart/form-data; boundary={boundary}"
+
+
+def _build_xxe_xlsx(secret_path: str) -> bytes:
+    """
+    A minimal, hand-built .xlsx (a plain zip -- openpyxl's own writer
+    API won't let us inject raw malicious XML) whose sharedStrings.xml
+    carries a classic XXE payload: a DOCTYPE declaring an external
+    entity pointing at `secret_path`, referenced from a cell value. If
+    openpyxl's XML parsing ever resolved external entities, the
+    extracted "spreadsheet" text would contain that file's contents.
+    """
+    import io
+    import zipfile
+
+    content_types = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+<Default Extension="xml" ContentType="application/xml"/>
+<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+<Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/>
+</Types>'''
+    root_rels = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>'''
+    workbook = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+<sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets>
+</workbook>'''
+    workbook_rels = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/>
+</Relationships>'''
+    sheet1 = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<sheetData>
+<row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1" t="s"><v>1</v></c></row>
+<row r="2"><c r="A2" t="s"><v>2</v></c><c r="B2" t="s"><v>3</v></c></row>
+</sheetData>
+</worksheet>'''
+    xxe_shared_strings = f'''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!DOCTYPE sst [<!ENTITY xxe SYSTEM "file://{secret_path}">]>
+<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="4" uniqueCount="4">
+<si><t>Tenant</t></si>
+<si><t>Rent</t></si>
+<si><t>&xxe;</t></si>
+<si><t>$1000</t></si>
+</sst>'''
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("[Content_Types].xml", content_types)
+        z.writestr("_rels/.rels", root_rels)
+        z.writestr("xl/workbook.xml", workbook)
+        z.writestr("xl/_rels/workbook.xml.rels", workbook_rels)
+        z.writestr("xl/worksheets/sheet1.xml", sheet1)
+        z.writestr("xl/sharedStrings.xml", xxe_shared_strings)
+    return buf.getvalue()
+
+
+def _build_xxe_docx(secret_path: str) -> bytes:
+    """Same idea as _build_xxe_xlsx, for .docx: document.xml carries the DOCTYPE/external-entity payload."""
+    import io
+    import zipfile
+
+    content_types = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+<Default Extension="xml" ContentType="application/xml"/>
+<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+</Types>'''
+    root_rels = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+</Relationships>'''
+    xxe_document = f'''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!DOCTYPE document [<!ENTITY xxe SYSTEM "file://{secret_path}">]>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+<w:body>
+<w:p><w:r><w:t>Tenant: &xxe;</w:t></w:r></w:p>
+</w:body>
+</w:document>'''
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("[Content_Types].xml", content_types)
+        z.writestr("_rels/.rels", root_rels)
+        z.writestr("word/document.xml", xxe_document)
+    return buf.getvalue()
+
+
 def _build_xss_test_pdf() -> bytes:
     """A synthetic one-page lease whose Permitted Use clause is a script
     tag, built in-memory with reportlab (no fixture file on disk to go
@@ -399,6 +504,108 @@ def main():
             body["leases"][0].get("looks_like_lease") is True,
             json.dumps({k: v for k, v in body["leases"][0].items() if k != "fields"}),
         )
+
+    # --- Missing 'file' field entirely (not just an empty filename):
+    # a multipart body with no file part at all must fail the same
+    # clean way, not KeyError its way into the generic 500 handler. ---
+    body_bytes, content_type_header = _multipart_body([])
+    status, body, _ = _request(
+        "POST", "/extract", data=body_bytes, headers={"Content-Type": content_type_header}
+    )
+    check("upload with no file field returns 400 with a clear message", status == 400 and isinstance(body, dict) and "file" in body.get("error", "").lower(), str((status, body)))
+
+    # --- Completely empty request body (no multipart structure at
+    # all, just a zero-length POST) against an upload route. ---
+    status, body, _ = _request(
+        "POST", "/extract", data=b"", headers={"Content-Type": "multipart/form-data; boundary=x"}
+    )
+    check("zero-length upload body fails cleanly (400/422), not a 500", status in (400, 422), str((status, body)))
+
+    # --- Concurrent uploads of the SAME file: the literal scenario
+    # named in the hardening request. This is what would have raced
+    # database.upsert_discrepancy's natural_key before the atomic
+    # INSERT ... ON CONFLICT fix (see test_concurrency.py for the
+    # direct DB-layer reproduction) -- two people uploading the same
+    # messy lease at once both trigger a risk-flag sync for the exact
+    # same natural_key concurrently. Every concurrent request must
+    # succeed (201), none may 500. ---
+    print("\n--- Concurrent uploads of the same file ---")
+    import threading
+    messy_lease_bytes = None
+    fixture_path = os.path.join(FIXTURES_DIR, "missing_clauses_office.pdf")
+    if os.path.exists(fixture_path):
+        with open(fixture_path, "rb") as f:
+            messy_lease_bytes = f.read()
+
+    concurrent_results = []
+    concurrent_created_ids = []
+    results_lock = threading.Lock()
+
+    def upload_once():
+        body_bytes, content_type_header = _multipart_body([("file", "missing_clauses_office.pdf", messy_lease_bytes)])
+        status, body, _ = _request("POST", "/leases", data=body_bytes, headers={"Content-Type": content_type_header})
+        with results_lock:
+            concurrent_results.append((status, body))
+            if status == 201 and isinstance(body, dict):
+                for lease in body.get("leases", []):
+                    concurrent_created_ids.append(lease["id"])
+
+    if messy_lease_bytes:
+        threads = [threading.Thread(target=upload_once) for _ in range(6)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        statuses = [s for s, _ in concurrent_results]
+        check("6 concurrent uploads of the same file all return 201 (none 500 from the natural_key race)", all(s == 201 for s in statuses), str(statuses))
+
+        # Give the async-ish sync a moment then confirm the portfolio
+        # endpoints that read the synced discrepancies still respond
+        # cleanly (would 500 if a race left the DB in a bad state).
+        status, risks_body, _ = _request("GET", "/portfolio/risks")
+        check("portfolio risks endpoint still responds cleanly after the concurrent uploads", status == 200, str(status))
+
+        for lease_id in concurrent_created_ids:
+            _request("DELETE", f"/leases/{lease_id}")
+    else:
+        check("concurrent same-file upload test skipped (fixture missing)", True, "missing_clauses_office.pdf not found")
+
+    # --- XXE (XML External Entity) on the .xlsx/.docx upload paths --
+    # a new risk surface introduced by multi-format upload support,
+    # since both formats are ZIP archives of XML that openpyxl/
+    # python-docx parse internally. Investigated and confirmed safe:
+    # both libraries construct their lxml parser with
+    # resolve_entities=False (openpyxl: app/xml/functions.py;
+    # python-docx: docx/oxml/parser.py), so a DOCTYPE-declared
+    # external entity is never resolved -- verified here by actually
+    # trying to exfiltrate a real local file through it, not just by
+    # reading the library source. ---
+    print("\n--- XXE on .xlsx/.docx uploads ---")
+    import tempfile
+    secret_fd, secret_path = tempfile.mkstemp(suffix=".txt")
+    with os.fdopen(secret_fd, "w") as f:
+        f.write("XXE_SECRET_MARKER_do_not_leak")
+    try:
+        xlsx_bytes = _build_xxe_xlsx(secret_path)
+        body_bytes, content_type_header = _multipart_body_with_content_type(
+            [("file", "xxe.xlsx", xlsx_bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")]
+        )
+        status, body, _ = _request("POST", "/extract", data=body_bytes, headers={"Content-Type": content_type_header})
+        response_text = json.dumps(body) if isinstance(body, dict) else str(body)
+        check("malicious .xlsx (XXE payload) does not leak the target file's contents", "XXE_SECRET_MARKER" not in response_text, response_text[:300])
+        check("malicious .xlsx fails cleanly (400/422), not a 500 or a silent 200 with fabricated data", status in (400, 422), str(status))
+
+        docx_bytes = _build_xxe_docx(secret_path)
+        body_bytes, content_type_header = _multipart_body_with_content_type(
+            [("file", "xxe.docx", docx_bytes, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")]
+        )
+        status, body, _ = _request("POST", "/extract", data=body_bytes, headers={"Content-Type": content_type_header})
+        response_text = json.dumps(body) if isinstance(body, dict) else str(body)
+        check("malicious .docx (XXE payload) does not leak the target file's contents", "XXE_SECRET_MARKER" not in response_text, response_text[:300])
+        check("malicious .docx doesn't 500 (either extracts safely with the entity dropped, or fails cleanly)", status in (200, 400, 422), str(status))
+    finally:
+        os.unlink(secret_path)
 
     print("\n" + "=" * 70)
     passed = sum(1 for _, ok, _ in checks if ok)

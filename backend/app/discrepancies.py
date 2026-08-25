@@ -103,6 +103,95 @@ def sync_lease_risk_flags(lease_id: int, flags: List[Dict[str, Any]]) -> List[Di
     return flags
 
 
+def sync_all_lease_risk_flags_bulk(per_lease_flags: List[tuple]) -> None:
+    """
+    Bulk sibling of sync_lease_risk_flags for syncing EVERY lease's risk
+    flags in one pass (GET /portfolio/risks) instead of one lease at a
+    time. `per_lease_flags` is [(lease_id, flags), ...]; every flag
+    dict is annotated in place with discrepancy_id/resolution_status/
+    resolution, exactly like sync_lease_risk_flags does -- this must
+    stay behaviorally identical to calling sync_lease_risk_flags once
+    per lease, just batched. See database.upsert_discrepancies_bulk's
+    docstring for why this exists: thousands of individual upsert/read
+    calls (one connect()+commit() each) dominate this endpoint's time
+    at real portfolio scale, purely from per-call overhead.
+
+    The natural-key derivation below is a deliberate copy of
+    sync_lease_risk_flags' logic, not a shared helper -- occurrence_seen
+    here must be keyed per (lease_id, category, field) same as before,
+    but is accumulated across ALL leases in one dict rather than reset
+    per call, so keeping the derivation inline and explicit here (
+    matching the single-lease version line for line) is easier to
+    verify stays in sync than threading a shared helper through both.
+    """
+    occurrence_seen: Dict[str, int] = {}
+    payloads = []
+    flag_to_natural_key = []  # parallel list: (flag_dict, natural_key)
+
+    for lease_id, flags in per_lease_flags:
+        for flag in flags:
+            category = flag.get("category")
+            field = flag.get("field")
+
+            if category == "cross_lease_mismatch":
+                other_id = flag.get("other_lease_id")
+                if other_id is not None:
+                    lo, hi = sorted((lease_id, other_id))
+                    natural_key = f"cross_lease:{lo}:{hi}:{field}"
+                    row_lease_id, row_related_id = lo, hi
+                else:
+                    natural_key = f"cross_lease:{lease_id}:none:{field}"
+                    row_lease_id, row_related_id = lease_id, None
+                payloads.append({
+                    "discrepancy_type": "cross_lease_mismatch",
+                    "natural_key": natural_key,
+                    "category": category,
+                    "field": field,
+                    "severity": flag.get("severity"),
+                    "message": flag.get("message", ""),
+                    "details": flag,
+                    "lease_id": row_lease_id,
+                    "related_lease_id": row_related_id,
+                })
+            else:
+                slot = f"{lease_id}:{category}:{field}"
+                occurrence_seen[slot] = occurrence_seen.get(slot, -1) + 1
+                natural_key = f"lease_risk:{slot}:{occurrence_seen[slot]}"
+                payloads.append({
+                    "discrepancy_type": "lease_risk_flag",
+                    "natural_key": natural_key,
+                    "category": category,
+                    "field": field,
+                    "severity": flag.get("severity"),
+                    "message": flag.get("message", ""),
+                    "details": flag,
+                    "lease_id": lease_id,
+                })
+
+            flag_to_natural_key.append((flag, natural_key))
+
+    if not payloads:
+        return
+
+    ids_by_natural_key = database.upsert_discrepancies_bulk(payloads)
+    all_ids = list(ids_by_natural_key.values())
+    discrepancies_by_id = database.get_discrepancies_by_ids(all_ids)
+    resolved_ids = [d["id"] for d in discrepancies_by_id.values() if d["status"] == "resolved"]
+    resolutions_by_id = database.get_discrepancy_resolutions_bulk(resolved_ids)
+
+    for flag, natural_key in flag_to_natural_key:
+        discrepancy_id = ids_by_natural_key[natural_key]
+        discrepancy = discrepancies_by_id[discrepancy_id]
+        flag["discrepancy_id"] = discrepancy_id
+        flag["resolution_status"] = discrepancy["status"]
+        flag["resolution"] = None
+        if discrepancy["status"] == "resolved":
+            for entry in reversed(resolutions_by_id.get(discrepancy_id, [])):
+                if entry["action"] == "resolved":
+                    flag["resolution"] = entry
+                    break
+
+
 def sync_rent_roll_reconciliation(mismatches: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Upserts every rent-roll-vs-lease-PDF mismatch and annotates each dict in place. Returns the same list."""
     for mismatch in mismatches:

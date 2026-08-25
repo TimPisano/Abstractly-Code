@@ -66,7 +66,7 @@ from app.portfolio import (
     portfolio_context_for_risk_analysis,
 )
 from app.comparison import compare_leases, benchmark_lease
-from app.discrepancies import sync_lease_risk_flags, sync_rent_roll_reconciliation, sync_t12_reconciliation
+from app.discrepancies import sync_lease_risk_flags, sync_all_lease_risk_flags_bulk, sync_rent_roll_reconciliation, sync_t12_reconciliation
 from app.portfolio_history import compute_property_trends, compute_portfolio_trends
 from app import cache
 from app.alerts import generate_alerts, get_alert_digest
@@ -1343,18 +1343,24 @@ def portfolio_risks():
     context = portfolio_context_for_risk_analysis(leases)
     cross_lease_mismatches = compute_cross_lease_mismatches(leases)
 
+    per_lease_flags = []
     results = []
     for lease in leases:
         date_candidates = lease.get("date_candidates")
         cross_lease_flags = cross_lease_mismatches.get(lease["id"], [])
         flags = analyze_lease_risks(lease["extracted_fields"], context, date_candidates, cross_lease_flags)
-        flags = sync_lease_risk_flags(lease["id"], flags)
+        per_lease_flags.append((lease["id"], flags))
         results.append({
             "lease_id": lease["id"],
             "filename": lease["filename"],
             "tenant": (lease["extracted_fields"].get("tenant") or {}).get("value"),
             "flags": flags,
         })
+    # Bulk sync (one shared connection, one commit, batched status/
+    # resolution reads) instead of sync_lease_risk_flags per lease --
+    # see sync_all_lease_risk_flags_bulk's docstring. Mutates every
+    # flag dict in `results` in place, same as the per-lease version.
+    sync_all_lease_risk_flags_bulk(per_lease_flags)
     return jsonify(results), 200
 
 

@@ -1,6 +1,43 @@
 # Progress Summary
 
-**Last updated**: Tested the multi-format upload work with a real,
+**Last updated**: Ran the requested 4-part reliability hardening pass
+(error handling, performance, data integrity, security) and fixed
+what it found. Two real bugs: a concurrency race in
+`upsert_discrepancy`/`upsert_alert` (non-atomic check-then-insert;
+two concurrent requests syncing the same natural_key -- e.g. two
+people uploading the same file at once -- could 500 the loser; fixed
+with atomic `INSERT ... ON CONFLICT DO UPDATE`), and a genuine O(n^2)
+bug from a missing index on `leases.base_lease_id` (a 20,000-row
+synthetic import went from ">2 min, still climbing" to 30.7s once
+added). Two real performance bottlenecks, both N+1-shaped: 
+`get_all_effective_leases()` opened up to 4 SQLite connections per
+lease (fixed: one query + Python-side merge; ~1.7s -> 0.03-0.1s
+across `/leases`, `/portfolio/summary`, `/portfolio/trends` at
+831-lease scale), and `/portfolio/risks` + `/alerts/generate` upserted
+one row per flag/candidate individually (fixed with new
+`upsert_discrepancies_bulk`/`upsert_alerts_bulk`, one shared
+connection per request; ~2.4-3.6s -> ~0.15-0.4s). Data integrity:
+re-confirmed crash-safety (`kill -9` mid-request, twice, against the
+newer bulk-import path specifically) still holds -- zero corruption,
+`PRAGMA integrity_check` clean both times, no new safeguard needed.
+Security: SQL injection, Q&A engine, and path traversal all audited
+clean; XXE on the newer `.xlsx`/`.docx` upload paths investigated
+empirically (built and uploaded real malicious files targeting a
+local secret file) and confirmed already safe (openpyxl/python-docx
+both disable external entity resolution); admin auth/session/CORS
+re-verified live, no regression. One residual risk flagged but NOT
+fixed: no decompression-size guard against a zip-bomb `.xlsx`/`.docx`
+upload (plausible, not empirically confirmed). Wrote
+`test_concurrency.py`, `test_performance.py`, and
+`test_live_performance_api.py`, plus new checks in
+`test_security_hardening.py` (concurrent-same-file-upload, XXE). Full
+suite: 59/59 (was 56 before this pass's 3 new test files). See
+DECISIONS.md's "Reliability hardening pass" entry for the full
+writeup.
+
+---
+
+Tested the multi-format upload work with a real,
 large (426KB, 5-property, ~5,458-row) Excel rent roll stress-test file
 from the user's own machine, not just small synthetic fixtures, per
 explicit instruction -- and honestly reported what actually happened,
