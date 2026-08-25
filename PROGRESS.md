@@ -1,6 +1,35 @@
 # Progress Summary
 
-**Last updated**: Backend support for the new sidebar UI (Dashboard/
+**Last updated**: Tested the multi-format upload work with a real,
+large (426KB, 5-property, ~5,458-row) Excel rent roll stress-test file
+from the user's own machine, not just small synthetic fixtures, per
+explicit instruction -- and honestly reported what actually happened,
+including where quality genuinely differs from a PDF. Two very
+different results depending on which endpoint the file goes to:
+`POST /leases` (the multi-format work itself) correctly reads the
+spreadsheet's text (confirmed separately, clean and complete in
+0.65s) but then produces GARBAGE, not lower-quality data -- the
+single/multi-lease boundary detector is built for a document with a
+handful of discrete "Tenant:"/"Landlord:" declarations, not a 900-row
+table, and ends up pattern-matching the header row itself. This is a
+real, pre-existing architectural mismatch (not a defect in this
+pass's work) -- exactly why `POST /leases/import-rent-roll` already
+exists as a separate tool. That endpoint handled the same real file
+well: 831 of 909 rows imported, 100% rent extraction (correctly
+handling accounting-negative-parentheses notation), but only 58-60%
+date extraction -- a real, newly-quantified pre-existing gap in
+`normalize.py`'s date parser when facing the file's deliberately mixed
+real-world date formats (ISO, DD-Mon-YYYY, etc.), not something small
+hand-built fixtures ever exercised. Also confirmed (and disclosed)
+that the rent-roll importer only reads the first sheet, so this
+file's other 4 properties were never imported. Full suite re-confirmed
+56/56 after this exploration (no code changed -- this was pure
+testing/reporting). See DECISIONS.md's "Real-file test" entry for the
+full writeup and exact numbers.
+
+---
+
+Before that: backend support for the new sidebar UI (Dashboard/
 Health Score, Leases & Rent Rolls, Alerts, Discrepancies, Portfolio
 Trends, Reports/Exports, Team Notes) -- audited every sidebar category
 against the actual endpoint list before writing anything, and found 3

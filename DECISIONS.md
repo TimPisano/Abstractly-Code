@@ -1,5 +1,112 @@
 # Implementation Decisions
 
+## Real-file test: a genuine 500+-unit Excel rent roll through both upload pipelines
+
+Requested test: confirm the multi-format upload work is genuinely
+wired end to end using a real, large Excel rent roll, not just small
+synthetic fixtures, and report honestly what happens -- including if
+the quality isn't as good as a PDF's. File used:
+`~/Rent-Roll_AI/input/STRESS_TEST_500pg.xlsx` -- found by searching
+the whole home directory for large rent-roll-shaped spreadsheets (no
+exact filename was given); this was the only plausible match (a
+deliberately messy multi-property stress-test fixture from the user's
+separate `Rent-Roll_AI` project, 426KB, 5 sheets/properties, ~5,458
+non-empty rows total). Flagged here plainly in case a different file
+was actually meant -- but this is very likely correct given the "500"
+in its own filename and that it's the only large-scale rent roll file
+anywhere on the machine.
+
+**Result, honestly: the two upload pipelines behave very differently
+against this file, and that difference is itself the real finding.**
+
+### `POST /leases` (the multi-format work this pass built): produces garbage, not lower-quality data
+
+Uploading the real file returned HTTP 201 in under 2 seconds -- no
+crash, no hang, no error. But the "extracted" data is nonsense:
+`tenant: "Name Lease Start Lease End Market Rent Actual Rent
+Concession Security Deposit AR Balance Sq Ft Basement Area Notes"`,
+every other field `null`. This is NOT a bug introduced by the
+multi-format extraction work (`document_extractor.py` correctly
+converted the spreadsheet to text -- confirmed separately, see below)
+-- it's `FieldExtractor.extract_multiple_leases()`'s lease-boundary
+detector (built for a document containing one or a handful of
+DISCRETE "Tenant: X" / "Landlord: Y" declarations) doing exactly what
+it's designed to do against an input shape it was never designed for:
+a table with 900+ anonymous data rows and no "Landlord" field
+anywhere. Boundary detection operates at PAGE granularity, and each
+whole SHEET is rendered as one page -- so it can never split within a
+sheet's row list, and the label-style "Tenant:" pattern ends up
+matching the HEADER ROW's own column-name text instead of a real
+tenant. `looks_like_lease` -- this app's existing safety net for "the
+extraction found basically nothing real" -- does NOT catch this
+either, since the garbage tenant value isn't null, just wrong; it
+reports `true` for both resulting "leases."
+
+**This is a genuine, pre-existing architectural mismatch, not a defect
+in this session's work**: `POST /leases` is built to answer "what does
+this ONE lease say," and a rent roll structurally isn't one lease --
+it's hundreds of leases as table rows, which is exactly why this
+project already has a SEPARATE, purpose-built importer for that shape
+(`POST /leases/import-rent-roll`, built in a much earlier session).
+Confirmed the multi-format text conversion itself is correct and NOT
+the source of the problem: `document_extractor.extract_pages()` on
+this same file, checked directly, produced clean, complete, accurate
+text (all 5 sheets, headers and every data row present verbatim,
+0.65s) -- the failure is entirely downstream, in a component this
+pass didn't touch.
+
+### `POST /leases/import-rent-roll` (the correct tool for this file): genuinely strong, with one real, quantified gap
+
+The right endpoint for this file handled it well: 831 of 909 real data
+rows on the first sheet imported successfully in ~2 seconds (78
+correctly skipped as vacancy/blank/subtotal rows), **rent_amount found
+for 100% of imported rows** -- correctly picking "Actual Rent" over
+"Market Rent" even when Actual Rent was written in accounting-negative
+parentheses notation (`"(1683.53)"` correctly read as $1,683.53, not
+skipped or misread as literally negative), real source citations (row
++ file + quote) on every field, real persistence, real retrievability.
+
+**One real, quantified quality gap, honestly measured, not
+estimated**: `lease_start_date` was found for only 58% of rows and
+`lease_end_date` for only 60% -- both dramatically lower than rent's
+100%. The stress-test file deliberately mixes several real-world date
+formats row to row (ISO `2019-01-03`, `28-Jun-2020`, `15-May-2025`,
+`November 14, 2021`, `MM/DD/YYYY`); only the plain-English
+"Month DD, YYYY" and `MM/DD/YYYY` forms reliably parsed, while ISO and
+`DD-Mon-YYYY` mostly didn't. This is a real, pre-existing gap in
+`normalize.py`'s date parser (not something the multi-format upload
+work touched), newly visible at this scale and format diversity in a
+way small hand-built fixtures never exercised. Not fixed as part of
+this pass (out of the explicit "test and report" scope this task was
+given) -- flagged here as a concrete, quantified follow-up candidate
+if the user wants it addressed.
+
+**One more real, honestly-disclosed limitation, confirmed directly
+rather than assumed**: `parse_xlsx_rent_roll` uses `workbook.active`
+(the first sheet only) -- uploading this 5-property, 5-sheet file only
+ever imports the FIRST property (Maple Gardens); the other four
+sheets/properties are silently not imported. Pre-existing behavior
+(this endpoint has always been "one rent roll = one property, one
+sheet"), not a regression, but worth surfacing now that a real 5-sheet
+file made it concrete -- a user with a genuinely multi-property
+workbook would need to upload it once per relevant sheet (not
+currently possible without first splitting the file, since there's no
+`sheet_name` parameter today).
+
+### Verified live, cleaned up afterward
+
+Both pipelines tested via real HTTP against the actually-running dev
+server (not just direct function calls) -- `POST /leases/import-
+rent-roll` (831 real leases created, real GET confirming persistence)
+and `POST /leases` (2 garbage "leases" created, confirming the live
+route reproduces the same failure the direct-function test found).
+All 833 test leases deleted afterward via a real `POST /leases/bulk-
+delete` (833 rows in ~5 requests of 200), dev DB confirmed empty. The
+source file itself was NOT copied into this repo (it's the user's own
+large file from an unrelated personal project, not something to check
+into version control) -- referenced by absolute path only, for this
+one verification pass.
+
 ## Backend support for the new sidebar UI: focused endpoints + caching
 
 Two related pieces of work: (1) audit every category the new sidebar
