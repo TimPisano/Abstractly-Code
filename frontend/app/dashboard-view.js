@@ -4,6 +4,10 @@
  * optional multi-select mode for jumping into the comparison view.
  */
 
+// Shared with rentroll-view.js's identical cap -- see the comment where
+// it's applied in renderTable() below.
+const TABLE_RENDER_CAP = 500;
+
 const Dashboard = {
     sortKey: 'name',
     sortDir: 1,
@@ -695,6 +699,22 @@ const Dashboard = {
         rows = this.sortRows(rows);
 
         document.querySelector('.compare-col').style.display = compareMode ? '' : 'none';
+
+        // Rows are much cheaper than alerts-view.js's full cards, so the
+        // cap here is higher -- but a portfolio's lease count still grows
+        // unboundedly, and rendering thousands of <tr>s at once is a real
+        // scalability problem independent of whether that much data is
+        // "supposed" to be there (confirmed live against a stress-test
+        // dataset). Shared with rentroll-view.js's identical cap.
+        const totalRows = rows.length;
+        const noteEl = document.getElementById('dashboardTableNote');
+        if (totalRows > TABLE_RENDER_CAP) {
+            rows = rows.slice(0, TABLE_RENDER_CAP);
+            noteEl.textContent = `Showing ${TABLE_RENDER_CAP} of ${totalRows} leases — use search or filters above to narrow the list.`;
+            noteEl.style.display = '';
+        } else {
+            noteEl.style.display = 'none';
+        }
 
         const tbody = document.getElementById('leaseTableBody');
         tbody.innerHTML = rows.map(r => {

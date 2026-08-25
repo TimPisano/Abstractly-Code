@@ -16,11 +16,14 @@ function renderCommentsThread(containerEl, comments, { onSubmit }) {
         <div class="comments-list">
             ${comments.length ? comments.map(c => `
                 <div class="comment-item">
-                    <div class="comment-item-head">
-                        <span class="comment-author">${escapeHtml(c.author_name)}</span>
-                        <span class="comment-time" title="${escapeHtml(formatDate(c.created_at))}">${timeAgo(c.created_at)}</span>
+                    ${avatarHtml(c.author_name, 'team-avatar-sm')}
+                    <div class="comment-item-body">
+                        <div class="comment-item-head">
+                            <span class="comment-author">${escapeHtml(c.author_name)}</span>
+                            <span class="comment-time" title="${escapeHtml(formatDate(c.created_at))}">${timeAgo(c.created_at)}</span>
+                        </div>
+                        <div class="comment-body">${escapeHtml(c.body)}</div>
                     </div>
-                    <div class="comment-body">${escapeHtml(c.body)}</div>
                 </div>
             `).join('') : '<p class="empty-inline">No notes yet — be the first to leave one.</p>'}
         </div>

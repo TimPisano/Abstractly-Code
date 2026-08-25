@@ -41,6 +41,52 @@ function hasSupportedLeaseExtension(filename) {
     return SUPPORTED_LEASE_EXTENSIONS.includes(ext);
 }
 
+// Which broad category each extension belongs to, for the file-type
+// icon shown next to a file in the upload progress/results lists --
+// lets someone visually confirm what they picked (a spreadsheet icon
+// on an .xlsx, a photo icon on a .jpg) before/while it processes,
+// rather than only a filename string. Kept as its own small map here
+// rather than reusing SUPPORTED_LEASE_EXTENSIONS directly, since
+// several distinct extensions legitimately share one icon (every
+// spreadsheet format gets the same grid glyph).
+const FILE_TYPE_CATEGORY_BY_EXTENSION = {
+    pdf: 'pdf',
+    xlsx: 'spreadsheet', xls: 'spreadsheet', xlsm: 'spreadsheet', csv: 'spreadsheet', tsv: 'spreadsheet',
+    docx: 'word', doc: 'word',
+    jpg: 'image', jpeg: 'image', png: 'image', tif: 'image', tiff: 'image',
+    txt: 'text',
+};
+
+// Same simple 2px-stroke outline style already used for every other
+// icon in this app, one glyph per category, distinguished by shape
+// (not color -- this app's palette is deliberately just brass/success/
+// warning/error plus neutrals, and 5 file categories don't map onto
+// that semantic set without either reusing "error" red for something
+// that isn't an error, or inventing new colors outside the existing
+// palette. Shape alone is enough to tell them apart at a glance).
+const FILE_TYPE_ICON_PATHS = {
+    pdf: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>',
+    spreadsheet: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 10h18M3 14h18M7 6h10a2 2 0 012 2v8a2 2 0 01-2 2H7a2 2 0 01-2-2V8a2 2 0 012-2z"/>',
+    word: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/>',
+    image: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3 20.25h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5z"/><circle cx="16.125" cy="8.25" r="1.125" fill="currentColor" stroke="none"/>',
+    text: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8.25 6.75h12M8.25 12h12m-12 5.25h12"/><circle cx="3.75" cy="6.75" r="0.75" fill="currentColor" stroke="none"/><circle cx="3.75" cy="12" r="0.75" fill="currentColor" stroke="none"/><circle cx="3.75" cy="17.25" r="0.75" fill="currentColor" stroke="none"/>',
+};
+
+function fileTypeCategory(filename) {
+    const ext = (filename || '').split('.').pop().toLowerCase();
+    return FILE_TYPE_CATEGORY_BY_EXTENSION[ext] || 'text';
+}
+
+/** A small file-type icon chip, shown next to a filename anywhere in the upload flow -- see FILE_TYPE_ICON_PATHS above for why shape carries the distinction, not color. */
+function fileTypeIconHtml(filename) {
+    const category = fileTypeCategory(filename);
+    return `
+        <span class="upload-file-icon" title="${category} file">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">${FILE_TYPE_ICON_PATHS[category]}</svg>
+        </span>
+    `;
+}
+
 const Upload = {
     load() {
         this.reset();
@@ -76,6 +122,7 @@ const Upload = {
         const progressList = document.getElementById('uploadProgressList');
         progressList.innerHTML = validFiles.map((f, i) => `
             <div class="upload-progress-item pending" data-file="${escapeHtml(f.name)}" id="uploadProgressItem-${i}">
+                ${fileTypeIconHtml(f.name)}
                 <span class="upload-progress-status-icon"><span class="spinner-small"></span></span>
                 <span class="upload-progress-name">${escapeHtml(f.name)}</span>
                 <span class="upload-progress-status-text">Waiting&hellip;</span>
@@ -168,6 +215,7 @@ const Upload = {
         if (!r.success) {
             return `
                 <div class="upload-result-item failure">
+                    ${fileTypeIconHtml(r.filename)}
                     <span class="upload-result-icon">✗</span>
                     <span class="upload-result-name">${escapeHtml(r.filename)}</span>
                     <span class="upload-result-detail error-text">${escapeHtml(r.error)}</span>
@@ -180,9 +228,11 @@ const Upload = {
             // file, then one indented row per lease it was split into
             // -- each independently named, so it's clear at a glance
             // this file became several distinct portfolio entries, not
-            // one.
+            // one. The file-type icon goes on the header row only --
+            // the indented children are leases, not files of their own.
             const header = `
                 <div class="upload-result-item success">
+                    ${fileTypeIconHtml(r.filename)}
                     <span class="upload-result-icon">✓</span>
                     <span class="upload-result-name">${escapeHtml(r.filename)}</span>
                     <span class="upload-result-detail">Split into ${r.leases.length} separate leases</span>
@@ -202,6 +252,7 @@ const Upload = {
         const lease = r.leases[0];
         return `
             <div class="upload-result-item success">
+                ${fileTypeIconHtml(r.filename)}
                 <span class="upload-result-icon">✓</span>
                 <span class="upload-result-name">${escapeHtml(lease.display_name)}</span>
                 <span class="upload-result-detail">${escapeHtml(fieldValue(lease, 'tenant') || 'Tenant not found')}</span>

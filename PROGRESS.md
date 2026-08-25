@@ -1900,10 +1900,11 @@ Port already in use: `lsof -ti:5000 -ti:8080 | xargs kill -9`, then start again.
 - `report.py` — self-contained printable HTML portfolio summary
 
 ### Frontend (`frontend/`)
-- `index.html` + `styles.css` — sidebar-navigated multi-view app shell
+- `index.html` + `styles.css` — sidebar-navigated multi-view app shell (collapsible desktop sidebar with category grouping; a single horizontally-scrollable row below 768px, not a wrapped multi-row bar — see DECISIONS.md)
 - `api.js` — fetch wrappers for every backend endpoint
-- `app.js` — view router, shared state, toasts, session stats
-- `upload-view.js`, `dashboard-view.js`, `detail-view.js`, `timeline-view.js`, `comparison-view.js`, `qa-view.js`, `report-view.js` — one file per view
+- `app.js` — view router, shared state, toasts, session stats, avatar helpers (`avatarHtml`/initials/deterministic color), live-activity polling + banner
+- `upload-view.js`, `dashboard-view.js`, `detail-view.js`, `timeline-view.js`, `comparison-view.js`, `qa-view.js`, `report-view.js`, `alerts-view.js`, `discrepancies-view.js`, `trends-view.js`, `team-notes-view.js` — one file per view; each tab fetches only its own endpoint(s), not the full portfolio
+- Uploads accept any backend-supported file type (PDF, Excel/CSV rent rolls, images), with a file-type icon (document/spreadsheet/image/etc.) shown per file before and after processing
 
 ### Tests (`backend/tests/`)
 - Unit tests (self-contained, no server needed): `test_extraction.py`, `test_synthetic_accuracy.py`, `test_multipage_field.py`, `test_ocr_fallback.py` (mocked logic), `test_real_ocr.py` (real binaries, skips cleanly if unavailable), `test_risk_analysis.py`, `test_qa_engine.py`, `test_portfolio.py`, `test_comparison.py`, `test_rent_roll_export.py`, `test_report.py`
@@ -1920,6 +1921,7 @@ Port already in use: `lsof -ti:5000 -ti:8080 | xargs kill -9`, then start again.
 - **Single-value fields only** — unchanged from session 2; a lease with two legitimately different rent figures returns one.
 - **Amendment date-conflict detection uses only the base lease's stored date candidates** — an amendment that itself restates a conflicting date wouldn't be cross-checked against the base lease's dates. Real-world amendments rarely restate the original commencement date, so this is a minor edge case, but worth knowing.
 - **No production deployment setup** — Flask dev server, SQLite file, no accounts/session auth — appropriate for local/single-user use, not for hosting. (Session 4 hardened *error handling* — no stack traces or file paths leak to the client. Session 6 added a lightweight email-check gate on `/app` — see below — but that's still not real auth, and the admin waitlist endpoints remain intentionally unauthenticated. The dev-server/no-accounts architecture itself is unchanged, which is a separate, bigger scope.)
+- **No real team accounts, roles, or assignment** — "team" is entirely self-reported names (the same `leaseAbstractionUserIdentity` localStorage pattern used for comments/dismissals/resolutions all along), not managed users. The frontend shows a derived roster (who's shown up in recent comments), avatars generated from those names, and a live-update banner (polls `/activity` every 30s, offers a manual refresh — not push/websocket). It deliberately does NOT include an invite/roles settings page or persistent lease/property/discrepancy assignment to a specific person, since neither has any backend support (no users table, no auth, no `assigned_to` field on any table) — building that UI would mean fabricating persistence that doesn't exist. Real team management needs backend work first.
 - **OCR depends on `~/.miniforge3` being on PATH** — this is outside the project repo (in the home directory) and outside `requirements.txt` (system binaries, not Python packages) since it's a machine-level install, not a project dependency. If this environment is ever reset, re-run the Miniforge install steps in the Session 4 section above.
 
 ## Next Steps (prioritized)

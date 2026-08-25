@@ -97,45 +97,39 @@ const Trends = {
             if (!addr) return null;
             return Api.portfolioPropertyTrends(addr);
         }
-        const addrs = Array.from(this.propertyGroups.values());
-        if (addrs.length === 0) return null;
-        const results = await Promise.all(addrs.map(a => Api.portfolioPropertyTrends(a).catch(() => null)));
-        return this._mergePropertyTrends(results.filter(Boolean));
+        // GET /portfolio/trends -- the real portfolio-wide endpoint,
+        // replacing what used to be an N-request fan-out (one
+        // property-trends call per distinct building, merged client-
+        // side). One call now; the backend does the same grouping in a
+        // single pass and caches the result server-side.
+        return this._flattenPortfolioTrends(await Api.portfolioTrends());
     },
 
-    // No portfolio-wide equivalent of GET /portfolio/property-trends
-    // exists on the backend (it's scoped to one building), so "All
-    // Properties" combines one response per distinct building here --
-    // straightforward concatenation/summation since each building's
-    // trends are already independent of every other's.
-    _mergePropertyTrends(results) {
+    // /portfolio/trends returns one entry per building (properties: [...])
+    // plus separate portfolio-level turnover/rollover totals -- flattened
+    // here into the same shape renderRentGrowth/renderTurnover already
+    // expect from a single-property response, so neither render function
+    // needs to know which case it's in.
+    _flattenPortfolioTrends(result) {
         const units = [];
         let unitsWithGrowthData = 0;
         const events = [];
-        let turnoverCount = 0, unitsTracked = 0;
-        const byMonth = {};
-        for (let m = 1; m <= 12; m++) byMonth[String(m).padStart(2, '0')] = 0;
-        const byYear = {};
-        let totalExpirationsTracked = 0;
-        let recordCount = 0;
-
-        results.forEach(r => {
-            units.push(...r.rent_growth.units);
-            unitsWithGrowthData += r.rent_growth.units_with_growth_data;
-            events.push(...r.tenant_turnover.events);
-            turnoverCount += r.tenant_turnover.turnover_count;
-            unitsTracked += r.tenant_turnover.units_tracked;
-            Object.entries(r.rollover_pattern.by_month).forEach(([k, v]) => { byMonth[k] += v; });
-            Object.entries(r.rollover_pattern.by_year).forEach(([k, v]) => { byYear[k] = (byYear[k] || 0) + v; });
-            totalExpirationsTracked += r.rollover_pattern.total_expirations_tracked;
-            recordCount += r.record_count;
+        (result.properties || []).forEach(p => {
+            units.push(...p.rent_growth.units);
+            unitsWithGrowthData += p.rent_growth.units_with_growth_data;
+            events.push(...p.tenant_turnover.events);
         });
+        events.sort((a, b) => (a.detected_at || '').localeCompare(b.detected_at || ''));
 
         return {
-            record_count: recordCount,
+            record_count: result.record_count,
             rent_growth: { units, units_with_growth_data: unitsWithGrowthData },
-            tenant_turnover: { events, turnover_count: turnoverCount, units_tracked: unitsTracked },
-            rollover_pattern: { by_month: byMonth, by_year: byYear, total_expirations_tracked: totalExpirationsTracked },
+            tenant_turnover: {
+                events,
+                turnover_count: result.portfolio_tenant_turnover.turnover_count,
+                units_tracked: result.portfolio_tenant_turnover.units_tracked,
+            },
+            rollover_pattern: result.portfolio_rollover_pattern,
         };
     },
 

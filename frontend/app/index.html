@@ -103,6 +103,14 @@
                         <span class="nav-label">Alerts</span>
                         <span class="nav-badge nav-label" id="alertsNavBadge" style="display:none;">0</span>
                     </button>
+                    <button class="nav-item nav-item-discrepancies" data-view="discrepancies" data-tooltip="Discrepancies" type="button">
+                        <span class="nav-item-icon-wrap">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 9.75l4.5 4.5m0-4.5l-4.5 4.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                            <span class="nav-badge-dot" id="discrepanciesNavBadgeDot"></span>
+                        </span>
+                        <span class="nav-label">Discrepancies</span>
+                        <span class="nav-badge nav-label" id="discrepanciesNavBadge" style="display:none;">0</span>
+                    </button>
                     <button class="nav-item" data-view="trends" data-tooltip="Portfolio Trends" type="button">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3v18h18M7 15l4-5 3 3 5-7"/></svg>
                         <span class="nav-label">Portfolio Trends</span>
@@ -139,6 +147,10 @@
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                         <span class="nav-label">Portfolio Report</span>
                     </button>
+                    <button class="nav-item" data-view="teamnotes" data-tooltip="Team Notes" type="button">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h8m-8 4h5M7 3.5h10A2.5 2.5 0 0119.5 6v10.5a1 1 0 01-1.6.8l-2.9-2.175a2 2 0 00-1.2-.4H7A2.5 2.5 0 014.5 12V6A2.5 2.5 0 017 3.5z"/></svg>
+                        <span class="nav-label">Team Notes</span>
+                    </button>
                 </div>
             </div>
 
@@ -158,6 +170,17 @@
         <main class="main-content">
             <!-- Global toast/error banner -->
             <div class="toast-container" id="toastContainer"></div>
+
+            <!-- Live-update banner: polls for account activity from anyone
+                 else using this account and surfaces it here instead of
+                 silently changing what's on screen -- see startLiveActivityPolling
+                 in app.js. Persistent (not an auto-hiding toast) until acted on. -->
+            <div class="live-update-banner" id="liveUpdateBanner" style="display:none;">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"/></svg>
+                <span>New activity — someone else has made changes.</span>
+                <button class="btn-secondary" id="liveUpdateRefreshBtn" type="button">Refresh</button>
+                <button class="live-update-dismiss" id="liveUpdateDismissBtn" type="button" aria-label="Dismiss">&times;</button>
+            </div>
 
             <!-- Quick Actions: present on every view, not just the dashboard -->
             <div class="quick-actions-bar">
@@ -290,6 +313,7 @@
                             <tbody id="leaseTableBody"></tbody>
                         </table>
                     </div>
+                    <p class="attention-more" id="dashboardTableNote" style="display:none;"></p>
                     <div class="empty-state" id="dashboardEmptyState" style="display:none;">
                         <div class="empty-state-icon">
                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5"/></svg>
@@ -358,6 +382,59 @@
                 </div>
 
                 <div id="alertsFeedContent"></div>
+            </section>
+
+            <!-- DISCREPANCIES VIEW -->
+            <section class="view" id="view-discrepancies">
+                <div class="view-header">
+                    <div>
+                        <h1>Discrepancies</h1>
+                        <p class="view-subtitle">Every disagreement this app has ever found — risk flags, cross-lease mismatches, rent-roll-vs-lease and rent-roll-vs-T12 reconciliation — in one place, with a permanent resolution log</p>
+                    </div>
+                    <div class="view-header-actions">
+                        <button class="btn-secondary" id="discrepanciesRefreshBtn" type="button">Refresh</button>
+                    </div>
+                </div>
+
+                <div class="health-strip" id="discrepanciesSummaryStrip"></div>
+
+                <div class="alerts-filter-row">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="discrepanciesShowResolved"> Show resolved
+                    </label>
+                    <select id="discrepanciesSeverityFilter" class="text-input select-input">
+                        <option value="">All severities</option>
+                        <option value="high">High</option>
+                        <option value="medium">Medium</option>
+                        <option value="low">Low</option>
+                    </select>
+                    <select id="discrepanciesTypeFilter" class="text-input select-input">
+                        <option value="">All types</option>
+                        <option value="lease_risk_flag">Lease Risk Flag</option>
+                        <option value="cross_lease_mismatch">Cross-Lease Mismatch</option>
+                        <option value="rent_roll_reconciliation">Rent Roll Reconciliation</option>
+                        <option value="t12_reconciliation">T12 Reconciliation</option>
+                    </select>
+                </div>
+
+                <div id="discrepanciesFeedContent"></div>
+            </section>
+
+            <!-- TEAM NOTES VIEW -->
+            <section class="view" id="view-teamnotes">
+                <div class="view-header">
+                    <div>
+                        <h1>Team Notes</h1>
+                        <p class="view-subtitle">Every note left on a lease or a discrepancy, most recent first — visible to the whole team</p>
+                    </div>
+                    <div class="view-header-actions">
+                        <button class="btn-secondary" id="teamNotesRefreshBtn" type="button">Refresh</button>
+                    </div>
+                </div>
+
+                <div class="panel" id="teamNotesRoster" style="display:none;"></div>
+
+                <div id="teamNotesFeedContent"></div>
             </section>
 
             <!-- PORTFOLIO TRENDS VIEW -->
@@ -553,6 +630,10 @@
                             <div id="detailCommentsThread"><p class="loading-inline"><span class="spinner-small"></span> Loading...</p></div>
                         </div>
                         <div class="panel">
+                            <h3>Property Activity</h3>
+                            <div id="detailActivityContent"></div>
+                        </div>
+                        <div class="panel">
                             <h3>Ask About This Lease</h3>
                             <div id="detailQaHistory" class="qa-history"></div>
                             <div class="qa-input-row">
@@ -606,6 +687,7 @@
                         <tfoot id="rentRollTableFoot"></tfoot>
                     </table>
                 </div>
+                <p class="attention-more" id="rentRollTableNote" style="display:none;"></p>
                 <div class="empty-state" id="rentRollEmptyState" style="display:none;">
                     <div class="empty-state-icon">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 10h18M3 14h18M7 6h10a2 2 0 012 2v8a2 2 0 01-2 2H7a2 2 0 01-2-2V8a2 2 0 012-2z"/></svg>

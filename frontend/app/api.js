@@ -210,6 +210,13 @@ const Api = {
         return apiRequest(`/discrepancies/${discrepancyId}`);
     },
 
+    // Header-stat digest for a standalone Discrepancies tab -- counts by
+    // status/severity/type across every discrepancy ever recorded, same
+    // role /alerts/summary plays for the Alerts tab.
+    discrepanciesSummary() {
+        return apiRequest('/discrepancies/summary');
+    },
+
     resolveDiscrepancy(discrepancyId, { correctSource, note, resolvedBy, resolvedByEmail }) {
         return apiRequest(`/discrepancies/${discrepancyId}/resolve`, {
             method: 'POST',
@@ -240,6 +247,14 @@ const Api = {
         return apiRequest(`/portfolio/property-trends?property_address=${encodeURIComponent(propertyAddress)}`);
     },
 
+    // Portfolio-wide sibling of the above -- every building's trends in
+    // one response (server-side cached, see backend/app/cache.py),
+    // replacing what used to require fetching property-trends once per
+    // distinct building and merging client-side.
+    portfolioTrends() {
+        return apiRequest('/portfolio/trends');
+    },
+
     // Team comments/notes -- visible to everyone (this app has no per-
     // account scoping yet), self-reported author identity same as
     // discrepancy resolutions.
@@ -257,6 +272,14 @@ const Api = {
 
     listDiscrepancyComments(discrepancyId) {
         return apiRequest(`/discrepancies/${discrepancyId}/comments`);
+    },
+
+    // Portfolio-wide feed across BOTH leases and discrepancies, most
+    // recent first -- what a standalone Team Notes tab needs, which
+    // neither listLeaseComments nor listDiscrepancyComments (each
+    // scoped to one target) can answer alone.
+    recentComments(limit = 20) {
+        return apiRequest(`/comments/recent?limit=${limit}`);
     },
 
     addDiscrepancyComment(discrepancyId, { authorName, body, authorEmail }) {

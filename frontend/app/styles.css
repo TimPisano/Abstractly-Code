@@ -203,7 +203,7 @@
     border: 2px solid var(--lux-charcoal);
 }
 
-.sidebar.collapsed .nav-item-alerts.has-alerts .nav-badge-dot {
+.sidebar.collapsed .nav-item.has-alerts .nav-badge-dot {
     display: block;
 }
 
@@ -1308,6 +1308,31 @@
     border-bottom: none;
 }
 
+/* ---- File-type icon: shown next to a filename anywhere in the upload
+   flow (progress list, results list) so someone can visually confirm
+   what they picked -- a spreadsheet glyph on an .xlsx, a photo glyph on
+   a .jpg -- before/while it processes, not just a filename string. One
+   shared neutral chip style; the glyph SHAPE (see upload-view.js's
+   FILE_TYPE_ICON_PATHS) carries the distinction, not color, since this
+   app's palette has no spare semantic colors for 5 file categories. ---- */
+
+.upload-file-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    flex-shrink: 0;
+    border-radius: var(--radius-sm);
+    background-color: var(--background);
+    color: var(--text-medium);
+}
+
+.upload-file-icon svg {
+    width: 1rem;
+    height: 1rem;
+}
+
 /* ---- Per-file upload status: each row moves through pending ->
    processing -> done/error independently, as its own upload request
    resolves, not all at once when the whole batch finishes. ---- */
@@ -2115,26 +2140,33 @@
         flex-direction: column;
     }
 
-    /* Below this width the sidebar becomes a wrapped horizontal bar
-       instead of a tall column -- a different layout from the desktop
-       collapse feature, not a smaller version of it, so it always wins
-       here regardless of whatever collapsed/expanded state was left
-       over from a wider window (see the two overrides below). */
+    /* Below this width the sidebar becomes a single-row, horizontally
+       scrollable bar instead of a tall column -- a different layout
+       from the desktop collapse feature, not a smaller version of it,
+       so it always wins here regardless of whatever collapsed/expanded
+       state was left over from a wider window (see the two overrides
+       below). Was flex-wrap before, but with 11 nav items that wrapped
+       across 5 rows and pushed all page content ~300px below the fold
+       on a phone -- a horizontally-scrollable strip (the same pattern
+       as a native app's tab bar) keeps every item reachable without
+       burying the page under the nav. */
     .sidebar,
     .sidebar.collapsed {
         width: 100%;
         height: auto;
         position: static;
         flex-direction: row;
-        flex-wrap: wrap;
-        padding: 1rem;
-        overflow: visible;
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        overflow-y: visible;
+        padding: 0.75rem 1rem;
+        -webkit-overflow-scrolling: touch;
         transition: none;
     }
 
     .brand {
-        width: 100%;
-        margin-bottom: 0.5rem;
+        flex: 0 0 auto;
+        margin-right: 0.5rem;
     }
 
     /* .nav-scroll/.nav-group exist to scroll and to hold the desktop
@@ -2152,7 +2184,8 @@
 
     .nav-item {
         width: auto;
-        flex: 1 1 auto;
+        flex: 0 0 auto;
+        white-space: nowrap;
     }
 
     /* Labels/badge text stay visible here even if the sidebar was left
@@ -2170,12 +2203,14 @@
     }
 
     .sidebar-footer {
-        margin-top: 0.5rem;
+        margin-top: 0;
+        margin-left: 0.5rem;
         border-top: none;
         padding-top: 0;
-        width: 100%;
+        width: auto;
+        flex: 0 0 auto;
         display: flex;
-        flex-wrap: wrap;
+        flex-wrap: nowrap;
     }
 
     .main-content {
@@ -2992,6 +3027,36 @@
     margin-top: 0.875rem;
 }
 
+.discrepancy-row-resolve-form {
+    margin-top: 0.875rem;
+    padding-top: 0.875rem;
+    border-top: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+}
+
+.discrepancy-row-resolve-form label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-medium);
+    margin-top: 0.25rem;
+}
+
+.discrepancy-row-resolve-form label:first-child {
+    margin-top: 0;
+}
+
+.discrepancy-row-resolve-form textarea.text-input {
+    resize: vertical;
+    font-family: inherit;
+}
+
+.discrepancy-row-confirm-btn {
+    align-self: flex-end;
+    margin-top: 0.375rem;
+}
+
 .alerts-summary-tile {
     cursor: pointer;
     transition: box-shadow 0.15s, transform 0.15s;
@@ -3016,9 +3081,16 @@
 }
 
 .comment-item {
+    display: flex;
+    gap: 0.625rem;
     padding: 0.625rem 0.75rem;
     background-color: var(--background);
     border-radius: var(--radius-sm);
+}
+
+.comment-item-body {
+    flex: 1;
+    min-width: 0;
 }
 
 .comment-item-head {
@@ -3039,6 +3111,107 @@
     font-size: 0.6875rem;
     color: var(--text-light);
     white-space: nowrap;
+}
+
+/* ===================== Avatars (initials, generated -- no real
+   per-user accounts to attach a photo to) ===================== */
+
+.team-avatar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: 50%;
+    color: var(--white);
+    font-size: 0.6875rem;
+    font-weight: 700;
+    flex-shrink: 0;
+    letter-spacing: -0.01em;
+}
+
+.team-avatar-sm {
+    width: 1.375rem;
+    height: 1.375rem;
+    font-size: 0.625rem;
+}
+
+.team-avatar-lg {
+    width: 2.5rem;
+    height: 2.5rem;
+    font-size: 0.9375rem;
+}
+
+.team-note-card {
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-start;
+}
+
+.team-roster-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.25rem;
+}
+
+.team-roster-item {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+}
+
+.team-roster-name {
+    font-size: 0.875rem;
+    font-weight: 700;
+    color: var(--text-dark);
+}
+
+.team-roster-count {
+    font-size: 0.75rem;
+    color: var(--text-light);
+}
+
+/* ===================== Live-update banner ===================== */
+
+.live-update-banner {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    background-color: var(--lux-accent-tint);
+    border: 1px solid var(--lux-accent);
+    color: var(--text-dark);
+    border-radius: var(--radius-md);
+    padding: 0.75rem 1rem;
+    margin-bottom: 1.5rem;
+    animation: viewFadeIn 0.2s ease;
+}
+
+.live-update-banner svg {
+    width: 1.25rem;
+    height: 1.25rem;
+    color: var(--lux-accent);
+    flex-shrink: 0;
+}
+
+.live-update-banner span {
+    flex: 1;
+    font-size: 0.875rem;
+    font-weight: 600;
+}
+
+.live-update-dismiss {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 1.25rem;
+    line-height: 1;
+    color: var(--text-medium);
+    padding: 0.25rem;
+    flex-shrink: 0;
+}
+
+.live-update-dismiss:hover {
+    color: var(--text-dark);
 }
 
 .comment-body {

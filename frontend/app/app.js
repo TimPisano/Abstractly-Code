@@ -50,6 +50,8 @@ function registerView(name, handlers) {
     VIEW_HANDLERS[name] = handlers;
 }
 
+let currentViewName = 'dashboard';
+
 function showView(viewName, params) {
     document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
     const target = document.getElementById(`view-${viewName}`);
@@ -59,10 +61,54 @@ function showView(viewName, params) {
         el.classList.toggle('active', el.dataset.view === viewName);
     });
 
+    currentViewName = viewName;
+    hideLiveUpdateBanner(); // whatever prompted it, navigating anywhere already re-fetches fresh data for the view you land on
+
     const handler = VIEW_HANDLERS[viewName];
     if (handler && typeof handler.load === 'function') {
         handler.load(params);
     }
+}
+
+/**
+ * "Live-feeling" updates: this app has no websocket/SSE channel, and no
+ * per-user session to know who else is even connected -- so this is
+ * honestly a poll, not real-time push, exactly as scoped ("even a 'new
+ * activity' banner that refreshes the view is fine"). Every 30s, checks
+ * whether the single most recent /activity entry has changed since the
+ * last check; if so, shows a persistent banner (not a toast -- this
+ * shouldn't silently disappear before someone notices it) rather than
+ * yanking the current view's content out from under whoever's reading
+ * it. Navigating to any view (see showView above) also dismisses it,
+ * since arriving anywhere already re-fetches fresh data for that view.
+ */
+let _lastSeenActivityKey = null;
+let _liveActivityPollTimer = null;
+
+function startLiveActivityPolling() {
+    if (_liveActivityPollTimer) return;
+    checkForLiveActivity(); // prime the baseline immediately, don't wait a full interval to start noticing changes
+    _liveActivityPollTimer = setInterval(checkForLiveActivity, 30000);
+}
+
+async function checkForLiveActivity() {
+    try {
+        const recent = await Api.recentActivity(1);
+        if (!recent.length) return;
+        const key = `${recent[0].id}:${recent[0].created_at}`;
+        if (_lastSeenActivityKey !== null && key !== _lastSeenActivityKey) {
+            showLiveUpdateBanner();
+        }
+        _lastSeenActivityKey = key;
+    } catch (err) { /* best-effort -- a failed background poll isn't worth surfacing */ }
+}
+
+function showLiveUpdateBanner() {
+    document.getElementById('liveUpdateBanner').style.display = 'flex';
+}
+
+function hideLiveUpdateBanner() {
+    document.getElementById('liveUpdateBanner').style.display = 'none';
 }
 
 /**
@@ -470,6 +516,38 @@ function riskLevelBadgeHtml(level) {
     return `<span class="severity-badge ${cls}">${label}</span>`;
 }
 
+// Deterministic per-name color from the existing token palette (not new
+// arbitrary hex colors) so the same self-reported name always renders
+// the same avatar color across sessions/devices, without needing a
+// real per-user account to store a color/photo against.
+const AVATAR_PALETTE = ['var(--lux-accent)', 'var(--success-color)', 'var(--warning-color)', 'var(--error-color)', 'var(--slate-600)', 'var(--slate-500)'];
+
+function _avatarColorFor(name) {
+    let hash = 0;
+    const str = name || '?';
+    for (let i = 0; i < str.length; i++) hash = (hash * 31 + str.charCodeAt(i)) >>> 0;
+    return AVATAR_PALETTE[hash % AVATAR_PALETTE.length];
+}
+
+function _initialsFor(name) {
+    const trimmed = (name || '').trim();
+    if (!trimmed) return '?';
+    const parts = trimmed.split(/\s+/);
+    return parts.length === 1 ? parts[0].slice(0, 2).toUpperCase() : (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+/**
+ * A small initials avatar for a self-reported name (comment author,
+ * discrepancy resolver, alert dismisser) -- there's no real per-user
+ * account to attach a photo to, so this is generated client-side from
+ * the name itself, same honesty-about-what-exists posture as the rest
+ * of this app's "self-reported identity" convention. `sizeClass`:
+ * '' (default, 1.75rem), 'team-avatar-sm', or 'team-avatar-lg'.
+ */
+function avatarHtml(name, sizeClass) {
+    return `<span class="team-avatar ${sizeClass || ''}" style="background-color:${_avatarColorFor(name)}" title="${escapeHtml(name || 'Unknown')}">${escapeHtml(_initialsFor(name))}</span>`;
+}
+
 /**
  * Shared self-reported identity: one name/email cached across the
  * whole app (discrepancy resolutions, team comments), not a separate
@@ -513,6 +591,12 @@ function init() {
 
     initSidebar();
 
+    document.getElementById('liveUpdateRefreshBtn').addEventListener('click', () => {
+        hideLiveUpdateBanner();
+        showView(currentViewName);
+    });
+    document.getElementById('liveUpdateDismissBtn').addEventListener('click', hideLiveUpdateBanner);
+
     // Kick off the initial view (dashboard, marked active in the HTML)
     showView('dashboard');
 
@@ -522,6 +606,8 @@ function init() {
     // triggered client-side at all (no scheduled backend job exists
     // yet).
     Api.generateAlerts().catch(() => {}).then(() => refreshAlertsBadge());
+
+    startLiveActivityPolling();
 }
 
 // init() is deliberately NOT self-invoked here (no DOMContentLoaded

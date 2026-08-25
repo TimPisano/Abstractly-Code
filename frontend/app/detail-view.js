@@ -44,6 +44,7 @@ const LeaseDetail = {
             this.renderRisks(risks);
             this.renderAmendments(amendments);
             this.loadComments(leaseId);
+            this.loadActivity(this.lease);
 
             // Best-effort: powers the tag-input autocomplete, not
             // essential to the page working if it fails.
@@ -226,6 +227,50 @@ const LeaseDetail = {
             });
         } catch (err) {
             el.innerHTML = `<p class="error-text">Failed to load notes: ${escapeHtml(err.message)}</p>`;
+        }
+    },
+
+    // No lease_id/property filter exists on GET /activity -- filtered
+    // here from a reasonably-sized recent batch. "Property" activity
+    // covers every lease at the same building (normalizeBuildingAddress,
+    // same suite-insensitive grouping trends-view.js already uses), not
+    // just this one unit, since that's the more useful read of "what's
+    // been happening at this property."
+    async loadActivity(lease) {
+        const el = document.getElementById('detailActivityContent');
+        el.innerHTML = '<p class="loading-inline"><span class="spinner-small"></span> Loading...</p>';
+        try {
+            const [activity, leases] = await Promise.all([Api.recentActivity(50), Api.listLeases()]);
+            if (!this.lease || this.lease.id !== lease.id) return;
+            const address = fieldValue(lease, 'property_address');
+            const normalized = normalizeBuildingAddress(address);
+            const propertyLeaseIds = new Set(
+                normalized
+                    ? leases.filter(l => normalizeBuildingAddress(fieldValue(l, 'property_address')) === normalized).map(l => l.id)
+                    : [lease.id]
+            );
+            const relevant = activity.filter(a => a.lease_id != null && propertyLeaseIds.has(a.lease_id)).slice(0, 8);
+
+            if (relevant.length === 0) {
+                el.innerHTML = '<p class="empty-inline">No recent activity at this property yet.</p>';
+                return;
+            }
+            el.innerHTML = `
+                <div class="activity-list">
+                    ${relevant.map(a => `
+                        <div class="activity-item ${a.lease_id ? 'clickable' : ''}" data-lease-id="${a.lease_id}">
+                            <span class="activity-badge activity-badge-${escapeHtml(a.action_type)}">${activityTypeLabel(a.action_type)}</span>
+                            <span class="activity-desc">${escapeHtml(a.description)}</span>
+                            <span class="activity-time">${timeAgo(a.created_at)}</span>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+            el.querySelectorAll('.activity-item.clickable').forEach(item => {
+                item.addEventListener('click', () => showLeaseDetail(parseInt(item.dataset.leaseId, 10)));
+            });
+        } catch (err) {
+            el.innerHTML = `<p class="error-text">Failed to load activity: ${escapeHtml(err.message)}</p>`;
         }
     },
 

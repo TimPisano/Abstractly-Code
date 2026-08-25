@@ -48,18 +48,33 @@ const RentRoll = {
 
         let totalSqft = 0, totalRent = 0, weightedSqft = 0, weightedRent = 0;
 
-        const rows = leases.map(lease => {
-            const name = fieldValue(lease, 'tenant') || lease.display_name || lease_filename(lease);
-            const address = fieldValue(lease, 'property_address');
+        // Totals below are computed over the FULL `leases` array regardless
+        // of the render cap -- only the <tr> HTML generation is capped, so
+        // the totals row never desyncs from what the portfolio actually
+        // contains. See dashboard-view.js's TABLE_RENDER_CAP.
+        const noteEl = document.getElementById('rentRollTableNote');
+        if (leases.length > TABLE_RENDER_CAP) {
+            noteEl.textContent = `Showing ${TABLE_RENDER_CAP} of ${leases.length} leases — totals below reflect the full portfolio.`;
+            noteEl.style.display = '';
+        } else {
+            noteEl.style.display = 'none';
+        }
+
+        const parsed = leases.map(lease => {
             const rentStr = fieldValue(lease, 'rent_amount');
             const sqftStr = fieldValue(lease, 'square_footage');
             const rent = rentStr ? parseMoney(rentStr) : null;
             const sqft = sqftStr ? parseSqft(sqftStr) : null;
-            const psf = (rent !== null && sqft) ? rent / sqft : null;
-
             if (sqft !== null) totalSqft += sqft;
             if (rent !== null) totalRent += rent;
             if (rent !== null && sqft !== null) { weightedRent += rent; weightedSqft += sqft; }
+            return { lease, rent, sqft };
+        });
+
+        const rows = parsed.slice(0, TABLE_RENDER_CAP).map(({ lease, rent, sqft }) => {
+            const name = fieldValue(lease, 'tenant') || lease.display_name || lease_filename(lease);
+            const address = fieldValue(lease, 'property_address');
+            const psf = (rent !== null && sqft) ? rent / sqft : null;
 
             return `
                 <tr data-lease-id="${lease.id}">

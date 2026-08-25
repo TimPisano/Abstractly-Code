@@ -22,6 +22,14 @@
  * attributed action via POST /alerts/<id>/dismiss, not a local-only
  * flag.
  */
+// Shared with discrepancies-view.js's identical render cap -- a
+// portfolio's alert/discrepancy count grows unboundedly over time, and
+// rendering thousands of full cards into the DOM at once (confirmed
+// live: 2MB+ of HTML for one real, accumulated test database) is a
+// real scalability problem independent of whether that much data is
+// "supposed" to be there.
+const FEED_RENDER_CAP = 100;
+
 const Alerts = {
     all: [],
     filters: { showDismissed: false, severity: '', type: '' },
@@ -39,7 +47,6 @@ const Alerts = {
         } catch (err) {
             document.getElementById('alertsFeedContent').innerHTML = `<p class="error-text">Failed to load alerts: ${escapeHtml(err.message)}</p>`;
         }
-        refreshAlertsBadge();
     },
 
     // A quick-scan count strip above the filterable list -- with a
@@ -47,10 +54,18 @@ const Alerts = {
     // unfiltered list reads as a raw dump; a by-severity count up top
     // (clickable straight into that filter) gives the "worth checking
     // daily" at-a-glance read the list alone can't.
+    //
+    // Also drives the sidebar nav badge from this SAME response (see
+    // applyAlertsBadge) rather than a second /alerts/summary call --
+    // caught live via a network-request audit that this view was firing
+    // that endpoint twice per visit (once for this strip, once for
+    // refreshAlertsBadge()), which the audit was specifically checking
+    // for ("does each tab load only its own data").
     async loadSummary() {
         const strip = document.getElementById('alertsSummaryStrip');
         try {
             const summary = await Api.alertsSummary();
+            applyAlertsBadge(summary);
             const tiles = [
                 { label: 'High', value: summary.by_severity.high, severity: 'high' },
                 { label: 'Medium', value: summary.by_severity.medium, severity: 'medium' },
@@ -81,7 +96,6 @@ const Alerts = {
         try {
             await Api.generateAlerts();
             await Promise.all([this.fetchAndRender(), this.loadSummary()]);
-            refreshAlertsBadge();
             showToast('Alerts refreshed.', 'success');
         } catch (err) {
             showError(`Failed to refresh alerts: ${err.message}`);
@@ -113,7 +127,15 @@ const Alerts = {
             return;
         }
 
-        el.innerHTML = `<div class="alerts-list">${alerts.map(a => this._cardHtml(a)).join('')}</div>`;
+        // Already sorted server-side (severity, then most-recently-seen)
+        // -- capping the DOM render to the top of that order, not
+        // dropping data, just not rendering thousands of full cards at
+        // once (a real portfolio's alert count grows unboundedly over
+        // time; filters narrow it further than this cap alone can).
+        const capped = alerts.slice(0, FEED_RENDER_CAP);
+        const capNote = alerts.length > FEED_RENDER_CAP
+            ? `<p class="attention-more">Showing the ${FEED_RENDER_CAP} most urgent of ${alerts.length} — narrow with the filters above to see more.</p>` : '';
+        el.innerHTML = `<div class="alerts-list">${capped.map(a => this._cardHtml(a)).join('')}</div>${capNote}`;
 
         el.querySelectorAll('.alert-card').forEach(card => {
             const alert = this.all.find(a => a.id === parseInt(card.dataset.alertId, 10));
@@ -162,7 +184,6 @@ const Alerts = {
             await Api.dismissAlert(alertId, { dismissedBy: name });
             showToast('Alert dismissed.', 'success');
             await Promise.all([this.fetchAndRender(), this.loadSummary()]);
-            refreshAlertsBadge();
         } catch (err) {
             showError(`Failed to dismiss: ${err.message}`);
         }
@@ -170,28 +191,39 @@ const Alerts = {
 };
 
 /**
- * Keeps the sidebar's Alerts nav badge current -- called once at app
- * boot (see app.js's init()) and again after anything that could
- * change the active-alert count (a refresh, a dismiss). Best-effort:
- * a failure here just leaves the badge as it was, not worth an error
- * toast for a background count refresh.
+ * Applies an already-fetched /alerts/summary response to the sidebar's
+ * Alerts nav badge -- split out from refreshAlertsBadge() so a caller
+ * that already has a fresh summary (Alerts.loadSummary(), rendering its
+ * own severity strip from the exact same response) can update the
+ * badge without a second network round trip for the same data.
+ */
+function applyAlertsBadge(summary) {
+    const badge = document.getElementById('alertsNavBadge');
+    const navItem = document.querySelector('.nav-item-alerts');
+    const hasAlerts = summary.active_count > 0;
+    // .has-alerts also drives the collapsed-sidebar dot indicator (see
+    // .nav-badge-dot's CSS) -- one flag, two visual forms depending on
+    // whether the sidebar is expanded or collapsed.
+    navItem.classList.toggle('has-alerts', hasAlerts);
+    if (hasAlerts) {
+        badge.textContent = summary.active_count > 99 ? '99+' : String(summary.active_count);
+        badge.style.display = '';
+    } else {
+        badge.style.display = 'none';
+    }
+}
+
+/**
+ * Fetches /alerts/summary and applies it -- used at app boot (app.js's
+ * init()), the one place nothing has already fetched a summary this
+ * turn. Everywhere else (Alerts.load()/refresh()/dismiss()) calls
+ * applyAlertsBadge() directly against a summary it already has. Best-
+ * effort: a failure here just leaves the badge as it was, not worth an
+ * error toast for a background count refresh.
  */
 async function refreshAlertsBadge() {
     try {
-        const summary = await Api.alertsSummary();
-        const badge = document.getElementById('alertsNavBadge');
-        const navItem = document.querySelector('.nav-item-alerts');
-        const hasAlerts = summary.active_count > 0;
-        // .has-alerts also drives the collapsed-sidebar dot indicator
-        // (see .nav-badge-dot's CSS) -- one flag, two visual forms
-        // depending on whether the sidebar is expanded or collapsed.
-        navItem.classList.toggle('has-alerts', hasAlerts);
-        if (hasAlerts) {
-            badge.textContent = summary.active_count > 99 ? '99+' : String(summary.active_count);
-            badge.style.display = '';
-        } else {
-            badge.style.display = 'none';
-        }
+        applyAlertsBadge(await Api.alertsSummary());
     } catch (err) { /* best-effort */ }
 }
 

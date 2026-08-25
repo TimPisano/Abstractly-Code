@@ -4762,3 +4762,118 @@ screenshots, following the exact process used for the earlier
 composition dashboard panel). `node --check` confirms no syntax errors
 in the modified files. Backend test suite unaffected by this change:
 38/38, confirmed unchanged.
+
+## Per-section sidebar wiring, multi-format upload UI, and a
+## polish/team-collaboration pass
+
+Four requests landed in the same turn: (1) wire each sidebar category
+to its own dedicated backend endpoint rather than fetching everything
+up front, (2) update the upload UI to reflect that non-PDF files are
+now accepted, (3) a full polish pass (loading/error states, empty
+states, mobile/responsive, visual consistency), and (4) UI for real
+team collaboration. Handled in that order, each verified live against
+the real backend (headless Chrome via CDP, same pattern as every prior
+frontend change this project).
+
+**Sidebar-to-endpoint audit**: reading every view's `load()` plus a
+live network-request audit (CDP event buffering, checking exactly
+which URLs fire per tab click) found that every *existing* tab was
+already correctly scoped -- no view was fetching more than its own
+section's data. The one real inefficiency: Alerts fired
+`/alerts/summary` twice per visit (once for its own severity strip,
+once for the sidebar badge). Fixed by splitting `refreshAlertsBadge()`
+into `applyAlertsBadge(summary)` (pure DOM update) + a thin fetch
+wrapper used only at app boot; everywhere else now reuses a summary
+it already fetched for its own purposes.
+
+Two of the user's named categories -- Discrepancies and Team Notes --
+didn't have standalone tabs yet, only existed as panels inside other
+views. `git log` confirmed the backend had just shipped dedicated
+endpoints for both (`/discrepancies/summary`, `/comments/recent`), so
+these became real new views:
+- `discrepancies-view.js` -- every discrepancy the app has recorded,
+  filterable, with a universal resolve/reopen form. Deliberately does
+  NOT reuse `DiscrepancyModal`'s two-sided comparison UI -- that needs
+  two well-defined "sides," which only rent-roll/T12 reconciliation
+  types have. A `lease_risk_flag` has no natural second side to show,
+  so this view uses a simpler universal form (what's correct, a note,
+  who) against the same real `/discrepancies/<id>/resolve` endpoint.
+- `team-notes-view.js` -- a portfolio-wide, read-only feed of every
+  comment left anywhere, plus a derived "who's contributed" roster.
+  Posting still only happens from Lease Detail / the discrepancy
+  modal's Discussion section, since a comment requires a specific
+  lease_id XOR discrepancy_id target that a portfolio-wide feed
+  doesn't have one of.
+
+**Upload UI**: added a file-type icon system (`fileTypeIconHtml()`)
+mapping extension -> category (pdf/spreadsheet/word/image/text) -> a
+small inline SVG, shown in both the in-progress row and the completed
+result row, so a user can visually confirm what they picked before it
+finishes processing. Verified live end-to-end with a real `.xlsx` rent
+roll upload through `DOM.setFileInputFiles` (not just accepting the
+file -- watched it process to a completed, correctly-split result).
+
+**Polish pass**: the empty-states and loading-states audit ran
+directly into the shared dev database being actively, heavily
+stress-tested by a concurrent session on the same machine (lease count
+observed swinging from 0 to ~8,700 to 0 again within one test run).
+Rather than fight that for a "clean" screenshot, this volatility
+became the actual test: it surfaced two real scalability gaps that a
+quiet database never would have --
+1. Alerts and Discrepancies were already found to render every row
+   into the DOM unbounded (confirmed live: 2MB+ of HTML for one
+   accumulated test database) -- fixed earlier in the session with a
+   shared `FEED_RENDER_CAP = 100` and a "showing X of Y" note.
+2. The same live stress-test data showed the Dashboard's Lease Library
+   table and the Portfolio Rent Roll table have the identical
+   unbounded-render problem (confirmed live: an 8,000+ row `<tbody>`).
+   Fixed with a matching `TABLE_RENDER_CAP = 500` (higher than the
+   card feeds' cap since a `<tr>` is far cheaper than a full alert
+   card) -- Rent Roll's portfolio totals row still sums over the
+   *full* lease list regardless of the cap (only the HTML row
+   generation is capped), so the totals never desync from what the
+   portfolio actually contains.
+
+Mobile/responsive check found the sidebar's `max-width: 768px`
+wrapped-horizontal-bar layout (an intentional design from the earlier
+sidebar-polish session) had aged badly: with 11 nav items (two more
+were added this same turn) it wrapped across 5 rows on a phone,
+pushing all page content ~300px below the fold before a new user saw
+anything. Rather than build a new hamburger/off-canvas pattern (bigger
+scope than a polish pass, more risk), changed it to a single-row,
+horizontally-scrollable strip -- the same pattern as a native app's
+tab bar. CSS-only (`flex-wrap: nowrap` + `overflow-x: auto`), no JS
+change, every nav item still reachable, verified live at 768/390/320px
+that the sidebar collapses to ~76px tall and scrolling reaches the
+last item (`Session Stats`) and it's still clickable there.
+
+**Team collaboration**: no user-accounts/auth/roles infrastructure
+exists anywhere in the backend (confirmed via `git status`/`git diff`
+against the concurrent backend session -- its recent activity was
+concurrency-safety hardening, unrelated to identity). Building an
+invite/roles settings page or persistent lease/property/discrepancy
+assignment would mean fabricating a persistence layer this app
+doesn't have -- consistent with this project's standing rule against
+that, this was explicitly NOT built. What *is* real and was built:
+- Avatars (`avatarHtml()` in app.js) -- deterministic initials +
+  color from a name, no new state, reused everywhere a name already
+  renders (comments, Team Notes' feed and roster).
+- A derived "who's contributed" roster on Team Notes -- counts by
+  `author_name` from real comments, not a managed member list.
+- A live-update banner (`#liveUpdateBanner`) -- polls
+  `Api.recentActivity(1)` every 30s; if the most-recent activity's
+  identity changes since the last check, shows a dismissible banner
+  with a Refresh button that reloads the current view. Verified live
+  by resolving a discrepancy directly via `curl` (simulating a second
+  teammate acting through the real API, not the open browser tab) and
+  confirming the banner appeared on the next poll and Refresh cleared
+  it.
+- A per-property "Activity" panel on Lease Detail -- recent activity
+  filtered to leases sharing the same normalized property address.
+
+Verified live end-to-end: resolving a real discrepancy through the
+new Discrepancies view's inline form updated its open/resolved
+counts, and the resulting comment immediately appeared in Team Notes
+with the resolver's real name and a generated avatar -- confirming
+"Team Notes tied to visible names, not anonymous" actually holds
+through the real data path, not just in isolation.
