@@ -197,6 +197,56 @@ def test_comments_are_visible_regardless_of_which_client_posted_them():
     print("✓ test_comments_are_visible_regardless_of_which_client_posted_them: PASS")
 
 
+def test_recent_comments_route_merges_lease_and_discrepancy_comments():
+    db_path = _fresh_temp_db()
+    try:
+        client = app.test_client()
+        lease_id = database.insert_lease("base.pdf", _fields(), display_name="123 Main St Lease")
+        disc_id = database.upsert_discrepancy(
+            discrepancy_type="lease_risk_flag", natural_key="k", category="missing_clause",
+            message="m", details={}, lease_id=lease_id,
+        )
+
+        resp = client.get("/comments/recent")
+        assert resp.status_code == 200
+        assert resp.get_json() == []
+
+        client.post(f"/leases/{lease_id}/comments", json={"author_name": "Jane", "body": "Lease note"})
+        client.post(f"/discrepancies/{disc_id}/comments", json={"author_name": "Bob", "body": "Discrepancy note"})
+
+        resp = client.get("/comments/recent")
+        data = resp.get_json()
+        assert len(data) == 2, "must include comments from BOTH leases and discrepancies in one feed"
+
+        by_body = {c["body"]: c for c in data}
+        assert by_body["Lease note"]["lease_display_name"] == "123 Main St Lease", "lease comment must carry denormalized lease context"
+        assert by_body["Lease note"]["discrepancy_category"] is None
+        assert by_body["Discrepancy note"]["discrepancy_category"] == "missing_clause", "discrepancy comment must carry denormalized discrepancy context"
+
+        # most recent first
+        assert data[0]["body"] == "Discrepancy note"
+    finally:
+        os.unlink(db_path)
+    print("✓ test_recent_comments_route_merges_lease_and_discrepancy_comments: PASS")
+
+
+def test_recent_comments_route_respects_limit():
+    db_path = _fresh_temp_db()
+    try:
+        client = app.test_client()
+        lease_id = database.insert_lease("base.pdf", _fields())
+        for i in range(5):
+            client.post(f"/leases/{lease_id}/comments", json={"author_name": "Jane", "body": f"note {i}"})
+
+        resp = client.get("/comments/recent?limit=2")
+        assert resp.status_code == 200
+        assert len(resp.get_json()) == 2
+        assert resp.get_json()[0]["body"] == "note 4", "must be most-recent-first"
+    finally:
+        os.unlink(db_path)
+    print("✓ test_recent_comments_route_respects_limit: PASS")
+
+
 if __name__ == "__main__":
     test_add_and_get_lease_comments_chronological()
     test_add_and_get_discrepancy_comments()
@@ -206,4 +256,6 @@ if __name__ == "__main__":
     test_lease_comment_routes_404_for_nonexistent_lease()
     test_discrepancy_comment_routes_happy_path_and_404()
     test_comments_are_visible_regardless_of_which_client_posted_them()
+    test_recent_comments_route_merges_lease_and_discrepancy_comments()
+    test_recent_comments_route_respects_limit()
     print("\nAll comment tests passed.")

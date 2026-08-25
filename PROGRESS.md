@@ -1,6 +1,30 @@
 # Progress Summary
 
-**Last updated**: The lease upload system now accepts any file format
+**Last updated**: Backend support for the new sidebar UI (Dashboard/
+Health Score, Leases & Rent Rolls, Alerts, Discrepancies, Portfolio
+Trends, Reports/Exports, Team Notes) -- audited every sidebar category
+against the actual endpoint list before writing anything, and found 3
+real gaps, not speculative ones: a portfolio-wide `GET /portfolio/
+trends` (the frontend's own trends-view.js code comment already
+documented the workaround it was doing instead -- fetching per-
+property trends once per building and merging client-side, now
+replaced with one server-side call), `GET /discrepancies/summary`
+(mirroring the existing `/alerts/summary`), and `GET /comments/recent`
+(a portfolio-wide feed for a standalone Team Notes tab, joining
+lease and discrepancy comments in one query). Also added response
+caching (new `app/cache.py`, a plain in-process dict -- no new
+dependency) for the two genuinely expensive, repeatedly-hit
+computations named in the request: the health score and portfolio
+trends, with real invalidation wired into every lease/discrepancy
+mutation route plus a 60s TTL safety net. Building this caught a real
+test-isolation bug (fixed at the root: `database.configure()` now
+clears the cache) before it could hide anything. Full suite 56/56
+including live tests -- see DECISIONS.md's "Backend support for the
+new sidebar UI" entry for the full writeup.
+
+---
+
+Before that: the lease upload system now accepts any file format
 a real rent roll or lease might come in, not just PDF: Excel (.xlsx/
 .xls/.xlsm), CSV/TSV, Word (.docx/.doc), images (.jpg/.png/.tiff, via
 the same OCR pipeline scanned PDFs already use), and plain text. Every

@@ -235,3 +235,86 @@ def compute_property_trends(leases: List[Dict[str, Any]], property_address: str)
         "tenant_turnover": compute_tenant_turnover(history),
         "rollover_pattern": compute_rollover_pattern(history),
     }
+
+
+def compute_portfolio_trends(leases: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    The portfolio-wide version of compute_property_trends: every
+    distinct building's trends, computed in ONE pass over the lease
+    list, plus portfolio-level totals for tenant turnover and rollover
+    pattern (rent growth is left per-property only -- summing a rent
+    percentage change across dissimilar properties produces a number
+    with no real meaning, unlike a turnover/expiration COUNT, which
+    sums honestly).
+
+    This exists specifically to replace a real, previously-necessary
+    workaround: before this function existed, showing "all properties"
+    trends meant the caller fetching compute_property_trends once per
+    distinct building and merging the results itself -- correct, but
+    O(number of properties) separate passes over the full lease list
+    and, over HTTP, O(number of properties) separate round trips. This
+    does the same grouping once, server-side.
+
+    Returns {"property_count", "record_count", "properties": [each
+    compute_property_trends()'s own shape, one per building],
+    "portfolio_tenant_turnover": {turnover_count, units_tracked},
+    "portfolio_rollover_pattern": {by_month, by_year,
+    total_expirations_tracked}}.
+    """
+    by_building: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    display_address: Dict[str, str] = {}
+    for lease in leases:
+        raw_address = field_value(lease, "property_address")
+        normalized = _normalize_building_address(raw_address)
+        if normalized is None:
+            continue
+        by_building[normalized].append(lease)
+        display_address.setdefault(normalized, raw_address)
+
+    properties = []
+    turnover_count_total = 0
+    units_tracked_total = 0
+    by_month_total: Dict[str, int] = {f"{m:02d}": 0 for m in range(1, 13)}
+    by_year_total: Dict[str, int] = defaultdict(int)
+    expirations_total = 0
+
+    for normalized, building_leases in by_building.items():
+        history = sorted(
+            (_history_entry(lease) for lease in building_leases),
+            key=lambda e: (e["uploaded_at"] or "", e["lease_id"] or 0),
+        )
+        turnover = compute_tenant_turnover(history)
+        rollover = compute_rollover_pattern(history)
+
+        properties.append({
+            "property_address": display_address[normalized],
+            "record_count": len(history),
+            "rent_growth": compute_rent_growth(history),
+            "tenant_turnover": turnover,
+            "rollover_pattern": rollover,
+        })
+
+        turnover_count_total += turnover["turnover_count"]
+        units_tracked_total += turnover["units_tracked"]
+        for month, count in rollover["by_month"].items():
+            by_month_total[month] += count
+        for year, count in rollover["by_year"].items():
+            by_year_total[year] += count
+        expirations_total += rollover["total_expirations_tracked"]
+
+    properties.sort(key=lambda p: p["property_address"] or "")
+
+    return {
+        "property_count": len(properties),
+        "record_count": sum(p["record_count"] for p in properties),
+        "properties": properties,
+        "portfolio_tenant_turnover": {
+            "turnover_count": turnover_count_total,
+            "units_tracked": units_tracked_total,
+        },
+        "portfolio_rollover_pattern": {
+            "by_month": by_month_total,
+            "by_year": dict(sorted(by_year_total.items())),
+            "total_expirations_tracked": expirations_total,
+        },
+    }

@@ -67,7 +67,8 @@ from app.portfolio import (
 )
 from app.comparison import compare_leases, benchmark_lease
 from app.discrepancies import sync_lease_risk_flags, sync_rent_roll_reconciliation, sync_t12_reconciliation
-from app.portfolio_history import compute_property_trends
+from app.portfolio_history import compute_property_trends, compute_portfolio_trends
+from app import cache
 from app.alerts import generate_alerts, get_alert_digest
 from app.investment_memo import build_investment_memo_data, generate_investment_memo_pdf, generate_investment_memo_excel
 from app.portfolio_health_score import compute_portfolio_health_score, DEFAULT_STALENESS_THRESHOLD_MONTHS
@@ -391,6 +392,33 @@ def _lease_summary(lease):
     }
 
 
+def _invalidate_lease_derived_caches():
+    """
+    Called after anything that changes which leases exist or what
+    their extracted fields say (upload, batch upload, rent-roll
+    import, amendment, delete, bulk-delete) -- clears the cached
+    portfolio trends (both the portfolio-wide and every per-property
+    entry, since "trends" is a shared prefix) and the cached health
+    score, both of which walk the full lease list and would otherwise
+    keep returning a now-stale answer for up to the cache's TTL. See
+    app/cache.py's module docstring for the full invalidation strategy.
+    """
+    cache.invalidate("trends")
+    cache.invalidate("health_score")
+
+
+def _invalidate_discrepancy_derived_caches():
+    """
+    Called after a discrepancy is resolved or reopened -- the health
+    score's "unresolved discrepancies" component depends on exactly
+    this, so a cached score would otherwise keep reporting the old
+    open/resolved count for up to the cache's TTL. Trends don't depend
+    on discrepancies at all, so only the health-score cache needs
+    clearing here, not "trends".
+    """
+    cache.invalidate("health_score")
+
+
 def _persist_split_leases(filename, split_leases):
     """
     Persists every lease FieldExtractor.extract_multiple_leases()
@@ -415,6 +443,8 @@ def _persist_split_leases(filename, split_leases):
         lease = database.get_effective_lease(lease_id)
         lease["tags"] = []
         created.append(_lease_summary(lease))
+    if created:
+        _invalidate_lease_derived_caches()
     return created
 
 
@@ -567,6 +597,9 @@ def import_rent_roll():
         lease["tags"] = []
         created.append(_lease_summary(lease))
 
+    if created:
+        _invalidate_lease_derived_caches()
+
     skipped_note = f" ({len(parsed['skipped_rows'])} row(s) skipped)" if parsed["skipped_rows"] else ""
     database.insert_activity("rent_roll_imported", f"Imported {len(created)} lease(s) from {filename}{skipped_note}")
 
@@ -634,6 +667,7 @@ def delete_lease(lease_id):
     if not lease:
         return jsonify({"error": "Lease not found"}), 404
     database.delete_lease(lease_id)
+    _invalidate_lease_derived_caches()
     # Logged with lease_id=None (not lease_id) since the row this would
     # reference no longer exists once delete_lease() returns.
     database.insert_activity("lease_deleted", f"Deleted {lease['filename']}")
@@ -670,6 +704,8 @@ def bulk_delete_leases():
         database.insert_activity("lease_deleted", f"Deleted {lease['filename']}")
         deleted.append(lease_id)
 
+    if deleted:
+        _invalidate_lease_derived_caches()
     return jsonify({"deleted": deleted, "not_found": not_found}), 200
 
 
@@ -704,6 +740,7 @@ def upload_amendment(lease_id):
         date_candidates=amendment_data["date_candidates"],
     )
     database.insert_activity("amendment_uploaded", f"Added amendment {filename} to {base_lease['filename']}", lease_id=lease_id)
+    _invalidate_lease_derived_caches()
     lease = database.get_effective_lease(lease_id)
     lease["tags"] = database.get_lease_tags(lease_id)
     return jsonify(_lease_summary(lease)), 201
@@ -1116,6 +1153,13 @@ def portfolio_health_score_route():
     health's "what needs attention today" strip -- see
     app/portfolio_health_score.py's module docstring for the full,
     explicitly documented formula behind this number.
+
+    Cached (see app/cache.py) -- this walks every lease's confidence/
+    verification/staleness state plus every open discrepancy on every
+    call, real work worth avoiding on a sidebar someone might switch
+    into repeatedly. Invalidated explicitly whenever a lease or
+    discrepancy mutates (see the cache.invalidate("health_score") call
+    sites), with a 60s TTL as a safety net regardless.
     """
     threshold_raw = request.args.get('staleness_threshold_months')
     if threshold_raw is not None:
@@ -1128,7 +1172,9 @@ def portfolio_health_score_route():
     else:
         threshold_months = DEFAULT_STALENESS_THRESHOLD_MONTHS
 
-    return jsonify(compute_portfolio_health_score(staleness_threshold_months=threshold_months)), 200
+    cache_key = f"health_score:{threshold_months}"
+    result = cache.get_or_compute(cache_key, lambda: compute_portfolio_health_score(staleness_threshold_months=threshold_months))
+    return jsonify(result), 200
 
 
 @app.route('/portfolio/tenant-concentration', methods=['GET'])
@@ -1177,16 +1223,44 @@ def portfolio_property_trends():
     unit-vs-building matching distinction. 400 if property_address is
     missing/blank; otherwise 200 even when zero records match (an
     honest "no history yet" result, not an error).
+
+    Cached per property_address (see app/cache.py) -- invalidated
+    whenever a lease mutates, 60s TTL as a safety net regardless.
     """
     property_address = (request.args.get('property_address') or '').strip()
     if not property_address:
         return jsonify({"error": "property_address is required"}), 400
 
-    leases = database.get_all_effective_leases()
-    trends = compute_property_trends(leases, property_address)
+    def _compute():
+        leases = database.get_all_effective_leases()
+        return compute_property_trends(leases, property_address)
+
+    trends = cache.get_or_compute(f"trends:property:{property_address}", _compute)
     if trends is None:
         return jsonify({"error": "property_address did not normalize to a usable address"}), 400
     return jsonify(trends), 200
+
+
+@app.route('/portfolio/trends', methods=['GET'])
+def portfolio_trends_route():
+    """
+    The portfolio-wide sibling of GET /portfolio/property-trends --
+    every distinct building's trends in ONE response, plus portfolio-
+    level tenant-turnover and rollover-pattern totals. See
+    compute_portfolio_trends's own docstring for why this exists: it
+    replaces what used to require the caller fetching property-trends
+    once per building and merging the results itself (real,
+    documented behavior the frontend's trends view was doing before
+    this endpoint existed -- an O(number of properties) fan-out of
+    separate requests just to render the default "All Properties"
+    view). 200 with an honest all-zero result for an empty portfolio,
+    not an error.
+
+    Cached (see app/cache.py) -- invalidated whenever a lease mutates,
+    60s TTL as a safety net regardless.
+    """
+    result = cache.get_or_compute("trends:portfolio", lambda: compute_portfolio_trends(database.get_all_effective_leases()))
+    return jsonify(result), 200
 
 
 @app.route('/portfolio/rent-roll-reconciliation', methods=['GET'])
@@ -1333,6 +1407,21 @@ def list_discrepancies():
     return jsonify(discrepancies), 200
 
 
+@app.route('/discrepancies/summary', methods=['GET'])
+def discrepancies_summary():
+    """
+    Counts by status/severity/type across every discrepancy -- the
+    header-stat digest a "Discrepancies" sidebar tab needs (how many
+    total, how many still open, the severity/type breakdown) without
+    fetching and counting the full list client-side, the same role
+    GET /alerts/summary already plays for the Alerts tab. Same scope
+    as GET /discrepancies itself (every discrepancy ever recorded), so
+    this digest can never disagree with what that list returns -- see
+    database.get_discrepancy_summary's own docstring.
+    """
+    return jsonify(database.get_discrepancy_summary()), 200
+
+
 @app.route('/discrepancies/<int:discrepancy_id>', methods=['GET'])
 def get_discrepancy(discrepancy_id):
     discrepancy = database.get_discrepancy(discrepancy_id)
@@ -1373,6 +1462,7 @@ def resolve_discrepancy(discrepancy_id):
         return jsonify({"error": f"Missing required field(s): {', '.join(missing)}"}), 400
 
     resolution = database.resolve_discrepancy(discrepancy_id, correct_source, note, resolved_by, resolved_by_email)
+    _invalidate_discrepancy_derived_caches()
     discrepancy = database.get_discrepancy(discrepancy_id)
     database.insert_activity(
         "discrepancy_resolved",
@@ -1401,6 +1491,7 @@ def reopen_discrepancy(discrepancy_id):
         return jsonify({"error": f"Missing required field(s): {', '.join(missing)}"}), 400
 
     resolution = database.reopen_discrepancy(discrepancy_id, note, resolved_by, resolved_by_email)
+    _invalidate_discrepancy_derived_caches()
     discrepancy = database.get_discrepancy(discrepancy_id)
     database.insert_activity(
         "discrepancy_reopened",
@@ -1431,6 +1522,22 @@ def add_discrepancy_comment(discrepancy_id):
 
     database.add_comment(author_name, body, discrepancy_id=discrepancy_id, author_email=author_email)
     return jsonify(database.get_discrepancy_comments(discrepancy_id)), 201
+
+
+@app.route('/comments/recent', methods=['GET'])
+def recent_comments():
+    """
+    GET /comments/recent?limit=20 (default 20, max 200). The most
+    recent comments across BOTH leases and discrepancies in one feed --
+    what a standalone "Team Notes" sidebar tab needs, which neither
+    GET /leases/<id>/comments nor GET /discrepancies/<id>/comments
+    (each scoped to one target) can answer alone. Each entry carries
+    enough denormalized context (the lease's display name, or the
+    discrepancy's category) to render without a follow-up request per
+    comment -- see database.get_recent_comments.
+    """
+    limit = request.args.get('limit', default=20, type=int) or 20
+    return jsonify(database.get_recent_comments(limit)), 200
 
 
 @app.route('/alerts/generate', methods=['POST'])

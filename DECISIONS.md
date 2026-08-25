@@ -1,5 +1,162 @@
 # Implementation Decisions
 
+## Backend support for the new sidebar UI: focused endpoints + caching
+
+Two related pieces of work: (1) audit every category the new sidebar
+shows (Dashboard/Health Score, Leases & Rent Rolls, Alerts,
+Discrepancies, Portfolio Trends, Reports/Exports, Team Notes) against
+what backend endpoints actually exist, filling real gaps; (2) cache
+the genuinely expensive, repeatedly-hit computations (portfolio
+trends, the health score) so switching sidebar tabs doesn't
+recompute them from scratch every time.
+
+### Endpoint audit: 3 real gaps found, not speculative additions
+
+Checked every `apiRequest(...)` call across the frontend against the
+existing route list (74 routes at the time) before writing any new
+code, rather than guessing at what might be missing. Most sidebar
+categories already had focused, appropriately-scoped endpoints
+(Alerts already had `/alerts/summary` + a filterable list; Dashboard
+already fans out to ~8 small independent panels, not one bundle;
+Leases & Rent Rolls and Reports/Exports were already comprehensive).
+Three real gaps:
+
+1. **No portfolio-wide trends endpoint -- confirmed by the frontend's
+   OWN code comment, not inferred.** `trends-view.js` (written before
+   this pass) explicitly documents: *"for 'All Properties' this view
+   fetches [property-trends] once per distinct building in the
+   portfolio and merges the results client-side... there's no
+   portfolio-wide version of this endpoint."* That's an O(number of
+   properties) fan-out of separate HTTP round trips just to render the
+   DEFAULT view of a Portfolio Trends tab. New `GET /portfolio/trends`
+   (backed by `compute_portfolio_trends` in `portfolio_history.py`)
+   does the same building-by-building grouping in ONE pass server-
+   side, returning every property's trends plus portfolio-wide
+   tenant-turnover/rollover-pattern totals. Rent growth is deliberately
+   NOT summed across properties (a percentage change has no honest
+   combined meaning across dissimilar buildings, unlike a turnover/
+   expiration COUNT) -- reported per-property only, consistent with
+   `compute_loss_to_lease`'s own precedent of not manufacturing a
+   number that would carry more authority than it's earned. Verified
+   the aggregation is genuinely equivalent to the old approach, not
+   just plausible-looking: `test_compute_portfolio_trends_matches_per_
+   property_calls_summed` calls both the new portfolio-wide function
+   AND the old per-property one manually, and asserts the totals
+   match exactly.
+
+2. **No digest for a "Discrepancies" tab.** Alerts already had
+   `GET /alerts/summary` for exactly this (header counts without
+   fetching the full list); discrepancies had no equivalent. New
+   `GET /discrepancies/summary` (counts by status/severity/type),
+   deliberately scoped identically to the existing `GET /discrepancies`
+   list (every discrepancy ever recorded) so the digest can never
+   disagree with what the list itself would show if counted client-
+   side -- a different, narrower scope than `portfolio_health_score.py`
+   needs for its OWN discrepancy count (see that module's own scoping
+   logic, and why it's intentionally different).
+
+3. **No portfolio-wide comments feed for a standalone "Team Notes"
+   tab.** `GET /leases/<id>/comments` and `GET /discrepancies/<id>/
+   comments` only ever existed scoped to one target -- there was no
+   frontend view file for a top-level "Team Notes" tab yet either
+   (confirmed by checking: no such file exists among the current view
+   modules), consistent with this being requested ahead of the
+   frontend building it, not behind. New `GET /comments/recent?limit=N`
+   (default 20, max 200), a single `LEFT JOIN`-based query across both
+   leases and discrepancies, denormalizing just enough context (a
+   lease's display name, or a discrepancy's category) so a feed can
+   render each entry without a follow-up request per comment.
+
+### Caching: a minimal in-process cache, not a new dependency
+
+New `app/cache.py` -- a plain in-process dict (`get_or_compute(key,
+compute_fn, ttl_seconds)` / `invalidate(prefix)`), the same "stdlib/
+minimal-dependency over a new one" philosophy this project has held
+since session 1. This app has only ever run as a single Flask dev-
+server process (see the pre-sale audit's "not fit for production
+traffic" finding in PROGRESS.md) -- there's no multi-worker cache-
+consistency problem to solve for yet, so a shared cache like Redis
+would be solving a problem this app doesn't have.
+
+Applied to exactly the two computations the request named as
+examples, and nothing else: `GET /portfolio/health-score` (walks
+every lease's confidence/verification/staleness state plus every open
+discrepancy on every call) and both `GET /portfolio/trends` and
+`GET /portfolio/property-trends` (each re-derives a full historical
+timeline per building on every call). Every other route in this app
+is already cheap (a handful of SQLite rows, a pass over an already-
+small in-memory list) -- caching those too would add real complexity
+(cache-key design, staleness reasoning) for no measurable benefit, so
+they were deliberately left alone.
+
+**Invalidation, two layers**: explicit `cache.invalidate(prefix)` calls
+at the exact mutation points that change the underlying data -- a
+lease upload/batch-upload/rent-roll-import/amendment/delete/bulk-
+delete (`_invalidate_lease_derived_caches()`, clearing both `"trends"`
+and `"health_score"`) and a discrepancy resolve/reopen
+(`_invalidate_discrepancy_derived_caches()`, clearing only
+`"health_score"` -- trends don't depend on discrepancies at all, so
+there's nothing to bust there). All funneled through
+`_persist_split_leases()` (the one shared insert path both `POST
+/leases` and `POST /leases/batch` already used) rather than repeated
+at every call site, so there's exactly one place that needs to be
+right for lease-creation invalidation. Plus a 60-second TTL as a
+safety net on every cached entry, so any mutation path not explicitly
+wired to invalidate (or a future one that's missed) self-heals within
+a bounded time instead of serving stale data indefinitely.
+
+The health-score cache key includes the (optional)
+`staleness_threshold_months` query parameter
+(`f"health_score:{threshold_months}"`) -- two different thresholds
+must never collide onto the same cached answer. Verified directly
+(`test_health_score_cache_key_is_scoped_by_staleness_threshold`: two
+requests with deliberately different thresholds against the same
+data, asserting the answers differ, not just that both return 200).
+
+### A real test-isolation bug found and fixed while building this: `database.configure()` now clears the cache
+
+`app/cache.py` is process-global state; this whole test suite's
+standard pattern is a fresh temp SQLite file PER TEST FUNCTION via
+`database.configure(new_path)`. Without a fix, a cached result
+computed against one test's database would leak into the NEXT test
+function's database, since both share the same process and (for the
+same query parameters) the same cache keys -- caught immediately by
+`test_health_score_route` failing the moment caching was added: it
+inserted a lease directly and expected the health score to reflect
+it, but got back the previous (empty-portfolio) cached answer.
+
+Fixed at the root, not by patching every affected test file
+individually: `database.configure()` now calls `cache.invalidate_all()`
+itself. Real `api.py` request handling never calls `configure()`
+mid-run (it's only ever called once, at process start), so this has
+zero effect on the cache's actual job during a real run -- it only
+ever fires at test/process setup, exactly when a fresh cache is
+wanted. One remaining, narrower wrinkle, documented rather than
+silently worked around: a test that inserts data via
+`database.insert_lease()` DIRECTLY (this whole suite's normal
+shortcut, bypassing the real API layer) does NOT trigger `api.py`'s
+invalidation hooks, since those only fire on the real mutation
+ROUTES -- `test_cache.py`'s
+`test_uploading_a_lease_through_the_api_busts_the_health_score_cache`
+deliberately proves both halves of this in one test (a direct DB
+insert does NOT bust the cache; the real `POST /leases` route DOES),
+so the distinction is asserted, not just assumed.
+
+### Verified
+
+`test_cache.py` (8 tests: the cache primitive itself, the
+`database.configure()` fix, and -- the more important half -- the
+REAL invalidation hooks proven through the real API routes, not just
+the cache module in isolation) plus new tests added to
+`test_discrepancies.py`, `test_comments.py`, and
+`test_portfolio_history.py` for the three new endpoints, plus
+`test_live_sidebar_endpoints_api.py` (18 checks against the real
+running server: all three new endpoints, and real cache-busting
+behavior end to end -- upload a lease, immediately see the health
+score change; delete a lease, immediately see portfolio trends
+change; resolve a discrepancy, immediately see the health score's
+open-discrepancy count change). Full suite 56/56 including live tests.
+
 ## Multi-format upload support (PDF, Excel, CSV/TSV, Word, images, plain text)
 
 The lease upload system (`/extract`, `POST /leases`, `POST /leases/

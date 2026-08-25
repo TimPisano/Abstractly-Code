@@ -373,6 +373,34 @@ def test_get_discrepancy_route_404_for_nonexistent():
     print("✓ test_get_discrepancy_route_404_for_nonexistent: PASS")
 
 
+def test_discrepancy_summary_route():
+    db_path = _fresh_temp_db()
+    try:
+        client = app.test_client()
+        resp = client.get("/discrepancies/summary")
+        assert resp.status_code == 200
+        assert resp.get_json() == {"total": 0, "by_status": {"open": 0, "resolved": 0}, "by_severity": {"high": 0, "medium": 0, "low": 0}, "by_type": {}}
+
+        id1 = database.upsert_discrepancy(discrepancy_type="lease_risk_flag", natural_key="a", category="missing_clause", message="m", details={}, lease_id=1, severity="high")
+        database.upsert_discrepancy(discrepancy_type="rent_roll_reconciliation", natural_key="b", category="rent_roll_reconciliation", message="m", details={}, lease_id=1, severity="medium")
+        database.resolve_discrepancy(id1, "lease_document", "note", "Jane")
+
+        resp = client.get("/discrepancies/summary")
+        data = resp.get_json()
+        assert data["total"] == 2
+        assert data["by_status"] == {"open": 1, "resolved": 1}
+        assert data["by_severity"]["high"] == 1
+        assert data["by_severity"]["medium"] == 1
+        assert data["by_type"] == {"lease_risk_flag": 1, "rent_roll_reconciliation": 1}
+
+        # Must always agree with what GET /discrepancies (unfiltered) itself returns
+        full_list = client.get("/discrepancies").get_json()
+        assert data["total"] == len(full_list)
+    finally:
+        os.unlink(db_path)
+    print("✓ test_discrepancy_summary_route: PASS")
+
+
 if __name__ == "__main__":
     test_upsert_creates_open_discrepancy_on_first_seen()
     test_upsert_same_natural_key_updates_snapshot_but_not_status()
@@ -391,4 +419,5 @@ if __name__ == "__main__":
     test_reopen_route_requires_currently_resolved()
     test_list_discrepancies_route_filters()
     test_get_discrepancy_route_404_for_nonexistent()
+    test_discrepancy_summary_route()
     print("\nAll discrepancy tests passed.")

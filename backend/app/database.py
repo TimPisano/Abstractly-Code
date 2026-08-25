@@ -21,6 +21,8 @@ import os
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 
+from . import cache
+
 DEFAULT_DB_PATH = os.path.join(os.path.dirname(__file__), "..", "lease_portfolio.db")
 
 # Module-level, overridable so tests can point at an isolated temp DB
@@ -29,9 +31,22 @@ _db_path = DEFAULT_DB_PATH
 
 
 def configure(db_path: str) -> None:
-    """Point the module at a different DB file (used by tests)."""
+    """
+    Point the module at a different DB file (used by tests). Also
+    clears app/cache.py's in-process cache -- that cache is keyed by
+    things like "health_score:6.0" with no database identity baked in,
+    so without this, a test suite that creates a fresh temp DB per
+    test function (this project's standard pattern -- see
+    _fresh_temp_db() in most test files) would leak a cached result
+    computed against an EARLIER test's database into a LATER test's,
+    since both share the same process and the same cache keys. Real
+    api.py request handling never calls configure() mid-run (it's only
+    ever called once, at test/process setup), so this has no effect on
+    the cache's actual job of avoiding repeat work within one real run.
+    """
     global _db_path
     _db_path = db_path
+    cache.invalidate_all()
 
 
 def get_db_path() -> str:
@@ -910,6 +925,37 @@ def get_discrepancy_resolutions(discrepancy_id: int) -> List[Dict[str, Any]]:
         conn.close()
 
 
+def get_discrepancy_summary() -> Dict[str, Any]:
+    """
+    Counts across every discrepancy, by status/severity/type -- the
+    header-stat digest a "Discrepancies" sidebar tab needs (how many
+    total, how many still open, the severity/type breakdown) without
+    fetching the full list just to count it client-side. Deliberately
+    scoped identically to list_discrepancies() (every discrepancy ever
+    recorded, not just ones tied to leases currently in the portfolio)
+    so this digest can never disagree with what GET /discrepancies
+    itself returns -- see portfolio_health_score.py's own discrepancy-
+    scoping logic for the DIFFERENT, narrower scope that function
+    needs instead, and why.
+    """
+    conn = get_connection()
+    try:
+        rows = conn.execute("SELECT status, severity, discrepancy_type FROM discrepancies").fetchall()
+    finally:
+        conn.close()
+
+    by_status = {"open": 0, "resolved": 0}
+    by_severity = {"high": 0, "medium": 0, "low": 0}
+    by_type: Dict[str, int] = {}
+    for row in rows:
+        by_status[row["status"]] = by_status.get(row["status"], 0) + 1
+        if row["severity"] in by_severity:
+            by_severity[row["severity"]] += 1
+        by_type[row["discrepancy_type"]] = by_type.get(row["discrepancy_type"], 0) + 1
+
+    return {"total": len(rows), "by_status": by_status, "by_severity": by_severity, "by_type": by_type}
+
+
 # ----------------------------------------------------------------------
 # Comments: team notes on a lease or a discrepancy, visible to everyone
 # on the account (there's no per-account data scoping in this app at
@@ -956,6 +1002,44 @@ def get_discrepancy_comments(discrepancy_id: int) -> List[Dict[str, Any]]:
     try:
         rows = conn.execute(
             "SELECT * FROM comments WHERE discrepancy_id = ? ORDER BY created_at ASC, id ASC", (discrepancy_id,)
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def get_recent_comments(limit: int = 20) -> List[Dict[str, Any]]:
+    """
+    The most recent comments across BOTH leases and discrepancies, one
+    portfolio-wide feed -- what a standalone "Team Notes" sidebar tab
+    needs, which neither get_lease_comments nor get_discrepancy_
+    comments (each scoped to a single target) can answer alone.
+    Denormalizes just enough context via a LEFT JOIN (the lease's own
+    display name/filename, or the discrepancy's category) so a caller
+    can render each entry directly, without a follow-up request per
+    comment to find out what it's actually about. A comment's lease/
+    discrepancy may have since been deleted (comments cascade-delete
+    with their lease, but not with the discrepancy they're attached to
+    -- discrepancies are permanent records, see database.py's own
+    discrepancies-table comment) -- either LEFT JOIN simply comes back
+    NULL in that case, handled the same as "no extra context available"
+    rather than as an error.
+    """
+    limit = max(1, min(limit, 200))
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            """
+            SELECT c.*,
+                   l.display_name AS lease_display_name, l.filename AS lease_filename,
+                   d.category AS discrepancy_category, d.discrepancy_type AS discrepancy_type_name
+            FROM comments c
+            LEFT JOIN leases l ON c.lease_id = l.id
+            LEFT JOIN discrepancies d ON c.discrepancy_id = d.id
+            ORDER BY c.created_at DESC, c.id DESC
+            LIMIT ?
+            """,
+            (limit,),
         ).fetchall()
         return [dict(r) for r in rows]
     finally:

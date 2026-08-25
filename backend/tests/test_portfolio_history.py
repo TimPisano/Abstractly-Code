@@ -18,6 +18,7 @@ from app import database
 from app.portfolio import FIELD_NAMES
 from app.portfolio_history import (
     compute_property_trends,
+    compute_portfolio_trends,
     compute_rent_growth,
     compute_rollover_pattern,
     compute_tenant_turnover,
@@ -338,6 +339,70 @@ def test_deletion_removes_history_documented_limitation():
     print("✓ test_deletion_removes_history_documented_limitation: PASS")
 
 
+# ------------------------------------------------------------------
+# compute_portfolio_trends / GET /portfolio/trends -- the portfolio-
+# wide sibling, replacing the "fetch property-trends once per building
+# and merge client-side" workaround
+# ------------------------------------------------------------------
+
+def test_compute_portfolio_trends_empty_portfolio():
+    db_path = _fresh_temp_db()
+    try:
+        result = compute_portfolio_trends(_get_all())
+        assert result == {
+            "property_count": 0, "record_count": 0, "properties": [],
+            "portfolio_tenant_turnover": {"turnover_count": 0, "units_tracked": 0},
+            "portfolio_rollover_pattern": {"by_month": {f"{m:02d}": 0 for m in range(1, 13)}, "by_year": {}, "total_expirations_tracked": 0},
+        }
+    finally:
+        os.unlink(db_path)
+    print("✓ test_compute_portfolio_trends_empty_portfolio: PASS")
+
+
+def test_compute_portfolio_trends_matches_per_property_calls_summed():
+    """The real point of this endpoint: its totals must equal what calling compute_property_trends once per building and summing yourself would have produced -- proving the aggregation is genuinely equivalent, not just plausible-looking."""
+    db_path = _fresh_temp_db()
+    try:
+        _insert("Acme", "$4,000.00", "1 Main St", end_date="December 31, 2027")
+        _insert("Zenith Corp", "$4,400.00", "1 Main St", end_date="December 31, 2029")  # turnover at 1 Main St
+        _insert("Beta", "$5,000.00", "2 Oak Ave", end_date="June 30, 2028")
+
+        leases = _get_all()
+        portfolio_result = compute_portfolio_trends(leases)
+        assert portfolio_result["property_count"] == 2
+
+        manual_turnover_total = 0
+        manual_expirations_total = 0
+        for address in ("1 Main St", "2 Oak Ave"):
+            per_property = compute_property_trends(leases, address)
+            manual_turnover_total += per_property["tenant_turnover"]["turnover_count"]
+            manual_expirations_total += per_property["rollover_pattern"]["total_expirations_tracked"]
+
+        assert portfolio_result["portfolio_tenant_turnover"]["turnover_count"] == manual_turnover_total == 1
+        assert portfolio_result["portfolio_rollover_pattern"]["total_expirations_tracked"] == manual_expirations_total == 3
+        assert portfolio_result["record_count"] == 3
+    finally:
+        os.unlink(db_path)
+    print("✓ test_compute_portfolio_trends_matches_per_property_calls_summed: PASS")
+
+
+def test_portfolio_trends_route():
+    db_path = _fresh_temp_db()
+    try:
+        client = app.test_client()
+        _insert("Acme", "$4,000.00", "1 Main St", end_date="December 31, 2027")
+        _insert("Beta", "$5,000.00", "2 Oak Ave", end_date="June 30, 2028")
+
+        resp = client.get("/portfolio/trends")
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["property_count"] == 2
+        assert {p["property_address"] for p in data["properties"]} == {"1 Main St", "2 Oak Ave"}
+    finally:
+        os.unlink(db_path)
+    print("✓ test_portfolio_trends_route: PASS")
+
+
 if __name__ == "__main__":
     test_history_matches_building_ignoring_suite()
     test_history_ordered_oldest_first()
@@ -357,4 +422,7 @@ if __name__ == "__main__":
     test_property_trends_route_missing_address_returns_400()
     test_property_trends_route_no_history_still_200()
     test_deletion_removes_history_documented_limitation()
+    test_compute_portfolio_trends_empty_portfolio()
+    test_compute_portfolio_trends_matches_per_property_calls_summed()
+    test_portfolio_trends_route()
     print("\nAll portfolio history tests passed.")

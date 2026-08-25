@@ -17,6 +17,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 from app.api import app
 from app import database
+from app import cache
 from app.portfolio import FIELD_NAMES
 from app.portfolio_health_score import compute_portfolio_health_score, WEIGHTS
 
@@ -367,7 +368,15 @@ def test_health_score_route():
         assert resp.status_code == 200
         assert resp.get_json()["rating"] == "No Data"
 
+        # Inserting directly via database.py (this test's own shortcut,
+        # not a real upload through the API) doesn't trigger api.py's
+        # cache-invalidation hooks -- those only fire on the real
+        # mutation ROUTES a real client would hit. Clearing the cache
+        # here simulates that side effect for this direct-insert test;
+        # see test_cache.py for tests of the real invalidation hooks
+        # themselves, through the real routes.
         database.insert_lease("a.pdf", _fields(confidence="high", **_all_field_kwargs()))
+        cache.invalidate_all()
         resp = client.get("/portfolio/health-score")
         data = resp.get_json()
         assert data["score"] is not None
