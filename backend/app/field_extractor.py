@@ -88,6 +88,56 @@ def _not_found() -> Dict[str, Any]:
     return {"value": None, "source": None, "confidence": None}
 
 
+# A YYYY-MM-DD date, the format PMS/broker rent-roll exports very
+# commonly use for lease start/end columns but a real prose lease
+# almost never uses in running text (DATE_REGEX above already covers
+# the date SHAPES a real lease actually uses).
+_ISO_DATE_REGEX = r"\b\d{4}-\d{1,2}-\d{1,2}\b"
+
+# Counts this high only ever occur in a document that's fundamentally
+# a REPEATING TABLE of many records (a portfolio rent roll, a unit
+# ledger, ...), not a single signed lease -- calibrated against every
+# real single-lease fixture in tests/ (max observed: 8 currency
+# mentions, 0 ISO dates, across documents 1-2 pages long) with a
+# 5x+ safety margin, and against a real 120-row synthetic rent-roll
+# PDF (361 currency mentions, 242 ISO dates) with a 6-16x margin the
+# other direction. A real lease's dollar-figure count is inherently
+# bounded by the number of distinct financial concepts it defines
+# (rent, a per-year escalation schedule, deposit, CAM, insurance
+# limit, late fee, ...) -- even an unusually complex 20-year net
+# lease with a full year-by-year schedule stays well under this.
+_RENT_ROLL_CURRENCY_THRESHOLD = 40
+_RENT_ROLL_DATE_THRESHOLD = 15
+
+
+def looks_like_rent_roll_table(pages: List[Dict[str, Any]]) -> bool:
+    """
+    True if this document is structurally a repeating tabular record
+    (a portfolio rent roll, a unit ledger) rather than a single signed
+    lease -- checked on the RAW PAGE TEXT, independent of anything
+    FieldExtractor itself finds, since that's exactly what makes the
+    failure mode this guards against dangerous: running the single-
+    lease regex patterns against a rent-roll table doesn't fail
+    cleanly, it confidently returns WRONG values (one row's rent
+    presented as "the" lease's rent, a column header word as the
+    tenant name, a portfolio-wide aggregate as a per-lease figure) --
+    see DECISIONS.md for a real, live example. Callers should check
+    this BEFORE running extraction, not after, so a rent-roll upload
+    through the single-lease path gets a clear, specific error instead
+    of ever computing (and persisting) that garbage.
+
+    Deliberately not reused by document_extractor.py -- that module is
+    format-agnostic by design (its whole job is converting any format
+    into the same page-text shape, with zero lease-domain knowledge);
+    this check is squarely a lease-domain judgment, so it lives here
+    alongside the rest of that domain logic.
+    """
+    full_text, _ = _concat_pages(pages)
+    currency_count = len(re.findall(CURRENCY_REGEX, full_text))
+    date_count = len(re.findall(f"{DATE_REGEX}|{_ISO_DATE_REGEX}", full_text))
+    return currency_count >= _RENT_ROLL_CURRENCY_THRESHOLD or date_count >= _RENT_ROLL_DATE_THRESHOLD
+
+
 def _concat_pages(pages: List[Dict[str, Any]]):
     """
     Join all pages into one continuous string (so a keyword/value pair

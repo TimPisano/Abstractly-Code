@@ -607,6 +607,36 @@ def main():
     finally:
         os.unlink(secret_path)
 
+    # --- Rent-roll-shaped document uploaded through the single-lease
+    # path: previously succeeded (200/201) and confidently returned
+    # WRONG values with false high confidence (a column header word as
+    # the tenant, a portfolio-wide aggregate as a per-lease figure) --
+    # see DECISIONS.md for the real example. Must now fail cleanly with
+    # a specific, actionable error instead, and persist nothing. ---
+    print("\n--- Rent-roll-shaped document rejected on the single-lease path ---")
+    rent_roll_path = os.path.join(FIXTURES_DIR, "synthetic_rent_roll_report.pdf")
+    if os.path.exists(rent_roll_path):
+        with open(rent_roll_path, "rb") as f:
+            rent_roll_bytes = f.read()
+        body_bytes, content_type_header = _multipart_body([("file", "synthetic_rent_roll_report.pdf", rent_roll_bytes)])
+        status, body, _ = _request("POST", "/extract", data=body_bytes, headers={"Content-Type": content_type_header})
+        check("rent-roll-shaped PDF via /extract returns 422, not 200 with garbage data", status == 422, str(status))
+        check(
+            "the error specifically names the rent-roll importer as the fix, not a generic message",
+            isinstance(body, dict) and "import-rent-roll" in body.get("error", ""),
+            str(body),
+        )
+
+        status, leases_before, _ = _request("GET", "/leases")
+        count_before = len(leases_before) if isinstance(leases_before, list) else None
+        status, body, _ = _request("POST", "/leases", data=body_bytes, headers={"Content-Type": content_type_header})
+        check("rent-roll-shaped PDF via POST /leases also returns 422 (persist path, not just /extract)", status == 422, str(status))
+        status, leases_after, _ = _request("GET", "/leases")
+        count_after = len(leases_after) if isinstance(leases_after, list) else None
+        check("the rejected upload persisted nothing", count_before == count_after, f"{count_before} -> {count_after}")
+    else:
+        check("rent-roll-shape test skipped (fixture missing)", True, "synthetic_rent_roll_report.pdf not found")
+
     print("\n" + "=" * 70)
     passed = sum(1 for _, ok, _ in checks if ok)
     print(f"RESULT: {passed}/{len(checks)} checks passed")

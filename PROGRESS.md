@@ -1,6 +1,27 @@
 # Progress Summary
 
-**Last updated**: Verified upload (all 6 file types) and export
+**Last updated**: Fixed the rent-roll-shaped-document upload issue
+found during the verification pass below. A real 32-page portfolio
+rent-roll PDF uploaded through `POST /leases` was confidently
+returning WRONG values with false high confidence (a column header
+word as the tenant, a portfolio's occupancy rate mislabeled as rent
+escalation, one unit's rent presented as "the" lease's rent) instead
+of failing cleanly -- worse than the 9 legitimately-absent fields it
+also reported, since those were honest and these looked like real
+data. Added `field_extractor.looks_like_rent_roll_table()`, a
+structural check on raw document text (currency/date density) that
+runs before extraction and rejects with a clear 422 naming the
+correct tool, calibrated with a 5-16x safety margin against every
+real lease fixture and a purpose-built synthetic rent-roll PDF.
+Verified live: rejects the rent-roll shape, zero false positives on 9
+real leases + 6 multi-format fixtures, real rent-roll import (a
+separate code path) unaffected. 6 new unit tests + 4 new live checks.
+Full suite: 60/60. See DECISIONS.md's "Reject rent-roll-shaped
+documents..." entry for full detail.
+
+---
+
+Verified upload (all 6 file types) and export
 (PDF/Excel) with real files and real inspected output, per explicit
 instruction not to mark this done on code review alone. Uploaded a
 real PDF plus the same lease saved as .xlsx/.xls/.csv/.docx/.jpg/.png/

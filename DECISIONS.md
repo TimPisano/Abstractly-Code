@@ -1,5 +1,57 @@
 # Implementation Decisions
 
+## Reject rent-roll-shaped documents on the single-lease upload path instead of silently extracting garbage
+
+Follow-up to the verification pass below: a real, live example
+(`Synthetic_Rent_Roll_500_Units.pdf`, a 32-page portfolio rent-roll
+report, uploaded through `POST /leases`) confirmed the same
+architectural gap DECISIONS.md's "Real-file test" entry had already
+found for the `.xlsx` version of similar data -- the single-lease
+field extractor has no notion of "this document isn't shaped like a
+lease at all," so its regex patterns latch onto whatever plausible-
+looking number or word appears first in a huge tabular document.
+
+Confirmed this isn't just "9 fields correctly not-found" (which would
+be fine, honest behavior) -- the 6 fields that DID get a value were
+ALL wrong, and 4 of 6 carried false "high" confidence:
+`tenant`="Name" (the literal word from the "Tenant **Name**" column
+header), `rent_amount`=one specific unit's rent presented as the
+lease's own rent, `lease_end_date`=a garbled fragment spanning two
+table rows, `rent_escalation`="94.4% annually" (actually the
+portfolio's occupancy rate), `square_footage`=the entire 500-unit
+portfolio's total occupied square footage, `insurance_requirements`=a
+different unit's monthly rent. Existing `_looks_like_lease()` (checks
+whether any of tenant/landlord/rent/dates got a value) couldn't catch
+this -- the garbage values it exists to sanity-check are exactly what
+make it return True.
+
+**Fix**: `field_extractor.looks_like_rent_roll_table(pages)` -- a
+new, independent structural check on the RAW PAGE TEXT (not on
+anything FieldExtractor itself finds), counting currency-amount and
+date matches across the whole document. Calibrated against every real
+single-lease fixture in tests/ (max observed: 8 currency mentions, 0
+ISO dates) and a purpose-built 120-row synthetic rent-roll PDF (361
+currency mentions, 242 ISO dates) -- thresholds (40 currency / 15
+dates) sit with 5x+ margin on the lease side and 6-16x margin on the
+rent-roll side. Deliberately checked BEFORE extraction runs, in
+`_extract_leases_from_file_storage` (the shared choke point for
+`/leases`, `/leases/batch`, `/extract`, `/leases/<id>/amendments`), so
+a rent-roll upload gets one clean, specific 422 naming the correct
+tool (`POST /leases/import-rent-roll`) instead of ever computing (and
+for `/leases`, persisting) the garbage. Verified live against the real
+running server: the synthetic fixture now 422s on both `/extract` and
+`POST /leases` and persists nothing; the real 500-unit file still
+imports cleanly through `/leases/import-rent-roll` (a completely
+separate code path, unaffected); every real single-lease fixture
+(9 different PDFs) and every multi-format single-lease fixture (xlsx/
+xls/csv/docx/jpg/txt) still extracts exactly as before -- zero false
+positives. Stress-tested the threshold specifically against a
+legitimately complex real lease with a full 20-year escalation
+schedule to confirm having many dollar figures alone doesn't
+false-trigger. New fixture `tests/synthetic_rent_roll_report.pdf`,
+new `tests/test_rent_roll_shape_detection.py` (6 unit-level checks),
+plus 4 new live checks in `test_security_hardening.py`.
+
 ## Verified upload (all 6 file types) and export (PDF/Excel) with real files, not code review — found and fixed a real bug
 
 Requested: don't mark the multi-format upload pipeline or the PDF/

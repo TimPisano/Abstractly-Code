@@ -37,7 +37,7 @@ import time
 # happens before that import.
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
-from app.field_extractor import FieldExtractor
+from app.field_extractor import FieldExtractor, looks_like_rent_roll_table
 from app import document_extractor
 from app.document_extractor import DocumentExtractionError
 from app import database
@@ -267,6 +267,23 @@ def _extract_leases_from_file_storage(file_storage):
             pages = document_extractor.extract_pages(file_bytes, file_storage.filename, temp_path)
         except DocumentExtractionError as e:
             return None, (str(e), 422)
+
+        if looks_like_rent_roll_table(pages):
+            # Running the single-lease extractor against a portfolio
+            # rent roll doesn't fail cleanly -- it confidently returns
+            # WRONG values (one unit's rent presented as "the" lease's
+            # rent, a column header word as the tenant name, a
+            # portfolio-wide aggregate as a per-lease figure), which is
+            # worse than an honest error. Caught here, before
+            # extraction ever runs, rather than after -- see
+            # looks_like_rent_roll_table's docstring and DECISIONS.md
+            # for the real example that prompted this.
+            return None, (
+                "This looks like a rent roll or portfolio report, not a single lease document -- "
+                "it has far more dollar amounts and dates than a lease would state. Upload it to "
+                "POST /leases/import-rent-roll instead, which is built to read each unit's own row.",
+                422,
+            )
 
         field_extractor = FieldExtractor()
         split_results = field_extractor.extract_multiple_leases(pages)
