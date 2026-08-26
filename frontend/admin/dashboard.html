@@ -27,7 +27,7 @@
              sidebar (collapse/expand, tooltips, active-state highlight all come free
              from app.js's initSidebar()/showView(), already loaded below). -->
         <nav class="sidebar" id="sidebar">
-            <button class="brand brand-button" data-goto="dashboard" data-tooltip="Dashboard" type="button" title="Back to Dashboard">
+            <button class="brand brand-button" data-goto="overview" data-tooltip="Dashboard" type="button" title="Back to Dashboard">
                 <svg class="brand-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
                 </svg>
@@ -35,39 +35,25 @@
             </button>
 
             <div class="nav-scroll">
-                <!-- Group 1: the portfolio itself -- Dashboard is "Leases &
-                     Rent Rolls" under the hood (same view, same H1); labeled
-                     "Dashboard" in the nav for the same name the main app
-                     (frontend/app/) uses for its landing view, and grouped
-                     with Alerts/Discrepancies/Portfolio Trends since all
-                     four are ways of looking at portfolio health -- Alerts,
-                     Discrepancies, and Portfolio Trends link OUT to the
-                     already-built, already-tested views in frontend/app/
-                     rather than a second implementation. Each carries the
-                     view name as a URL hash; app.js reads it on load and
-                     opens straight to that view instead of always landing
-                     on Dashboard. -->
+                <!-- Exact top-to-bottom order the product spec calls for.
+                     Every item is a real local view (registerView/showView,
+                     see app.js) -- none of these navigate to a different
+                     HTML document, so the sidebar itself never unmounts or
+                     rebuilds when switching sections. See DECISIONS.md
+                     "Admin dashboard: real content router, not link-outs"
+                     for why this replaced the earlier link-out design. -->
                 <div class="nav-group">
-                    <div class="nav-group-label nav-label">Portfolio</div>
-                    <button class="nav-item active" data-view="dashboard" data-tooltip="Dashboard" type="button">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h8v8H3V3zm10 0h8v5h-8V3zm0 8h8v10h-8V11zM3 14h8v7H3v-7z"/></svg>
+                    <div class="nav-group-label nav-label">Overview</div>
+                    <button class="nav-item active" data-view="overview" data-tooltip="Dashboard" type="button">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
                         <span class="nav-label">Dashboard</span>
                     </button>
-                    <a class="nav-item" href="../app/#alerts" data-tooltip="Alerts" title="Opens the full portfolio app">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0"/></svg>
-                        <span class="nav-label">Alerts</span>
-                    </a>
-                    <a class="nav-item" href="../app/#discrepancies" data-tooltip="Discrepancies" title="Opens the full portfolio app">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 9.75l4.5 4.5m0-4.5l-4.5 4.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                        <span class="nav-label">Discrepancies</span>
-                    </a>
-                    <a class="nav-item" href="../app/#trends" data-tooltip="Portfolio Trends" title="Opens the full portfolio app">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3v18h18M7 15l4-5 3 3 5-7"/></svg>
-                        <span class="nav-label">Portfolio Trends</span>
-                    </a>
+                    <button class="nav-item" data-view="dashboard" data-tooltip="Leases &amp; Rent Rolls" type="button">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h8v8H3V3zm10 0h8v5h-8V3zm0 8h8v10h-8V11zM3 14h8v7H3v-7z"/></svg>
+                        <span class="nav-label">Leases &amp; Rent Rolls</span>
+                    </button>
                 </div>
 
-                <!-- Group 2: bringing data in. -->
                 <div class="nav-group">
                     <div class="nav-group-label nav-label">Manage</div>
                     <button class="nav-item" data-view="upload" data-tooltip="Upload" type="button">
@@ -80,31 +66,51 @@
                     </button>
                 </div>
 
-                <!-- Group 3: output + collaboration + config. "Team" links to
-                     Team Notes (the real, built feature under that name --
-                     there's no separate team-management view yet, see
-                     DECISIONS.md); "Activity" links to Dashboard's own
-                     Recent Activity panel, since there's no standalone
-                     Activity view either. Settings is a real local view
-                     (Change Password, via the real POST /auth/change-
-                     password this session's backend work added) -- not a
-                     placeholder, and deliberately doesn't include team-
-                     member management, since no backend endpoint for that
-                     exists yet (/team/members is still 404). -->
+                <div class="nav-group">
+                    <div class="nav-group-label nav-label">Portfolio</div>
+                    <button class="nav-item nav-item-alerts" data-view="alerts" data-tooltip="Alerts" type="button">
+                        <span class="nav-item-icon-wrap">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0"/></svg>
+                            <span class="nav-badge-dot" id="alertsNavBadgeDot"></span>
+                        </span>
+                        <span class="nav-label">Alerts</span>
+                        <span class="nav-badge nav-label" id="alertsNavBadge" style="display:none;">0</span>
+                    </button>
+                    <button class="nav-item nav-item-discrepancies" data-view="discrepancies" data-tooltip="Discrepancies" type="button">
+                        <span class="nav-item-icon-wrap">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 9.75l4.5 4.5m0-4.5l-4.5 4.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                            <span class="nav-badge-dot" id="discrepanciesNavBadgeDot"></span>
+                        </span>
+                        <span class="nav-label">Discrepancies</span>
+                        <span class="nav-badge nav-label" id="discrepanciesNavBadge" style="display:none;">0</span>
+                    </button>
+                    <button class="nav-item" data-view="trends" data-tooltip="Portfolio Trends" type="button">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3v18h18M7 15l4-5 3 3 5-7"/></svg>
+                        <span class="nav-label">Portfolio Trends</span>
+                    </button>
+                </div>
+
+                <!-- Settings is a real local view (Change Password, via the
+                     real POST /auth/change-password this session's backend
+                     work added) -- not a placeholder, and deliberately
+                     doesn't include team-member management, since no
+                     backend endpoint for that exists yet (/team/members is
+                     still 404). "Team" is Team Notes -- the one real
+                     feature under that name today. -->
                 <div class="nav-group">
                     <div class="nav-group-label nav-label">Team &amp; Reports</div>
-                    <a class="nav-item" href="../app/#report" data-tooltip="Reports / Exports" title="Opens the full portfolio app">
+                    <button class="nav-item" data-view="report" data-tooltip="Reports &amp; Exports" type="button">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-                        <span class="nav-label">Reports / Exports</span>
-                    </a>
-                    <a class="nav-item" href="../app/#teamnotes" data-tooltip="Team" title="Opens the full portfolio app">
+                        <span class="nav-label">Reports &amp; Exports</span>
+                    </button>
+                    <button class="nav-item" data-view="teamnotes" data-tooltip="Team" type="button">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h8m-8 4h5M7 3.5h10A2.5 2.5 0 0119.5 6v10.5a1 1 0 01-1.6.8l-2.9-2.175a2 2 0 00-1.2-.4H7A2.5 2.5 0 014.5 12V6A2.5 2.5 0 017 3.5z"/></svg>
                         <span class="nav-label">Team</span>
-                    </a>
-                    <a class="nav-item" href="../app/#dashboard" data-tooltip="Activity" title="Opens the full portfolio app">
+                    </button>
+                    <button class="nav-item" data-view="activity" data-tooltip="Activity" type="button">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                         <span class="nav-label">Activity</span>
-                    </a>
+                    </button>
                     <button class="nav-item" data-view="settings" data-tooltip="Settings" type="button">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M10.343 3.94c.09-.542.56-.94 1.11-.94h1.093c.55 0 1.02.398 1.11.94l.149.894c.07.424.384.764.78.93.398.164.855.142 1.205-.108l.737-.527a1.125 1.125 0 011.45.12l.773.774c.39.389.44 1.002.12 1.45l-.527.737c-.25.35-.272.806-.107 1.204.165.397.505.71.93.78l.893.15c.543.09.94.56.94 1.109v1.094c0 .55-.397 1.02-.94 1.11l-.893.149c-.425.07-.765.383-.93.78-.165.398-.143.854.107 1.204l.527.738c.32.447.269 1.06-.12 1.45l-.774.773a1.125 1.125 0 01-1.449.12l-.738-.527c-.35-.25-.806-.272-1.203-.107-.397.165-.71.505-.781.929l-.149.894c-.09.542-.56.94-1.11.94h-1.094c-.55 0-1.019-.398-1.11-.94l-.148-.894c-.071-.424-.384-.764-.781-.93-.398-.164-.854-.142-1.204.108l-.738.527c-.447.32-1.06.269-1.45-.12l-.773-.774a1.125 1.125 0 01-.12-1.45l.527-.737c.25-.35.273-.806.108-1.204-.165-.397-.505-.71-.93-.78l-.894-.15c-.542-.09-.94-.56-.94-1.109v-1.094c0-.55.398-1.02.94-1.11l.894-.149c.424-.07.765-.383.93-.78.165-.398.143-.854-.108-1.204l-.526-.738a1.125 1.125 0 01.12-1.45l.773-.773a1.125 1.125 0 011.45-.12l.737.527c.35.25.807.272 1.204.107.397-.165.71-.505.78-.929l.15-.894z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
                         <span class="nav-label">Settings</span>
@@ -192,11 +198,12 @@
             </section>
 
             <!-- LEASES & RENT ROLLS (DASHBOARD) VIEW -->
-            <section class="view active" id="view-dashboard">
+            <!-- OVERVIEW (DASHBOARD / HOME) VIEW -->
+            <section class="view active" id="view-overview">
                 <div class="view-header">
                     <div>
-                        <h1>Leases &amp; Rent Rolls</h1>
-                        <p class="view-subtitle">Every processed document, at a glance</p>
+                        <h1>Dashboard</h1>
+                        <p class="view-subtitle">Portfolio health and what needs attention, at a glance</p>
                     </div>
                     <button class="btn-primary" data-goto="upload" type="button">+ Upload Leases</button>
                 </div>
@@ -204,8 +211,7 @@
                 <!-- Portfolio Health Score: how much the current DATA can be trusted --
                      the single most important thing to check first, so it's the first
                      panel on the page. Ported from frontend/app/dashboard-view.js's
-                     identical panel (same real backend endpoint, same markup) -- this
-                     page never had it before. -->
+                     identical panel (same real backend endpoint, same markup). -->
                 <div class="panel health-score-panel" id="healthScorePanel"></div>
 
                 <!-- Portfolio-wide confidence summary: real, computed field-confidence counts across every lease -->
@@ -231,6 +237,19 @@
                 <div class="health-strip" id="healthStrip"></div>
 
                 <div class="metrics-row" id="metricsRow"></div>
+            </section>
+
+            <!-- LEASES & RENT ROLLS VIEW -- just the table now; the summary
+                 panels above moved to Overview (Dashboard), and the activity
+                 feed moved to its own Activity view. -->
+            <section class="view" id="view-dashboard">
+                <div class="view-header">
+                    <div>
+                        <h1>Leases &amp; Rent Rolls</h1>
+                        <p class="view-subtitle">Every processed document, at a glance</p>
+                    </div>
+                    <button class="btn-primary" data-goto="upload" type="button">+ Upload Leases</button>
+                </div>
 
                 <div class="panel">
                     <div class="panel-header">
@@ -301,13 +320,18 @@
                     </div>
                     <div id="bulkActionStatus"></div>
                 </div>
+            </section>
 
-                <!-- Recent Activity -->
-                <div class="panel">
-                    <div class="panel-header">
-                        <h2>Recent Activity</h2>
+            <!-- ACTIVITY VIEW -->
+            <section class="view" id="view-activity">
+                <div class="view-header">
+                    <div>
+                        <h1>Activity</h1>
+                        <p class="view-subtitle">Recent uploads, comparisons, and exports across the portfolio</p>
                     </div>
-                    <div id="activityFeed"></div>
+                </div>
+                <div class="panel">
+                    <div id="activityFeedFull"></div>
                 </div>
             </section>
 
@@ -399,12 +423,188 @@
                     </div>
                 </div>
             </section>
+
+            <!-- ALERTS / DISCREPANCIES / PORTFOLIO TRENDS / REPORTS & EXPORTS / TEAM
+                 VIEWS -- identical markup to frontend/app/index.html's own copies of
+                 these sections (their view modules, alerts-view.js etc., only ever
+                 look up these exact ids -- see script tags above), ported in
+                 verbatim rather than linked out to a separate page. -->
+
+            <!-- ALERTS VIEW -->
+            <section class="view" id="view-alerts">
+                <div class="view-header">
+                    <div>
+                        <h1>Alerts</h1>
+                        <p class="view-subtitle">Upcoming expirations, new discrepancies, below-market rent, and tenant concentration risk — surfaced automatically, not something you have to go looking for</p>
+                    </div>
+                    <div class="view-header-actions">
+                        <button class="btn-secondary" id="alertsRefreshBtn" type="button">Refresh</button>
+                    </div>
+                </div>
+                <div class="health-strip" id="alertsSummaryStrip"></div>
+                <div class="alerts-filter-row">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="alertsShowDismissed"> Show dismissed
+                    </label>
+                    <select id="alertsSeverityFilter" class="text-input select-input">
+                        <option value="">All severities</option>
+                        <option value="high">High</option>
+                        <option value="medium">Medium</option>
+                        <option value="low">Low</option>
+                    </select>
+                    <select id="alertsTypeFilter" class="text-input select-input">
+                        <option value="">All types</option>
+                        <option value="lease_expiration">Lease Expirations</option>
+                        <option value="new_discrepancy">New Discrepancies</option>
+                        <option value="below_market_rent">Below-Market Rent</option>
+                        <option value="tenant_concentration">Tenant Concentration</option>
+                    </select>
+                </div>
+                <div id="alertsFeedContent"></div>
+            </section>
+
+            <!-- DISCREPANCIES VIEW -->
+            <section class="view" id="view-discrepancies">
+                <div class="view-header">
+                    <div>
+                        <h1>Discrepancies</h1>
+                        <p class="view-subtitle">Every disagreement this app has ever found — risk flags, cross-lease mismatches, rent-roll-vs-lease and rent-roll-vs-T12 reconciliation — in one place, with a permanent resolution log</p>
+                    </div>
+                    <div class="view-header-actions">
+                        <button class="btn-secondary" id="discrepanciesRefreshBtn" type="button">Refresh</button>
+                    </div>
+                </div>
+                <div class="health-strip" id="discrepanciesSummaryStrip"></div>
+                <div class="alerts-filter-row">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="discrepanciesShowResolved"> Show resolved
+                    </label>
+                    <select id="discrepanciesSeverityFilter" class="text-input select-input">
+                        <option value="">All severities</option>
+                        <option value="high">High</option>
+                        <option value="medium">Medium</option>
+                        <option value="low">Low</option>
+                    </select>
+                    <select id="discrepanciesTypeFilter" class="text-input select-input">
+                        <option value="">All types</option>
+                        <option value="lease_risk_flag">Lease Risk Flag</option>
+                        <option value="cross_lease_mismatch">Cross-Lease Mismatch</option>
+                        <option value="rent_roll_reconciliation">Rent Roll Reconciliation</option>
+                        <option value="t12_reconciliation">T12 Reconciliation</option>
+                    </select>
+                </div>
+                <div id="discrepanciesFeedContent"></div>
+            </section>
+
+            <!-- PORTFOLIO TRENDS VIEW -->
+            <section class="view" id="view-trends">
+                <div class="view-header">
+                    <div>
+                        <h1>Portfolio Trends</h1>
+                        <p class="view-subtitle">Rollover risk and lease expirations over time — the reason to check in even without a new document to upload</p>
+                    </div>
+                </div>
+                <div class="trends-filter-row">
+                    <label for="trendsPropertyFilter">Property</label>
+                    <select id="trendsPropertyFilter" class="text-input select-input"></select>
+                </div>
+                <div class="panel">
+                    <div class="panel-header">
+                        <h2>Rollover Risk Timeline</h2>
+                    </div>
+                    <div class="trends-chart-summary" id="trendsRolloverSummary"></div>
+                    <div id="trendsRolloverChart"></div>
+                </div>
+                <div class="panel">
+                    <div class="panel-header">
+                        <h2>Rent Growth Over Time</h2>
+                    </div>
+                    <div id="trendsRentGrowthContent"></div>
+                </div>
+                <div class="panel">
+                    <div class="panel-header">
+                        <h2>Lease Expirations &amp; Tenant Turnover</h2>
+                    </div>
+                    <div id="trendsTurnoverChart"></div>
+                    <div class="trends-legend-line" id="trendsTurnoverSummary"></div>
+                </div>
+                <div class="trends-gap-note">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/></svg>
+                    <span><strong>Rent growth and turnover here are only as deep as the upload history on file.</strong> Every lease/rent-roll upload is a permanent record, so re-importing a rent roll periodically (or re-uploading a renewed lease) builds real trend data over time — a property with only one upload ever won't show a trend yet, and deleting a lease removes its history along with it.</span>
+                </div>
+            </section>
+
+            <!-- REPORTS & EXPORTS VIEW -->
+            <section class="view" id="view-report">
+                <div class="view-header">
+                    <div>
+                        <h1>Portfolio Report</h1>
+                        <p class="view-subtitle">A one-page printable summary — total rent, upcoming expirations, and red flags</p>
+                    </div>
+                    <div class="detail-actions">
+                        <button class="btn-secondary" id="printReportBtn" type="button">Print / Save PDF</button>
+                        <button class="btn-primary" id="downloadReportBtn" type="button">Download HTML</button>
+                    </div>
+                </div>
+                <div class="panel export-panel">
+                    <div class="panel-header">
+                        <h2>Export Portfolio Data</h2>
+                    </div>
+                    <div class="export-actions">
+                        <a class="btn-secondary" id="exportCsvBtn" href="#" download>Download CSV</a>
+                        <button class="btn-secondary" id="exportSheetsBtn" type="button">Export to Google Sheets</button>
+                    </div>
+                    <div id="exportStatus"></div>
+                </div>
+                <div class="panel export-panel">
+                    <div class="panel-header">
+                        <h2>Monthly Portfolio Report</h2>
+                    </div>
+                    <p class="panel-description">A decision-ready PDF: upcoming 90-day expirations, rent variance outliers, the confidence summary, and top risk flags across the whole portfolio.</p>
+                    <div class="export-actions">
+                        <a class="btn-primary" id="generateMonthlyReportBtn" href="#" download>Generate Portfolio Report</a>
+                    </div>
+                </div>
+                <div class="report-frame-container">
+                    <iframe id="reportFrame" title="Portfolio Report"></iframe>
+                </div>
+            </section>
+
+            <!-- TEAM VIEW (Team Notes) -->
+            <section class="view" id="view-teamnotes">
+                <div class="view-header">
+                    <div>
+                        <h1>Team Notes</h1>
+                        <p class="view-subtitle">Every note left on a lease or a discrepancy, most recent first — visible to the whole team</p>
+                    </div>
+                    <div class="view-header-actions">
+                        <button class="btn-secondary" id="teamNotesRefreshBtn" type="button">Refresh</button>
+                    </div>
+                </div>
+                <div class="panel" id="teamNotesRoster" style="display:none;"></div>
+                <div id="teamNotesFeedContent"></div>
+            </section>
         </main>
     </div>
 
     <script src="../config.js"></script>
     <script src="../app/api.js"></script>
     <script src="../app/app.js"></script>
+    <!-- Alerts/Discrepancies/Portfolio Trends/Reports/Team are the same,
+         already-built, already-tested view modules frontend/app/ uses --
+         loaded here directly (not linked out to a separate page) so this
+         is one real single-page shell with a client-side content router,
+         not several documents. No naming collisions or missing
+         dependencies with admin's own view files (verified before
+         porting -- see DECISIONS.md "Admin dashboard: real content
+         router, not link-outs"). Must load before admin-bootstrap.js,
+         since their registerView() calls need to have already run by the
+         time admin-bootstrap.js's window.init() executes. -->
+    <script src="../app/alerts-view.js"></script>
+    <script src="../app/discrepancies-view.js"></script>
+    <script src="../app/trends-view.js"></script>
+    <script src="../app/report-view.js"></script>
+    <script src="../app/team-notes-view.js"></script>
     <script src="admin-dashboard-view.js"></script>
     <script src="admin-upload-view.js"></script>
     <script src="admin-detail-view.js"></script>

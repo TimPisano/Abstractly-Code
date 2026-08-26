@@ -25,56 +25,30 @@ const Dashboard = {
     currentPage: 1,
     pageSize: 25,
 
+    // Just the Lease Library table now -- the summary panels (health
+    // score, confidence, attention, expiring, metrics) moved to the
+    // Overview view below, and the activity feed moved to its own
+    // Activity view, so this page is purely "the data," matching its
+    // "Leases & Rent Rolls" name.
     async load() {
         this.currentPage = 1;
-        this.renderHealthScoreSkeleton();
-        this.renderMetricsSkeleton();
-        this.renderAttentionSkeleton();
-        this.renderExpirationAlertsSkeleton();
-        this.renderHealthSkeleton();
-        this.renderActivitySkeleton();
-        document.getElementById('portfolioConfidenceSummaryPanel').innerHTML = '<p class="loading-inline"><span class="spinner-small"></span> Loading...</p>';
         document.getElementById('dashboardExportExcelBtn').href = Api.rentRollExcelUrl();
         document.getElementById('dashboardSummaryMemoBtn').href = Api.portfolioSummaryPdfUrl();
         document.getElementById('dashboardExportStatus').innerHTML = '';
 
         try {
-            const [leases, metrics, risks] = await Promise.all([
+            const [leases, risks] = await Promise.all([
                 Api.listLeases(),
-                Api.portfolioSummary(),
                 Api.portfolioRisks(),
             ]);
             AppState.leases = leases;
             this.risksByLeaseId = {};
             risks.forEach(r => { this.risksByLeaseId[r.lease_id] = r.flags; });
 
-            this.renderMetrics(metrics);
             this.renderTable(leases);
         } catch (err) {
             showError(`Failed to load dashboard: ${err.message}`);
         }
-
-        // Independent of the block above and of each other — one
-        // panel's data being briefly unavailable shouldn't block or
-        // blank out the rest of the dashboard.
-        Api.portfolioHealthScore()
-            .then(h => this.renderHealthScore(h))
-            .catch(err => { document.getElementById('healthScorePanel').innerHTML = `<p class="error-text">Failed to load health score: ${escapeHtml(err.message)}</p>`; });
-        Api.portfolioAttention()
-            .then(a => this.renderAttention(a))
-            .catch(() => { document.getElementById('attentionContent').innerHTML = '<p class="error-text">Failed to load.</p>'; });
-        Api.portfolioExpirationAlerts()
-            .then(a => this.renderExpirationAlerts(a))
-            .catch(() => { document.getElementById('expirationAlertsContent').innerHTML = '<p class="error-text">Failed to load.</p>'; });
-        Api.portfolioConfidenceSummary()
-            .then(s => { document.getElementById('portfolioConfidenceSummaryPanel').innerHTML = confidenceSummaryPanelHtml(s, 'Portfolio Confidence'); })
-            .catch(() => { document.getElementById('portfolioConfidenceSummaryPanel').innerHTML = '<p class="error-text">Failed to load confidence summary.</p>'; });
-        Api.portfolioHealth()
-            .then(h => this.renderHealth(h))
-            .catch(() => { document.getElementById('healthStrip').innerHTML = '<p class="error-text">Failed to load portfolio health.</p>'; });
-        Api.recentActivity(10)
-            .then(a => this.renderActivity(a))
-            .catch(() => { document.getElementById('activityFeed').innerHTML = '<p class="error-text">Failed to load activity.</p>'; });
     },
 
     // ===================== Portfolio Health Score =====================
@@ -364,13 +338,22 @@ const Dashboard = {
                 label: 'Avg. Days to Next Expiration',
                 value: health.avg_days_to_expiration != null ? Math.round(health.avg_days_to_expiration) : '—',
             },
+            // The backend returns null for these two both when there's no
+            // portfolio to compute anything from AND when there IS a
+            // portfolio but genuinely nothing expires in that window --
+            // those aren't the same thing ("no data" vs. "real zero"),
+            // but total_leases lets the frontend tell them apart: leases
+            // exist and this came back null means the answer really is
+            // $0, not "unknown."
             {
                 label: 'Rent Expiring in 6 Months',
-                value: health.monthly_rent_expiring_6mo != null ? fmtMoney(health.monthly_rent_expiring_6mo) : '—',
+                value: health.monthly_rent_expiring_6mo != null ? fmtMoney(health.monthly_rent_expiring_6mo)
+                    : (health.total_leases > 0 ? fmtMoney(0) : '—'),
             },
             {
                 label: 'Rent Expiring in 12 Months',
-                value: health.monthly_rent_expiring_12mo != null ? fmtMoney(health.monthly_rent_expiring_12mo) : '—',
+                value: health.monthly_rent_expiring_12mo != null ? fmtMoney(health.monthly_rent_expiring_12mo)
+                    : (health.total_leases > 0 ? fmtMoney(0) : '—'),
             },
         ];
         strip.innerHTML = tiles.map(t => `
@@ -382,12 +365,12 @@ const Dashboard = {
         `).join('');
     },
 
-    renderActivitySkeleton() {
-        document.getElementById('activityFeed').innerHTML = '<p class="loading-inline"><span class="spinner-small"></span> Loading...</p>';
+    renderActivitySkeleton(containerId = 'activityFeed') {
+        document.getElementById(containerId).innerHTML = '<p class="loading-inline"><span class="spinner-small"></span> Loading...</p>';
     },
 
-    renderActivity(activity) {
-        const feed = document.getElementById('activityFeed');
+    renderActivity(activity, containerId = 'activityFeed') {
+        const feed = document.getElementById(containerId);
         if (!activity || activity.length === 0) {
             feed.innerHTML = '<p class="empty-inline">No activity yet — uploads, comparisons, and exports will show up here.</p>';
             return;
@@ -942,6 +925,69 @@ function riskCellHtml(flags, worst) {
 }
 
 registerView('dashboard', Dashboard);
+
+/**
+ * Overview: the portfolio-wide summary panels that used to live at the
+ * top of the Lease Library page (health score, confidence, attention,
+ * expiring soon, metrics tiles) -- split into their own "Dashboard"
+ * (home) view so it's a distinct sidebar destination from "Leases &
+ * Rent Rolls" (the raw table), matching what the sidebar now lists as
+ * two separate items. Reuses Dashboard's own render methods verbatim
+ * (they only ever touch DOM ids, never anything Lease-Library-specific)
+ * rather than duplicating them.
+ */
+const Overview = {
+    async load() {
+        Dashboard.renderHealthScoreSkeleton();
+        Dashboard.renderAttentionSkeleton();
+        Dashboard.renderExpirationAlertsSkeleton();
+        Dashboard.renderHealthSkeleton();
+        Dashboard.renderMetricsSkeleton();
+        document.getElementById('portfolioConfidenceSummaryPanel').innerHTML = '<p class="loading-inline"><span class="spinner-small"></span> Loading...</p>';
+
+        Api.portfolioHealthScore()
+            .then(h => Dashboard.renderHealthScore(h))
+            .catch(err => { document.getElementById('healthScorePanel').innerHTML = `<p class="error-text">Failed to load health score: ${escapeHtml(err.message)}</p>`; });
+        Api.portfolioAttention()
+            .then(a => Dashboard.renderAttention(a))
+            .catch(() => { document.getElementById('attentionContent').innerHTML = '<p class="error-text">Failed to load.</p>'; });
+        Api.portfolioExpirationAlerts()
+            .then(a => Dashboard.renderExpirationAlerts(a))
+            .catch(() => { document.getElementById('expirationAlertsContent').innerHTML = '<p class="error-text">Failed to load.</p>'; });
+        Api.portfolioConfidenceSummary()
+            .then(s => { document.getElementById('portfolioConfidenceSummaryPanel').innerHTML = confidenceSummaryPanelHtml(s, 'Portfolio Confidence'); })
+            .catch(() => { document.getElementById('portfolioConfidenceSummaryPanel').innerHTML = '<p class="error-text">Failed to load confidence summary.</p>'; });
+        Api.portfolioHealth()
+            .then(h => Dashboard.renderHealth(h))
+            .catch(() => { document.getElementById('healthStrip').innerHTML = '<p class="error-text">Failed to load portfolio health.</p>'; });
+        Api.portfolioSummary()
+            .then(m => Dashboard.renderMetrics(m))
+            .catch(() => { document.getElementById('metricsRow').innerHTML = '<p class="error-text">Failed to load metrics.</p>'; });
+    },
+};
+
+registerView('overview', Overview);
+
+/**
+ * Activity: a dedicated, full feed (50 most recent entries, vs. the old
+ * embedded panel's 10) -- was previously a link out to frontend/app/'s
+ * Dashboard; now a real local view for the same reason Alerts/
+ * Discrepancies/etc became real local views (see DECISIONS.md "Admin
+ * dashboard: real content router, not link-outs").
+ */
+const Activity = {
+    async load() {
+        Dashboard.renderActivitySkeleton('activityFeedFull');
+        try {
+            const activity = await Api.recentActivity(50);
+            Dashboard.renderActivity(activity, 'activityFeedFull');
+        } catch (err) {
+            document.getElementById('activityFeedFull').innerHTML = `<p class="error-text">Failed to load activity: ${escapeHtml(err.message)}</p>`;
+        }
+    },
+};
+
+registerView('activity', Activity);
 
 // Loaded statically by admin-bootstrap.js, after admin/session has
 // already confirmed a real authenticated admin -- see the comment in

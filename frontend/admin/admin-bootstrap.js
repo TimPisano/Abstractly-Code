@@ -273,8 +273,17 @@ async function initAdminDashboard() {
     });
 
     // app.js's init() wires every .nav-item[data-view] click, wires the
-    // session-stats panel, and calls showView('dashboard') as the
-    // landing tab -- defined here since it's shared with the client app.
+    // session-stats panel, and lands on whatever view the URL hash names
+    // (falling back to 'dashboard' if there isn't one or it doesn't
+    // match a registered view -- see app.js's own comment on that
+    // fallback). That default is right for frontend/app/index.html
+    // (where 'dashboard' IS the true landing view), but wrong here --
+    // this page's home view is 'overview' ("Dashboard" in the sidebar),
+    // with 'dashboard' now meaning the Leases & Rent Rolls table
+    // specifically. Setting the hash before init() runs (only when the
+    // page was opened with no hash already) reuses that same fallback
+    // mechanism instead of duplicating or overriding init() itself.
+    if (!location.hash) location.hash = 'overview';
     window.init();
 }
 

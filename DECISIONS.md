@@ -5517,3 +5517,91 @@ Requests, Upload, and the new Settings view all render with real data;
 every function called out as needing to stay accessible (export, tags,
 amendments, ask-about-this-lease, delete) is unchanged, still reachable
 from the same Lease Detail layout.
+
+## Admin dashboard: real content router, not link-outs
+
+The user rejected the link-out design from two turns ago outright:
+"the sidebar element must NOT be destroyed or re-rendered when
+switching sections... restructure it as a single-page shell with a
+content router, not separate full pages." That's a real, specific,
+correctly-diagnosed root cause -- 6 of 11 sidebar items were `<a
+href="../app/#view">` links to a genuinely different HTML document
+(frontend/app/index.html), a full cross-document navigation every
+time, landing on THAT page's own separately-instantiated sidebar. Two
+turns of "the sidebar looks empty/broken/inconsistent" very plausibly
+trace back to exactly this, not (only) to stale browser tabs.
+
+**Fix**: ported Alerts, Discrepancies, Portfolio Trends, Reports/
+Exports, and Team Notes into admin/dashboard.html as real local views,
+reusing frontend/app/'s own view modules directly (`<script
+src="../app/alerts-view.js">` etc.) rather than a second
+implementation. Verified there were no naming collisions or missing
+dependencies before wiring anything up: these 5 files only ever
+reference `registerView`/`showView`/`escapeHtml`/`showToast`/etc. from
+app/app.js (already loaded) plus their own internal globals (e.g.
+`FEED_RENDER_CAP`, `Alerts`, `Discrepancies`, `Trends`,
+`normalizeBuildingAddress`) -- none of which collide with anything
+admin's own `admin-*.js` files already declare, and none of them call
+into app/dashboard-view.js or app/detail-view.js (admin has its own
+separate `Dashboard`/`LeaseDetail` under those same names, so loading
+the app/ versions too would have been a duplicate-declaration crash --
+confirmed this isn't a risk before adding the script tags). Their
+markup was copied verbatim from frontend/app/index.html's own
+`view-alerts`/`view-discrepancies`/etc. sections, since these modules
+only ever look up fixed element ids.
+
+**Dashboard split into two distinct sidebar items**, per the spec's
+explicit top-to-bottom list (Dashboard, then separately Leases & Rent
+Rolls) rather than the merged single item from two turns ago: a new
+`overview` view (Health Score, Confidence, Attention, Expiring Soon,
+metric tiles -- everything that answers "how's the portfolio doing")
+with a home icon, first in the sidebar; `dashboard` trimmed down to
+just the Lease Library table (everything that answers "show me the
+data"). `admin-dashboard-view.js`'s `Dashboard` object keeps ALL its
+existing render methods unchanged; a new `Overview` object's `load()`
+just calls `Dashboard.renderHealthScore()`/`renderAttention()`/etc.
+directly (they only ever touch DOM by id, so this works with zero
+duplication). Also added a real `Activity` view (was link-out; now a
+dedicated 50-item feed reusing `Dashboard.renderActivity()` with a
+parametrized container id) so "Activity" is real content, not a
+relabeled trip to Dashboard's small embedded feed.
+
+**Real regression this surfaced and fixed immediately**: `app.js`'s
+`init()` had `'dashboard'` hardcoded as the fallback landing view when
+no URL hash is set -- correct for frontend/app/index.html (where
+`dashboard` genuinely is the true landing view), now wrong for
+admin/dashboard.html (where the landing view is `overview`). Rather
+than hardcode a page-specific default into the shared app.js (which
+would break frontend/app/'s own default), admin-bootstrap.js now sets
+`location.hash = 'overview'` before calling `window.init()` if no hash
+is already present -- reuses the hash-routing mechanism already built
+for the (now-removed) link-out design instead of adding a second
+mechanism.
+
+**Metric tiles showing "—" investigated individually, not blanket-
+fixed**: the spec said "if a metric is genuinely zero, show 0."
+`GET /portfolio/health`'s `monthly_rent_expiring_6mo`/`_12mo` come
+back `null` both when there's no portfolio to compute anything from
+AND when there IS a portfolio but genuinely nothing expires in that
+window -- confirmed live (2 real leases uploaded specifically to
+verify this, `avg_days_to_expiration: 3139` computed successfully in
+the same response, yet both rent-expiring fields null). Since the
+frontend already has `total_leases` in the same payload, fixed by
+showing $0.00 when leases exist but the field is null, and reserving
+"—" for when `total_leases` is actually 0. Deliberately did NOT apply
+the same fix to `renderMetrics()`'s "Avg. Rent / Sq Ft"/"Total Sq Ft"
+tiles -- those are genuinely different semantically (an average over
+zero qualifying data points is undefined, not zero) and were showing
+real computed values in the same live check, not blank/incorrect.
+
+**Verified exhaustively before reporting anything**: fresh login,
+screenshotted the full expanded sidebar (11 items, 4 groups, home icon
+first), clicked all 11 in sequence checking `document.querySelector(
+'.view.active').id` + real text content length + `#sidebar`'s
+`getBoundingClientRect().x === 0` on every single transition (never
+became false -- the sidebar element is never destroyed/rebuilt, since
+none of these are page navigations anymore). Pixel-measured the
+sidebar: x=0, width=248px, height=1100px matching the full viewport.
+Uploaded 2 real lease PDFs live specifically to get non-placeholder
+numbers on the metric tiles rather than relying on the shared dev
+database's current (volatile, frequently 0-lease) state.
