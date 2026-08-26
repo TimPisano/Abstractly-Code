@@ -32,6 +32,25 @@ def _fresh_temp_db():
     return tmp.name
 
 
+def _authed_client():
+    """
+    A test_client() pre-authenticated as a logged-in analyst, via
+    Flask's session_transaction() -- the standard way to test a
+    session-gated route without driving an actual login POST through
+    bcrypt for every test, same convention as test_admin_auth.py's
+    _create_admin()/session pattern. Most routes now require at least
+    a logged-in session (see app/auth.py's require_role()) since the
+    RBAC audit -- analyst covers every route these tests exercise.
+    """
+    client = app.test_client()
+    with client.session_transaction() as sess:
+        sess["user_id"] = 1
+        sess["email"] = "test-analyst@example.com"
+        sess["name"] = "Test Analyst"
+        sess["role"] = "analyst"
+    return client
+
+
 def _fields(confidence="high", **overrides):
     result = {}
     for name in FIELD_NAMES:
@@ -363,7 +382,7 @@ def test_data_freshness_custom_threshold():
 def test_health_score_route():
     db_path = _fresh_temp_db()
     try:
-        client = app.test_client()
+        client = _authed_client()
         resp = client.get("/portfolio/health-score")
         assert resp.status_code == 200
         assert resp.get_json()["rating"] == "No Data"

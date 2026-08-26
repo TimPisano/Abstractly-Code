@@ -29,6 +29,25 @@ def _fresh_temp_db():
     return tmp.name
 
 
+def _authed_client():
+    """
+    A test_client() pre-authenticated as a logged-in analyst, via
+    Flask's session_transaction() -- the standard way to test a
+    session-gated route without driving an actual login POST through
+    bcrypt for every test, same convention as test_admin_auth.py's
+    _create_admin()/session pattern. Most routes now require at least
+    a logged-in session (see app/auth.py's require_role()) since the
+    RBAC audit -- analyst covers every route these tests exercise.
+    """
+    client = app.test_client()
+    with client.session_transaction() as sess:
+        sess["user_id"] = 1
+        sess["email"] = "test-analyst@example.com"
+        sess["name"] = "Test Analyst"
+        sess["role"] = "analyst"
+    return client
+
+
 def _pdf_fields(tenant=None, address=None, rent=None):
     def field(v):
         return {"value": v, "source": {"page": 1, "quote": "..."} if v else None, "confidence": "high" if v else None}
@@ -48,7 +67,7 @@ def _csv_bytes(rows):
 def test_t12_route_requires_a_file():
     db_path = _fresh_temp_db()
     try:
-        client = app.test_client()
+        client = _authed_client()
         resp = client.post("/portfolio/t12-reconciliation", data={"property_address": "100 Main St"}, content_type="multipart/form-data")
         assert resp.status_code == 400
         assert "file" in resp.get_json()["error"].lower()
@@ -60,7 +79,7 @@ def test_t12_route_requires_a_file():
 def test_t12_route_requires_property_address():
     db_path = _fresh_temp_db()
     try:
-        client = app.test_client()
+        client = _authed_client()
         file_bytes = _csv_bytes([["Line Item", "Total"], ["Total Rental Income", "120000"]])
         resp = client.post(
             "/portfolio/t12-reconciliation",
@@ -77,7 +96,7 @@ def test_t12_route_requires_property_address():
 def test_t12_route_rejects_bad_file_type():
     db_path = _fresh_temp_db()
     try:
-        client = app.test_client()
+        client = _authed_client()
         resp = client.post(
             "/portfolio/t12-reconciliation",
             data={"file": (io.BytesIO(b"not a t12"), "t12.pdf"), "property_address": "100 Main St"},
@@ -92,7 +111,7 @@ def test_t12_route_rejects_bad_file_type():
 def test_t12_route_unparseable_t12_returns_400():
     db_path = _fresh_temp_db()
     try:
-        client = app.test_client()
+        client = _authed_client()
         file_bytes = _csv_bytes([["Notes"], ["nothing recognizable"]])
         resp = client.post(
             "/portfolio/t12-reconciliation",
@@ -110,7 +129,7 @@ def test_t12_route_real_leases_plus_real_t12_flags_a_real_discrepancy():
     """Real persisted leases at a building, a real T12 upload through the real route -- confirms the whole pipeline end to end, not just each half in isolation."""
     db_path = _fresh_temp_db()
     try:
-        client = app.test_client()
+        client = _authed_client()
         database.insert_lease("acme_lease.pdf", _pdf_fields(tenant="Acme Corp", address="700 Retail Plaza, Suite 100", rent="$10,000.00"))
         database.insert_lease("beta_lease.pdf", _pdf_fields(tenant="Beta LLC", address="700 Retail Plaza, Suite 200", rent="$8,000.00"))
         # rent roll annual = (10000+8000)*12 = 216000
@@ -143,7 +162,7 @@ def test_t12_route_does_not_persist_anything():
     """A T12 upload must never create a lease record -- it's not a lease, and doing so would corrupt every other per-lease computation."""
     db_path = _fresh_temp_db()
     try:
-        client = app.test_client()
+        client = _authed_client()
         before = client.get("/leases").get_json()
         assert before == []
 
@@ -164,7 +183,7 @@ def test_t12_route_does_not_persist_anything():
 def test_t12_route_no_matching_leases_returns_honest_not_found():
     db_path = _fresh_temp_db()
     try:
-        client = app.test_client()
+        client = _authed_client()
         database.insert_lease("unrelated.pdf", _pdf_fields(tenant="Unrelated Co", address="999 Other Ave", rent="$5,000.00"))
 
         file_bytes = _csv_bytes([["Line Item", "Total"], ["Total Rental Income", "120000"]])

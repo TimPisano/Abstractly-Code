@@ -26,6 +26,25 @@ def _fresh_temp_db():
     return tmp.name
 
 
+def _authed_client():
+    """
+    A test_client() pre-authenticated as a logged-in analyst, via
+    Flask's session_transaction() -- the standard way to test a
+    session-gated route without driving an actual login POST through
+    bcrypt for every test, same convention as test_admin_auth.py's
+    _create_admin()/session pattern. Most routes now require at least
+    a logged-in session (see app/auth.py's require_role()) since the
+    RBAC audit -- analyst covers every route these tests exercise.
+    """
+    client = app.test_client()
+    with client.session_transaction() as sess:
+        sess["user_id"] = 1
+        sess["email"] = "test-analyst@example.com"
+        sess["name"] = "Test Analyst"
+        sess["role"] = "analyst"
+    return client
+
+
 def _fields(tenant=None, rent_amount=None):
     from app.portfolio import FIELD_NAMES
 
@@ -41,7 +60,7 @@ def _fields(tenant=None, rent_amount=None):
 def test_tenant_concentration_route_empty_portfolio():
     db_path = _fresh_temp_db()
     try:
-        client = app.test_client()
+        client = _authed_client()
         resp = client.get("/portfolio/tenant-concentration")
         assert resp.status_code == 200
         data = resp.get_json()
@@ -60,7 +79,7 @@ def test_tenant_concentration_route_real_leases():
         database.insert_lease("a.pdf", _fields(tenant="Big Tenant", rent_amount="$8,000.00"))
         database.insert_lease("b.pdf", _fields(tenant="Small Tenant", rent_amount="$2,000.00"))
 
-        client = app.test_client()
+        client = _authed_client()
         resp = client.get("/portfolio/tenant-concentration")
         assert resp.status_code == 200
         data = resp.get_json()
@@ -89,7 +108,7 @@ def test_tenant_concentration_route_reflects_amendments():
             base_lease_id=base_id,
         )
 
-        client = app.test_client()
+        client = _authed_client()
         resp = client.get("/portfolio/tenant-concentration")
         data = resp.get_json()
 

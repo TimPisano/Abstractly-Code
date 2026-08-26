@@ -34,6 +34,25 @@ def _fresh_temp_db():
     return tmp.name
 
 
+def _authed_client():
+    """
+    A test_client() pre-authenticated as a logged-in analyst, via
+    Flask's session_transaction() -- the standard way to test a
+    session-gated route without driving an actual login POST through
+    bcrypt for every test, same convention as test_admin_auth.py's
+    _create_admin()/session pattern. Most routes now require at least
+    a logged-in session (see app/auth.py's require_role()) since the
+    RBAC audit -- analyst covers every route these tests exercise.
+    """
+    client = app.test_client()
+    with client.session_transaction() as sess:
+        sess["user_id"] = 1
+        sess["email"] = "test-analyst@example.com"
+        sess["name"] = "Test Analyst"
+        sess["role"] = "analyst"
+    return client
+
+
 def _fields(**overrides):
     result = {}
     for name in FIELD_NAMES:
@@ -120,7 +139,7 @@ def test_database_configure_clears_the_cache():
 def test_uploading_a_lease_through_the_api_busts_the_health_score_cache():
     db_path = _fresh_temp_db()
     try:
-        client = app.test_client()
+        client = _authed_client()
 
         resp = client.get("/portfolio/health-score")
         assert resp.get_json()["rating"] == "No Data", "must start with an empty, cached 'No Data' result"
@@ -150,7 +169,7 @@ def test_uploading_a_lease_through_the_api_busts_the_health_score_cache():
 def test_deleting_a_lease_through_the_api_busts_the_trends_cache():
     db_path = _fresh_temp_db()
     try:
-        client = app.test_client()
+        client = _authed_client()
         lease_id = database.insert_lease("a.pdf", _fields(tenant="Acme", rent_amount="$5,000.00", property_address="1 Main St"))
 
         resp = client.get("/portfolio/trends")
@@ -169,7 +188,7 @@ def test_deleting_a_lease_through_the_api_busts_the_trends_cache():
 def test_resolving_a_discrepancy_through_the_api_busts_the_health_score_cache():
     db_path = _fresh_temp_db()
     try:
-        client = app.test_client()
+        client = _authed_client()
         lease_id = database.insert_lease("a.pdf", _fields())  # missing everything -> real flags
         flags = client.get(f"/leases/{lease_id}/risks").get_json()
         assert flags, "fixture must produce at least one real discrepancy"
@@ -195,7 +214,7 @@ def test_health_score_cache_key_is_scoped_by_staleness_threshold():
     """Two different staleness_threshold_months values must not collide onto the same cache entry -- confirmed with values chosen so the answer is actually different for each."""
     db_path = _fresh_temp_db()
     try:
-        client = app.test_client()
+        client = _authed_client()
         old_timestamp = "2020-01-01T00:00:00+00:00"
         lease_id = database.insert_lease("a.pdf", _fields(tenant="Acme", rent_amount="$5,000.00", landlord="L", lease_start_date="Jan 1, 2025", lease_end_date="Jan 1, 2030"))
         conn = database.get_connection()

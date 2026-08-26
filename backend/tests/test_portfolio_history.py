@@ -36,6 +36,25 @@ def _fresh_temp_db():
     return tmp.name
 
 
+def _authed_client():
+    """
+    A test_client() pre-authenticated as a logged-in analyst, via
+    Flask's session_transaction() -- the standard way to test a
+    session-gated route without driving an actual login POST through
+    bcrypt for every test, same convention as test_admin_auth.py's
+    _create_admin()/session pattern. Most routes now require at least
+    a logged-in session (see app/auth.py's require_role()) since the
+    RBAC audit -- analyst covers every route these tests exercise.
+    """
+    client = app.test_client()
+    with client.session_transaction() as sess:
+        sess["user_id"] = 1
+        sess["email"] = "test-analyst@example.com"
+        sess["name"] = "Test Analyst"
+        sess["role"] = "analyst"
+    return client
+
+
 def _fields(tenant=None, rent_amount=None, property_address=None, lease_end_date=None, square_footage=None):
     def field(v):
         return {"value": v, "source": {"page": 1, "quote": "..."} if v else None, "confidence": "high" if v else None}
@@ -287,7 +306,7 @@ def test_compute_property_trends_no_matching_records_is_empty_not_error():
 def test_property_trends_route_happy_path():
     db_path = _fresh_temp_db()
     try:
-        client = app.test_client()
+        client = _authed_client()
         _insert("Acme", "$4,000.00", end_date="December 31, 2027")
         _insert("Zenith Corp", "$4,400.00", end_date="December 31, 2029")
 
@@ -306,7 +325,7 @@ def test_property_trends_route_happy_path():
 def test_property_trends_route_missing_address_returns_400():
     db_path = _fresh_temp_db()
     try:
-        client = app.test_client()
+        client = _authed_client()
         resp = client.get("/portfolio/property-trends")
         assert resp.status_code == 400
     finally:
@@ -317,7 +336,7 @@ def test_property_trends_route_missing_address_returns_400():
 def test_property_trends_route_no_history_still_200():
     db_path = _fresh_temp_db()
     try:
-        client = app.test_client()
+        client = _authed_client()
         resp = client.get("/portfolio/property-trends?property_address=1 Nowhere Rd")
         assert resp.status_code == 200
         assert resp.get_json()["record_count"] == 0
@@ -389,7 +408,7 @@ def test_compute_portfolio_trends_matches_per_property_calls_summed():
 def test_portfolio_trends_route():
     db_path = _fresh_temp_db()
     try:
-        client = app.test_client()
+        client = _authed_client()
         _insert("Acme", "$4,000.00", "1 Main St", end_date="December 31, 2027")
         _insert("Beta", "$5,000.00", "2 Oak Ave", end_date="June 30, 2028")
 

@@ -279,12 +279,31 @@ def _fresh_temp_db():
     return tmp.name
 
 
+def _authed_client():
+    """
+    A test_client() pre-authenticated as a logged-in analyst, via
+    Flask's session_transaction() -- the standard way to test a
+    session-gated route without driving an actual login POST through
+    bcrypt for every test, same convention as test_admin_auth.py's
+    _create_admin()/session pattern. Most routes now require at least
+    a logged-in session (see app/auth.py's require_role()) since the
+    RBAC audit -- analyst covers every route these tests exercise.
+    """
+    client = app.test_client()
+    with client.session_transaction() as sess:
+        sess["user_id"] = 1
+        sess["email"] = "test-analyst@example.com"
+        sess["name"] = "Test Analyst"
+        sess["role"] = "analyst"
+    return client
+
+
 def test_route_returns_502_with_clean_message_when_not_configured():
     db_path = _fresh_temp_db()
     try:
         with mock.patch.dict(os.environ, {}, clear=False):
             os.environ.pop("GOOGLE_APPLICATION_CREDENTIALS", None)
-            resp = app.test_client().post("/portfolio/export/google-sheets")
+            resp = _authed_client().post("/portfolio/export/google-sheets")
         assert resp.status_code == 502, resp.get_json()
         assert "error" in resp.get_json()
         assert "GOOGLE_APPLICATION_CREDENTIALS" in resp.get_json()["error"]
@@ -297,7 +316,7 @@ def test_route_returns_200_with_url_on_success_and_logs_activity():
     db_path = _fresh_temp_db()
     try:
         with mock.patch("app.api.export_to_google_sheets", return_value={"spreadsheet_id": "xyz", "url": "https://docs.google.com/spreadsheets/d/xyz/edit"}):
-            resp = app.test_client().post("/portfolio/export/google-sheets")
+            resp = _authed_client().post("/portfolio/export/google-sheets")
 
         assert resp.status_code == 200, resp.get_json()
         body = resp.get_json()
@@ -314,7 +333,7 @@ def test_route_does_not_log_activity_on_failure():
     db_path = _fresh_temp_db()
     try:
         with mock.patch("app.api.export_to_google_sheets", side_effect=SheetsExportError("boom")):
-            resp = app.test_client().post("/portfolio/export/google-sheets")
+            resp = _authed_client().post("/portfolio/export/google-sheets")
         assert resp.status_code == 502
 
         activity = database.get_recent_activity(5)
@@ -338,7 +357,7 @@ def test_single_lease_route_returns_502_with_clean_message_when_not_configured()
         lease_id = database.insert_lease("solo.pdf", LEASE_COMPLETE["extracted_fields"])
         with mock.patch.dict(os.environ, {}, clear=False):
             os.environ.pop("GOOGLE_APPLICATION_CREDENTIALS", None)
-            resp = app.test_client().post(f"/leases/{lease_id}/export/google-sheets")
+            resp = _authed_client().post(f"/leases/{lease_id}/export/google-sheets")
         assert resp.status_code == 502, resp.get_json()
         assert "GOOGLE_APPLICATION_CREDENTIALS" in resp.get_json()["error"]
     finally:
@@ -349,7 +368,7 @@ def test_single_lease_route_returns_502_with_clean_message_when_not_configured()
 def test_single_lease_route_returns_404_for_nonexistent_lease():
     db_path = _fresh_temp_db()
     try:
-        resp = app.test_client().post("/leases/999999/export/google-sheets")
+        resp = _authed_client().post("/leases/999999/export/google-sheets")
         assert resp.status_code == 404, resp.get_json()
     finally:
         os.unlink(db_path)
@@ -361,7 +380,7 @@ def test_single_lease_route_returns_200_and_logs_activity_naming_the_lease():
     try:
         lease_id = database.insert_lease("solo.pdf", LEASE_COMPLETE["extracted_fields"], display_name="Blue Sky Coffee Roasters, Inc.")
         with mock.patch("app.api.export_to_google_sheets", return_value={"spreadsheet_id": "xyz", "url": "https://docs.google.com/spreadsheets/d/xyz/edit"}) as mocked:
-            resp = app.test_client().post(f"/leases/{lease_id}/export/google-sheets")
+            resp = _authed_client().post(f"/leases/{lease_id}/export/google-sheets")
 
         assert resp.status_code == 200, resp.get_json()
         assert resp.get_json()["url"] == "https://docs.google.com/spreadsheets/d/xyz/edit"

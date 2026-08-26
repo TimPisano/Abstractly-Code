@@ -27,6 +27,25 @@ def _fresh_temp_db():
     return tmp.name
 
 
+def _authed_client():
+    """
+    A test_client() pre-authenticated as a logged-in analyst, via
+    Flask's session_transaction() -- the standard way to test a
+    session-gated route without driving an actual login POST through
+    bcrypt for every test, same convention as test_admin_auth.py's
+    _create_admin()/session pattern. Most routes now require at least
+    a logged-in session (see app/auth.py's require_role()) since the
+    RBAC audit -- analyst covers every route these tests exercise.
+    """
+    client = app.test_client()
+    with client.session_transaction() as sess:
+        sess["user_id"] = 1
+        sess["email"] = "test-analyst@example.com"
+        sess["name"] = "Test Analyst"
+        sess["role"] = "analyst"
+    return client
+
+
 def _upload(client, filename):
     with open(os.path.join(FIXTURES_DIR, filename), "rb") as f:
         content = f.read()
@@ -81,7 +100,7 @@ def test_default_name_appends_lease_number_only_when_split():
 def test_upload_auto_generates_display_name():
     db_path = _fresh_temp_db()
     try:
-        client = app.test_client()
+        client = _authed_client()
         lease = _upload(client, "retail_lease.pdf")
         assert lease["display_name"] == "Cascade Apparel Co. - 8890 Riverside Plaza, Unit 12, Portland, Oregon 97201", lease["display_name"]
     finally:
@@ -96,7 +115,7 @@ def test_upload_auto_generates_display_name():
 def test_rename_lease():
     db_path = _fresh_temp_db()
     try:
-        client = app.test_client()
+        client = _authed_client()
         lease = _upload(client, "office_lease.pdf")
 
         resp = client.patch(f"/leases/{lease['id']}", json={"display_name": "My Custom Name"})
@@ -114,7 +133,7 @@ def test_rename_lease():
 def test_rename_rejects_blank_name():
     db_path = _fresh_temp_db()
     try:
-        client = app.test_client()
+        client = _authed_client()
         lease = _upload(client, "office_lease.pdf")
         resp = client.patch(f"/leases/{lease['id']}", json={"display_name": "   "})
         assert resp.status_code == 400
@@ -126,7 +145,7 @@ def test_rename_rejects_blank_name():
 def test_rename_nonexistent_lease_returns_404():
     db_path = _fresh_temp_db()
     try:
-        client = app.test_client()
+        client = _authed_client()
         resp = client.patch("/leases/999999", json={"display_name": "Anything"})
         assert resp.status_code == 404
     finally:
@@ -138,7 +157,7 @@ def test_rename_reflected_in_dashboard_list():
     """The whole point of the rename feature: it must show up in GET /leases too, not just the single-lease GET."""
     db_path = _fresh_temp_db()
     try:
-        client = app.test_client()
+        client = _authed_client()
         lease = _upload(client, "retail_lease.pdf")
         client.patch(f"/leases/{lease['id']}", json={"display_name": "Renamed For List View"})
 
@@ -156,7 +175,7 @@ def test_rename_reflected_in_dashboard_list():
 def test_add_and_list_lease_tags():
     db_path = _fresh_temp_db()
     try:
-        client = app.test_client()
+        client = _authed_client()
         lease = _upload(client, "office_lease.pdf")
 
         resp = client.post(f"/leases/{lease['id']}/tags", json={"tag": "Downtown Portfolio"})
@@ -173,7 +192,7 @@ def test_add_and_list_lease_tags():
 def test_adding_same_tag_twice_is_not_an_error():
     db_path = _fresh_temp_db()
     try:
-        client = app.test_client()
+        client = _authed_client()
         lease = _upload(client, "office_lease.pdf")
         client.post(f"/leases/{lease['id']}/tags", json={"tag": "Downtown"})
         resp = client.post(f"/leases/{lease['id']}/tags", json={"tag": "Downtown"})
@@ -187,7 +206,7 @@ def test_adding_same_tag_twice_is_not_an_error():
 def test_remove_lease_tag():
     db_path = _fresh_temp_db()
     try:
-        client = app.test_client()
+        client = _authed_client()
         lease = _upload(client, "office_lease.pdf")
         client.post(f"/leases/{lease['id']}/tags", json={"tag": "Downtown"})
         client.post(f"/leases/{lease['id']}/tags", json={"tag": "2026 Acquisitions"})
@@ -203,7 +222,7 @@ def test_remove_lease_tag():
 def test_reject_blank_and_oversized_tags():
     db_path = _fresh_temp_db()
     try:
-        client = app.test_client()
+        client = _authed_client()
         lease = _upload(client, "office_lease.pdf")
 
         resp = client.post(f"/leases/{lease['id']}/tags", json={"tag": "  "})
@@ -219,7 +238,7 @@ def test_reject_blank_and_oversized_tags():
 def test_list_all_tags_and_filter_leases_by_tag():
     db_path = _fresh_temp_db()
     try:
-        client = app.test_client()
+        client = _authed_client()
         retail = _upload(client, "retail_lease.pdf")
         office = _upload(client, "office_lease.pdf")
 
@@ -245,7 +264,7 @@ def test_tags_deleted_with_lease():
     """A lease's tags must not survive (or dangle) after the lease itself is deleted — ON DELETE CASCADE on lease_tags."""
     db_path = _fresh_temp_db()
     try:
-        client = app.test_client()
+        client = _authed_client()
         lease = _upload(client, "office_lease.pdf")
         client.post(f"/leases/{lease['id']}/tags", json={"tag": "Downtown"})
 
@@ -261,7 +280,7 @@ def test_tags_deleted_with_lease():
 def test_tag_operations_on_nonexistent_lease_return_404():
     db_path = _fresh_temp_db()
     try:
-        client = app.test_client()
+        client = _authed_client()
         assert client.get("/leases/999999/tags").status_code == 404
         assert client.post("/leases/999999/tags", json={"tag": "x"}).status_code == 404
         assert client.delete("/leases/999999/tags/x").status_code == 404

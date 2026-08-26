@@ -28,6 +28,25 @@ def _fresh_temp_db():
     return tmp.name
 
 
+def _authed_client():
+    """
+    A test_client() pre-authenticated as a logged-in analyst, via
+    Flask's session_transaction() -- the standard way to test a
+    session-gated route without driving an actual login POST through
+    bcrypt for every test, same convention as test_admin_auth.py's
+    _create_admin()/session pattern. Most routes now require at least
+    a logged-in session (see app/auth.py's require_role()) since the
+    RBAC audit -- analyst covers every route these tests exercise.
+    """
+    client = app.test_client()
+    with client.session_transaction() as sess:
+        sess["user_id"] = 1
+        sess["email"] = "test-analyst@example.com"
+        sess["name"] = "Test Analyst"
+        sess["role"] = "analyst"
+    return client
+
+
 def _csv_bytes(rows):
     buf = io.StringIO()
     csv.writer(buf).writerows(rows)
@@ -42,7 +61,7 @@ def test_import_route_happy_path_persists_real_leases():
             ["Acme Corp", "$4,500.00", "2,000 sq ft"],
             ["Beta LLC", "$3,200.00", "1,500 sq ft"],
         ])
-        client = app.test_client()
+        client = _authed_client()
         resp = client.post(
             "/leases/import-rent-roll",
             data={"file": (io.BytesIO(file_bytes), "rentroll.csv"), "property_address": "100 Main St"},
@@ -78,7 +97,7 @@ def test_import_route_persisted_leases_feed_portfolio_computations():
             ["Big Tenant", "$8,000.00"],
             ["Small Tenant", "$2,000.00"],
         ])
-        client = app.test_client()
+        client = _authed_client()
         client.post(
             "/leases/import-rent-roll",
             data={"file": (io.BytesIO(file_bytes), "rentroll.csv")},
@@ -104,7 +123,7 @@ def test_import_route_skipped_rows_reported_not_silently_dropped():
             ["VACANT", "$0.00"],
             ["Total", "$1,000.00"],
         ])
-        client = app.test_client()
+        client = _authed_client()
         resp = client.post(
             "/leases/import-rent-roll",
             data={"file": (io.BytesIO(file_bytes), "rentroll.csv")},
@@ -122,7 +141,7 @@ def test_import_route_skipped_rows_reported_not_silently_dropped():
 def test_import_route_rejects_wrong_file_type():
     db_path = _fresh_temp_db()
     try:
-        client = app.test_client()
+        client = _authed_client()
         resp = client.post(
             "/leases/import-rent-roll",
             data={"file": (io.BytesIO(b"%PDF-1.4 fake"), "lease.pdf")},
@@ -140,7 +159,7 @@ def test_import_route_rejects_file_with_no_recognizable_columns():
     db_path = _fresh_temp_db()
     try:
         file_bytes = _csv_bytes([["Notes", "Parking"], ["some note", "2"]])
-        client = app.test_client()
+        client = _authed_client()
         resp = client.post(
             "/leases/import-rent-roll",
             data={"file": (io.BytesIO(file_bytes), "rentroll.csv")},
@@ -158,7 +177,7 @@ def test_import_route_rejects_file_with_no_recognizable_columns():
 def test_import_route_no_file_uploaded():
     db_path = _fresh_temp_db()
     try:
-        client = app.test_client()
+        client = _authed_client()
         resp = client.post("/leases/import-rent-roll", data={}, content_type="multipart/form-data")
         assert resp.status_code == 400
     finally:
@@ -180,7 +199,7 @@ def test_import_route_xlsx_also_works():
         wb.save(buf)
         buf.seek(0)
 
-        client = app.test_client()
+        client = _authed_client()
         resp = client.post(
             "/leases/import-rent-roll",
             data={"file": (buf, "rentroll.xlsx")},

@@ -30,6 +30,25 @@ def _fresh_temp_db():
     return tmp.name
 
 
+def _authed_client():
+    """
+    A test_client() pre-authenticated as a logged-in analyst, via
+    Flask's session_transaction() -- the standard way to test a
+    session-gated route without driving an actual login POST through
+    bcrypt for every test, same convention as test_admin_auth.py's
+    _create_admin()/session pattern. Most routes now require at least
+    a logged-in session (see app/auth.py's require_role()) since the
+    RBAC audit -- analyst covers every route these tests exercise.
+    """
+    client = app.test_client()
+    with client.session_transaction() as sess:
+        sess["user_id"] = 1
+        sess["email"] = "test-analyst@example.com"
+        sess["name"] = "Test Analyst"
+        sess["role"] = "analyst"
+    return client
+
+
 def _fields(**overrides):
     result = {}
     for name in FIELD_NAMES:
@@ -255,7 +274,7 @@ def test_sync_t12_reconciliation_only_persists_when_flagged_or_already_tracked()
 def test_lease_risks_route_flags_carry_resolution_status():
     db_path = _fresh_temp_db()
     try:
-        client = app.test_client()
+        client = _authed_client()
         lease_id = database.insert_lease("base.pdf", _fields())  # missing everything -> missing_clause flags
         resp = client.get(f"/leases/{lease_id}/risks")
         assert resp.status_code == 200
@@ -270,19 +289,21 @@ def test_lease_risks_route_flags_carry_resolution_status():
 def test_resolve_route_happy_path_and_persists():
     db_path = _fresh_temp_db()
     try:
-        client = app.test_client()
+        client = _authed_client()
         lease_id = database.insert_lease("base.pdf", _fields())
         flags = client.get(f"/leases/{lease_id}/risks").get_json()
         disc_id = flags[0]["discrepancy_id"]
 
         resp = client.post(f"/discrepancies/{disc_id}/resolve", json={
-            "correct_source": "lease_document", "note": "confirmed via source PDF", "resolved_by": "Jane Analyst", "resolved_by_email": "jane@firm.com",
+            "correct_source": "lease_document", "note": "confirmed via source PDF",
         })
         assert resp.status_code == 200, resp.get_json()
         data = resp.get_json()
         assert data["status"] == "resolved"
         assert len(data["resolutions"]) == 1
-        assert data["resolutions"][0]["resolved_by"] == "Jane Analyst"
+        # resolved_by is always the logged-in session user now, not a
+        # request-body field -- see _authed_client()'s session identity.
+        assert data["resolutions"][0]["resolved_by"] == "Test Analyst"
 
         # Re-fetching the same lease's risks must now show it resolved -- no manual re-read needed
         flags_again = client.get(f"/leases/{lease_id}/risks").get_json()
@@ -297,14 +318,13 @@ def test_resolve_route_happy_path_and_persists():
 def test_resolve_route_missing_fields_returns_400():
     db_path = _fresh_temp_db()
     try:
-        client = app.test_client()
+        client = _authed_client()
         disc_id = database.upsert_discrepancy(
             discrepancy_type="lease_risk_flag", natural_key="k", category="missing_clause", message="m", details={}, lease_id=1,
         )
         resp = client.post(f"/discrepancies/{disc_id}/resolve", json={"note": "only a note"})
         assert resp.status_code == 400
         assert "correct_source" in resp.get_json()["error"]
-        assert "resolved_by" in resp.get_json()["error"]
     finally:
         os.unlink(db_path)
     print("✓ test_resolve_route_missing_fields_returns_400: PASS")
@@ -313,8 +333,8 @@ def test_resolve_route_missing_fields_returns_400():
 def test_resolve_route_nonexistent_discrepancy_returns_404():
     db_path = _fresh_temp_db()
     try:
-        client = app.test_client()
-        resp = client.post("/discrepancies/999999/resolve", json={"correct_source": "x", "note": "n", "resolved_by": "y"})
+        client = _authed_client()
+        resp = client.post("/discrepancies/999999/resolve", json={"correct_source": "x", "note": "n"})
         assert resp.status_code == 404
     finally:
         os.unlink(db_path)
@@ -324,15 +344,15 @@ def test_resolve_route_nonexistent_discrepancy_returns_404():
 def test_reopen_route_requires_currently_resolved():
     db_path = _fresh_temp_db()
     try:
-        client = app.test_client()
+        client = _authed_client()
         disc_id = database.upsert_discrepancy(
             discrepancy_type="lease_risk_flag", natural_key="k", category="missing_clause", message="m", details={}, lease_id=1,
         )
-        resp = client.post(f"/discrepancies/{disc_id}/reopen", json={"note": "n", "resolved_by": "y"})
+        resp = client.post(f"/discrepancies/{disc_id}/reopen", json={"note": "n"})
         assert resp.status_code == 400, "cannot reopen an already-open discrepancy"
 
-        client.post(f"/discrepancies/{disc_id}/resolve", json={"correct_source": "x", "note": "n", "resolved_by": "y"})
-        resp = client.post(f"/discrepancies/{disc_id}/reopen", json={"note": "need another look", "resolved_by": "z"})
+        client.post(f"/discrepancies/{disc_id}/resolve", json={"correct_source": "x", "note": "n"})
+        resp = client.post(f"/discrepancies/{disc_id}/reopen", json={"note": "need another look"})
         assert resp.status_code == 200
         assert resp.get_json()["status"] == "open"
     finally:
@@ -343,7 +363,7 @@ def test_reopen_route_requires_currently_resolved():
 def test_list_discrepancies_route_filters():
     db_path = _fresh_temp_db()
     try:
-        client = app.test_client()
+        client = _authed_client()
         lease_id = database.insert_lease("base.pdf", _fields())
         client.get(f"/leases/{lease_id}/risks")  # populates discrepancies
 
@@ -365,7 +385,7 @@ def test_list_discrepancies_route_filters():
 def test_get_discrepancy_route_404_for_nonexistent():
     db_path = _fresh_temp_db()
     try:
-        client = app.test_client()
+        client = _authed_client()
         resp = client.get("/discrepancies/999999")
         assert resp.status_code == 404
     finally:
@@ -376,7 +396,7 @@ def test_get_discrepancy_route_404_for_nonexistent():
 def test_discrepancy_summary_route():
     db_path = _fresh_temp_db()
     try:
-        client = app.test_client()
+        client = _authed_client()
         resp = client.get("/discrepancies/summary")
         assert resp.status_code == 200
         assert resp.get_json() == {"total": 0, "by_status": {"open": 0, "resolved": 0}, "by_severity": {"high": 0, "medium": 0, "low": 0}, "by_type": {}}

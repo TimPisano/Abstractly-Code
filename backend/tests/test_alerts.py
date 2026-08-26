@@ -30,6 +30,25 @@ def _fresh_temp_db():
     return tmp.name
 
 
+def _authed_client():
+    """
+    A test_client() pre-authenticated as a logged-in analyst, via
+    Flask's session_transaction() -- the standard way to test a
+    session-gated route without driving an actual login POST through
+    bcrypt for every test, same convention as test_admin_auth.py's
+    _create_admin()/session pattern. Most routes now require at least
+    a logged-in session (see app/auth.py's require_role()) since the
+    RBAC audit -- analyst covers every route these tests exercise.
+    """
+    client = app.test_client()
+    with client.session_transaction() as sess:
+        sess["user_id"] = 1
+        sess["email"] = "test-analyst@example.com"
+        sess["name"] = "Test Analyst"
+        sess["role"] = "analyst"
+    return client
+
+
 def _fields(**overrides):
     result = {}
     for name in FIELD_NAMES:
@@ -435,7 +454,7 @@ def test_get_alert_digest():
 def test_generate_route_and_list_route():
     db_path = _fresh_temp_db()
     try:
-        client = app.test_client()
+        client = _authed_client()
         _insert(tenant="Expiring Co", lease_end_date=(date.today() + timedelta(days=10)).strftime("%B %d, %Y"))
 
         resp = client.post("/alerts/generate")
@@ -462,7 +481,7 @@ def test_generate_route_and_list_route():
 def test_get_and_dismiss_alert_routes():
     db_path = _fresh_temp_db()
     try:
-        client = app.test_client()
+        client = _authed_client()
         alert_id = database.upsert_alert(alert_type="lease_expiration", natural_key="a", severity="high", title="t", message="m", details={})
 
         resp = client.get(f"/alerts/{alert_id}")
@@ -472,18 +491,18 @@ def test_get_and_dismiss_alert_routes():
         resp = client.get("/alerts/999999")
         assert resp.status_code == 404
 
-        resp = client.post(f"/alerts/{alert_id}/dismiss", json={})
-        assert resp.status_code == 400
-        assert "dismissed_by" in resp.get_json()["error"]
-
-        resp = client.post(f"/alerts/{alert_id}/dismiss", json={"dismissed_by": "Jane Analyst", "note": "handled"})
+        # note is optional and dismissed_by is no longer a request-body
+        # field at all (see below) -- an empty body is a valid dismiss.
+        resp = client.post(f"/alerts/{alert_id}/dismiss", json={"note": "handled"})
         assert resp.status_code == 200
         data = resp.get_json()
         assert data["status"] == "dismissed"
-        assert data["dismissed_by"] == "Jane Analyst"
+        # dismissed_by is always the logged-in session user now, not a
+        # request-body field -- see _authed_client()'s session identity.
+        assert data["dismissed_by"] == "Test Analyst"
         assert data["dismissal_note"] == "handled"
 
-        resp = client.post("/alerts/999999/dismiss", json={"dismissed_by": "x"})
+        resp = client.post("/alerts/999999/dismiss", json={})
         assert resp.status_code == 404
     finally:
         os.unlink(db_path)
@@ -493,7 +512,7 @@ def test_get_and_dismiss_alert_routes():
 def test_summary_route():
     db_path = _fresh_temp_db()
     try:
-        client = app.test_client()
+        client = _authed_client()
         database.upsert_alert(alert_type="lease_expiration", natural_key="a", severity="high", title="t", message="m", details={})
         resp = client.get("/alerts/summary")
         assert resp.status_code == 200

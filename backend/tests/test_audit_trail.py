@@ -35,6 +35,25 @@ def _fresh_temp_db():
     return tmp.name
 
 
+def _authed_client():
+    """
+    A test_client() pre-authenticated as a logged-in analyst, via
+    Flask's session_transaction() -- the standard way to test a
+    session-gated route without driving an actual login POST through
+    bcrypt for every test, same convention as test_admin_auth.py's
+    _create_admin()/session pattern. Most routes now require at least
+    a logged-in session (see app/auth.py's require_role()) since the
+    RBAC audit -- analyst covers every route these tests exercise.
+    """
+    client = app.test_client()
+    with client.session_transaction() as sess:
+        sess["user_id"] = 1
+        sess["email"] = "test-analyst@example.com"
+        sess["name"] = "Test Analyst"
+        sess["role"] = "analyst"
+    return client
+
+
 def _read(filename):
     with open(os.path.join(FIXTURES_DIR, filename), "rb") as f:
         return f.read()
@@ -235,7 +254,7 @@ def test_source_chain_nonexistent_lease_returns_none():
 def test_field_source_route_happy_path():
     db_path = _fresh_temp_db()
     try:
-        client = app.test_client()
+        client = _authed_client()
         with open(os.path.join(FIXTURES_DIR, "sample_lease_commercial.pdf"), "rb") as f:
             content = f.read()
         resp = client.post(
@@ -261,7 +280,7 @@ def test_field_source_route_happy_path():
 def test_field_source_route_unknown_field_returns_400():
     db_path = _fresh_temp_db()
     try:
-        client = app.test_client()
+        client = _authed_client()
         lease_id = database.insert_lease("base.pdf", _fields(rent_amount="$5,000.00"))
         resp = client.get(f"/leases/{lease_id}/fields/not_a_real_field/source")
         assert resp.status_code == 400
@@ -274,7 +293,7 @@ def test_field_source_route_unknown_field_returns_400():
 def test_field_source_route_nonexistent_lease_returns_404():
     db_path = _fresh_temp_db()
     try:
-        client = app.test_client()
+        client = _authed_client()
         resp = client.get("/leases/999999/fields/rent_amount/source")
         assert resp.status_code == 404
     finally:
@@ -285,7 +304,7 @@ def test_field_source_route_nonexistent_lease_returns_404():
 def test_field_source_route_rent_roll_imported_lease_uses_row_citation():
     db_path = _fresh_temp_db()
     try:
-        client = app.test_client()
+        client = _authed_client()
         content = _read("synthetic_yardi_rent_roll.csv")
         resp = client.post(
             "/leases/import-rent-roll",

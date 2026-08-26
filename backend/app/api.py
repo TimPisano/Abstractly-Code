@@ -466,6 +466,7 @@ def _persist_split_leases(filename, split_leases):
 
 
 @app.route('/leases', methods=['POST'])
+@require_role('analyst')
 def upload_lease():
     """
     Upload a single lease document (PDF, Excel, CSV/TSV, Word, image,
@@ -495,6 +496,7 @@ def upload_lease():
 
 
 @app.route('/leases/batch', methods=['POST'])
+@require_role('analyst')
 def upload_leases_batch():
     """
     Upload multiple lease documents (any supported format -- see
@@ -552,6 +554,7 @@ def upload_leases_batch():
 
 
 @app.route('/leases/import-rent-roll', methods=['POST'])
+@require_role('analyst')
 def import_rent_roll():
     """
     Upload a broker-built Excel (.xlsx) or CSV rent roll and import
@@ -629,6 +632,7 @@ def import_rent_roll():
 
 
 @app.route('/leases', methods=['GET'])
+@require_role()
 def list_leases():
     """
     List all base leases (not amendments), with amendment-merged
@@ -650,6 +654,7 @@ def list_leases():
 
 
 @app.route('/leases/<int:lease_id>', methods=['GET'])
+@require_role()
 def get_lease_detail(lease_id):
     lease = database.get_effective_lease(lease_id)
     if not lease:
@@ -659,6 +664,7 @@ def get_lease_detail(lease_id):
 
 
 @app.route('/leases/<int:lease_id>/fields/<field_name>/source', methods=['GET'])
+@require_role()
 def lease_field_source(lease_id, field_name):
     """
     The full audit trail for one extracted data point: the exact source
@@ -679,6 +685,7 @@ def lease_field_source(lease_id, field_name):
 
 
 @app.route('/leases/<int:lease_id>', methods=['DELETE'])
+@require_role('analyst')
 def delete_lease(lease_id):
     lease = database.get_lease(lease_id)
     if not lease:
@@ -692,6 +699,7 @@ def delete_lease(lease_id):
 
 
 @app.route('/leases/bulk-delete', methods=['POST'])
+@require_role('analyst')
 def bulk_delete_leases():
     """
     Body: {"ids": [1, 2, 3]}.
@@ -727,6 +735,7 @@ def bulk_delete_leases():
 
 
 @app.route('/leases/<int:lease_id>/amendments', methods=['POST'])
+@require_role('analyst')
 def upload_amendment(lease_id):
     """Upload an amendment/addendum document (any supported format -- see document_extractor.py) and link it to an existing base lease."""
     base_lease = database.get_lease(lease_id)
@@ -764,6 +773,7 @@ def upload_amendment(lease_id):
 
 
 @app.route('/leases/<int:lease_id>/amendments', methods=['GET'])
+@require_role()
 def list_amendments(lease_id):
     base_lease = database.get_lease(lease_id)
     if not base_lease:
@@ -776,6 +786,7 @@ def list_amendments(lease_id):
 
 
 @app.route('/leases/<int:lease_id>', methods=['PATCH'])
+@require_role('analyst')
 def rename_lease(lease_id):
     """Body: {"display_name": str}. The only field this endpoint can change — renaming, not editing extracted fields (that's the inline-edit workflow on the detail page, unrelated to this)."""
     lease = database.get_lease(lease_id)
@@ -796,6 +807,7 @@ def rename_lease(lease_id):
 
 
 @app.route('/leases/<int:lease_id>/tags', methods=['GET'])
+@require_role()
 def list_lease_tags(lease_id):
     lease = database.get_lease(lease_id)
     if not lease:
@@ -804,6 +816,7 @@ def list_lease_tags(lease_id):
 
 
 @app.route('/leases/<int:lease_id>/tags', methods=['POST'])
+@require_role('analyst')
 def add_lease_tag_route(lease_id):
     """Body: {"tag": str}."""
     lease = database.get_lease(lease_id)
@@ -822,6 +835,7 @@ def add_lease_tag_route(lease_id):
 
 
 @app.route('/leases/<int:lease_id>/tags/<path:tag>', methods=['DELETE'])
+@require_role('analyst')
 def remove_lease_tag_route(lease_id, tag):
     lease = database.get_lease(lease_id)
     if not lease:
@@ -831,18 +845,23 @@ def remove_lease_tag_route(lease_id, tag):
 
 
 def _validate_comment_payload(payload):
-    """Shared by both comment-creation routes. Returns (author_name, author_email, body, error_response)."""
-    author_name = (payload.get('author_name') or '').strip()
-    author_email = (payload.get('author_email') or '').strip() or None
+    """
+    Shared by both comment-creation routes. Returns (body, error_response).
+    author_name/author_email used to be request-body fields (trusted
+    as-is, no accounts table) -- now that real per-user login exists,
+    both routes are behind @require_role('analyst'), so the author is
+    always the logged-in session user (see current_user()), never
+    something the caller can just type in. Only `body` is still a
+    request-body field to validate.
+    """
     body = (payload.get('body') or '').strip()
-
-    missing = [field for field, value in (('author_name', author_name), ('body', body)) if not value]
-    if missing:
-        return None, None, None, (jsonify({"error": f"Missing required field(s): {', '.join(missing)}"}), 400)
-    return author_name, author_email, body, None
+    if not body:
+        return None, (jsonify({"error": "Missing required field: body"}), 400)
+    return body, None
 
 
 @app.route('/leases/<int:lease_id>/comments', methods=['GET'])
+@require_role()
 def list_lease_comments(lease_id):
     """Team notes on this lease, oldest first, visible to everyone -- this app has no per-account data scoping at all yet, so "the whole team" is just everyone who can reach this API."""
     if not database.get_lease(lease_id):
@@ -851,27 +870,31 @@ def list_lease_comments(lease_id):
 
 
 @app.route('/leases/<int:lease_id>/comments', methods=['POST'])
+@require_role('analyst')
 def add_lease_comment(lease_id):
-    """Body: {"author_name": "...", "body": "...", "author_email": "..." (optional)}. No real per-user login exists in this app yet (see DECISIONS.md) -- author_name/author_email are exactly what the caller supplies, trusted as-is."""
+    """Body: {"body": "..."}. The comment's author is always the logged-in session user -- see _validate_comment_payload."""
     if not database.get_lease(lease_id):
         return jsonify({"error": "Lease not found"}), 404
 
     payload = request.get_json(silent=True) or {}
-    author_name, author_email, body, error = _validate_comment_payload(payload)
+    body, error = _validate_comment_payload(payload)
     if error:
         return error
 
-    database.add_comment(author_name, body, lease_id=lease_id, author_email=author_email)
+    user = current_user()
+    database.add_comment(user["name"], body, lease_id=lease_id, author_email=user["email"])
     return jsonify(database.get_lease_comments(lease_id)), 201
 
 
 @app.route('/tags', methods=['GET'])
+@require_role()
 def list_all_tags():
     """Every distinct tag currently in use across the whole portfolio — for filter dropdowns and tag-input autocomplete."""
     return jsonify(database.get_all_tags()), 200
 
 
 @app.route('/leases/bulk-tag', methods=['POST'])
+@require_role('analyst')
 def bulk_tag_leases():
     """Body: {"ids": [1, 2, 3], "tag": "Downtown Portfolio"}. Applies one tag to every id independently -- same loop-and-report shape as bulk-delete, and reuses the single-lease tag validation/dedup already in database.add_lease_tag."""
     body = request.get_json(silent=True) or {}
@@ -1155,18 +1178,21 @@ def _lease_risks(lease):
 
 
 @app.route('/portfolio/summary', methods=['GET'])
+@require_role()
 def portfolio_summary():
     leases = database.get_all_effective_leases()
     return jsonify(compute_portfolio_metrics(leases)), 200
 
 
 @app.route('/portfolio/timeline', methods=['GET'])
+@require_role()
 def portfolio_timeline():
     leases = database.get_all_effective_leases()
     return jsonify(compute_expiration_timeline(leases)), 200
 
 
 @app.route('/portfolio/attention', methods=['GET'])
+@require_role()
 def portfolio_attention():
     """'What needs attention today' — expiring soon, missing data, unusual terms. See compute_attention_items for the exact definitions."""
     leases = database.get_all_effective_leases()
@@ -1174,6 +1200,7 @@ def portfolio_attention():
 
 
 @app.route('/portfolio/expiration-alerts', methods=['GET'])
+@require_role()
 def portfolio_expiration_alerts():
     """Dashboard widget data: leases expiring within 90/60/30 days, plus renewal-notice deadlines closing soon -- see compute_expiration_alerts for the exact windows and why the two lists are kept separate."""
     leases = database.get_all_effective_leases()
@@ -1181,6 +1208,7 @@ def portfolio_expiration_alerts():
 
 
 @app.route('/portfolio/health', methods=['GET'])
+@require_role()
 def portfolio_health():
     """Morning-glance health strip: % verified, avg days to expiration, rent exposure expiring in 6/12 months."""
     leases = database.get_all_effective_leases()
@@ -1188,6 +1216,7 @@ def portfolio_health():
 
 
 @app.route('/portfolio/confidence-summary', methods=['GET'])
+@require_role()
 def portfolio_confidence_summary():
     """The trust-mechanism number: field counts by confidence tier across the whole portfolio, plus how many were flagged for review during validation. See compute_portfolio_confidence_summary."""
     leases = database.get_all_effective_leases()
@@ -1195,6 +1224,7 @@ def portfolio_confidence_summary():
 
 
 @app.route('/portfolio/health-score', methods=['GET'])
+@require_role()
 def portfolio_health_score_route():
     """
     GET /portfolio/health-score?staleness_threshold_months=6 (optional,
@@ -1228,6 +1258,7 @@ def portfolio_health_score_route():
 
 
 @app.route('/portfolio/tenant-concentration', methods=['GET'])
+@require_role()
 def portfolio_tenant_concentration():
     """How much of total rent depends on a small number of tenants -- top-1/3/5 cumulative share, Herfindahl-Hirschman Index, and a high/moderate/low read. See compute_tenant_concentration."""
     leases = database.get_all_effective_leases()
@@ -1235,6 +1266,7 @@ def portfolio_tenant_concentration():
 
 
 @app.route('/portfolio/rollover', methods=['GET'])
+@require_role()
 def portfolio_rollover():
     """
     Rollover risk and WALT together, in one response -- shipped as a
@@ -1253,6 +1285,7 @@ def portfolio_rollover():
 
 
 @app.route('/portfolio/loss-to-lease', methods=['GET'])
+@require_role()
 def portfolio_loss_to_lease():
     """Upside vs. this portfolio's own best-achieved rent/sqft per building (no external market-rent data source exists -- see compute_loss_to_lease's docstring for why this is an internal proxy, not true market rent)."""
     leases = database.get_all_effective_leases()
@@ -1260,6 +1293,7 @@ def portfolio_loss_to_lease():
 
 
 @app.route('/portfolio/property-trends', methods=['GET'])
+@require_role()
 def portfolio_property_trends():
     """
     GET /portfolio/property-trends?property_address=X
@@ -1292,6 +1326,7 @@ def portfolio_property_trends():
 
 
 @app.route('/portfolio/trends', methods=['GET'])
+@require_role()
 def portfolio_trends_route():
     """
     The portfolio-wide sibling of GET /portfolio/property-trends --
@@ -1314,6 +1349,7 @@ def portfolio_trends_route():
 
 
 @app.route('/portfolio/rent-roll-reconciliation', methods=['GET'])
+@require_role()
 def portfolio_rent_roll_reconciliation():
     """Cross-checks an imported rent roll (see /leases/import-rent-roll) against the actual lease PDFs on file for the same units, flagging tenant/rent/end-date disagreements. See compute_rent_roll_reconciliation."""
     leases = database.get_all_effective_leases()
@@ -1323,6 +1359,7 @@ def portfolio_rent_roll_reconciliation():
 
 
 @app.route('/portfolio/t12-reconciliation', methods=['POST'])
+@require_role('analyst')
 def portfolio_t12_reconciliation():
     """
     Uploads a T12 (trailing 12-month operating statement) and cross-
@@ -1380,6 +1417,7 @@ def portfolio_t12_reconciliation():
 
 
 @app.route('/activity', methods=['GET'])
+@require_role()
 def recent_activity():
     """GET /activity?limit=10 — most recent account activity first."""
     limit = request.args.get('limit', default=10, type=int) or 10
@@ -1387,6 +1425,7 @@ def recent_activity():
 
 
 @app.route('/portfolio/risks', methods=['GET'])
+@require_role()
 def portfolio_risks():
     """Risk flags for every lease in the portfolio, most-flagged-first isn't imposed here — callers sort/filter as needed."""
     leases = database.get_all_effective_leases()
@@ -1415,6 +1454,7 @@ def portfolio_risks():
 
 
 @app.route('/leases/<int:lease_id>/risks', methods=['GET'])
+@require_role()
 def lease_risks(lease_id):
     lease = database.get_effective_lease(lease_id)
     if not lease:
@@ -1441,6 +1481,7 @@ def _activity_lease_id(lease_id):
 
 
 @app.route('/discrepancies', methods=['GET'])
+@require_role()
 def list_discrepancies():
     """
     GET /discrepancies?status=open|resolved&lease_id=N&type=lease_risk_flag|cross_lease_mismatch|rent_roll_reconciliation|t12_reconciliation
@@ -1464,6 +1505,7 @@ def list_discrepancies():
 
 
 @app.route('/discrepancies/summary', methods=['GET'])
+@require_role()
 def discrepancies_summary():
     """
     Counts by status/severity/type across every discrepancy -- the
@@ -1479,6 +1521,7 @@ def discrepancies_summary():
 
 
 @app.route('/discrepancies/<int:discrepancy_id>', methods=['GET'])
+@require_role()
 def get_discrepancy(discrepancy_id):
     discrepancy = database.get_discrepancy(discrepancy_id)
     if not discrepancy:
@@ -1487,19 +1530,18 @@ def get_discrepancy(discrepancy_id):
 
 
 @app.route('/discrepancies/<int:discrepancy_id>/resolve', methods=['POST'])
+@require_role('analyst')
 def resolve_discrepancy(discrepancy_id):
     """
-    Body: {"correct_source": "...", "note": "...", "resolved_by": "...", "resolved_by_email": "..." (optional)}
+    Body: {"correct_source": "...", "note": "..."}
 
     Resolving is always allowed regardless of current status -- a
     second reviewer confirming, or updating the note, appends another
     permanent entry to the resolution log rather than being rejected.
-    `correct_source`/`note`/`resolved_by` are free text: which of the
-    two disagreeing values is correct, why, and who says so. There's no
-    real per-user login in this app yet (see DECISIONS.md), so
-    `resolved_by` is exactly what the caller supplies, trusted as-is --
-    the same self-reported-identity convention the access gate already
-    uses.
+    `correct_source`/`note` are free text: which of the two disagreeing
+    values is correct, and why. Who resolved it is always the
+    logged-in session user now (see current_user()), never a
+    request-body field the caller could put any name into.
     """
     if not database.get_discrepancy(discrepancy_id):
         return jsonify({"error": "Discrepancy not found"}), 404
@@ -1507,16 +1549,13 @@ def resolve_discrepancy(discrepancy_id):
     payload = request.get_json(silent=True) or {}
     correct_source = (payload.get('correct_source') or '').strip()
     note = (payload.get('note') or '').strip()
-    resolved_by = (payload.get('resolved_by') or '').strip()
-    resolved_by_email = (payload.get('resolved_by_email') or '').strip() or None
 
-    missing = [
-        field for field, value in (('correct_source', correct_source), ('note', note), ('resolved_by', resolved_by))
-        if not value
-    ]
+    missing = [field for field, value in (('correct_source', correct_source), ('note', note)) if not value]
     if missing:
         return jsonify({"error": f"Missing required field(s): {', '.join(missing)}"}), 400
 
+    user = current_user()
+    resolved_by, resolved_by_email = user["name"], user["email"]
     resolution = database.resolve_discrepancy(discrepancy_id, correct_source, note, resolved_by, resolved_by_email)
     _invalidate_discrepancy_derived_caches()
     discrepancy = database.get_discrepancy(discrepancy_id)
@@ -1529,8 +1568,9 @@ def resolve_discrepancy(discrepancy_id):
 
 
 @app.route('/discrepancies/<int:discrepancy_id>/reopen', methods=['POST'])
+@require_role('analyst')
 def reopen_discrepancy(discrepancy_id):
-    """Body: {"note": "...", "resolved_by": "...", "resolved_by_email": "..." (optional)}. Only valid on a currently-resolved discrepancy."""
+    """Body: {"note": "..."}. Only valid on a currently-resolved discrepancy. Who reopened it is always the logged-in session user."""
     discrepancy = database.get_discrepancy(discrepancy_id)
     if not discrepancy:
         return jsonify({"error": "Discrepancy not found"}), 404
@@ -1539,13 +1579,11 @@ def reopen_discrepancy(discrepancy_id):
 
     payload = request.get_json(silent=True) or {}
     note = (payload.get('note') or '').strip()
-    resolved_by = (payload.get('resolved_by') or '').strip()
-    resolved_by_email = (payload.get('resolved_by_email') or '').strip() or None
+    if not note:
+        return jsonify({"error": "Missing required field: note"}), 400
 
-    missing = [field for field, value in (('note', note), ('resolved_by', resolved_by)) if not value]
-    if missing:
-        return jsonify({"error": f"Missing required field(s): {', '.join(missing)}"}), 400
-
+    user = current_user()
+    resolved_by, resolved_by_email = user["name"], user["email"]
     resolution = database.reopen_discrepancy(discrepancy_id, note, resolved_by, resolved_by_email)
     _invalidate_discrepancy_derived_caches()
     discrepancy = database.get_discrepancy(discrepancy_id)
@@ -1558,6 +1596,7 @@ def reopen_discrepancy(discrepancy_id):
 
 
 @app.route('/discrepancies/<int:discrepancy_id>/comments', methods=['GET'])
+@require_role()
 def list_discrepancy_comments(discrepancy_id):
     """Team notes on this discrepancy, oldest first -- separate from its resolution log (discrepancy_resolutions): a comment is a running discussion, a resolution is the final "here's which source is correct and why" decision."""
     if not database.get_discrepancy(discrepancy_id):
@@ -1566,21 +1605,24 @@ def list_discrepancy_comments(discrepancy_id):
 
 
 @app.route('/discrepancies/<int:discrepancy_id>/comments', methods=['POST'])
+@require_role('analyst')
 def add_discrepancy_comment(discrepancy_id):
-    """Body: {"author_name": "...", "body": "...", "author_email": "..." (optional)}."""
+    """Body: {"body": "..."}. The comment's author is always the logged-in session user -- see _validate_comment_payload."""
     if not database.get_discrepancy(discrepancy_id):
         return jsonify({"error": "Discrepancy not found"}), 404
 
     payload = request.get_json(silent=True) or {}
-    author_name, author_email, body, error = _validate_comment_payload(payload)
+    body, error = _validate_comment_payload(payload)
     if error:
         return error
 
-    database.add_comment(author_name, body, discrepancy_id=discrepancy_id, author_email=author_email)
+    user = current_user()
+    database.add_comment(user["name"], body, discrepancy_id=discrepancy_id, author_email=user["email"])
     return jsonify(database.get_discrepancy_comments(discrepancy_id)), 201
 
 
 @app.route('/comments/recent', methods=['GET'])
+@require_role()
 def recent_comments():
     """
     GET /comments/recent?limit=20 (default 20, max 200). The most
@@ -1597,6 +1639,7 @@ def recent_comments():
 
 
 @app.route('/alerts/generate', methods=['POST'])
+@require_role('analyst')
 def alerts_generate():
     """
     Runs all four alert detectors (lease expirations, new discrepancies,
@@ -1613,6 +1656,7 @@ def alerts_generate():
 
 
 @app.route('/alerts', methods=['GET'])
+@require_role()
 def list_alerts_route():
     """GET /alerts?status=active|dismissed|auto_resolved&type=lease_expiration|new_discrepancy|below_market_rent|tenant_concentration&severity=high|medium|low&lease_id=N. Every filter optional and combinable. Lists what's already been persisted -- does not itself trigger a fresh generation pass."""
     status = request.args.get('status')
@@ -1628,12 +1672,14 @@ def list_alerts_route():
 
 
 @app.route('/alerts/summary', methods=['GET'])
+@require_role()
 def alerts_summary():
     """A digest suitable for a notification-feed header or a future email digest: active-alert counts by severity and by type. Reflects whatever was persisted as of the last /alerts/generate run, not a fresh computation."""
     return jsonify(get_alert_digest()), 200
 
 
 @app.route('/alerts/<int:alert_id>', methods=['GET'])
+@require_role()
 def get_alert_route(alert_id):
     alert = database.get_alert(alert_id)
     if not alert:
@@ -1642,28 +1688,27 @@ def get_alert_route(alert_id):
 
 
 @app.route('/alerts/<int:alert_id>/dismiss', methods=['POST'])
+@require_role('analyst')
 def dismiss_alert_route(alert_id):
     """
-    Body: {"dismissed_by": "...", "note": "..." (optional)}. Always
-    allowed regardless of current status. There's no real per-user
-    login in this app yet (see DECISIONS.md) -- dismissed_by is exactly
-    what the caller supplies, trusted as-is, same convention as
-    discrepancy resolutions and comments.
+    Body: {"note": "..." (optional)}. Always allowed regardless of
+    current status. Who dismissed it is always the logged-in session
+    user now, never a request-body field the caller could put any name
+    into.
     """
     if not database.get_alert(alert_id):
         return jsonify({"error": "Alert not found"}), 404
 
     payload = request.get_json(silent=True) or {}
-    dismissed_by = (payload.get('dismissed_by') or '').strip()
     note = (payload.get('note') or '').strip() or None
-    if not dismissed_by:
-        return jsonify({"error": "Missing required field: dismissed_by"}), 400
+    dismissed_by = current_user()["name"]
 
     database.dismiss_alert(alert_id, dismissed_by, note)
     return jsonify(database.get_alert(alert_id)), 200
 
 
 @app.route('/qa', methods=['POST'])
+@require_role()
 def ask_question():
     """
     Body: {"question": str, "lease_id": int (optional)}.
@@ -1690,6 +1735,7 @@ def ask_question():
 
 
 @app.route('/leases/compare', methods=['GET'])
+@require_role()
 def leases_compare():
     """GET /leases/compare?ids=1,2,3"""
     ids_param = request.args.get('ids', '')
@@ -1713,6 +1759,7 @@ def leases_compare():
 
 
 @app.route('/leases/selection-summary', methods=['GET'])
+@require_role()
 def leases_selection_summary():
     """
     GET /leases/selection-summary?ids=1,2,3
@@ -1753,6 +1800,7 @@ def leases_selection_summary():
 
 
 @app.route('/leases/<int:lease_id>/benchmark', methods=['GET'])
+@require_role()
 def lease_benchmark(lease_id):
     """Benchmarks one lease against every OTHER lease in the portfolio (this lease excluded from its own comparison average)."""
     lease = database.get_effective_lease(lease_id)
@@ -1767,6 +1815,7 @@ def lease_benchmark(lease_id):
 
 
 @app.route('/portfolio/rent-roll.csv', methods=['GET'])
+@require_role()
 def rent_roll_csv():
     leases = database.get_all_effective_leases()
     csv_text = generate_rent_roll_csv(leases)
@@ -1779,6 +1828,7 @@ def rent_roll_csv():
 
 
 @app.route('/portfolio/rent-roll.xlsx', methods=['GET'])
+@require_role()
 def rent_roll_excel():
     leases = database.get_all_effective_leases()
     excel_bytes = generate_rent_roll_excel(leases)
@@ -1791,6 +1841,7 @@ def rent_roll_excel():
 
 
 @app.route('/portfolio/export/google-sheets', methods=['POST'])
+@require_role('analyst')
 def portfolio_export_google_sheets():
     """
     Creates a brand-new Google Sheet with the current lease dataset and
@@ -1814,6 +1865,7 @@ def portfolio_export_google_sheets():
 
 
 @app.route('/leases/<int:lease_id>/export.xlsx', methods=['GET'])
+@require_role()
 def lease_export_excel(lease_id):
     """Same formatted workbook as the portfolio-wide export, scoped to one lease (a single data row)."""
     lease = database.get_effective_lease(lease_id)
@@ -1832,6 +1884,7 @@ def lease_export_excel(lease_id):
 
 
 @app.route('/leases/<int:lease_id>/summary.pdf', methods=['GET'])
+@require_role()
 def lease_summary_pdf(lease_id):
     """
     Decision-ready one-page PDF memo for a single lease: key terms,
@@ -1888,6 +1941,7 @@ def _parse_investment_memo_request():
 
 
 @app.route('/portfolio/investment-memo.pdf', methods=['POST'])
+@require_role('analyst')
 def investment_memo_pdf():
     """
     A clean, professional PDF suitable for an investment committee,
@@ -1919,6 +1973,7 @@ def investment_memo_pdf():
 
 
 @app.route('/portfolio/investment-memo.xlsx', methods=['POST'])
+@require_role('analyst')
 def investment_memo_excel():
     """Same data and scope rules as POST /portfolio/investment-memo.pdf, rendered as a multi-sheet workbook instead."""
     property_address, t12_parsed, error = _parse_investment_memo_request()
@@ -1939,6 +1994,7 @@ def investment_memo_excel():
 
 
 @app.route('/leases/<int:lease_id>/export/google-sheets', methods=['POST'])
+@require_role('analyst')
 def lease_export_google_sheets(lease_id):
     """Same Google Sheets export as the portfolio-wide one, scoped to one lease (a single data row)."""
     lease = database.get_effective_lease(lease_id)
@@ -1970,6 +2026,7 @@ def _leases_for_ids(ids):
 
 
 @app.route('/leases/export.xlsx', methods=['GET'])
+@require_role()
 def leases_bulk_export_excel():
     """
     GET /leases/export.xlsx?ids=1,2,3
@@ -2002,6 +2059,7 @@ def leases_bulk_export_excel():
 
 
 @app.route('/leases/export/google-sheets', methods=['POST'])
+@require_role('analyst')
 def leases_bulk_export_google_sheets():
     """Body: {"ids": [1, 2, 3]}. Same Google Sheets export as the portfolio-wide and single-lease routes, scoped to an arbitrary selection."""
     body = request.get_json(silent=True) or {}
@@ -2026,6 +2084,7 @@ def leases_bulk_export_google_sheets():
 
 
 @app.route('/portfolio/report', methods=['GET'])
+@require_role()
 def portfolio_report():
     """
     Returns the printable portfolio summary as an HTML page (rendered
@@ -2064,6 +2123,7 @@ def portfolio_report():
 
 
 @app.route('/portfolio/summary.pdf', methods=['GET'])
+@require_role()
 def portfolio_summary_pdf():
     """
     Decision-ready one-page PDF memo for the whole portfolio: a rollup
@@ -2093,6 +2153,7 @@ def portfolio_summary_pdf():
 
 
 @app.route('/portfolio/monthly-report.pdf', methods=['GET'])
+@require_role()
 def portfolio_monthly_report_pdf():
     """
     The monthly portfolio report -- same PDF memo format as

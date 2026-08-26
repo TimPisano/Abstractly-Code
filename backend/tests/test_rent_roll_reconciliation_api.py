@@ -30,6 +30,25 @@ def _fresh_temp_db():
     return tmp.name
 
 
+def _authed_client():
+    """
+    A test_client() pre-authenticated as a logged-in analyst, via
+    Flask's session_transaction() -- the standard way to test a
+    session-gated route without driving an actual login POST through
+    bcrypt for every test, same convention as test_admin_auth.py's
+    _create_admin()/session pattern. Most routes now require at least
+    a logged-in session (see app/auth.py's require_role()) since the
+    RBAC audit -- analyst covers every route these tests exercise.
+    """
+    client = app.test_client()
+    with client.session_transaction() as sess:
+        sess["user_id"] = 1
+        sess["email"] = "test-analyst@example.com"
+        sess["name"] = "Test Analyst"
+        sess["role"] = "analyst"
+    return client
+
+
 def _pdf_fields(tenant=None, address=None, rent=None, end_date=None):
     def field(v):
         return {"value": v, "source": {"page": 1, "quote": "..."} if v else None, "confidence": "high" if v else None}
@@ -50,7 +69,7 @@ def _csv_bytes(rows):
 def test_reconciliation_route_empty_portfolio():
     db_path = _fresh_temp_db()
     try:
-        client = app.test_client()
+        client = _authed_client()
         resp = client.get("/portfolio/rent-roll-reconciliation")
         assert resp.status_code == 200
         data = resp.get_json()
@@ -66,7 +85,7 @@ def test_reconciliation_route_real_import_plus_real_pdf_style_lease():
     """A real rent roll import (through the real import route) plus a real 'PDF' lease (a normal insert_lease call, .pdf filename) with a stale rent -- confirmed flagged through the real reconciliation route."""
     db_path = _fresh_temp_db()
     try:
-        client = app.test_client()
+        client = _authed_client()
 
         # Real rent roll import, through the real route
         file_bytes = _csv_bytes([
@@ -102,7 +121,7 @@ def test_reconciliation_route_reflects_amendment_on_lease_document_side():
     """An amendment changing the lease PDF's rent must be reflected (route reads get_all_effective_leases()), not the base lease's original figure."""
     db_path = _fresh_temp_db()
     try:
-        client = app.test_client()
+        client = _authed_client()
         file_bytes = _csv_bytes([["Tenant", "Rent"], ["Acme Corp", "$4,000.00"]])
         client.post(
             "/leases/import-rent-roll",

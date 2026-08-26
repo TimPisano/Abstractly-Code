@@ -26,6 +26,25 @@ def _fresh_temp_db():
     return tmp.name
 
 
+def _authed_client():
+    """
+    A test_client() pre-authenticated as a logged-in analyst, via
+    Flask's session_transaction() -- the standard way to test a
+    session-gated route without driving an actual login POST through
+    bcrypt for every test, same convention as test_admin_auth.py's
+    _create_admin()/session pattern. Most routes now require at least
+    a logged-in session (see app/auth.py's require_role()) since the
+    RBAC audit -- analyst covers every route these tests exercise.
+    """
+    client = app.test_client()
+    with client.session_transaction() as sess:
+        sess["user_id"] = 1
+        sess["email"] = "test-analyst@example.com"
+        sess["name"] = "Test Analyst"
+        sess["role"] = "analyst"
+    return client
+
+
 def _fields(property_address=None, rent_amount=None, square_footage=None):
     def field(v):
         return {"value": v, "source": {"page": 1, "quote": "..."} if v else None, "confidence": "high" if v else None}
@@ -40,7 +59,7 @@ def _fields(property_address=None, rent_amount=None, square_footage=None):
 def test_loss_to_lease_route_empty_portfolio():
     db_path = _fresh_temp_db()
     try:
-        client = app.test_client()
+        client = _authed_client()
         resp = client.get("/portfolio/loss-to-lease")
         assert resp.status_code == 200
         data = resp.get_json()
@@ -59,7 +78,7 @@ def test_loss_to_lease_route_groups_different_suites_same_building():
         database.insert_lease("a.pdf", _fields(property_address="500 Commerce Blvd, Suite 100", rent_amount="$2,000.00", square_footage="1,000 sq ft"))
         database.insert_lease("b.pdf", _fields(property_address="500 Commerce Blvd, Suite 200", rent_amount="$4,000.00", square_footage="1,000 sq ft"))
 
-        client = app.test_client()
+        client = _authed_client()
         resp = client.get("/portfolio/loss-to-lease")
         data = resp.get_json()
 
@@ -86,7 +105,7 @@ def test_loss_to_lease_route_reflects_amendments():
         )
         database.insert_lease("other.pdf", _fields(property_address="1 Plaza Dr, Suite B", rent_amount="$3,000.00", square_footage="1,000 sq ft"))
 
-        client = app.test_client()
+        client = _authed_client()
         resp = client.get("/portfolio/loss-to-lease")
         data = resp.get_json()
 

@@ -32,6 +32,25 @@ def _fresh_temp_db():
     return tmp.name
 
 
+def _authed_client():
+    """
+    A test_client() pre-authenticated as a logged-in analyst, via
+    Flask's session_transaction() -- the standard way to test a
+    session-gated route without driving an actual login POST through
+    bcrypt for every test, same convention as test_admin_auth.py's
+    _create_admin()/session pattern. Most routes now require at least
+    a logged-in session (see app/auth.py's require_role()) since the
+    RBAC audit -- analyst covers every route these tests exercise.
+    """
+    client = app.test_client()
+    with client.session_transaction() as sess:
+        sess["user_id"] = 1
+        sess["email"] = "test-analyst@example.com"
+        sess["name"] = "Test Analyst"
+        sess["role"] = "analyst"
+    return client
+
+
 def _fields(**overrides):
     result = {}
     for name in FIELD_NAMES:
@@ -337,7 +356,7 @@ def test_excel_has_all_five_sheets_with_correct_dedup():
 def test_pdf_route_portfolio_wide():
     db_path = _fresh_temp_db()
     try:
-        client = app.test_client()
+        client = _authed_client()
         _insert("lease.pdf", tenant="Acme", rent_amount="$5,000.00", property_address="1 Main St")
         resp = client.post("/portfolio/investment-memo.pdf", data={})
         assert resp.status_code == 200
@@ -352,7 +371,7 @@ def test_pdf_route_portfolio_wide():
 def test_pdf_route_property_scoped():
     db_path = _fresh_temp_db()
     try:
-        client = app.test_client()
+        client = _authed_client()
         _insert("lease.pdf", tenant="Acme", rent_amount="$5,000.00", property_address="1 Main St")
         resp = client.post("/portfolio/investment-memo.pdf", data={"property_address": "1 Main St"})
         assert resp.status_code == 200
@@ -367,7 +386,7 @@ def test_pdf_route_property_scoped():
 def test_excel_route():
     db_path = _fresh_temp_db()
     try:
-        client = app.test_client()
+        client = _authed_client()
         _insert("lease.pdf", tenant="Acme", rent_amount="$5,000.00", property_address="1 Main St")
         resp = client.post("/portfolio/investment-memo.xlsx", data={})
         assert resp.status_code == 200
@@ -382,7 +401,7 @@ def test_excel_route():
 def test_t12_file_without_property_address_returns_400():
     db_path = _fresh_temp_db()
     try:
-        client = app.test_client()
+        client = _authed_client()
         resp = client.post(
             "/portfolio/investment-memo.pdf",
             data={"t12_file": (io.BytesIO(b"Notes\nfake t12\n"), "t12.csv")},
@@ -398,7 +417,7 @@ def test_t12_file_without_property_address_returns_400():
 def test_invalid_t12_file_type_returns_400():
     db_path = _fresh_temp_db()
     try:
-        client = app.test_client()
+        client = _authed_client()
         resp = client.post(
             "/portfolio/investment-memo.pdf",
             data={"property_address": "1 Main St", "t12_file": (io.BytesIO(b"not a real t12"), "t12.txt")},

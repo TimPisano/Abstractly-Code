@@ -25,7 +25,15 @@
 async function apiRequest(path, options = {}) {
     let response;
     try {
-        response = await fetch(`${API_BASE_URL}${path}`, options);
+        // credentials: 'include' is required now that most routes are
+        // behind real per-user login (see backend/app/auth.py) -- fetch
+        // omits cookies on a cross-origin request by default, and the
+        // frontend (its own port) and backend API are different origins
+        // in this project's dev setup, so the session cookie a login
+        // sets would otherwise never be sent back on later requests.
+        // `options` can still override this per-call if a route ever
+        // needs to opt out, but no caller does today.
+        response = await fetch(`${API_BASE_URL}${path}`, { credentials: 'include', ...options });
     } catch (networkErr) {
         throw new Error("Couldn't reach the server. Check your connection and try again.");
     }
