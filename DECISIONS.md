@@ -5256,3 +5256,100 @@ counts, and the resulting comment immediately appeared in Team Notes
 with the resolver's real name and a generated avatar -- confirming
 "Team Notes tied to visible names, not anonymous" actually holds
 through the real data path, not just in isolation.
+
+## Admin dashboard: real left sidebar, not a top-tab bar; a real live-
+## breaking bug this surfaced in app.js's shared init()
+
+The user reported the admin dashboard (frontend/admin/dashboard.html)
+still showing an old horizontal 3-tab bar (Access Requests / Leases &
+Rent Rolls / Upload), not the left sidebar built into frontend/app/
+across several earlier sessions. Investigation confirmed this wasn't
+a stale-deploy issue -- admin/dashboard.html is a genuinely separate
+HTML file from frontend/app/index.html, gated by real admin-only
+login, and it had simply never been touched when the sidebar was
+built there. Confirmed with the user before touching anything: the
+sidebar gets rebuilt on this page for real (Access Requests / Leases
+& Rent Rolls / Upload, the three views this page actually owns), and
+the other six requested sections (Alerts, Discrepancies, Portfolio
+Trends, Reports/Exports, Team, Activity) become links out to their
+already-built, already-tested views in frontend/app/ rather than a
+second implementation -- avoiding two copies of the same feature to
+maintain. "Team" links to Team Notes (the one real feature under that
+name today -- no separate team-management view exists yet); "Activity"
+links to Dashboard, since there's no standalone Activity view either.
+
+**Real regression found and fixed in the process**: admin/dashboard.html
+reuses frontend/app/app.js verbatim (registerView/showView/init all
+shared). Last session's live-update-banner feature added two
+unconditional `document.getElementById(...).addEventListener(...)`
+calls to `init()`, plus unconditional element lookups inside
+`showView()`'s `hideLiveUpdateBanner()` call -- all against elements
+that only exist in frontend/app/index.html. On admin/dashboard.html,
+those elements don't exist, so `init()` threw a TypeError before ever
+reaching `showView('dashboard')`. That's why NOTHING on the admin
+dashboard was rendering, not just "the sidebar" -- confirmed live: 4
+real leases existed in the database, but the Lease Library table,
+metrics row, and Recent Activity panel were all still their empty
+initial-HTML state after login, because the view's own `load()` never
+ran. Fixed by null-checking `showLiveUpdateBanner()`/
+`hideLiveUpdateBanner()` and the two listener-wiring lines in `init()`
+-- this is a permanent guard, not a band-aid, since admin/dashboard.html
+deliberately doesn't get its own live-update banner (that stays an
+`/app/`-only feature per the link-out decision above), so app.js needs
+to tolerate its absence going forward, not just this once.
+
+**Hash-based deep linking added to app.js's `init()`**: the link-out
+sidebar items above only make sense if `../app/#alerts` actually opens
+the Alerts view instead of always landing on Dashboard requiring a
+second click. `init()` now reads `location.hash` and opens that view
+if (and only if) it's a real registered view name, falling back to
+Dashboard for anything else (a typo'd or stale hash shouldn't produce
+a blank page with no `.view` toggled active). Verified live for all
+six link-out targets by forcing a fresh cross-document navigation to
+each `../app/#<view>` URL (a same-document hash-only `Page.navigate`
+in the test script doesn't reload the page and was giving a false
+negative -- caught and corrected in the test script, not the app,
+same category of test-harness artifact as this project's earlier
+"double-upload" and "quote-escaping" test bugs) -- each one lands on
+its own view, with real data and the matching sidebar item highlighted.
+
+**Known gap, not fixed here**: admin/dashboard.html now authenticates
+against the new real, role-based session (`GET /auth/session`, added
+by the backend's "Team collaboration infrastructure step 1" commit --
+a real `users` table with roles, replacing the old single-hardcoded-
+admin login), but the link-out
+target (`frontend/app/`) still gates on the old self-reported-email
+access-gate (`access-gate.js`), a completely separate mechanism. An
+admin clicking through from the dashboard to, say, Alerts will hit
+that older gate the first time in a fresh browser, not a seamless
+continuation of their real admin session. Unifying the two is exactly
+the frontend work already scoped in `.claude/plans/robust-launching-
+dewdrop.md` ("New login surface: frontend/app/login.html + login.js")
+-- out of scope for this pass, which was specifically about the
+sidebar/header/upload-messaging the user asked for, not auth
+unification.
+
+**Upload messaging (admin surface)**: `admin-upload-view.js` still had
+the pre-multi-format PDF-only filter and "Please select PDF files
+only" error, even though `frontend/app/upload-view.js` was updated to
+accept every backend-supported format two sessions ago -- these are
+two separate, un-shared implementations (admin/dashboard.html doesn't
+load app/upload-view.js). Brought admin-upload-view.js's allowlist,
+error message, and file-type icons in line with app/upload-view.js's
+(duplicated, not shared, per that file's own reasoning for staying
+standalone). Verified live: a real `.xlsx` rent roll uploaded through
+the admin page's Upload view extracted a real lease ("Cascade Outdoor
+Gear Co.") with the spreadsheet icon shown correctly, where it would
+previously have been rejected outright with "Please select PDF files
+only."
+
+**Public landing/pricing header**: reviewed `.landing-nav` (shared by
+`frontend/index.html` and `frontend/pricing.html`) live at 1440/1200/
+1100/1050/1024/768/390px. Already clean and well-organized at every
+width checked -- brand left, links right, "Client Login" set apart in
+its own bordered button at wide widths, and a deliberate (already
+documented) stacked/centered layout below 1040px that avoids a
+hamburger menu. No changes made here; a "fix" invented against a
+problem that doesn't reproduce would just be noise. Flagged to the
+user that this might be a stale browser cache of an older version
+rather than something currently wrong on the page.

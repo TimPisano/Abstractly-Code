@@ -103,12 +103,21 @@ async function checkForLiveActivity() {
     } catch (err) { /* best-effort -- a failed background poll isn't worth surfacing */ }
 }
 
+// Null-checked -- app.js is shared with frontend/admin/dashboard.html,
+// which has no #liveUpdateBanner (that page links out to /app/ for
+// collaboration features rather than duplicating them; see
+// DECISIONS.md). Without the guard, init()'s unconditional call to
+// showLiveUpdateBanner/hideLiveUpdateBanner's DOM lookups threw on that
+// page and broke its entire boot -- showView('dashboard') in init()
+// never completed, so nothing on the admin dashboard ever rendered.
 function showLiveUpdateBanner() {
-    document.getElementById('liveUpdateBanner').style.display = 'flex';
+    const el = document.getElementById('liveUpdateBanner');
+    if (el) el.style.display = 'flex';
 }
 
 function hideLiveUpdateBanner() {
-    document.getElementById('liveUpdateBanner').style.display = 'none';
+    const el = document.getElementById('liveUpdateBanner');
+    if (el) el.style.display = 'none';
 }
 
 /**
@@ -591,14 +600,27 @@ function init() {
 
     initSidebar();
 
-    document.getElementById('liveUpdateRefreshBtn').addEventListener('click', () => {
-        hideLiveUpdateBanner();
-        showView(currentViewName);
-    });
-    document.getElementById('liveUpdateDismissBtn').addEventListener('click', hideLiveUpdateBanner);
+    // Same null-guard reasoning as showLiveUpdateBanner/hideLiveUpdateBanner above -- these two buttons don't exist on admin/dashboard.html.
+    const liveUpdateRefreshBtn = document.getElementById('liveUpdateRefreshBtn');
+    if (liveUpdateRefreshBtn) {
+        liveUpdateRefreshBtn.addEventListener('click', () => {
+            hideLiveUpdateBanner();
+            showView(currentViewName);
+        });
+    }
+    const liveUpdateDismissBtn = document.getElementById('liveUpdateDismissBtn');
+    if (liveUpdateDismissBtn) liveUpdateDismissBtn.addEventListener('click', hideLiveUpdateBanner);
 
-    // Kick off the initial view (dashboard, marked active in the HTML)
-    showView('dashboard');
+    // Kick off the initial view -- dashboard by default (marked active in
+    // the HTML), unless the URL names a registered view via a hash (e.g.
+    // admin/dashboard.html's sidebar links out to here as `#alerts`,
+    // `#discrepancies`, etc. -- see DECISIONS.md "Admin dashboard: real
+    // left sidebar, not a top-tab bar"). Only honored if that view is
+    // actually registered, so a stale/typo'd hash falls back to Dashboard
+    // instead of showing a blank page with no matching `.view` toggled
+    // active.
+    const hashView = location.hash.slice(1);
+    showView(hashView && VIEW_HANDLERS[hashView] ? hashView : 'dashboard');
 
     // Best-effort, non-blocking: regenerate + refresh the Alerts nav
     // badge right at boot, not only after a visit to the Alerts view

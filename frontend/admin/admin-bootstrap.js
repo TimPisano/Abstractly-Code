@@ -11,8 +11,14 @@
  *     router frontend/app/app.js already defines (registerView/showView),
  *     alongside 'dashboard' (admin-dashboard-view.js), 'upload'
  *     (admin-upload-view.js), and 'detail' (admin-detail-view.js) -- all
- *     four are wired into one tab bar via the shared `.nav-item[data-view]`
- *     convention.
+ *     four are wired into the same left sidebar (`.sidebar`/`.nav-item
+ *     [data-view]`) frontend/app/index.html uses, via app.js's
+ *     initSidebar()/showView(). The sidebar's other items (Alerts,
+ *     Discrepancies, Portfolio Trends, Reports/Exports, Team, Activity)
+ *     are plain links out to frontend/app/ instead of a fifth-through-
+ *     tenth view registered here -- those features already exist there,
+ *     fully built; duplicating them into this admin-only surface would
+ *     mean maintaining two copies. See DECISIONS.md.
  *
  * Every request here that touches an admin-only route uses
  * `credentials: 'include'` and treats a 401 as "the session ended, go
@@ -182,7 +188,7 @@ async function initAdminDashboard() {
     }
 
     document.getElementById('adminEmailLabel').textContent = session.email || '';
-    document.getElementById('adminShell').style.display = 'block';
+    document.getElementById('adminShell').style.display = 'flex';
 
     document.getElementById('refreshBtn').addEventListener('click', () => {
         const activeView = document.querySelector('.view.active');
