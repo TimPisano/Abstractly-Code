@@ -58,15 +58,19 @@ def _fresh_temp_db():
 
 def _login_as_admin(client):
     """
-    GET /waitlist and POST /waitlist/<id>/approve now require an admin
-    session (see app/auth.py's require_admin) -- this sets one directly
-    via Flask's session_transaction(), the standard way to test a
-    session-gated route without driving an actual login POST through
-    bcrypt for every test that needs one.
+    GET /waitlist and POST /waitlist/<id>/approve now require an
+    admin-role session (see app/auth.py's require_role) -- this sets
+    one directly via Flask's session_transaction(), the standard way
+    to test a session-gated route without driving an actual login POST
+    through bcrypt for every test that needs one. No real `users` row
+    is needed for this -- the route only ever reads the session, never
+    re-checks the database.
     """
     with client.session_transaction() as sess:
-        sess["admin_authenticated"] = True
-        sess["admin_email"] = "timmypisano24@gmail.com"
+        sess["user_id"] = 1
+        sess["email"] = "timmypisano24@gmail.com"
+        sess["name"] = "Test Admin"
+        sess["role"] = "admin"
 
 
 def test_signup_succeeds_with_no_email_credentials_configured():

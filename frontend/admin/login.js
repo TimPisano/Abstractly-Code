@@ -1,5 +1,8 @@
 /**
- * Admin login page behavior.
+ * Admin login page behavior. Uses the same shared /auth/login every
+ * role logs in through (see backend/app/api.py) -- this page's own
+ * job is just rejecting a real, successful login for a non-admin
+ * account, since this specific page is the admin-only surface.
  *
  * Every request here uses `credentials: 'include'` -- fetch omits
  * cookies on a cross-origin request by default, and the frontend
@@ -42,7 +45,7 @@ document.getElementById('adminLoginForm').addEventListener('submit', async (e) =
     try {
         let response;
         try {
-            response = await fetch(`${API_BASE_URL}/admin/login`, {
+            response = await fetch(`${API_BASE_URL}/auth/login`, {
                 method: 'POST',
                 credentials: 'include',
                 headers: { 'Content-Type': 'application/json' },
@@ -55,6 +58,15 @@ document.getElementById('adminLoginForm').addEventListener('submit', async (e) =
 
         if (!response.ok) {
             throw new Error(data.error || 'Something went wrong. Please try again.');
+        }
+
+        // /auth/login is shared across every role now -- this page is
+        // still the admin-only surface, so a real, correct login for a
+        // non-admin account must still be rejected here rather than
+        // redirecting to dashboard.html (which would immediately bounce
+        // them back anyway, but with a less clear message).
+        if (data.role !== 'admin') {
+            throw new Error('This account does not have admin access.');
         }
 
         window.location.href = 'dashboard.html';

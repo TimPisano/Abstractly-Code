@@ -1,90 +1,120 @@
 """
-Admin authentication: a single hardcoded-by-configuration admin
-account (not a users table -- there is exactly one admin for now, and
-its identity/credential live in environment variables, never in code
-or the database), verified with bcrypt, backed by Flask's signed-
-cookie session.
+Real per-user team authentication: every team member is a row in the
+`users` table (email, name, bcrypt password hash, role), verified with
+bcrypt, backed by Flask's signed-cookie session -- the same session
+mechanism this app has always used (SESSION_COOKIE_SAMESITE='None' +
+SECURE=True + HTTPONLY=True, see app/api.py), just now backing a real
+per-user lookup instead of one hardcoded env-var account.
 
-This is deliberately separate from the client-facing access gate
-(frontend/app/access-gate.js, backend's /waitlist/check route): that
-flow is a self-reported email match with no password and no real
-identity proof (see DECISIONS.md "Access gate uses self-reported
-email, not real auth"). This module is real authentication -- a
-password, hashed, checked with a timing-safe comparison, backing a
-cryptographically signed session cookie the browser can't forge or
-read the contents of. The two systems will very likely merge into one
-real per-account auth system later (see the deferred "enterprise
-readiness" work), but for now the admin login this module powers and
-the client access gate remain intentionally independent, per explicit
-product decision.
+Replaces the old single-hardcoded-admin login this app shipped with
+initially. The env-var ADMIN_EMAIL/ADMIN_PASSWORD_HASH pair is now
+only used once, to seed the first admin user into the `users` table
+on a brand-new database (see database._seed_first_admin_user) -- after
+that, login is entirely database-backed like any other user, and the
+env vars have no further effect. See DECISIONS.md's "Reliability
+hardening pass" and "Identity model for resolutions/comments" entries
+for the full history of why this replaced the old model rather than
+sitting alongside it.
 """
 
 import logging
-import os
 from functools import wraps
 
 import bcrypt
 from flask import jsonify, session
 
+from app import database
+
 logger = logging.getLogger(__name__)
+
+ROLE_RANK = {"viewer": 0, "analyst": 1, "admin": 2}
+
+# A precomputed bcrypt hash of a fixed, never-issued dummy password --
+# checked (and always fails) whenever the email doesn't match a real,
+# active user, so a login attempt against a nonexistent or deactivated
+# account still pays the same bcrypt cost a real-account-wrong-password
+# attempt would. Without this, response timing would leak which emails
+# have real accounts (fast rejection = no such user, slow rejection =
+# real user, wrong password) -- the same property the old single-admin
+# verify_admin_credentials() protected, extended correctly from one
+# fixed account to a real per-row lookup.
+_DUMMY_HASH = bcrypt.hashpw(b"not-a-real-password-never-issued", bcrypt.gensalt()).decode("utf-8")
 
 
 def hash_password(password: str) -> str:
-    """Returns a bcrypt hash (str) suitable for storing in ADMIN_PASSWORD_HASH. Never called at request time in this app -- only by the one-off setup script an operator runs to generate the env var value."""
+    """Returns a bcrypt hash (str) suitable for storing in users.password_hash."""
     return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
 
-def _admin_credentials():
-    """(email, password_hash) from the environment, lowercased/stripped email. Either can be empty if not configured."""
-    email = os.environ.get("ADMIN_EMAIL", "").strip().lower()
-    password_hash = os.environ.get("ADMIN_PASSWORD_HASH", "").strip()
-    return email, password_hash
-
-
-def admin_login_is_configured() -> bool:
-    email, password_hash = _admin_credentials()
-    return bool(email and password_hash)
-
-
-def verify_admin_credentials(email: str, password: str) -> bool:
+def verify_password(email: str, password: str):
     """
-    True only if both the email and password match the configured
-    admin account. Deliberately always runs the bcrypt comparison, even
-    when the email is already known not to match, using the real
-    configured hash -- so a login attempt with a wrong email takes the
-    same time as one with a wrong password, and the response timing
-    itself can't leak which one was wrong (the API layer's error
-    message already doesn't say; this closes the same gap one layer
-    lower). bcrypt.checkpw is itself a constant-time comparison for the
-    hash check.
+    Returns the matching user dict on success (only for an 'active'
+    user), None otherwise -- including for a real, correct password on
+    a 'deactivated' account, which must fail exactly like a wrong
+    password from the caller's point of view, not a different kind of
+    error that would confirm the email exists.
     """
-    admin_email, admin_hash = _admin_credentials()
-    if not admin_email or not admin_hash:
-        logger.error(
-            "Admin login attempted but is not configured -- set ADMIN_EMAIL and "
-            "ADMIN_PASSWORD_HASH in backend/.env. See .env.example."
-        )
-        return False
+    user = database.get_user_by_email((email or "").strip().lower())
+    if not user or user["status"] != "active":
+        try:
+            bcrypt.checkpw((password or "").encode("utf-8"), _DUMMY_HASH.encode("utf-8"))
+        except (ValueError, TypeError):
+            pass
+        return None
 
-    email_matches = (email or "").strip().lower() == admin_email
     try:
-        password_matches = bcrypt.checkpw(
-            (password or "").encode("utf-8"), admin_hash.encode("utf-8")
-        )
+        password_matches = bcrypt.checkpw((password or "").encode("utf-8"), user["password_hash"].encode("utf-8"))
     except (ValueError, TypeError):
-        # A malformed ADMIN_PASSWORD_HASH (not real bcrypt output) --
-        # fail closed rather than raise a 500 with a traceback.
-        logger.exception("ADMIN_PASSWORD_HASH is not a valid bcrypt hash")
+        # A malformed password_hash (shouldn't happen -- every write
+        # path goes through hash_password()) -- fail closed rather
+        # than raise a 500 with a traceback.
+        logger.exception("users.id=%s has a password_hash that isn't valid bcrypt output", user["id"])
         password_matches = False
 
-    return email_matches and password_matches
+    return user if password_matches else None
 
 
-def require_admin(view_fn):
-    """Route decorator: 401s with a generic message if the current session isn't an authenticated admin session. Put closest to the route decorator (innermost) so Flask's routing still sees the real function name/docstring."""
-    @wraps(view_fn)
-    def wrapped(*args, **kwargs):
-        if not session.get("admin_authenticated"):
-            return jsonify({"error": "Admin authentication required"}), 401
-        return view_fn(*args, **kwargs)
-    return wrapped
+def current_user():
+    """
+    The logged-in user's {"id", "email", "name", "role"}, or None if
+    there's no session. Reads straight from the signed session cookie
+    -- this is what resolved_by/author_name/dismissed_by/actor_user_id
+    are sourced from now, never a client-supplied request-body field.
+    """
+    if not session.get("user_id"):
+        return None
+    return {
+        "id": session["user_id"],
+        "email": session.get("email"),
+        "name": session.get("name"),
+        "role": session.get("role"),
+    }
+
+
+def require_role(min_role: str = "viewer"):
+    """
+    Route decorator factory: @require_role('analyst') requires at
+    least analyst rank; bare @require_role() requires only "logged in,
+    any role" (viewer is the lowest rank, so it's the default floor).
+    Put closest to the route decorator (innermost), same convention
+    the old require_admin used.
+
+    401s if there's no session at all, 403s if the session's role
+    doesn't meet min_role -- deliberately different statuses (this app
+    had no 403 usage before this system): "you're not logged in" and
+    "you're logged in but not allowed to do this" are different
+    situations a frontend should handle differently (redirect to
+    login vs. show a permission error), and collapsing them into one
+    status would lose that distinction for no reason.
+    """
+    def decorator(view_fn):
+        @wraps(view_fn)
+        def wrapped(*args, **kwargs):
+            user = current_user()
+            if user is None:
+                return jsonify({"error": "Login required"}), 401
+            if ROLE_RANK.get(user["role"], -1) < ROLE_RANK[min_role]:
+                return jsonify({"error": f"{min_role.capitalize()} role required"}), 403
+            return view_fn(*args, **kwargs)
+        return wrapped
+    return decorator

@@ -46,10 +46,12 @@ def _fresh_temp_db():
 
 
 def _login_as_admin(client):
-    """GET /waitlist and POST /waitlist/<id>/approve now require an admin session (see app/auth.py's require_admin) -- set directly via session_transaction() rather than driving a real login POST through bcrypt for every test that needs one."""
+    """GET /waitlist and POST /waitlist/<id>/approve now require an admin-role session (see app/auth.py's require_role) -- set directly via session_transaction() rather than driving a real login POST through bcrypt for every test that needs one."""
     with client.session_transaction() as sess:
-        sess["admin_authenticated"] = True
-        sess["admin_email"] = "timmypisano24@gmail.com"
+        sess["user_id"] = 1
+        sess["email"] = "timmypisano24@gmail.com"
+        sess["name"] = "Test Admin"
+        sess["role"] = "admin"
 
 
 def test_config_reports_local_dev_mode_off_by_default():

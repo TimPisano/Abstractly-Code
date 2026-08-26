@@ -2,10 +2,11 @@
  * Admin dashboard bootstrap.
  *
  * Two independent jobs:
- *  1. Gate the page on the real admin session (GET /admin/session) --
- *     redirect to the login page if it isn't authenticated, same as
- *     before. This is real auth (see backend/app/auth.py), unlike the
- *     client-facing app's self-reported-email gate.
+ *  1. Gate the page on a real, admin-role session (GET /auth/session) --
+ *     redirect to the login page if it isn't authenticated OR isn't
+ *     admin-role. This is real auth (see backend/app/auth.py), shared
+ *     with the main app's login now (there is no separate admin-only
+ *     login system anymore -- see DECISIONS.md).
  *  2. Register the "Access Requests" panel as a fourth view in the same
  *     router frontend/app/app.js already defines (registerView/showView),
  *     alongside 'dashboard' (admin-dashboard-view.js), 'upload'
@@ -166,11 +167,16 @@ registerView('access', AccessRequests);
 async function initAdminDashboard() {
     let session;
     try {
-        session = await fetch(`${API_BASE_URL}/admin/session`, { credentials: 'include' }).then(r => r.json());
+        session = await fetch(`${API_BASE_URL}/auth/session`, { credentials: 'include' }).then(r => r.json());
     } catch (err) {
         session = { authenticated: false };
     }
-    if (!session.authenticated) {
+    // Session is shared across every role now (/auth/session, not an
+    // admin-only endpoint) -- this mini-SPA is still admin-only, so it
+    // must check the role, not just "is anyone logged in". A logged-in
+    // analyst/viewer navigating here directly gets sent back to the
+    // login page exactly like an unauthenticated visitor would.
+    if (!session.authenticated || session.role !== 'admin') {
         window.location.href = 'index.html';
         return;
     }
@@ -185,7 +191,7 @@ async function initAdminDashboard() {
 
     document.getElementById('logoutBtn').addEventListener('click', async () => {
         try {
-            await fetch(`${API_BASE_URL}/admin/logout`, { method: 'POST', credentials: 'include' });
+            await fetch(`${API_BASE_URL}/auth/logout`, { method: 'POST', credentials: 'include' });
         } catch (err) {
             // Even if the request fails, still send the operator back to
             // the login page -- there's nothing useful to do here besides

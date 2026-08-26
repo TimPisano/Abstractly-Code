@@ -76,7 +76,7 @@ from app.rent_roll_export import generate_rent_roll_csv, generate_rent_roll_exce
 from app.report import generate_portfolio_report_html
 from app.summary_memo import generate_lease_summary_pdf, generate_portfolio_summary_pdf, monthly_report_extra_sections
 from app.sheets_export import export_to_google_sheets, SheetsExportError
-from app.auth import verify_admin_credentials, admin_login_is_configured, require_admin
+from app.auth import verify_password, require_role, current_user, hash_password
 
 
 app = Flask(__name__)
@@ -882,62 +882,95 @@ def bulk_tag_leases():
 
 
 # ----------------------------------------------------------------------
-# Admin authentication
+# Team authentication
 #
-# A single admin account, configured via ADMIN_EMAIL/ADMIN_PASSWORD_HASH
-# in backend/.env (see app/auth.py and .env.example) -- not a users
-# table, since there is exactly one admin account for now. Real
+# Real per-user accounts (the `users` table -- see app/database.py and
+# app/auth.py), each with a role (admin/analyst/viewer). Real
 # password, real bcrypt check, backed by a signed session cookie (see
 # the SESSION_COOKIE_* config and CORS setup near the top of this
-# file). Deliberately separate from the client-facing access gate
-# below (/waitlist/check) -- see app/auth.py's module docstring.
+# file). One login for every role, used by both the main app and the
+# admin mini-SPA -- the old single-hardcoded-admin login
+# (ADMIN_EMAIL/ADMIN_PASSWORD_HASH) has been retired; those env vars
+# now only seed the first admin user once, into this same table (see
+# database._seed_first_admin_user). Deliberately separate from the
+# client-facing waitlist gate below (/waitlist/check) -- see
+# app/auth.py's module docstring.
 # ----------------------------------------------------------------------
 
-@app.route('/admin/login', methods=['POST'])
-def admin_login():
+@app.route('/auth/login', methods=['POST'])
+def auth_login():
     """
-    Body: {"email": str, "password": str}. On success, starts an admin
-    session (signed cookie, 12-hour lifetime) and returns {"email": ...}.
-    On failure, always the same generic error regardless of whether the
-    email or the password was wrong -- see verify_admin_credentials for
-    why the check itself is also timing-safe about that, not just the
-    message.
+    Body: {"email": str, "password": str}. On success, starts a
+    session (signed cookie, 12-hour lifetime) and returns
+    {"id", "email", "name", "role"}. On failure, always the same
+    generic error regardless of whether the email, password, or
+    account status was wrong -- see auth.verify_password for why the
+    check itself is also timing-safe about that, not just the message.
     """
     body = request.get_json(silent=True) or {}
     email = (body.get("email") or "").strip()
     password = body.get("password") or ""
 
-    if not verify_admin_credentials(email, password):
+    user = verify_password(email, password)
+    if not user:
         return jsonify({"error": "Invalid email or password"}), 401
 
     session.permanent = True
-    session["admin_authenticated"] = True
-    session["admin_email"] = email
-    return jsonify({"email": email}), 200
+    session["user_id"] = user["id"]
+    session["email"] = user["email"]
+    session["name"] = user["name"]
+    session["role"] = user["role"]
+    database.update_user_last_login(user["id"])
+    return jsonify({"id": user["id"], "email": user["email"], "name": user["name"], "role": user["role"]}), 200
 
 
-@app.route('/admin/logout', methods=['POST'])
-def admin_logout():
+@app.route('/auth/logout', methods=['POST'])
+def auth_logout():
     session.clear()
     return jsonify({"status": "logged_out"}), 200
 
 
-@app.route('/admin/session', methods=['GET'])
-def admin_session():
-    """Used by the admin login page and dashboard on load to check current auth state without triggering a 401 (this route itself is intentionally public -- it only ever reflects the caller's own session back to them)."""
-    if session.get("admin_authenticated"):
-        return jsonify({"authenticated": True, "email": session.get("admin_email")}), 200
-    return jsonify({"authenticated": False, "email": None}), 200
+@app.route('/auth/session', methods=['GET'])
+def auth_session():
+    """Used on every app boot to check current auth state without triggering a 401 (this route itself is intentionally public -- it only ever reflects the caller's own session back to them)."""
+    user = current_user()
+    if user:
+        return jsonify({"authenticated": True, **user}), 200
+    return jsonify({"authenticated": False, "id": None, "email": None, "name": None, "role": None}), 200
+
+
+@app.route('/auth/change-password', methods=['POST'])
+@require_role()
+def auth_change_password():
+    """Body: {"current_password": str, "new_password": str}. Any logged-in role may change their own password."""
+    body = request.get_json(silent=True) or {}
+    current_password = body.get("current_password") or ""
+    new_password = body.get("new_password") or ""
+    if not new_password or len(new_password) < 8:
+        return jsonify({"error": "New password must be at least 8 characters"}), 400
+
+    user = current_user()
+    full_user = database.get_user(user["id"])
+    if not verify_password(full_user["email"], current_password):
+        return jsonify({"error": "Current password is incorrect"}), 401
+
+    database.update_user_password(user["id"], hash_password(new_password))
+    return jsonify({"status": "password_updated"}), 200
 
 
 # ----------------------------------------------------------------------
 # Waitlist (landing page gate)
 #
 # /waitlist (GET), /waitlist/<id>/approve, and /waitlist/<id>/deny all
-# require an authenticated admin session (see app/auth.py's
-# require_admin) -- viewing every signup's email and granting/denying
-# access is exactly the kind of privileged action that must sit behind
-# real auth, not an unguessable-URL "don't share this link" convention.
+# require an authenticated admin-role session (see app/auth.py's
+# require_role('admin')) -- viewing every signup's email and marking a
+# request approved/denied is exactly the kind of privileged action
+# that must sit behind real auth, not an unguessable-URL convention.
+# Approving a signup here is advisory only -- it marks someone an
+# approved prospect, it does not by itself create a real login. An
+# admin separately creates the actual account (email/name/role/
+# password) via POST /team/members once ready to actually onboard
+# them.
 #
 # /waitlist/check (below) is DELIBERATELY still public, but that's a
 # separate, narrower decision: it only ever answers "is this one email
@@ -1037,14 +1070,14 @@ def join_waitlist():
 
 
 @app.route('/waitlist', methods=['GET'])
-@require_admin
+@require_role('admin')
 def list_waitlist():
     """Admin-only. Lists every signup, newest first."""
     return jsonify(database.get_all_waitlist_signups()), 200
 
 
 @app.route('/waitlist/<int:signup_id>/approve', methods=['POST'])
-@require_admin
+@require_role('admin')
 def approve_waitlist(signup_id):
     """Admin-only. Flips a signup's status to 'approved'."""
     signup = database.get_waitlist_signup(signup_id)
@@ -1060,7 +1093,7 @@ def approve_waitlist(signup_id):
 
 
 @app.route('/waitlist/<int:signup_id>/deny', methods=['POST'])
-@require_admin
+@require_role('admin')
 def deny_waitlist(signup_id):
     """Admin-only. Flips a signup's status to 'denied'. No email is sent -- there's no "you were denied" template, and adding one wasn't asked for; this is a silent status change the admin dashboard reflects."""
     signup = database.get_waitlist_signup(signup_id)

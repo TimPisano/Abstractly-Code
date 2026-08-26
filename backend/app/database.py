@@ -159,6 +159,42 @@ def _migrate_discrepancies_table_drop_lease_fk(conn: sqlite3.Connection) -> None
     conn.commit()
 
 
+def _seed_first_admin_user(conn: sqlite3.Connection) -> None:
+    """
+    Migrates the old env-var-only admin account into the real `users`
+    table, exactly once, so upgrading from the pre-team-accounts
+    version of this app never locks the operator out. No-op if any
+    user already exists (this has already run, or an admin was
+    created some other way), or if ADMIN_EMAIL/ADMIN_PASSWORD_HASH
+    aren't set (a genuinely fresh install with no admin configured
+    yet -- nothing to seed).
+
+    ADMIN_PASSWORD_HASH is already a bcrypt hash in exactly the format
+    auth.hash_password() produces for any other user, so it's inserted
+    directly -- no re-hashing, and this module deliberately doesn't
+    import bcrypt itself to re-derive it.
+
+    After this runs once, ADMIN_EMAIL/ADMIN_PASSWORD_HASH have no
+    further effect -- the seeded row lives in the database like any
+    other user from then on (role can be changed, password reset,
+    etc. through the normal `users` functions below).
+    """
+    existing = conn.execute("SELECT id FROM users LIMIT 1").fetchone()
+    if existing:
+        return
+
+    email = os.environ.get("ADMIN_EMAIL", "").strip().lower()
+    password_hash = os.environ.get("ADMIN_PASSWORD_HASH", "").strip()
+    if not email or not password_hash:
+        return
+
+    conn.execute(
+        "INSERT INTO users (email, name, password_hash, role, status, created_at, created_by_user_id) "
+        "VALUES (?, 'Admin', ?, 'admin', 'active', ?, NULL)",
+        (email, password_hash, datetime.now(timezone.utc).isoformat()),
+    )
+
+
 def init_db() -> None:
     """Create tables if they don't already exist, and migrate any existing `leases` table to the current schema. Safe to call repeatedly."""
     conn = get_connection()
@@ -284,6 +320,21 @@ def init_db() -> None:
                 FOREIGN KEY (discrepancy_id) REFERENCES discrepancies(id) ON DELETE CASCADE
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT NOT NULL UNIQUE,
+                name TEXT NOT NULL,
+                password_hash TEXT NOT NULL,
+                role TEXT NOT NULL DEFAULT 'viewer',
+                status TEXT NOT NULL DEFAULT 'active',
+                created_at TEXT NOT NULL,
+                created_by_user_id INTEGER,
+                last_login_at TEXT,
+                FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+            )
+        """)
+        _seed_first_admin_user(conn)
         conn.commit()
     finally:
         conn.close()
@@ -301,6 +352,7 @@ def reset_db() -> None:
         conn.execute("DROP TABLE IF EXISTS leases")
         conn.execute("DROP TABLE IF EXISTS waitlist_signups")
         conn.execute("DROP TABLE IF EXISTS activity_log")
+        conn.execute("DROP TABLE IF EXISTS users")
         conn.commit()
     finally:
         conn.close()
@@ -673,6 +725,121 @@ def deny_waitlist_signup(signup_id: int) -> bool:
         return cur.rowcount > 0
     except OverflowError:
         return False
+    finally:
+        conn.close()
+
+
+# ----------------------------------------------------------------------
+# Team accounts: real per-user login backing app/auth.py's session-based
+# auth. Replaces the old single-hardcoded-admin account (see
+# _seed_first_admin_user above and DECISIONS.md's "Reliability
+# hardening pass" / "Identity model for resolutions/comments" entries)
+# -- every team member is a real row here now, with a role
+# (admin/analyst/viewer) auth.require_role() checks against the
+# session on every protected route.
+# ----------------------------------------------------------------------
+
+def create_user(
+    email: str, name: str, password_hash: str, role: str = "viewer", created_by_user_id: Optional[int] = None
+) -> Dict[str, Any]:
+    """
+    Returns {"status": "created", "id": ...} on success, or
+    {"status": "duplicate"} if the email is already taken -- same
+    created/duplicate shape as insert_waitlist_signup, for the same
+    reason: a UNIQUE-constraint collision here is an expected,
+    friendly outcome (an admin fat-fingering an add-member form twice,
+    or two admins racing to add the same person), not a server error.
+    """
+    conn = get_connection()
+    try:
+        cur = conn.execute(
+            "INSERT INTO users (email, name, password_hash, role, status, created_at, created_by_user_id) "
+            "VALUES (?, ?, ?, ?, 'active', ?, ?)",
+            (email.strip().lower(), name, password_hash, role, datetime.now(timezone.utc).isoformat(), created_by_user_id),
+        )
+        conn.commit()
+        return {"status": "created", "id": cur.lastrowid}
+    except sqlite3.IntegrityError:
+        return {"status": "duplicate"}
+    finally:
+        conn.close()
+
+
+def get_user(user_id: int) -> Optional[Dict[str, Any]]:
+    conn = get_connection()
+    try:
+        row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+        return dict(row) if row else None
+    except OverflowError:
+        return None
+    finally:
+        conn.close()
+
+
+def get_user_by_email(email: str) -> Optional[Dict[str, Any]]:
+    """Case-insensitive lookup, same convention as get_waitlist_signup_by_email -- login shouldn't be case-sensitive on the email a person types."""
+    conn = get_connection()
+    try:
+        row = conn.execute("SELECT * FROM users WHERE lower(email) = lower(?)", (email,)).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def list_users() -> List[Dict[str, Any]]:
+    """Every team member, active and deactivated alike (the Team view distinguishes them in the UI), oldest first."""
+    conn = get_connection()
+    try:
+        rows = conn.execute("SELECT * FROM users ORDER BY created_at ASC").fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def update_user_role(user_id: int, role: str) -> bool:
+    conn = get_connection()
+    try:
+        cur = conn.execute("UPDATE users SET role = ? WHERE id = ?", (role, user_id))
+        conn.commit()
+        return cur.rowcount > 0
+    except OverflowError:
+        return False
+    finally:
+        conn.close()
+
+
+def update_user_status(user_id: int, status: str) -> bool:
+    """status: 'active' | 'deactivated'. A deactivated user can no longer log in (auth.verify_password checks status), but their id stays valid everywhere it's already referenced (assignments, activity_log) -- see users.status's own column comment for why this is a status flip, not a DELETE."""
+    conn = get_connection()
+    try:
+        cur = conn.execute("UPDATE users SET status = ? WHERE id = ?", (status, user_id))
+        conn.commit()
+        return cur.rowcount > 0
+    except OverflowError:
+        return False
+    finally:
+        conn.close()
+
+
+def update_user_password(user_id: int, password_hash: str) -> bool:
+    conn = get_connection()
+    try:
+        cur = conn.execute("UPDATE users SET password_hash = ? WHERE id = ?", (password_hash, user_id))
+        conn.commit()
+        return cur.rowcount > 0
+    except OverflowError:
+        return False
+    finally:
+        conn.close()
+
+
+def update_user_last_login(user_id: int) -> None:
+    conn = get_connection()
+    try:
+        conn.execute("UPDATE users SET last_login_at = ? WHERE id = ?", (datetime.now(timezone.utc).isoformat(), user_id))
+        conn.commit()
+    except OverflowError:
+        pass
     finally:
         conn.close()
 
