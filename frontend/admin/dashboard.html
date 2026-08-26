@@ -35,33 +35,24 @@
             </div>
 
             <div class="nav-scroll">
-                <div class="nav-group">
-                    <div class="nav-group-label nav-label">Admin</div>
-                    <button class="nav-item" data-view="access" data-tooltip="Access Requests" type="button">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M18 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zM3 19.235v-.11a6.375 6.375 0 0112.75 0v.109A12.318 12.318 0 019.374 21c-2.331 0-4.512-.645-6.374-1.766z"/></svg>
-                        <span class="nav-label">Access Requests</span>
-                    </button>
-                    <button class="nav-item active" data-view="dashboard" data-tooltip="Leases & Rent Rolls" type="button">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h8v8H3V3zm10 0h8v5h-8V3zm0 8h8v10h-8V11zM3 14h8v7H3v-7z"/></svg>
-                        <span class="nav-label">Leases &amp; Rent Rolls</span>
-                    </button>
-                    <button class="nav-item" data-view="upload" data-tooltip="Upload" type="button">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v12m0 0l-4-4m4 4l4-4M4 20h16"/></svg>
-                        <span class="nav-label">Upload</span>
-                    </button>
-                </div>
-
-                <!-- These five link OUT to the full portfolio app (frontend/app/) rather
-                     than duplicating its features here -- Alerts, Discrepancies, Portfolio
-                     Trends, Reports/Exports, and Team Notes are already built, tested, and
-                     live there. Each carries the view name as a URL hash; app.js reads it
-                     on load and opens straight to that view instead of always landing on
-                     Dashboard. "Team" links to Team Notes (the real, built feature under
-                     that name -- there's no separate team-management view yet, see
-                     DECISIONS.md); "Activity" links to Dashboard's own Recent Activity
-                     panel, since there's no standalone Activity view either. -->
+                <!-- Group 1: the portfolio itself -- Dashboard is "Leases &
+                     Rent Rolls" under the hood (same view, same H1); labeled
+                     "Dashboard" in the nav for the same name the main app
+                     (frontend/app/) uses for its landing view, and grouped
+                     with Alerts/Discrepancies/Portfolio Trends since all
+                     four are ways of looking at portfolio health -- Alerts,
+                     Discrepancies, and Portfolio Trends link OUT to the
+                     already-built, already-tested views in frontend/app/
+                     rather than a second implementation. Each carries the
+                     view name as a URL hash; app.js reads it on load and
+                     opens straight to that view instead of always landing
+                     on Dashboard. -->
                 <div class="nav-group">
                     <div class="nav-group-label nav-label">Portfolio</div>
+                    <button class="nav-item active" data-view="dashboard" data-tooltip="Dashboard" type="button">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h8v8H3V3zm10 0h8v5h-8V3zm0 8h8v10h-8V11zM3 14h8v7H3v-7z"/></svg>
+                        <span class="nav-label">Dashboard</span>
+                    </button>
                     <a class="nav-item" href="../app/#alerts" data-tooltip="Alerts" title="Opens the full portfolio app">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0"/></svg>
                         <span class="nav-label">Alerts</span>
@@ -74,6 +65,34 @@
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3v18h18M7 15l4-5 3 3 5-7"/></svg>
                         <span class="nav-label">Portfolio Trends</span>
                     </a>
+                </div>
+
+                <!-- Group 2: bringing data in. -->
+                <div class="nav-group">
+                    <div class="nav-group-label nav-label">Manage</div>
+                    <button class="nav-item" data-view="upload" data-tooltip="Upload" type="button">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v12m0 0l-4-4m4 4l4-4M4 20h16"/></svg>
+                        <span class="nav-label">Upload</span>
+                    </button>
+                    <button class="nav-item" data-view="access" data-tooltip="Access Requests" type="button">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M18 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zM3 19.235v-.11a6.375 6.375 0 0112.75 0v.109A12.318 12.318 0 019.374 21c-2.331 0-4.512-.645-6.374-1.766z"/></svg>
+                        <span class="nav-label">Access Requests</span>
+                    </button>
+                </div>
+
+                <!-- Group 3: output + collaboration + config. "Team" links to
+                     Team Notes (the real, built feature under that name --
+                     there's no separate team-management view yet, see
+                     DECISIONS.md); "Activity" links to Dashboard's own
+                     Recent Activity panel, since there's no standalone
+                     Activity view either. Settings is a real local view
+                     (Change Password, via the real POST /auth/change-
+                     password this session's backend work added) -- not a
+                     placeholder, and deliberately doesn't include team-
+                     member management, since no backend endpoint for that
+                     exists yet (/team/members is still 404). -->
+                <div class="nav-group">
+                    <div class="nav-group-label nav-label">Team &amp; Reports</div>
                     <a class="nav-item" href="../app/#report" data-tooltip="Reports / Exports" title="Opens the full portfolio app">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                         <span class="nav-label">Reports / Exports</span>
@@ -86,6 +105,10 @@
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                         <span class="nav-label">Activity</span>
                     </a>
+                    <button class="nav-item" data-view="settings" data-tooltip="Settings" type="button">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M10.343 3.94c.09-.542.56-.94 1.11-.94h1.093c.55 0 1.02.398 1.11.94l.149.894c.07.424.384.764.78.93.398.164.855.142 1.205-.108l.737-.527a1.125 1.125 0 011.45.12l.773.774c.39.389.44 1.002.12 1.45l-.527.737c-.25.35-.272.806-.107 1.204.165.397.505.71.93.78l.893.15c.543.09.94.56.94 1.109v1.094c0 .55-.397 1.02-.94 1.11l-.893.149c-.425.07-.765.383-.93.78-.165.398-.143.854.107 1.204l.527.738c.32.447.269 1.06-.12 1.45l-.774.773a1.125 1.125 0 01-1.449.12l-.738-.527c-.35-.25-.806-.272-1.203-.107-.397.165-.71.505-.781.929l-.149.894c-.09.542-.56.94-1.11.94h-1.094c-.55 0-1.019-.398-1.11-.94l-.148-.894c-.071-.424-.384-.764-.781-.93-.398-.164-.854-.142-1.204.108l-.738.527c-.447.32-1.06.269-1.45-.12l-.773-.774a1.125 1.125 0 01-.12-1.45l.527-.737c.25-.35.273-.806.108-1.204-.165-.397-.505-.71-.93-.78l-.894-.15c-.542-.09-.94-.56-.94-1.109v-1.094c0-.55.398-1.02.94-1.11l.894-.149c.424-.07.765-.383.93-.78.165-.398.143-.854-.108-1.204l-.526-.738a1.125 1.125 0 01.12-1.45l.773-.773a1.125 1.125 0 011.45-.12l.737.527c.35.25.807.272 1.204.107.397-.165.71-.505.78-.929l.15-.894z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                        <span class="nav-label">Settings</span>
+                    </button>
                 </div>
             </div>
 
@@ -141,6 +164,33 @@
                 </div>
             </section>
 
+            <!-- SETTINGS VIEW -- deliberately just account settings (Change
+                 Password, against the real POST /auth/change-password route)
+                 -- no team-member management here, since /team/members
+                 doesn't exist on the backend yet. See DECISIONS.md. -->
+            <section class="view" id="view-settings">
+                <div class="view-header">
+                    <div>
+                        <h1>Settings</h1>
+                        <p class="view-subtitle">Your account</p>
+                    </div>
+                </div>
+                <div class="admin-panel" style="max-width: 420px;">
+                    <div class="admin-panel-header">
+                        <h2>Change Password</h2>
+                    </div>
+                    <form id="changePasswordForm" class="settings-form">
+                        <label class="settings-form-label" for="currentPasswordInput">Current password</label>
+                        <input type="password" id="currentPasswordInput" class="text-input" autocomplete="current-password" required>
+                        <label class="settings-form-label" for="newPasswordInput">New password</label>
+                        <input type="password" id="newPasswordInput" class="text-input" autocomplete="new-password" minlength="8" required>
+                        <p class="settings-form-hint">At least 8 characters.</p>
+                        <p class="settings-form-message" id="changePasswordMessage" style="display:none;"></p>
+                        <button class="btn-primary" id="changePasswordSubmitBtn" type="submit">Update Password</button>
+                    </form>
+                </div>
+            </section>
+
             <!-- LEASES & RENT ROLLS (DASHBOARD) VIEW -->
             <section class="view active" id="view-dashboard">
                 <div class="view-header">
@@ -150,6 +200,13 @@
                     </div>
                     <button class="btn-primary" data-goto="upload" type="button">+ Upload Leases</button>
                 </div>
+
+                <!-- Portfolio Health Score: how much the current DATA can be trusted --
+                     the single most important thing to check first, so it's the first
+                     panel on the page. Ported from frontend/app/dashboard-view.js's
+                     identical panel (same real backend endpoint, same markup) -- this
+                     page never had it before. -->
+                <div class="panel health-score-panel" id="healthScorePanel"></div>
 
                 <!-- Portfolio-wide confidence summary: real, computed field-confidence counts across every lease -->
                 <div class="panel" id="portfolioConfidenceSummaryPanel"></div>

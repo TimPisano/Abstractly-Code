@@ -276,6 +276,13 @@
     flex: 1;
     padding: 2rem 2.5rem 4rem;
     max-width: 1400px;
+    /* Auto margins on a flex item consume the leftover space evenly on
+       both sides once max-width caps its growth -- without this, a wide
+       viewport (a 1920px+ display is the common case, not an edge case)
+       left all page content hugging the sidebar with a large dead zone
+       on the right, reading as "off-center" rather than centered in the
+       available space. */
+    margin: 0 auto;
     min-width: 0;
 }
 

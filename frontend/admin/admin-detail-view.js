@@ -102,12 +102,26 @@ const LeaseDetail = {
             heading.textContent = group.name;
             section.appendChild(heading);
 
+            // Fields that actually have a value first, so a group with (say)
+            // 2 found fields and 6 not-found ones reads "here's what we
+            // know" before "here's everything we don't" -- not-found
+            // fields still render (fully clickable to fill in, see
+            // createResultCard's compact branch below), just after.
+            const found = groupFieldsPresent.filter(key => data[key].value !== null && data[key].value !== undefined);
+            const notFound = groupFieldsPresent.filter(key => data[key].value === null || data[key].value === undefined);
+
             const grid = document.createElement('div');
             grid.className = 'results-grid';
-            groupFieldsPresent.forEach(fieldKey => {
-                grid.appendChild(this.createResultCard(fieldKey, data[fieldKey]));
-            });
+            found.forEach(fieldKey => grid.appendChild(this.createResultCard(fieldKey, data[fieldKey])));
             section.appendChild(grid);
+
+            if (notFound.length > 0) {
+                const notFoundWrap = document.createElement('div');
+                notFoundWrap.className = 'not-found-fields';
+                notFound.forEach(fieldKey => notFoundWrap.appendChild(this.createResultCard(fieldKey, data[fieldKey])));
+                section.appendChild(notFoundWrap);
+            }
+
             container.appendChild(section);
         });
     },
@@ -115,8 +129,30 @@ const LeaseDetail = {
     createResultCard(fieldKey, fieldData) {
         const found = fieldData.value !== null && fieldData.value !== undefined;
 
+        // Not-found fields get a compact, single-line treatment instead
+        // of a full card -- same size as a found card, repeated across a
+        // group with several missing fields, was exactly the "wall of
+        // Not Found" clutter this was built to fix. Still fully
+        // clickable to fill in (same startInlineEdit path either way).
+        if (!found) {
+            const chip = document.createElement('div');
+            chip.className = 'result-card not-found compact-not-found';
+            chip.dataset.field = fieldKey;
+            const label = document.createElement('span');
+            label.className = 'not-found-chip-label';
+            label.textContent = FIELD_LABELS[fieldKey] || fieldKey;
+            chip.appendChild(label);
+            const valueDiv = document.createElement('span');
+            valueDiv.className = 'field-value editable not-found-value';
+            valueDiv.textContent = 'Not found — click to add';
+            valueDiv.title = 'Click to edit';
+            valueDiv.addEventListener('click', () => this.startInlineEdit(valueDiv, fieldKey, chip));
+            chip.appendChild(valueDiv);
+            return chip;
+        }
+
         const card = document.createElement('div');
-        card.className = `result-card ${found ? 'found' : 'not-found'}`;
+        card.className = 'result-card found';
         card.dataset.field = fieldKey;
 
         const header = document.createElement('div');
@@ -133,8 +169,8 @@ const LeaseDetail = {
         body.className = 'card-body';
 
         const valueDiv = document.createElement('div');
-        valueDiv.className = found ? 'field-value editable' : 'field-value editable not-found-value';
-        valueDiv.textContent = found ? fieldData.value : 'Not Found — click to enter a value';
+        valueDiv.className = 'field-value editable';
+        valueDiv.textContent = fieldData.value;
         valueDiv.title = 'Click to edit';
         valueDiv.addEventListener('click', () => this.startInlineEdit(valueDiv, fieldKey, card));
         body.appendChild(valueDiv);
@@ -197,13 +233,26 @@ const LeaseDetail = {
         const commit = () => {
             const newValue = input.value.trim();
             const wasFound = fieldData.value !== null && fieldData.value !== undefined;
+            const isNowFound = newValue !== '';
             const changed = newValue !== (wasFound ? String(fieldData.value) : '');
 
-            fieldData.value = newValue === '' ? null : newValue;
+            fieldData.value = isNowFound ? newValue : null;
             if (changed) fieldData.edited = true;
 
-            const newCard = this.createResultCard(fieldKey, fieldData);
-            card.replaceWith(newCard);
+            if (wasFound === isNowFound) {
+                // Same found/not-found bucket as before -- a plain swap in
+                // place is correct and avoids re-rendering every other
+                // field's card just to update this one.
+                card.replaceWith(this.createResultCard(fieldKey, fieldData));
+            } else {
+                // Crossed from found -> not-found or vice versa: the card
+                // belongs in the OTHER section now (results-grid vs. the
+                // compact not-found-fields list), which a plain replaceWith
+                // can't do since it stays in whatever container it's
+                // already in. Re-rendering the whole field-groups panel is
+                // the simple, correct way to move it there.
+                this.renderFields();
+            }
         };
 
         input.addEventListener('blur', commit);

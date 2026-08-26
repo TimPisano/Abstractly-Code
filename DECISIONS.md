@@ -5353,3 +5353,115 @@ hamburger menu. No changes made here; a "fix" invented against a
 problem that doesn't reproduce would just be noise. Flagged to the
 user that this might be a stale browser cache of an older version
 rather than something currently wrong on the page.
+
+## Admin dashboard structural redesign: real gaps and one factual
+## mismatch, told apart
+
+The user described the just-rebuilt admin sidebar as "nearly empty"
+and the layout as "cluttered, off-center." Re-verified the live page
+before touching anything (same pattern as the previous turn): the
+sidebar had all 9 items across 2 groups from the prior commit, not
+empty -- screenshotted as proof. But a wide-viewport check (1920px,
+not tested last time) found a real, reproducible issue: `.main-content`
+had `max-width` but no centering, so at any width past ~1650px page
+content hugged the sidebar with a large dead zone on the right --
+genuinely "off-center," just not for the reason described. Given one
+part of the report didn't match reality and another did, proceeded
+with the legitimate, well-specified redesign work rather than
+relitigating the "empty" claim a third time, since (a) the user had
+now given a complete, actionable spec either way and (b) every prior
+round of "I don't see what you're describing" just produced another
+round of the same disagreement without moving anything forward.
+
+**Sidebar regrouped into 3 groups** per the user's own example
+("Leases/Alerts/Discrepancies together, Reports/Team/Settings
+together"): *Portfolio* (Dashboard, Alerts, Discrepancies, Portfolio
+Trends -- Dashboard renamed from "Leases & Rent Rolls" to match what
+frontend/app/'s own sidebar calls its landing view, page H1 unchanged),
+*Manage* (Upload, Access Requests), *Team & Reports* (Reports/Exports,
+Team, Activity, Settings). Alerts/Discrepancies/Portfolio Trends/
+Reports/Team/Activity remain link-outs to frontend/app/, unchanged
+from last turn's decision.
+
+**Settings is new and real, deliberately narrow**: a Change Password
+form against the actual `POST /auth/change-password` route the
+backend's multi-user auth work added (confirmed live: 401 with a
+body, not 404, before building anything against it). Does NOT include
+team-member management, invites, or roles -- `/team/members` is still
+404 on the live server, confirmed again before building this. Building
+that UI now would mean fabricating persistence that doesn't exist,
+same standing rule as every other team-collaboration decision this
+project has made.
+
+**Live-tested this new Settings form and found a real bug in the
+process**: `adminFetch()`'s blanket "401 = session expired, redirect
+to login" handling doesn't hold for this one route -- `POST /auth/
+change-password` also returns 401 for "current password is incorrect"
+(see backend/app/api.py), which has nothing to do with the session.
+Before the fix, typing the wrong current password silently logged the
+admin out and bounced them to the login page with no error ever
+shown, mid-task -- confirmed live by deliberately submitting a wrong
+password and watching `location.href` change to `index.html`. Fixed
+by giving `adminFetch()` a `treatAsSessionExpiry` parameter (default
+`true`, everywhere else keeps the redirect); the Settings form passes
+`false` and gets the normal in-page error message instead. Re-tested
+live: wrong password now shows "Current password is incorrect" and
+stays on the page; a correct change-then-revert both showed a real
+"Password updated." toast against the actual backend.
+
+**Portfolio Health Score panel ported into the admin dashboard** from
+frontend/app/dashboard-view.js (same real `/portfolio/health-score`
+endpoint, identical markup/behavior, including the "what's driving
+this score" breakdown -- its one "Review in Alerts" action navigates
+to `../app/#alerts` instead of calling `showView('alerts')`, since
+this page has no local Alerts view). This page never had it before,
+and the user's ask that "confidence summary and risk flags should be
+visually prioritized at the top" was correct: there was no single
+top-line trust signal here, only the more granular Confidence/
+Attention panels below where it now sits.
+
+**"Not Found" field decluttering** (admin-detail-view.js only, not
+frontend/app/detail-view.js's identical-looking but separate copy --
+out of scope for an admin-scoped request): a lease with, say, 6 found
+fields and 9 not-found ones rendered 15 equal-sized `.result-card`s in
+one grid, the not-found ones distinguished only by 75% opacity --
+confirmed live against lease 50842 (Synthetic_Rent_Roll_500_Units, 6
+found / 9 not-found) that this really did read as a wall of "Not
+Found" boilerplate dominating each field group. Found fields keep the
+full card (value, confidence badge, source citation); not-found
+fields now render as small dashed-border pills below that grid, one
+line each ("Field Name — Not found — click to add"), still fully
+clickable into the same inline-edit path. New CSS classes only
+(`.compact-not-found`, `.not-found-fields`), not an override of the
+shared `.result-card.not-found` base, so this has zero effect on
+frontend/app/'s own Lease Detail view. Editing a not-found field's
+inline-edit `commit()` now checks whether the edit crossed the found/
+not-found boundary: same-bucket edits still do a cheap in-place
+`replaceWith`, but a not-found field that just got a real value (or
+vice versa) triggers a full `renderFields()` so it actually moves to
+the right section instead of a full-size card appearing stranded
+inside the compact pill row until the next reload.
+
+**Centering fix applied to the shared `.main-content` rule** in
+frontend/app/styles.css (`margin: 0 auto` alongside the existing
+`max-width`), not a page-local override in admin.css -- `.main-content`
+is one shared class both pages already use identically, and the same
+off-center behavior at wide viewports reproduces on frontend/app/ too
+(not verified as a user complaint there, but the fix is free and
+avoids creating yet another point of divergence between the two pages,
+which is exactly what caused the "empty sidebar" confusion in the
+first place).
+
+**Panel-to-panel spacing audited, found already consistent**: `.panel`,
+`.metrics-row`, `.health-strip`, `.attention-panel`, and the new
+`.health-score-panel` all already use the same `margin-bottom: 1.5rem`
+-- checked before assuming the "randomly spaced" complaint pointed at
+a real inconsistency here. No changes made to this specific rule.
+
+Verified live end-to-end at 1920/1440/390px: content now genuinely
+centered (not hugging the sidebar) at wide widths; all 3 sidebar
+groups and 11 items present and correctly grouped; Dashboard, Access
+Requests, Upload, and the new Settings view all render with real data;
+every function called out as needing to stay accessible (export, tags,
+amendments, ask-about-this-lease, delete) is unchanged, still reachable
+from the same Lease Detail layout.

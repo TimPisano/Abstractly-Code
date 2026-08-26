@@ -38,14 +38,22 @@
  * risk of a view fetching data before the session check below settles.
  */
 
-async function adminFetch(path, options = {}) {
+// `treatAsSessionExpiry` defaults true: for nearly every route here, a
+// 401 really does mean "the session ended, go back to the login page."
+// POST /auth/change-password is the one exception -- it also returns
+// 401 for "current password is incorrect" (see backend/app/api.py),
+// which has nothing to do with the session and would otherwise silently
+// bounce someone to the login page with no error shown, mid-typo, while
+// still fully logged in. Callers for that route pass `false` to get the
+// normal error-message path instead of the redirect.
+async function adminFetch(path, options = {}, treatAsSessionExpiry = true) {
     let response;
     try {
         response = await fetch(`${API_BASE_URL}${path}`, { ...options, credentials: 'include' });
     } catch (networkErr) {
         throw new Error("Couldn't reach the server. Is the backend running?");
     }
-    if (response.status === 401) {
+    if (response.status === 401 && treatAsSessionExpiry) {
         window.location.href = 'index.html';
         // Never resolves -- the redirect above is already underway, and
         // nothing calling this should keep running against a session
@@ -169,6 +177,64 @@ const AccessRequests = {
 };
 
 registerView('access', AccessRequests);
+
+/**
+ * Settings view: just Change Password for now (POST /auth/change-
+ * password, added by this session's real multi-user auth work -- any
+ * logged-in role may change their own password). No team-member
+ * management here since /team/members isn't a real backend route yet
+ * -- see DECISIONS.md.
+ */
+const Settings = {
+    load() {
+        const form = document.getElementById('changePasswordForm');
+        form.reset();
+        const msg = document.getElementById('changePasswordMessage');
+        msg.style.display = 'none';
+        msg.classList.remove('is-error');
+    },
+
+    async changePassword(currentPassword, newPassword) {
+        const msg = document.getElementById('changePasswordMessage');
+        const btn = document.getElementById('changePasswordSubmitBtn');
+        msg.style.display = 'none';
+        msg.classList.remove('is-error');
+        btn.disabled = true;
+        btn.textContent = 'Updating...';
+        try {
+            await adminFetch('/auth/change-password', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+            }, false);
+            document.getElementById('changePasswordForm').reset();
+            showToast('Password updated.', 'success');
+        } catch (err) {
+            msg.textContent = err.message;
+            msg.classList.add('is-error');
+            msg.style.display = 'block';
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Update Password';
+        }
+    },
+};
+
+registerView('settings', Settings);
+
+function _initSettingsViewBindings() {
+    document.getElementById('changePasswordForm').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const current = document.getElementById('currentPasswordInput').value;
+        const next = document.getElementById('newPasswordInput').value;
+        Settings.changePassword(current, next);
+    });
+}
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', _initSettingsViewBindings);
+} else {
+    _initSettingsViewBindings();
+}
 
 async function initAdminDashboard() {
     let session;
