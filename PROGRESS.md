@@ -1,6 +1,21 @@
 # Progress Summary
 
-**Last updated**: Team collaboration infrastructure, step 2 of the
+**Last updated**: Team collaboration infrastructure, step 3 of the
+approved plan (steps 1-2: real accounts + login page, RBAC audit
+across every route, already shipped). Added real team management:
+`GET|POST /team/members`, `PATCH /team/members/<id>`, `POST
+/team/members/<id>/reset-password`, all admin-only, plus a new "Team"
+sidebar view (add members, change roles, deactivate/reactivate, reset
+passwords). Verified live against the running server (real login,
+create/list/update/reset-password) and confirmed responses never leak
+a password hash. 12 new unit tests, full suite: 44/44. Next up:
+assignments (step 4), then activity feed enrichment and near-real-time
+polling. See DECISIONS.md's "Team collaboration infrastructure, step
+3" entry.
+
+---
+
+Team collaboration infrastructure, step 2 of the
 approved plan (data model + auth = step 1, already shipped): gated
 every route in api.py with role-based access (`@require_role()`) --
 every GET needs a logged-in session, every write needs analyst+.

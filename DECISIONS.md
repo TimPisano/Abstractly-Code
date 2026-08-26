@@ -1,5 +1,46 @@
 # Implementation Decisions
 
+## Team collaboration infrastructure, step 3: team management
+
+`GET|POST /team/members`, `PATCH /team/members/<id>`, `POST
+/team/members/<id>/reset-password` -- all `@require_role('admin')`.
+New `database.update_user_name` (role/status updates already existed
+from step 1). Every response goes through a new `_user_public()`
+helper that strips `password_hash` -- verified directly (not just by
+code inspection) that a real create-member response never contains
+that key.
+
+Admin creates a member with a real initial password they share
+out-of-band (confirmed with the user earlier: waitlist approval and
+account creation are two decoupled steps, not one -- see this file's
+"Verified upload..." entry). No email-invite flow yet, tracked as an
+explicit out-of-scope item in the original plan.
+
+New `frontend/app/team-view.js` + a `view-team` section in
+`index.html` (new "Team" sidebar group) -- add-member form, a members
+table with inline role-select and deactivate/reactivate/reset-password
+actions. The admin-only check in the view itself is cosmetic (a clear
+message instead of an empty table for a non-admin) -- the real
+enforcement is the backend decorator, confirmed live: a non-admin
+session gets 403 on every /team/members* route regardless of what the
+frontend shows or hides. `team-notes-view.js`'s header comment (which
+predates real accounts and said outright "no user-accounts system in
+this app at all") updated for accuracy now that one exists -- that
+view's own roster stays as-is (a different, narrower "who's actually
+posted a note" question), just no longer describes the whole app as
+account-less.
+
+12 new unit tests (`test_teams_and_assignments.py` -- named for the
+step-4 assignment tests that'll join it next) covering user CRUD,
+the full admin-only permission boundary (401 with no session, 403 for
+viewer/analyst, 200 for admin), validation (bad role, bad email, short
+password, duplicate email), and that a password reset actually changes
+what `auth.verify_password` accepts, not just that the route returns
+200. Verified live end-to-end too: real login, create/list/patch/
+reset-password against the actually-running server, confirmed a fresh
+`GET /leases` correctly 401s with no session (the RBAC audit is
+genuinely live, not just unit-tested). Full suite: 44/44.
+
 ## Team collaboration infrastructure, step 2 + the login page it required: RBAC audit across every route
 
 Continuation of the collaboration-platform plan (step 1: real

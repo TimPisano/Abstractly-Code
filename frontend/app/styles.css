@@ -2077,6 +2077,39 @@
     margin-top: 1rem;
 }
 
+.team-add-form {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.team-add-form .text-input {
+    flex: 1 1 200px;
+    min-width: 160px;
+}
+
+.team-members-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.team-members-table th,
+.team-members-table td {
+    text-align: left;
+    padding: 0.6rem 0.75rem;
+    border-bottom: 1px solid var(--border-color);
+    font-size: 0.875rem;
+}
+
+.team-members-table select {
+    font-size: 0.8125rem;
+}
+
+.team-members-table .status-pill-deactivated {
+    opacity: 0.6;
+}
+
 .export-status-success, .export-status-error {
     display: flex;
     align-items: flex-start;

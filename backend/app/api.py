@@ -999,6 +999,110 @@ def auth_change_password():
 
 
 # ----------------------------------------------------------------------
+# Team management -- admin-only. Real accounts (the `users` table --
+# see app/database.py and app/auth.py), each with a role
+# (admin/analyst/viewer). Deliberately separate from the waitlist
+# admin routes below: approving a waitlist signup marks someone an
+# approved prospect, it does NOT create a login -- an admin does that
+# explicitly here, with a real password they share out-of-band (see
+# DECISIONS.md's team-collaboration entries for why these are two
+# decoupled steps, not one).
+# ----------------------------------------------------------------------
+
+_VALID_ROLES = {"admin", "analyst", "viewer"}
+_VALID_STATUSES = {"active", "deactivated"}
+
+
+def _user_public(user):
+    """Strips password_hash before this ever reaches a response -- every route below must go through this, never return a raw `users` row."""
+    return {k: v for k, v in user.items() if k != "password_hash"}
+
+
+@app.route('/team/members', methods=['GET'])
+@require_role('admin')
+def list_team_members():
+    return jsonify([_user_public(u) for u in database.list_users()]), 200
+
+
+@app.route('/team/members', methods=['POST'])
+@require_role('admin')
+def create_team_member():
+    """Body: {"email", "name", "role", "password"}. The admin sets the initial password directly and shares it with the new member out-of-band (see module comment above) -- there's no invite-link/email flow yet."""
+    body = request.get_json(silent=True) or {}
+    email = (body.get('email') or '').strip()
+    name = (body.get('name') or '').strip()
+    role = (body.get('role') or '').strip()
+    password = body.get('password') or ''
+
+    missing = [f for f, v in (('email', email), ('name', name), ('role', role), ('password', password)) if not v]
+    if missing:
+        return jsonify({"error": f"Missing required field(s): {', '.join(missing)}"}), 400
+    if role not in _VALID_ROLES:
+        return jsonify({"error": f"role must be one of: {', '.join(sorted(_VALID_ROLES))}"}), 400
+    if not _EMAIL_RE.match(email):
+        return jsonify({"error": "Please enter a valid email address"}), 400
+    if len(password) < 8:
+        return jsonify({"error": "Password must be at least 8 characters"}), 400
+
+    result = database.create_user(email, name, hash_password(password), role, created_by_user_id=current_user()["id"])
+    if result["status"] == "duplicate":
+        return jsonify({"error": "A team member with that email already exists"}), 409
+
+    user = database.get_user(result["id"])
+    # actor_user_id isn't a real insert_activity() param yet -- that
+    # lands with the activity-feed enrichment step of the
+    # collaboration-platform plan; the actor's name is embedded in the
+    # description for now, same convention every other insert_activity
+    # call site in this file still uses today.
+    database.insert_activity("team_member_added", f"{name} ({email}) added to the team as {role} by {current_user()['name']}")
+    return jsonify(_user_public(user)), 201
+
+
+@app.route('/team/members/<int:member_id>', methods=['PATCH'])
+@require_role('admin')
+def update_team_member(member_id):
+    """Body: any of {"name", "role", "status"}. Only the fields present are changed."""
+    user = database.get_user(member_id)
+    if not user:
+        return jsonify({"error": "Team member not found"}), 404
+
+    body = request.get_json(silent=True) or {}
+    if 'name' in body:
+        name = (body.get('name') or '').strip()
+        if not name:
+            return jsonify({"error": "name cannot be empty"}), 400
+        database.update_user_name(member_id, name)
+    if 'role' in body:
+        role = (body.get('role') or '').strip()
+        if role not in _VALID_ROLES:
+            return jsonify({"error": f"role must be one of: {', '.join(sorted(_VALID_ROLES))}"}), 400
+        database.update_user_role(member_id, role)
+    if 'status' in body:
+        status = (body.get('status') or '').strip()
+        if status not in _VALID_STATUSES:
+            return jsonify({"error": f"status must be one of: {', '.join(sorted(_VALID_STATUSES))}"}), 400
+        database.update_user_status(member_id, status)
+
+    return jsonify(_user_public(database.get_user(member_id))), 200
+
+
+@app.route('/team/members/<int:member_id>/reset-password', methods=['POST'])
+@require_role('admin')
+def reset_team_member_password(member_id):
+    """Body: {"password"}. Admin-initiated reset, same as create -- the new password is shared with the member out-of-band."""
+    if not database.get_user(member_id):
+        return jsonify({"error": "Team member not found"}), 404
+
+    body = request.get_json(silent=True) or {}
+    password = body.get('password') or ''
+    if len(password) < 8:
+        return jsonify({"error": "Password must be at least 8 characters"}), 400
+
+    database.update_user_password(member_id, hash_password(password))
+    return jsonify({"status": "password_reset"}), 200
+
+
+# ----------------------------------------------------------------------
 # Waitlist (landing page gate)
 #
 # /waitlist (GET), /waitlist/<id>/approve, and /waitlist/<id>/deny all

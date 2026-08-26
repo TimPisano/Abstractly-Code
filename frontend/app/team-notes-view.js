@@ -10,11 +10,11 @@
  *
  * Also renders a small "Team" roster above the feed -- who's actually
  * left a note, derived from this same response (no extra request).
- * NOT a real team-management/invite/roles feature: there's no user-
- * accounts system in this app at all (one shared admin login, self-
- * reported names everywhere -- see DECISIONS.md), so there's no real
- * roster to manage. This is honestly just "who this data has seen,"
- * which is what's real and buildable without that backend work.
+ * NOT the real team-management/roles surface -- that's team-view.js
+ * (add members, change roles, deactivate, reset passwords, all
+ * backed by the real `users` table now, see DECISIONS.md). This
+ * roster is narrower on purpose: "who has actually posted a note,"
+ * not "who has an account" -- a useful, different question.
  */
 const TeamNotes = {
     async load() {

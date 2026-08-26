@@ -808,6 +808,18 @@ def update_user_role(user_id: int, role: str) -> bool:
         conn.close()
 
 
+def update_user_name(user_id: int, name: str) -> bool:
+    conn = get_connection()
+    try:
+        cur = conn.execute("UPDATE users SET name = ? WHERE id = ?", (name, user_id))
+        conn.commit()
+        return cur.rowcount > 0
+    except OverflowError:
+        return False
+    finally:
+        conn.close()
+
+
 def update_user_status(user_id: int, status: str) -> bool:
     """status: 'active' | 'deactivated'. A deactivated user can no longer log in (auth.verify_password checks status), but their id stays valid everywhere it's already referenced (assignments, activity_log) -- see users.status's own column comment for why this is a status flip, not a DELETE."""
     conn = get_connection()

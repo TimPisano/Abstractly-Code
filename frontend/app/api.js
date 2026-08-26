@@ -455,4 +455,43 @@ const Api = {
         if (t12File) formData.append('t12_file', t12File);
         return apiRequest('/portfolio/investment-memo.xlsx', { method: 'POST', body: formData });
     },
+
+    // ---- Team management (admin-only on the backend -- see
+    // app/auth.py's require_role('admin')). ----
+
+    authSession() {
+        return apiRequest('/auth/session');
+    },
+
+    listTeamMembers() {
+        return apiRequest('/team/members');
+    },
+
+    createTeamMember({ name, email, role, password }) {
+        return apiRequest('/team/members', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, email, role, password }),
+        });
+    },
+
+    updateTeamMember(memberId, { name, role, status } = {}) {
+        const body = {};
+        if (name !== undefined) body.name = name;
+        if (role !== undefined) body.role = role;
+        if (status !== undefined) body.status = status;
+        return apiRequest(`/team/members/${memberId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+    },
+
+    resetTeamMemberPassword(memberId, password) {
+        return apiRequest(`/team/members/${memberId}/reset-password`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password }),
+        });
+    },
 };

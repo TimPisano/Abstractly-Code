@@ -152,6 +152,14 @@
                         <span class="nav-label">Team Notes</span>
                     </button>
                 </div>
+
+                <div class="nav-group">
+                    <div class="nav-group-label nav-label">Team</div>
+                    <button class="nav-item" data-view="team" data-tooltip="Team" type="button">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1a4 4 0 10-4-4 4 4 0 004 4zm6-4a4 4 0 01-1.13 2.79"/></svg>
+                        <span class="nav-label">Team</span>
+                    </button>
+                </div>
             </div>
 
             <div class="sidebar-footer">
@@ -775,6 +783,53 @@
 
                 <div class="report-frame-container">
                     <iframe id="reportFrame" title="Portfolio Report"></iframe>
+                </div>
+            </section>
+
+            <!-- TEAM VIEW -->
+            <section class="view" id="view-team">
+                <div class="view-header">
+                    <div>
+                        <h1>Team</h1>
+                        <p class="view-subtitle">Manage who has access and what they can do</p>
+                    </div>
+                </div>
+
+                <!-- Real enforcement is backend @require_role('admin') on
+                     every /team/members* route -- this admin-only check is
+                     purely so a non-admin sees a clear explanation instead
+                     of an empty table / silent 403s, not the actual
+                     permission boundary. -->
+                <div id="teamAdminOnlyNotice" class="panel" style="display:none;">
+                    <p class="panel-description">Only admins can manage team members. Ask an admin to add or update your account.</p>
+                </div>
+
+                <div id="teamContent" style="display:none;">
+                    <div class="panel">
+                        <div class="panel-header">
+                            <h2>Add Team Member</h2>
+                        </div>
+                        <form id="teamAddMemberForm" class="team-add-form">
+                            <input type="text" id="teamAddName" class="text-input" placeholder="Full name" required>
+                            <input type="email" id="teamAddEmail" class="text-input" placeholder="email@company.com" required>
+                            <select id="teamAddRole" class="text-input">
+                                <option value="viewer">Viewer</option>
+                                <option value="analyst" selected>Analyst</option>
+                                <option value="admin">Admin</option>
+                            </select>
+                            <input type="password" id="teamAddPassword" class="text-input" placeholder="Initial password (min. 8 characters)" required minlength="8" autocomplete="new-password">
+                            <button type="submit" class="btn-primary" id="teamAddSubmitBtn">Add Member</button>
+                        </form>
+                        <p id="teamAddMessage" class="access-gate-message"></p>
+                        <p class="panel-description">Share the initial password with them directly -- there's no email invite yet. They can change it after signing in.</p>
+                    </div>
+
+                    <div class="panel">
+                        <div class="panel-header">
+                            <h2>Members</h2>
+                        </div>
+                        <div id="teamMembersTableContainer"></div>
+                    </div>
                 </div>
             </section>
         </main>

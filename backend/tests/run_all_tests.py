@@ -63,6 +63,7 @@ UNIT_TESTS = [
     "test_concurrency.py",
     "test_performance.py",
     "test_rent_roll_shape_detection.py",
+    "test_teams_and_assignments.py",
 ]
 
 LIVE_API_TESTS = [
