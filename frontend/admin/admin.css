@@ -28,6 +28,28 @@ body {
     box-shadow: 0 0 0 3px rgba(182, 138, 78, 0.18);
 }
 
+/* ---- Sidebar brand-as-home-button ----
+   frontend/app/styles.css's .brand is a plain flex container -- used as a
+   non-interactive <div> on login pages, but here it's a real <button>
+   (clicking the logo returns to Dashboard from anywhere, standard app
+   convention). Reset button-specific defaults only; harmless if applied
+   to a div elsewhere since none of these properties have a default
+   effect there. Scoped to this new .brand-button modifier class, not
+   the shared .brand rule itself, so login pages are unaffected. */
+.brand-button {
+    background: none;
+    border: none;
+    font: inherit;
+    letter-spacing: inherit;
+    text-align: left;
+    cursor: pointer;
+    width: 100%;
+}
+
+.brand-button:hover {
+    color: var(--lux-accent, var(--primary-color));
+}
+
 /* ---- Settings view (Change Password) ---- */
 
 .settings-form {
