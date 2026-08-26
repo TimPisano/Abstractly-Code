@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign In — Abstractly</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+    <div class="access-gate" id="accessGate">
+        <div class="access-gate-card">
+            <div class="brand">
+                <svg class="brand-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5" />
+                </svg>
+                <span>Lease Portfolio</span>
+            </div>
+
+            <!-- Always shown, unconditionally, regardless of whether a valid
+                 session already exists -- same convention as
+                 frontend/admin/index.html: a login page must never
+                 silently skip or shortcut past its own credentials form.
+                 A session established by an earlier login still works
+                 fine for direct index.html access (normal session
+                 persistence, unaffected) -- this is specifically about
+                 the login page itself never bypassing its own form. -->
+            <div id="loginFormSection">
+                <p class="access-gate-subtitle">Sign in with your team account to access the portfolio.</p>
+                <form id="loginForm">
+                    <input type="email" id="loginEmail" class="text-input" placeholder="you@company.com" required autocomplete="username">
+                    <input type="password" id="loginPassword" class="text-input" placeholder="Password" required autocomplete="current-password">
+                    <button type="submit" class="btn-primary" id="loginSubmitBtn">Sign In</button>
+                </form>
+                <p class="access-gate-message" id="loginMessage"></p>
+            </div>
+        </div>
+    </div>
+
+    <script src="../config.js"></script>
+    <script src="login.js"></script>
+</body>
+</html>

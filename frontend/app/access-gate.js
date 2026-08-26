@@ -307,52 +307,31 @@
     });
 
     // ---- Initial load ----
-
+    //
+    // Gate is now real per-user login (see backend/app/auth.py), not the
+    // self-reported-email flow this file's panels/checkAccess()/
+    // LOCAL_DEV_MODE-bypass logic above were built around -- that
+    // machinery is retired (dead code, kept in place rather than torn
+    // out here to minimize churn on a file the collaboration-platform
+    // frontend work also touches; a real per-user `users` table replaced
+    // the waitlist-approval-based access model entirely, see
+    // DECISIONS.md's "Reliability hardening pass"/team-collaboration
+    // entries). The only question now is "does /auth/session say we're
+    // logged in" -- if not, redirect to the real login page rather than
+    // rendering any of the panels above.
     (async function init() {
-        let config;
+        let session = { authenticated: false };
         try {
-            config = await fetchConfig();
+            const { data } = await fetchJson(`${API_BASE_URL}/auth/session`, { credentials: 'include' });
+            session = data;
         } catch (err) {
-            // Fail closed: if we can't even reach the backend to ask
-            // whether the local-dev bypass is on, don't guess -- show the
-            // real gate with a clear explanation rather than silently
-            // granting or silently blocking access either way.
-            showSignIn(null, "Couldn't reach the server to verify access. Is the backend running?", true);
-            return;
+            // Can't reach the backend at all -- fail closed to the login
+            // page, same as any other "not authenticated" outcome.
         }
-
-        if (config.local_dev_mode) {
+        if (session.authenticated) {
             grant();
             return;
         }
-
-        let cachedEmail = null;
-        try { cachedEmail = localStorage.getItem(STORAGE_KEY); } catch (e) { /* localStorage unavailable */ }
-
-        if (!cachedEmail) {
-            showSignIn();
-            return;
-        }
-
-        try {
-            const result = await checkAccess(cachedEmail);
-            if (result.approved) {
-                grant();
-                return;
-            }
-            if (result.found) {
-                // Still pending from a previous visit -- go straight to
-                // the pending screen rather than making them re-submit
-                // the sign-in form just to be told the same thing again.
-                showPending(cachedEmail);
-                return;
-            }
-            // Cached email is no longer on the list at all (removed) --
-            // clear it so we don't keep re-trying a stale value.
-            clearCachedEmail();
-            showSignIn(cachedEmail, 'Enter your approved email to continue.', false);
-        } catch (err) {
-            showSignIn(cachedEmail, err.message || "Couldn't verify access. Is the backend running?", true);
-        }
+        window.location.href = 'login.html';
     })();
 })();

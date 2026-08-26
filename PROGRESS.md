@@ -1,6 +1,32 @@
 # Progress Summary
 
-**Last updated**: Fixed the rent-roll-shaped-document upload issue
+**Last updated**: Team collaboration infrastructure, step 2 of the
+approved plan (data model + auth = step 1, already shipped): gated
+every route in api.py with role-based access (`@require_role()`) --
+every GET needs a logged-in session, every write needs analyst+.
+`resolved_by`/`author_name`/`dismissed_by` now always come from the
+session, never the request body. One deviation from the written plan:
+`POST /qa` is now login-gated too (it reads real portfolio data,
+shouldn't have been left public). This broke 17 existing test files
+(fixed, all reflect the new session-sourced-identity contract) and
+required `frontend/app/api.js` to send `credentials:'include'` on
+every call (without it, every request 401s even when logged in) --
+which in turn exposed that the main app had no login page at all.
+Built one (`frontend/app/login.html`+`login.js`, new files, same
+pattern as the admin login) rather than rewriting the existing
+300-line self-reported-email gate, since a concurrent session is
+actively touching adjacent frontend files. Verified the full login
+flow at the HTTP/cookie level end-to-end (login -> session check ->
+gated route succeeds) -- not independently verified in an actual
+browser, no browser-automation tool available, said so explicitly.
+Full unit suite: 43/43. Live test suite (needs a real login step
+added per file) and retiring the old getUserIdentity() "your name"
+inputs (harmless but now-ignored) are tracked as follow-ups. See
+DECISIONS.md's "Team collaboration infrastructure, step 2..." entry.
+
+---
+
+Fixed the rent-roll-shaped-document upload issue
 found during the verification pass below. A real 32-page portfolio
 rent-roll PDF uploaded through `POST /leases` was confidently
 returning WRONG values with false high confidence (a column header

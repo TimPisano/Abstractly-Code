@@ -1,5 +1,95 @@
 # Implementation Decisions
 
+## Team collaboration infrastructure, step 2 + the login page it required: RBAC audit across every route
+
+Continuation of the collaboration-platform plan (step 1: real
+users/roles table + unified /auth/* routes, already shipped). Step 2
+gates every route in api.py with `@require_role()`: every GET needs
+at least a logged-in session (any role), every mutating route needs
+analyst or above. Implemented as a small script (not ~77 manual
+edits) that inserts the correct decorator immediately after each
+`@app.route(...)` line, based on an explicit path+method->role table
+built by walking the full route list once -- verified by diffing the
+result before running anything, not just trusting the script ran.
+
+**One deliberate deviation from the written plan**: `POST /qa` was
+listed as staying public, but it answers natural-language questions
+using `database.get_all_effective_leases()` -- real portfolio data.
+Leaving it open would let an unauthenticated caller extract real
+lease data through the Q&A engine even with every other route locked
+down. Changed to read-gated (`@require_role()`) instead.
+
+`resolved_by`/`author_name`/`dismissed_by` are no longer request-body
+fields at all -- `resolve_discrepancy`, `reopen_discrepancy`,
+`add_lease_comment`, `add_discrepancy_comment`, `dismiss_alert_route`
+now source identity from `auth.current_user()` (the session), exactly
+as DECISIONS.md's original "Identity model for resolutions/comments"
+entry anticipated this transition happening. The "missing required
+field" validation for those fields was removed since they're no
+longer client-supplied; `note`/`correct_source`/`body` are still
+validated.
+
+**This broke 17 existing unit test files** (they call now-gated
+routes via `test_client()` with no session) -- fixed by adding a
+shared `_authed_client()` helper to each (session_transaction()
+setting an analyst-role session directly, same convention already
+established in test_admin_auth.py), and updating the handful of
+assertions that checked a specific `resolved_by`/`author_name`/
+`dismissed_by` value sent in the request body to instead expect the
+session identity. Full unit suite: 43/43.
+
+**Required, easy-to-miss coupled fix**: `frontend/app/api.js`'s
+`apiRequest()` had no `credentials: 'include'` -- without it, every
+`Api.*` call would 401 even for a logged-in user, since fetch omits
+cookies cross-origin by default (frontend and backend are different
+ports in dev). Added it as part of this same change, not a follow-up,
+since shipping the RBAC audit without it would have silently broken
+the entire main app.
+
+**That fix exposed a real gap**: the main client-facing app
+(`frontend/app/`) had no login page at all -- only the admin mini-SPA
+did. Built one (`login.html` + `login.js`, mirroring
+`frontend/admin/login.js`'s exact pattern: `POST /auth/login`,
+`credentials: 'include'`, redirect on success) as new files rather
+than restructuring the existing self-reported-email gate
+(`access-gate.js`, 358 lines) wholesale -- there's a concurrent
+session actively redesigning `frontend/admin/` and touching
+`frontend/app/app.js`, so minimizing edits to files already in flight
+mattered more here than a clean rewrite would have. `access-gate.js`'s
+`init()` was replaced with a real `GET /auth/session` check (redirect
+to `login.html` if not authenticated, `grant()` if so); the old
+3-panel self-reported-email UI and its `LOCAL_DEV_MODE` bypass are now
+dead code, left in place rather than torn out, since `LOCAL_DEV_MODE`
+never had any backend-side auth-bypass effect to begin with (it only
+ever changed what `/config` reported) and deleting ~300 lines from a
+file the other session is also touching is exactly the collision risk
+being avoided.
+
+Verified the full login flow at the HTTP/cookie level end-to-end with
+a real cookie jar (`curl -c/-b`), matching exactly what
+`credentials:'include'` + `fetch()` does: unauthenticated session
+check -> 401 on a gated route -> real login -> authenticated session
+check -> gated route succeeds with the cookie. Confirmed the session
+cookie's `Secure` flag (required for `SameSite=None`, already set
+before this change) doesn't block local dev over plain `http://` --
+browsers treat `localhost`/`127.0.0.1` as a "potentially trustworthy
+origin" per spec specifically to support this, the same mechanism the
+pre-existing admin login already depended on. **Not independently
+verified in an actual browser** -- no browser-automation tool is
+available in this environment; said so explicitly rather than
+claiming a UI click-through that didn't happen, per this project's
+own quality bar for frontend changes.
+
+**Explicitly not done in this pass, tracked as follow-up**: the live
+test suite (raw `urllib` against the running server, no shared cookie
+jar the way `test_client()` has) still needs a real login step added
+to each file before `--live` will pass again. The 4 call sites of
+`getUserIdentity()`/`setUserIdentity()` (comment/resolve/dismiss
+modals still ask for a "your name" field, which the backend now
+silently ignores in favor of the session) still need retiring --
+functionally harmless (nothing breaks, the typed name is just
+discarded) but a real, confusing UX inconsistency until fixed.
+
 ## Reject rent-roll-shaped documents on the single-lease upload path instead of silently extracting garbage
 
 Follow-up to the verification pass below: a real, live example
