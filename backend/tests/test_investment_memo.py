@@ -152,6 +152,79 @@ def test_discrepancies_and_resolutions_scoped_to_property():
     print("✓ test_discrepancies_and_resolutions_scoped_to_property: PASS")
 
 
+def test_portfolio_wide_memo_excludes_discrepancies_for_deleted_leases():
+    """
+    Regression test for a real, confirmed bug: a portfolio-wide memo
+    used to include EVERY discrepancy row ever recorded
+    (database.list_discrepancies() with no filtering at all), including
+    ones whose lease had since been deleted and is no longer part of
+    the portfolio. Found live: after stress-testing with thousands of
+    leases that were later deleted, a 3-lease portfolio's memo reported
+    "19,230 flagged" -- directly contradicting its own "3 leases
+    covered" header. Fixed in _relevant_discrepancies to only include a
+    lease-scoped discrepancy if its lease_id/related_lease_id still
+    points to a lease CURRENTLY in the portfolio.
+    """
+    db_path = _fresh_temp_db()
+    try:
+        current_id = _insert("current.pdf", tenant="Current Co", rent_amount="$5,000.00", property_address="1 Main St")
+        doomed_id = _insert("doomed.pdf", tenant="Doomed Co", rent_amount="$3,000.00", property_address="2 Elm St")
+
+        database.upsert_discrepancy(
+            discrepancy_type="lease_risk_flag", natural_key="lease_risk:current:missing_clause:cam_charges:0",
+            category="missing_clause", message="No CAM charges clause found in this lease",
+            details={}, lease_id=current_id,
+        )
+        database.upsert_discrepancy(
+            discrepancy_type="lease_risk_flag", natural_key="lease_risk:doomed:missing_clause:cam_charges:0",
+            category="missing_clause", message="No CAM charges clause found in this lease",
+            details={}, lease_id=doomed_id,
+        )
+
+        # Before deletion: both discrepancies are legitimately relevant.
+        data = build_investment_memo_data()
+        assert data["discrepancy_summary"]["total"] == 2, "both leases still exist -- both discrepancies should count"
+
+        database.delete_lease(doomed_id)
+
+        # After deletion: the orphaned discrepancy must disappear from
+        # a portfolio-wide memo, even though the row itself is still
+        # in the database (discrepancies are deliberately permanent
+        # records -- see database.py's un-FK'd lease_id).
+        data = build_investment_memo_data()
+        assert data["discrepancy_summary"]["total"] == 1, f"expected only the current lease's discrepancy, got {data['discrepancy_summary']}"
+        assert data["discrepancies"][0]["lease_id"] == current_id
+        assert data["lease_count"] == 1, "the deleted lease itself must also be gone from the memo's lease list"
+    finally:
+        os.unlink(db_path)
+    print("✓ test_portfolio_wide_memo_excludes_discrepancies_for_deleted_leases: PASS")
+
+
+def test_portfolio_wide_memo_excludes_tenant_concentration_for_a_tenant_no_longer_in_the_portfolio():
+    """Same bug class as the lease-scoped case above, for the no-lease-id discrepancy types (tenant_concentration/t12_reconciliation) -- these must also be excluded once the tenant/address they're about no longer appears anywhere in the current portfolio."""
+    db_path = _fresh_temp_db()
+    try:
+        _insert("current.pdf", tenant="Current Co", rent_amount="$5,000.00", property_address="1 Main St")
+
+        database.upsert_discrepancy(
+            discrepancy_type="tenant_concentration", natural_key="tenant_concentration:stale co",
+            category="tenant_concentration", message="Stale Co accounts for a large share of portfolio rent",
+            details={"tenant": "Stale Co"},
+        )
+        database.upsert_discrepancy(
+            discrepancy_type="tenant_concentration", natural_key="tenant_concentration:current co",
+            category="tenant_concentration", message="Current Co accounts for a large share of portfolio rent",
+            details={"tenant": "Current Co"},
+        )
+
+        data = build_investment_memo_data()
+        assert data["discrepancy_summary"]["total"] == 1, f"expected only the Current Co discrepancy, got {data['discrepancy_summary']}"
+        assert data["discrepancies"][0]["details"]["tenant"] == "Current Co"
+    finally:
+        os.unlink(db_path)
+    print("✓ test_portfolio_wide_memo_excludes_tenant_concentration_for_a_tenant_no_longer_in_the_portfolio: PASS")
+
+
 def test_t12_fresh_upload_takes_precedence_over_persisted():
     db_path = _fresh_temp_db()
     try:
@@ -344,6 +417,8 @@ if __name__ == "__main__":
     test_dedupe_prefers_pdf_lease_regardless_of_upload_order()
     test_dedupe_keeps_most_recent_when_both_are_the_same_source_type()
     test_discrepancies_and_resolutions_scoped_to_property()
+    test_portfolio_wide_memo_excludes_discrepancies_for_deleted_leases()
+    test_portfolio_wide_memo_excludes_tenant_concentration_for_a_tenant_no_longer_in_the_portfolio()
     test_t12_fresh_upload_takes_precedence_over_persisted()
     test_t12_falls_back_to_persisted_discrepancy_when_no_fresh_upload()
     test_t12_unavailable_for_portfolio_scope()

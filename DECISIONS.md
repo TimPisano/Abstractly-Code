@@ -1,5 +1,90 @@
 # Implementation Decisions
 
+## Verified upload (all 6 file types) and export (PDF/Excel) with real files, not code review — found and fixed a real bug
+
+Requested: don't mark the multi-format upload pipeline or the PDF/
+Excel exports "done" on code-review confidence alone — upload a real
+file of each type, show the actual extracted fields, and actually open
+each generated export file to confirm its contents are correct.
+
+**Upload pipeline: all 6 formats confirmed genuinely correct, not just
+accepted-without-erroring.** Used the existing `tests/multiformat_lease.*`
+fixture set (the same underlying lease -- "Cascade Outdoor Gear Co." --
+saved as `.xlsx`, `.xls`, `.csv`, `.docx`, `.jpg`, `.png`, `.tiff`,
+`.txt`) plus a distinct real PDF (`sample_lease_commercial.pdf`)
+through the live `POST /extract` route. Every one of the 6 requested
+formats (PDF, Excel, CSV, Word, image/OCR, plain text) returned all 15
+fields correctly, all "high" confidence, with real page+quote source
+citations -- and critically, `.xlsx`/`.xls`/`.csv`/`.docx`/`.jpg`/`.png`
+all produced byte-for-byte IDENTICAL field values to each other (same
+tenant, landlord, address, rent, dates, sqft), which is strong direct
+proof no format is silently mangling data -- they all agree. The image
+formats' OCR was checked at the raw-confidence level too, not just the
+final field output: `document_extractor.extract_pages` reported a real
+Tesseract confidence of 95.9% and OCR'd text matching the ground-truth
+`.txt` file's content exactly. `exclusivity_clause` correctly came back
+`None`/not-found (with no fabricated value) for the one fixture that
+genuinely doesn't have that clause -- confirms the "flag missing
+rather than guess" bar holds under real OCR, not just clean text
+input.
+
+**Export: PDF and Excel both confirmed genuinely correct and
+complete, by actually parsing the generated files back out** (PyPDF2
+for PDF text, openpyxl for real cell values) against a real 3-4-lease
+portfolio built from real fixture uploads -- not just checking that a
+response came back with the right Content-Type and non-zero length.
+Checked 6 distinct export routes total: `/portfolio/investment-memo.pdf`,
+`/portfolio/investment-memo.xlsx`, `/portfolio/rent-roll.xlsx`,
+`/leases/<id>/summary.pdf`, `/leases/<id>/export.xlsx`. All of them
+produced complete, accurate content -- correct rent/sqft/dates per
+lease, correct portfolio totals (sum of individual rents matched the
+reported total exactly), correct WALT/rollover math, and (once the bug
+below was fixed) a correct discrepancy list.
+
+**Found and fixed a real bug in the process, not a hypothetical
+one**: `app/investment_memo.py`'s `_relevant_discrepancies()`, for a
+portfolio-wide memo, did `if portfolio_wide: return all_discrepancies`
+-- literally every discrepancy row `database.list_discrepancies()`
+had ever recorded, with zero filtering. `discrepancies.lease_id` is
+deliberately un-FK'd so a row survives its lease being deleted (a
+permanent audit-trail record -- see the "Discrepancies from deleted
+leases" fix in `portfolio_health_score.py`, which had ALREADY solved
+this exact problem for the health-score calculation, just never for
+the memo). This wasn't caught by any existing test because every
+existing investment-memo test builds a small, fresh, single-purpose
+temp database with no accumulated history to reveal it. It surfaced
+immediately under this pass's actual verification: a freshly-uploaded
+3-lease portfolio's memo (on the shared dev database, which had
+accumulated tens of thousands of discrepancy rows from this session's
+own earlier stress-testing of now-deleted leases) reported "19,230
+flagged" discrepancies -- directly, visibly contradicting the memo's
+own "3 leases covered" header two lines above it on the same page. A
+real user with any upload/delete history at all would eventually hit
+this, not just a stress-test artifact.
+
+Fixed by making the portfolio-wide branch mirror
+`portfolio_health_score.py`'s already-correct, already-battle-tested
+`_current_open_discrepancies` logic exactly (imported its
+`_LEASE_SCOPED_DISCREPANCY_TYPES` constant rather than duplicating it):
+a lease-scoped discrepancy (`lease_risk_flag`, `cross_lease_mismatch`,
+`rent_roll_reconciliation`) is only relevant if its `lease_id`/
+`related_lease_id` still points to a lease currently in the portfolio;
+a no-lease-id discrepancy (`tenant_concentration`, `t12_reconciliation`)
+is only relevant if the tenant/address it's about still appears
+somewhere in the current portfolio. Verified the fix precisely, not
+just that the number went down: regenerated the same memo after the
+fix and it correctly showed "No discrepancies have been flagged in
+this scope" for the untouched 3-lease portfolio (down from 19,230),
+then uploaded a genuinely messy 4th lease and confirmed the memo
+correctly showed exactly its 6 real, current flags -- proving the fix
+excludes stale/orphaned rows without also excluding legitimate ones.
+Added two regression tests (`test_investment_memo.py`): one for the
+lease-scoped case (delete a lease, confirm its discrepancy drops out
+of a portfolio-wide memo while a still-current lease's stays), one for
+the no-lease-id case (a `tenant_concentration` discrepancy for a
+tenant no longer in the portfolio is excluded, one for a current
+tenant is kept).
+
 ## Reliability hardening pass: error handling, performance, data integrity, security
 
 Requested: an explicit 4-part hardening pass over the system built so

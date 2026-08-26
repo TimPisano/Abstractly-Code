@@ -1,6 +1,32 @@
 # Progress Summary
 
-**Last updated**: Ran the requested 4-part reliability hardening pass
+**Last updated**: Verified upload (all 6 file types) and export
+(PDF/Excel) with real files and real inspected output, per explicit
+instruction not to mark this done on code review alone. Uploaded a
+real PDF plus the same lease saved as .xlsx/.xls/.csv/.docx/.jpg/.png/
+.txt through the live /extract route -- all 6 requested formats
+extracted all 15 fields correctly with real source citations, and the
+5 non-PDF formats produced byte-identical values to each other
+(strong proof none is silently mangling data); OCR specifically
+checked at the raw Tesseract-confidence level (95.9%), not just final
+field output. Generated and actually parsed back out 6 different
+export files (investment memo PDF/Excel, rent-roll Excel, single-lease
+summary PDF/Excel) against a real uploaded portfolio -- all correct
+and complete. Found and fixed one real bug in the process: a
+portfolio-wide investment memo was including EVERY discrepancy ever
+recorded, including orphaned rows for since-deleted leases -- a fresh
+3-lease portfolio's memo reported "19,230 flagged," contradicting its
+own "3 leases covered" header. Fixed to mirror
+portfolio_health_score.py's already-correct scoping logic (which had
+solved this exact problem before, just never for the memo). Verified
+the fix precisely (excludes stale rows, keeps real ones) and added 2
+regression tests. See DECISIONS.md's "Verified upload... and export"
+entry for full detail, including the actual extracted field values and
+export contents.
+
+---
+
+Ran the requested 4-part reliability hardening pass
 (error handling, performance, data integrity, security) and fixed
 what it found. Two real bugs: a concurrency race in
 `upsert_discrepancy`/`upsert_alert` (non-atomic check-then-insert;

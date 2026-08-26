@@ -41,11 +41,13 @@ from reportlab.platypus import HRFlowable, Paragraph, Spacer, Table, TableStyle
 
 from . import database
 from .normalize import parse_currency
+from .portfolio_health_score import _LEASE_SCOPED_DISCREPANCY_TYPES
 from .portfolio import (
     FIELD_NAMES,
     _is_rent_roll_import,
     _normalize_address,
     _normalize_building_address,
+    _normalize_tenant_name,
     compute_portfolio_confidence_summary,
     compute_portfolio_metrics,
     compute_rollover_schedule,
@@ -131,21 +133,77 @@ def _dedupe_for_financial_computation(scoped_leases: List[Dict[str, Any]]) -> Li
     return list(by_unit.values()) + unmatched
 
 
-def _relevant_discrepancies(scoped_lease_ids: set, normalized_target: Optional[str], portfolio_wide: bool) -> List[Dict[str, Any]]:
+def _relevant_discrepancies(
+    scoped_leases: List[Dict[str, Any]], scoped_lease_ids: set, normalized_target: Optional[str], portfolio_wide: bool
+) -> List[Dict[str, Any]]:
     """
     Which persisted discrepancies (Item 2) belong in this document.
-    Portfolio scope: everything. Property scope: anything tied to one
-    of this property's leases (lease_id or related_lease_id), PLUS any
-    t12_reconciliation discrepancy whose own address normalizes to the
-    same building (that discrepancy type carries no lease_id at all --
-    see app/discrepancies.py's sync_t12_reconciliation -- so it can
-    only be matched by address). tenant_concentration discrepancies are
+
+    Portfolio scope: everything about a lease CURRENTLY in the
+    portfolio (lease_id or related_lease_id in scoped_lease_ids, which
+    the caller already passes as every currently-existing lease id for
+    a portfolio-wide memo), PLUS the two no-lease-id discrepancy types
+    (tenant_concentration, t12_reconciliation -- portfolio-wide facts
+    about a TENANT or an ADDRESS, not one lease row) but ONLY when that
+    tenant/address still appears somewhere in the current portfolio.
+    Mirrors portfolio_health_score.py's _current_open_discrepancies
+    exactly (see _LEASE_SCOPED_DISCREPANCY_TYPES there), just without
+    that function's status='open' filter -- this memo shows resolved
+    discrepancies too.
+
+    Deliberately NOT "every discrepancy row ever recorded" --
+    discrepancies.lease_id is intentionally un-FK'd so a row survives
+    its lease being deleted (a permanent audit-trail record, see
+    database.py's migration comment), but that means an unfiltered
+    dump would include discrepancies for leases/tenants/addresses that
+    aren't part of the portfolio this memo is actually describing
+    anymore. Confirmed this was a real, live gap, not a hypothetical:
+    after stress-testing with thousands of leases that were later
+    deleted, a 3-lease portfolio's memo was reporting "19,230 flagged"
+    purely from orphaned rows -- directly contradicting the memo's own
+    "3 leases covered" header on the same page.
+
+    Property scope: anything tied to one of this property's leases
+    (lease_id or related_lease_id), PLUS any t12_reconciliation
+    discrepancy whose own address normalizes to the same building
+    (that discrepancy type carries no lease_id at all -- see
+    app/discrepancies.py's sync_t12_reconciliation -- so it can only
+    be matched by address). tenant_concentration discrepancies are
     inherently portfolio-wide facts about a tenant, not about one
     property, so they're excluded from a property-scoped memo.
     """
     all_discrepancies = database.list_discrepancies()
+
     if portfolio_wide:
-        return all_discrepancies
+        current_tenant_names = {_normalize_tenant_name(field_value(l, "tenant")) for l in scoped_leases} - {None}
+        current_addresses = {_normalize_building_address(field_value(l, "property_address")) for l in scoped_leases} - {None}
+
+        relevant = []
+        for disc in all_discrepancies:
+            lease_id, related_id = disc.get("lease_id"), disc.get("related_lease_id")
+            if lease_id is not None or related_id is not None:
+                if lease_id in scoped_lease_ids or related_id in scoped_lease_ids:
+                    relevant.append(disc)
+                continue
+
+            if disc["discrepancy_type"] == "tenant_concentration":
+                if _normalize_tenant_name(disc["details"].get("tenant")) in current_tenant_names:
+                    relevant.append(disc)
+            elif disc["discrepancy_type"] == "t12_reconciliation":
+                if _normalize_building_address(disc["details"].get("property_address")) in current_addresses:
+                    relevant.append(disc)
+            elif disc["discrepancy_type"] in _LEASE_SCOPED_DISCREPANCY_TYPES:
+                # A type that's SUPPOSED to always carry a lease_id, but
+                # doesn't here -- a data anomaly, not a legitimate "no
+                # lease" case (see portfolio_health_score.py's own
+                # identical branch for the historical root cause).
+                # There's no way to verify whether the lease it WAS
+                # about still exists, so the honest, non-guessing
+                # choice is to exclude it rather than assume relevance.
+                continue
+            else:
+                relevant.append(disc)  # a genuinely new, unrecognized no-lease-id type -- don't silently drop it
+        return relevant
 
     relevant = []
     for disc in all_discrepancies:
@@ -215,7 +273,7 @@ def build_investment_memo_data(
     normalized_target = _normalize_building_address(property_address) if property_address else None
     financial_leases = _dedupe_for_financial_computation(scoped)
 
-    discrepancies = _relevant_discrepancies(scoped_ids, normalized_target, portfolio_wide=property_address is None)
+    discrepancies = _relevant_discrepancies(scoped, scoped_ids, normalized_target, portfolio_wide=property_address is None)
     discrepancies_with_resolutions = []
     open_count = 0
     for disc in discrepancies:
