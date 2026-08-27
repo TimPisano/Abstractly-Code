@@ -1,6 +1,45 @@
 # Progress Summary
 
-**Last updated**: Built the AI portfolio assistant (POST /assistant/ask,
+**Last updated**: Built internal team messaging, OAuth email account
+linking, a general tasks system, and enriched the Today view/toolbar
+actions. Messaging: direct + group threads (`GET|POST /threads`,
+`POST /threads/<id>/participants`, `GET|POST /threads/<id>/messages`,
+`POST /threads/<id>/read`, `GET /messages/unread-count`), polling-
+based (no websockets), isolation enforced via real participant-
+membership checks -- a non-participant gets 404, not 403, matching
+the assistant-conversations precedent. Verified live with 3 real
+accounts: two messaging back and forth, a third genuinely locked out
+of every read/write/participants/mark-read route on that thread.
+Email linking: real OAuth2 authorization-code flow for Google/
+Microsoft send-as (`GET /email-accounts/connect/<provider>`, `GET
+/email-accounts/callback/<provider>`, `GET /email-accounts`, `DELETE
+/email-accounts/<id>`, `POST /email-accounts/<id>/send`) -- never
+stores a password, only encrypted (Fernet, `TOKEN_ENCRYPTION_KEY`)
+access/refresh tokens, auto-refreshed on use, best-effort revoked on
+disconnect. No real Google/Microsoft app registration exists yet, so
+the full round trip is tested against a scripted fake HTTP client
+(state validation, token exchange, missing-refresh-token handling,
+refresh-on-expiry, send failures) -- see the OAuth setup walkthrough
+this session gave the user for what they still need to do themselves.
+Tasks: title/description/due date/assignee/status
+(open/in_progress/done), optionally linked to a lease or discrepancy,
+with a discrepancy or alert convertible directly into a task
+(carries over category/severity/message). `/today` now also returns
+tasks due today or overdue, a diff of new discrepancies/alerts/
+comments since the user's PREVIOUS login (a new `previous_login_at`
+column -- `last_login_at` alone can't answer this, since it gets
+overwritten the instant the current session starts), and unread
+messages. Toolbar gaps closed for Discrepancies/Alerts (bulk-resolve,
+bulk-dismiss, CSV export -- Leases/Rent Roll already had these). 57
+new unit tests across 3 new + 2 extended test files, full suite
+47/48 (only failure: `test_document_extractor.py`, a pre-existing
+local `tesseract` binary gap, unrelated to this work). See
+DECISIONS.md's "Team messaging, OAuth email linking, tasks, Today
+enrichment" entry for full detail.
+
+---
+
+Built the AI portfolio assistant (POST /assistant/ask,
 GET /assistant/conversations) and confirmed/built the Today view (GET
 /today) it was asked to power -- which required finally building
 Assignments (collaboration plan step 4, previously deferred) since

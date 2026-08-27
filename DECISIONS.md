@@ -1,5 +1,143 @@
 # Implementation Decisions
 
+## Team messaging, OAuth email linking, tasks, Today enrichment
+
+Four pieces of work, requested together as "a full daily-workspace
+experience for CRE analysts": internal team messaging, OAuth email
+account linking (send-as), a general tasks system, and enrichment of
+the existing Today view plus a few missing per-section toolbar
+endpoints.
+
+**Messaging: two new tables, isolation enforced at the DB layer, not
+assumed.** `message_threads` (direct or group) + `message_thread_
+participants` (membership) + `messages`. The isolation requirement
+was explicit and named ("confirm this is actually enforced, not just
+assumed"), so it got the same treatment as `assistant_conversations`
+before it: every thread route checks `database.is_thread_participant`
+first and returns 404 (not 403) for a non-participant, so a thread's
+very existence is hidden from anyone not in it. Verified three ways:
+a dedicated unit test with three real accounts (A and B share a
+thread; C gets 404 on every read/write/participants/mark-read route,
+and C's own `GET /threads` never lists it), and a live run against
+the running server with three real logged-in sessions doing the same
+thing. Direct threads are deduped (`find_direct_thread` reuses an
+existing 1-on-1 rather than creating a second one); group threads
+never are. Unread tracking: `message_thread_participants.last_
+read_at`, with `insert_message` auto-marking the SENDER's own message
+read so your own messages never count as unread for you. Delivery is
+polling (`GET /threads/<id>/messages?since=<ts>`), reusing the app's
+one existing polling precedent (`startLiveActivityPolling()`) rather
+than adding websocket infrastructure -- same call as the original
+team-collaboration plan made for near-real-time updates generally.
+
+**OAuth email linking: real authorization-code flow, tokens encrypted
+at rest, never a password.** `app/email_accounts.py` builds the
+Google/Microsoft authorize URL (with a one-time `state` token stored
+in a new `oauth_states` table for CSRF protection), exchanges the
+callback's code for tokens, and stores them in `linked_email_accounts`
+-- encrypted with Fernet (`app/token_encryption.py`,
+`TOKEN_ENCRYPTION_KEY` env var) so a leaked DB file doesn't leak
+working credentials. Every provider HTTP call takes an injectable
+`http` client (default: `requests`), which is what makes the whole
+flow testable without a real Google/Microsoft app registration --
+tests script a fake HTTP client through state validation, token
+exchange, a provider that doesn't return a refresh token (a real
+failure mode: Google only issues one on first consent, so `prompt=
+consent&access_type=offline` is set on every authorize URL to force
+one even on a reconnect), refresh-on-expiry, and send failures.
+Disconnecting always deletes the local row even if the provider's
+best-effort revoke call throws -- what actually matters for "can this
+app still send as me" is our copy being gone, not whether the
+provider's revoke endpoint was reachable. Ownership isolation follows
+the same 404-not-403 convention as messaging (`_owned_linked_account_
+or_404` in api.py).
+
+**No real OAuth app registration exists yet -- this needs the account
+owner to do it themselves.** `GOOGLE_OAUTH_CLIENT_ID/SECRET/REDIRECT_
+URI` and `MICROSOFT_OAUTH_CLIENT_ID/SECRET/REDIRECT_URI` are unset in
+this environment; `/email-accounts/connect/<provider>` returns a
+clean 503 until they're set, rather than a broken redirect. Per this
+session's established pattern for external-credential blockers (see
+`feedback_blocked_on_external_credentials` in the auto-memory system):
+built and tested everything possible without live credentials, and
+gave the user the exact walkthrough for what they need to do
+themselves (Google Cloud Console: create a project, enable the Gmail
+API, configure the OAuth consent screen, create an OAuth Client ID of
+type "Web application" with the redirect URI set to `<backend-url>/
+email-accounts/callback/google`, request the `gmail.send` scope;
+Microsoft: register an app in Azure Portal / Entra ID, add a
+redirect URI of type "Web" pointing at `<backend-url>/email-accounts/
+callback/microsoft`, request the `Mail.Send` delegated Graph
+permission and enable `offline_access` for refresh tokens, create a
+client secret) -- flagged plainly in the chat response, not buried.
+
+**Tasks: deliberately a separate table from `assignments`, not a
+reuse of it.** `assignments` (from the collaboration plan) already
+answers "who owns this lease/discrepancy/property" with a status of
+assigned/in_review/resolved. A task is a different concept -- a
+concrete to-do with its own title, free-text description, and due
+date, which may or may not be about a specific record, with its own
+status vocabulary (open/in_progress/done) that doesn't map cleanly
+onto assignments' three states. Reusing `assignments` would have
+meant bolting due-date/title/description columns onto a table whose
+one-active-row-per-target design doesn't fit "three different to-dos
+about the same discrepancy." `tasks.lease_id`/`discrepancy_id` are
+deliberately not FK'd, same "survives deletion of the thing it
+referenced" reasoning already established for `discrepancies.
+lease_id` and `assignments.lease_id`. Converting a discrepancy or
+alert into a task (`create_task_from_discrepancy`/`_from_alert` in
+`app/tasks.py`) carries the category/severity/message across
+automatically so the assignee isn't forced to re-open the source
+record just to know what the task is about.
+
+**Today view: `previous_login_at`, not `last_login_at`, for "what's
+new since I was last here."** The literal requirement -- new alerts/
+discrepancies/comments since the user's last login -- ran into a real
+bug before it was ever shipped: `auth_login()` calls `database.
+update_user_last_login()` the instant a session starts, which
+overwrites `last_login_at` with "now" before the frontend ever gets a
+chance to call `/today`. Diffing against `last_login_at` would
+therefore always compare against "right now" and nothing would ever
+show up as new. Fixed with a second column, `previous_login_at`,
+which `update_user_last_login` shifts the OLD `last_login_at` into
+atomically (`SET previous_login_at = last_login_at, last_login_at =
+?`) before overwriting -- so it always holds "the login before this
+one," which is what the feature actually needs. A user's very first
+login has no `previous_login_at` yet; the "new since" section comes
+back empty rather than treating "no baseline" as "everything is new."
+Caught and fixed before writing a single test, by tracing through
+exactly when each route gets called relative to session state, not
+after a test surfaced it.
+
+**Toolbar audit: Discrepancies and Alerts were missing bulk actions
+and exports that Leases/Rent Roll already had.** Leases already
+supported checkbox multi-select export (`/leases/export.xlsx?ids=`),
+bulk-delete, and bulk-tag; Rent Roll already had CSV/Excel export.
+Discrepancies and Alerts had only single-item resolve/dismiss and no
+export at all -- a real gap for a "select several, resolve/dismiss
+them, or export the list" toolbar. Added `POST /discrepancies/bulk-
+resolve`, `POST /alerts/bulk-dismiss` (both report back per-id which
+succeeded vs. didn't exist, rather than failing the whole batch on
+one stale id), and `GET /discrepancies/export.csv` / `GET /alerts/
+export.csv` (same filters as their respective list routes). Verified
+live against the running server with real portfolio data --
+including discovering mid-verification that the bulk-dismiss test
+call had dismissed 3 genuinely-active real alerts (dismissal is
+permanent by design, confirmed via `test_upsert_never_reactivates_a_
+dismissed_alert` -- regenerating alerts does NOT undo a dismissal),
+which had to be restored with a direct DB update afterward rather
+than assumed to self-heal. A reminder to treat live verification
+against production data as a real, reversible-with-care action, not
+a free side effect.
+
+All four pieces tested with realistic multi-user scenarios (2-3 real
+accounts, not fake session ids, since tasks/messaging/assignments all
+have real FK constraints on user ids) and verified live against the
+running server, then the live-verification test data (throwaway users,
+tasks, threads) was cleaned up afterward -- except where cleanup
+required restoring altered rows rather than just deleting created
+ones, as with the alerts above.
+
 ## AI portfolio assistant + Today view (assignments backend, step 4 of the collaboration plan)
 
 Two requests: (1) a chat-style AI assistant grounded in the real
