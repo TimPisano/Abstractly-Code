@@ -1389,6 +1389,132 @@ def get_unread_counts_for_user(user_id: int) -> Dict[int, int]:
         conn.close()
 
 
+# ----------------------------------------------------------------------
+# Email account linking (OAuth send-as)
+# ----------------------------------------------------------------------
+
+def create_oauth_state(state: str, user_id: int, provider: str) -> None:
+    """A one-time CSRF token for the OAuth authorize->callback round trip, keyed by the random state string itself (not by user, since the callback arrives with only the state to go on)."""
+    conn = get_connection()
+    try:
+        conn.execute(
+            "INSERT INTO oauth_states (state, user_id, provider, created_at) VALUES (?, ?, ?, ?)",
+            (state, user_id, provider, datetime.now(timezone.utc).isoformat()),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def consume_oauth_state(state: str, max_age_seconds: int = 600) -> Optional[Dict[str, Any]]:
+    """Looks up and deletes a state token in one call (single-use, matching what 'state' is for). Returns None if the state doesn't exist or is older than max_age_seconds, either of which the callback route must treat as a rejected/expired OAuth attempt."""
+    conn = get_connection()
+    try:
+        row = conn.execute("SELECT * FROM oauth_states WHERE state = ?", (state,)).fetchone()
+        if row is None:
+            return None
+        conn.execute("DELETE FROM oauth_states WHERE state = ?", (state,))
+        conn.commit()
+        created_at = datetime.fromisoformat(row["created_at"])
+        age = (datetime.now(timezone.utc) - created_at).total_seconds()
+        if age > max_age_seconds:
+            return None
+        return dict(row)
+    finally:
+        conn.close()
+
+
+def upsert_linked_email_account(
+    user_id: int,
+    provider: str,
+    provider_email: str,
+    access_token_encrypted: str,
+    refresh_token_encrypted: str,
+    token_expires_at: str,
+    scopes: str,
+) -> int:
+    """Re-linking the same provider replaces the stored tokens rather than creating a second row -- one linked account per (user, provider), matching the UNIQUE constraint."""
+    conn = get_connection()
+    try:
+        now = datetime.now(timezone.utc).isoformat()
+        conn.execute(
+            """
+            INSERT INTO linked_email_accounts
+                (user_id, provider, provider_email, access_token_encrypted, refresh_token_encrypted, token_expires_at, scopes, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT (user_id, provider) DO UPDATE SET
+                provider_email = excluded.provider_email,
+                access_token_encrypted = excluded.access_token_encrypted,
+                refresh_token_encrypted = excluded.refresh_token_encrypted,
+                token_expires_at = excluded.token_expires_at,
+                scopes = excluded.scopes,
+                updated_at = excluded.updated_at
+            """,
+            (user_id, provider, provider_email, access_token_encrypted, refresh_token_encrypted, token_expires_at, scopes, now, now),
+        )
+        conn.commit()
+        row = conn.execute(
+            "SELECT id FROM linked_email_accounts WHERE user_id = ? AND provider = ?", (user_id, provider)
+        ).fetchone()
+        return row["id"]
+    finally:
+        conn.close()
+
+
+def get_linked_email_account(account_id: int) -> Optional[Dict[str, Any]]:
+    conn = get_connection()
+    try:
+        row = conn.execute("SELECT * FROM linked_email_accounts WHERE id = ?", (account_id,)).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def list_linked_email_accounts_for_user(user_id: int) -> List[Dict[str, Any]]:
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM linked_email_accounts WHERE user_id = ? ORDER BY created_at", (user_id,)
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def update_linked_email_account_tokens(
+    account_id: int,
+    access_token_encrypted: str,
+    token_expires_at: str,
+    refresh_token_encrypted: Optional[str] = None,
+) -> None:
+    """Called after a refresh. refresh_token_encrypted is only passed when the provider actually rotated it (Google normally doesn't; Microsoft can) -- omitting it leaves the existing refresh token in place rather than overwriting it with nothing."""
+    conn = get_connection()
+    try:
+        if refresh_token_encrypted is not None:
+            conn.execute(
+                "UPDATE linked_email_accounts SET access_token_encrypted = ?, token_expires_at = ?, refresh_token_encrypted = ?, updated_at = ? WHERE id = ?",
+                (access_token_encrypted, token_expires_at, refresh_token_encrypted, datetime.now(timezone.utc).isoformat(), account_id),
+            )
+        else:
+            conn.execute(
+                "UPDATE linked_email_accounts SET access_token_encrypted = ?, token_expires_at = ?, updated_at = ? WHERE id = ?",
+                (access_token_encrypted, token_expires_at, datetime.now(timezone.utc).isoformat(), account_id),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def delete_linked_email_account(account_id: int) -> bool:
+    conn = get_connection()
+    try:
+        cur = conn.execute("DELETE FROM linked_email_accounts WHERE id = ?", (account_id,))
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
 def insert_activity(action_type: str, description: str, lease_id: Optional[int] = None) -> int:
     """
     Records one entry in the account-wide activity feed. Called

@@ -18,7 +18,7 @@ Three layers of endpoints:
     report.py) — the actual logic lives there, not here.
 """
 
-from flask import Flask, request, jsonify, Response, session
+from flask import Flask, request, jsonify, Response, session, redirect
 from flask_cors import CORS
 from dotenv import load_dotenv
 from datetime import date, timedelta
@@ -70,6 +70,7 @@ from app.discrepancies import sync_lease_risk_flags, sync_all_lease_risk_flags_b
 from app import assignments as assignments_module
 from app import assistant
 from app import messaging
+from app import email_accounts
 from app.portfolio_history import compute_property_trends, compute_portfolio_trends
 from app import cache
 from app.alerts import generate_alerts, get_alert_digest
@@ -1408,6 +1409,86 @@ def messages_unread_count():
     """A single cheap number for a polling badge -- see the frontend's existing startLiveActivityPolling() for the established polling convention this is meant to plug into (same idea, scoped to this user's own unread messages instead of portfolio-wide activity)."""
     counts = database.get_unread_counts_for_user(current_user()["id"])
     return jsonify({"total_unread": sum(counts.values()), "by_thread": counts}), 200
+
+
+# ----------------------------------------------------------------------
+# Email account linking (OAuth send-as)
+# ----------------------------------------------------------------------
+
+def _owned_linked_account_or_404(account_id, user_id):
+    """Same 404-not-403 isolation convention as thread access -- a linked account belonging to someone else should look identical to a nonexistent one."""
+    account = database.get_linked_email_account(account_id)
+    if account is None or account["user_id"] != user_id:
+        return None
+    return account
+
+
+@app.route('/email-accounts/connect/<provider>', methods=['GET'])
+@require_role()
+def connect_email_account(provider):
+    try:
+        url = email_accounts.build_authorize_url(provider, current_user()["id"])
+    except email_accounts.ProviderNotConfigured as e:
+        return jsonify({"error": str(e)}), 503
+    except email_accounts.EmailAccountError as e:
+        return jsonify({"error": str(e)}), 400
+    return redirect(url)
+
+
+@app.route('/email-accounts/callback/<provider>', methods=['GET'])
+def email_account_callback(provider):
+    """The OAuth provider redirects the user's browser here after they grant (or deny) consent -- there is no session-based auth at this point in the flow (this is a cross-site navigation), so the user is identified entirely via the one-time state token minted in connect_email_account, not via current_user()."""
+    error = request.args.get('error')
+    if error:
+        return f"<p>Email linking was cancelled or denied: {error}. You can close this tab.</p>", 200
+
+    code = request.args.get('code')
+    state = request.args.get('state')
+    if not code or not state:
+        return "<p>Missing code or state on the OAuth callback.</p>", 400
+
+    try:
+        account = email_accounts.handle_oauth_callback(provider, code, state)
+    except email_accounts.EmailAccountError as e:
+        return f"<p>Could not link this account: {e}</p>", 400
+
+    return f"<p>Connected {account['provider_email']} ({account['provider']}). You can close this tab.</p>", 200
+
+
+@app.route('/email-accounts', methods=['GET'])
+@require_role()
+def list_email_accounts():
+    accounts = database.list_linked_email_accounts_for_user(current_user()["id"])
+    return jsonify([email_accounts.account_detail(a) for a in accounts]), 200
+
+
+@app.route('/email-accounts/<int:account_id>', methods=['DELETE'])
+@require_role()
+def disconnect_email_account(account_id):
+    account = _owned_linked_account_or_404(account_id, current_user()["id"])
+    if account is None:
+        return jsonify({"error": "Linked email account not found"}), 404
+    email_accounts.disconnect_account(account)
+    return jsonify({"status": "disconnected"}), 200
+
+
+@app.route('/email-accounts/<int:account_id>/send', methods=['POST'])
+@require_role()
+def send_email_via_linked_account(account_id):
+    account = _owned_linked_account_or_404(account_id, current_user()["id"])
+    if account is None:
+        return jsonify({"error": "Linked email account not found"}), 404
+    body = request.get_json(silent=True) or {}
+    to = (body.get('to') or '').strip()
+    subject = (body.get('subject') or '').strip()
+    message_body = body.get('body') or ''
+    if not to or not subject or not message_body.strip():
+        return jsonify({"error": "Missing required fields: to, subject, body"}), 400
+    try:
+        email_accounts.send_email_as(account_id, to, subject, message_body)
+    except email_accounts.EmailAccountError as e:
+        return jsonify({"error": str(e)}), 502
+    return jsonify({"status": "sent"}), 200
 
 
 # ----------------------------------------------------------------------
