@@ -22,6 +22,8 @@ from flask import Flask, request, jsonify, Response, session, redirect
 from flask_cors import CORS
 from dotenv import load_dotenv
 from datetime import date, timedelta
+import csv
+import io
 import logging
 import os
 import re
@@ -68,6 +70,7 @@ from app.portfolio import (
 from app.comparison import compare_leases, benchmark_lease
 from app.discrepancies import sync_lease_risk_flags, sync_all_lease_risk_flags_bulk, sync_rent_roll_reconciliation, sync_t12_reconciliation
 from app import assignments as assignments_module
+from app import tasks as tasks_module
 from app import assistant
 from app import messaging
 from app import email_accounts
@@ -1213,6 +1216,159 @@ def delete_assignment_route(assignment_id):
     return jsonify({"status": "deleted"}), 200
 
 
+@app.route('/tasks', methods=['GET'])
+@require_role()
+def list_tasks_route():
+    """GET /tasks?assigned_to=<user_id>&status=<status>&due_before=<YYYY-MM-DD>&due_after=<YYYY-MM-DD>&lease_id=<id>&discrepancy_id=<id>. Any combination of filters may be applied together."""
+    assigned_to = request.args.get('assigned_to', type=int)
+    status = request.args.get('status')
+    due_before = request.args.get('due_before')
+    due_after = request.args.get('due_after')
+    lease_id = request.args.get('lease_id', type=int)
+    discrepancy_id = request.args.get('discrepancy_id', type=int)
+    if status and status not in tasks_module.VALID_STATUSES:
+        return jsonify({"error": f"status must be one of: {', '.join(sorted(tasks_module.VALID_STATUSES))}"}), 400
+
+    rows = database.list_tasks(
+        assigned_to_user_id=assigned_to, status=status, due_before=due_before,
+        due_after=due_after, lease_id=lease_id, discrepancy_id=discrepancy_id,
+    )
+    return jsonify([tasks_module.task_detail(t) for t in rows]), 200
+
+
+@app.route('/tasks', methods=['POST'])
+@require_role('analyst')
+def create_task_route():
+    """Body: {"title": str, "description": str (optional), "due_date": "YYYY-MM-DD" (optional), "assigned_to_user_id": int (optional), "lease_id": int (optional), "discrepancy_id": int (optional), "property_address": str (optional)}."""
+    body = request.get_json(silent=True) or {}
+    title = (body.get('title') or '').strip()
+    if not title:
+        return jsonify({"error": "Missing required field: title"}), 400
+
+    assigned_to_user_id = body.get('assigned_to_user_id')
+    if assigned_to_user_id is not None and not database.get_user(assigned_to_user_id):
+        return jsonify({"error": "assigned_to_user_id does not match a real team member"}), 400
+
+    lease_id = body.get('lease_id')
+    if lease_id is not None and not database.get_lease(lease_id):
+        return jsonify({"error": "Lease not found"}), 404
+
+    discrepancy_id = body.get('discrepancy_id')
+    if discrepancy_id is not None and not database.get_discrepancy(discrepancy_id):
+        return jsonify({"error": "Discrepancy not found"}), 404
+
+    task_id = database.create_task(
+        title=title,
+        created_by_user_id=current_user()["id"],
+        description=body.get('description'),
+        due_date=body.get('due_date'),
+        assigned_to_user_id=assigned_to_user_id,
+        lease_id=lease_id,
+        discrepancy_id=discrepancy_id,
+        property_address=(body.get('property_address') or '').strip() or None,
+    )
+    database.insert_activity("task_created", f"Task created: {title}", lease_id=lease_id)
+    return jsonify(tasks_module.task_detail(database.get_task(task_id))), 201
+
+
+@app.route('/tasks/from-discrepancy/<int:discrepancy_id>', methods=['POST'])
+@require_role('analyst')
+def create_task_from_discrepancy_route(discrepancy_id):
+    """Body: {"assigned_to_user_id": int (optional), "due_date": "YYYY-MM-DD" (optional)}. Carries the discrepancy's category/severity/message into the new task automatically."""
+    body = request.get_json(silent=True) or {}
+    assigned_to_user_id = body.get('assigned_to_user_id')
+    if assigned_to_user_id is not None and not database.get_user(assigned_to_user_id):
+        return jsonify({"error": "assigned_to_user_id does not match a real team member"}), 400
+    try:
+        detail = tasks_module.create_task_from_discrepancy(
+            discrepancy_id, current_user()["id"], assigned_to_user_id=assigned_to_user_id, due_date=body.get('due_date')
+        )
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 404
+    database.insert_activity("task_created", f"Task created from discrepancy: {detail['title']}", lease_id=detail.get('lease_id'))
+    return jsonify(detail), 201
+
+
+@app.route('/tasks/from-alert/<int:alert_id>', methods=['POST'])
+@require_role('analyst')
+def create_task_from_alert_route(alert_id):
+    """Body: {"assigned_to_user_id": int (optional), "due_date": "YYYY-MM-DD" (optional)}. Carries the alert's title/severity/message into the new task automatically."""
+    body = request.get_json(silent=True) or {}
+    assigned_to_user_id = body.get('assigned_to_user_id')
+    if assigned_to_user_id is not None and not database.get_user(assigned_to_user_id):
+        return jsonify({"error": "assigned_to_user_id does not match a real team member"}), 400
+    try:
+        detail = tasks_module.create_task_from_alert(
+            alert_id, current_user()["id"], assigned_to_user_id=assigned_to_user_id, due_date=body.get('due_date')
+        )
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 404
+    database.insert_activity("task_created", f"Task created from alert: {detail['title']}", lease_id=detail.get('lease_id'))
+    return jsonify(detail), 201
+
+
+@app.route('/tasks/<int:task_id>', methods=['GET'])
+@require_role()
+def get_task_route(task_id):
+    task = database.get_task(task_id)
+    if not task:
+        return jsonify({"error": "Task not found"}), 404
+    return jsonify(tasks_module.task_detail(task)), 200
+
+
+@app.route('/tasks/<int:task_id>', methods=['PATCH'])
+@require_role('analyst')
+def update_task_route(task_id):
+    """Body: any of {"title": str, "description": str, "due_date": "YYYY-MM-DD"|null}. due_date: null explicitly clears it; omitting the key leaves it unchanged."""
+    if not database.get_task(task_id):
+        return jsonify({"error": "Task not found"}), 404
+    body = request.get_json(silent=True) or {}
+    title = body.get('title')
+    if title is not None and not title.strip():
+        return jsonify({"error": "title cannot be blank"}), 400
+    clear_due_date = 'due_date' in body and body.get('due_date') is None
+    updated = database.update_task_fields(
+        task_id, title=title, description=body.get('description'), due_date=body.get('due_date'), _clear_due_date=clear_due_date
+    )
+    return jsonify(tasks_module.task_detail(updated)), 200
+
+
+@app.route('/tasks/<int:task_id>/assign', methods=['POST'])
+@require_role('analyst')
+def assign_task_route(task_id):
+    """Body: {"assigned_to_user_id": int|null}. null unassigns the task."""
+    if not database.get_task(task_id):
+        return jsonify({"error": "Task not found"}), 404
+    body = request.get_json(silent=True) or {}
+    assigned_to_user_id = body.get('assigned_to_user_id')
+    if assigned_to_user_id is not None and not database.get_user(assigned_to_user_id):
+        return jsonify({"error": "assigned_to_user_id does not match a real team member"}), 400
+    updated = database.update_task_assignee(task_id, assigned_to_user_id)
+    return jsonify(tasks_module.task_detail(updated)), 200
+
+
+@app.route('/tasks/<int:task_id>/status', methods=['POST'])
+@require_role('analyst')
+def update_task_status_route(task_id):
+    """Body: {"status": "open"|"in_progress"|"done"}."""
+    if not database.get_task(task_id):
+        return jsonify({"error": "Task not found"}), 404
+    body = request.get_json(silent=True) or {}
+    status = (body.get('status') or '').strip()
+    if status not in tasks_module.VALID_STATUSES:
+        return jsonify({"error": f"status must be one of: {', '.join(sorted(tasks_module.VALID_STATUSES))}"}), 400
+    updated = database.update_task_status(task_id, status)
+    return jsonify(tasks_module.task_detail(updated)), 200
+
+
+@app.route('/tasks/<int:task_id>', methods=['DELETE'])
+@require_role('analyst')
+def delete_task_route(task_id):
+    if not database.delete_task(task_id):
+        return jsonify({"error": "Task not found"}), 404
+    return jsonify({"status": "deleted"}), 200
+
+
 @app.route('/today', methods=['GET'])
 @require_role()
 def today_view():
@@ -2088,6 +2244,69 @@ def reopen_discrepancy(discrepancy_id):
     return jsonify(_discrepancy_detail(discrepancy) | {"latest_resolution": resolution}), 200
 
 
+@app.route('/discrepancies/bulk-resolve', methods=['POST'])
+@require_role('analyst')
+def bulk_resolve_discrepancies():
+    """
+    Body: {"ids": [1, 2, 3], "correct_source": "...", "note": "..."}
+
+    Same resolution reasoning applied to every id in the list -- the
+    toolbar's "resolve selected" action, for when a batch of
+    discrepancies share the same real-world explanation (e.g. a whole
+    rent roll import used a stale source file). ids that don't exist
+    are reported back individually rather than failing the whole
+    batch, since a stale selection (something else already deleted
+    one of them) shouldn't block resolving the rest.
+    """
+    payload = request.get_json(silent=True) or {}
+    ids = payload.get('ids')
+    correct_source = (payload.get('correct_source') or '').strip()
+    note = (payload.get('note') or '').strip()
+
+    if not isinstance(ids, list) or not ids or not all(isinstance(i, int) for i in ids):
+        return jsonify({"error": "Provide a non-empty 'ids' list of integers"}), 400
+    missing = [field for field, value in (('correct_source', correct_source), ('note', note)) if not value]
+    if missing:
+        return jsonify({"error": f"Missing required field(s): {', '.join(missing)}"}), 400
+
+    user = current_user()
+    resolved, not_found = [], []
+    for discrepancy_id in ids:
+        if not database.get_discrepancy(discrepancy_id):
+            not_found.append(discrepancy_id)
+            continue
+        database.resolve_discrepancy(discrepancy_id, correct_source, note, user["name"], user["email"])
+        discrepancy = database.get_discrepancy(discrepancy_id)
+        database.insert_activity(
+            "discrepancy_resolved",
+            f"Discrepancy #{discrepancy_id} ({discrepancy['category']}) resolved by {user['name']} (bulk): {note}",
+            lease_id=_activity_lease_id(discrepancy.get("lease_id")),
+        )
+        resolved.append(discrepancy_id)
+    _invalidate_discrepancy_derived_caches()
+    return jsonify({"resolved": resolved, "not_found": not_found}), 200
+
+
+@app.route('/discrepancies/export.csv', methods=['GET'])
+@require_role()
+def export_discrepancies_csv():
+    """GET /discrepancies/export.csv?status=open|resolved&lease_id=N&type=... -- same filters as GET /discrepancies, exported as a flat CSV for the toolbar's export action."""
+    status = request.args.get('status')
+    if status and status not in ('open', 'resolved'):
+        return jsonify({"error": "status must be 'open' or 'resolved'"}), 400
+    lease_id = request.args.get('lease_id', type=int)
+    discrepancy_type = request.args.get('type')
+    rows = database.list_discrepancies(status=status, lease_id=lease_id, discrepancy_type=discrepancy_type)
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(["id", "type", "category", "field", "severity", "status", "lease_id", "message", "first_detected_at", "last_seen_at"])
+    for r in rows:
+        writer.writerow([r["id"], r["discrepancy_type"], r["category"], r.get("field") or "", r.get("severity") or "", r["status"], r.get("lease_id") or "", r["message"], r["first_detected_at"], r["last_seen_at"]])
+    database.insert_activity("discrepancies_exported", f"Exported {len(rows)} discrepancy(ies) as CSV")
+    return Response(buf.getvalue(), mimetype='text/csv', headers={"Content-Disposition": "attachment; filename=discrepancies.csv"})
+
+
 @app.route('/discrepancies/<int:discrepancy_id>/comments', methods=['GET'])
 @require_role()
 def list_discrepancy_comments(discrepancy_id):
@@ -2198,6 +2417,50 @@ def dismiss_alert_route(alert_id):
 
     database.dismiss_alert(alert_id, dismissed_by, note)
     return jsonify(database.get_alert(alert_id)), 200
+
+
+@app.route('/alerts/bulk-dismiss', methods=['POST'])
+@require_role('analyst')
+def bulk_dismiss_alerts():
+    """Body: {"ids": [1, 2, 3], "note": "..." (optional)}. The toolbar's "dismiss selected" action. ids that don't exist are reported back individually rather than failing the whole batch."""
+    payload = request.get_json(silent=True) or {}
+    ids = payload.get('ids')
+    note = (payload.get('note') or '').strip() or None
+    if not isinstance(ids, list) or not ids or not all(isinstance(i, int) for i in ids):
+        return jsonify({"error": "Provide a non-empty 'ids' list of integers"}), 400
+
+    dismissed_by = current_user()["name"]
+    dismissed, not_found = [], []
+    for alert_id in ids:
+        if not database.get_alert(alert_id):
+            not_found.append(alert_id)
+            continue
+        database.dismiss_alert(alert_id, dismissed_by, note)
+        dismissed.append(alert_id)
+    return jsonify({"dismissed": dismissed, "not_found": not_found}), 200
+
+
+@app.route('/alerts/export.csv', methods=['GET'])
+@require_role()
+def export_alerts_csv():
+    """GET /alerts/export.csv?status=active|dismissed|auto_resolved&type=...&severity=...&lease_id=N -- same filters as GET /alerts, exported as a flat CSV for the toolbar's export action."""
+    status = request.args.get('status')
+    if status and status not in ('active', 'dismissed', 'auto_resolved'):
+        return jsonify({"error": "status must be 'active', 'dismissed', or 'auto_resolved'"}), 400
+    severity = request.args.get('severity')
+    if severity and severity not in ('high', 'medium', 'low'):
+        return jsonify({"error": "severity must be 'high', 'medium', or 'low'"}), 400
+    alert_type = request.args.get('type')
+    lease_id = request.args.get('lease_id', type=int)
+    rows = database.list_alerts(status=status, alert_type=alert_type, severity=severity, lease_id=lease_id)
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(["id", "type", "severity", "status", "lease_id", "title", "message", "dismissed_by", "dismissed_at", "first_detected_at", "last_seen_at"])
+    for r in rows:
+        writer.writerow([r["id"], r["alert_type"], r["severity"], r["status"], r.get("lease_id") or "", r["title"], r["message"], r.get("dismissed_by") or "", r.get("dismissed_at") or "", r["first_detected_at"], r["last_seen_at"]])
+    database.insert_activity("alerts_exported", f"Exported {len(rows)} alert(s) as CSV")
+    return Response(buf.getvalue(), mimetype='text/csv', headers={"Content-Disposition": "attachment; filename=alerts.csv"})
 
 
 @app.route('/qa', methods=['POST'])

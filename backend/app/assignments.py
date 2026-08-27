@@ -6,9 +6,12 @@ layer -- one table, three target types, one active assignment per
 target (natural-key upsert, same atomic pattern already used for
 discrepancies/alerts).
 """
+from datetime import date, datetime, timezone
 from typing import Any, Dict, Optional
 
 from app import database
+from app import tasks as tasks_module
+from app import messaging
 from app.portfolio import _normalize_building_address
 
 VALID_TARGET_TYPES = {"lease", "discrepancy", "property"}
@@ -49,18 +52,40 @@ def assignment_detail(assignment: Dict[str, Any]) -> Dict[str, Any]:
     return result
 
 
-def compute_today_view(user_id: int) -> Dict[str, Any]:
+def compute_today_view(user_id: int, reference_date: Optional[date] = None) -> Dict[str, Any]:
     """
     Everything relevant to one user's work "today": their open
-    (not-yet-resolved) assignments, split by target type and enriched
-    with the actual lease/discrepancy so the frontend doesn't need
-    per-item follow-up requests, plus the portfolio's currently-active
-    alerts. Alerts are deliberately portfolio-wide, not filtered to
-    this user -- alerts have no assignee concept of their own (they're
-    a fact about the portfolio, not a task handed to someone), matching
-    the "no per-account data scoping" precedent every other shared view
-    in this app already follows (see DECISIONS.md).
+    (not-yet-resolved) assignments, their tasks due today or overdue,
+    anything new since their last login (discrepancies, alerts, team
+    comments), their unread messages, and the portfolio's
+    currently-active alerts.
+
+    `reference_date` defaults to the real current date -- pass an
+    explicit one in tests for determinism, same convention
+    app/portfolio.py already uses for its own "today"-relative
+    calculations.
+
+    "New since last login" is measured against previous_login_at, NOT
+    last_login_at -- last_login_at gets overwritten the instant THIS
+    session started (see database.update_user_last_login), so by the
+    time this runs it would always equal "now" and nothing would ever
+    show up as new. previous_login_at holds the login before this one,
+    which is what "since I was last here" actually means. A user who
+    has never logged in before (previous_login_at is NULL) gets an
+    empty "new since" section rather than everything ever created --
+    there's no meaningful baseline to diff against yet.
+
+    Active alerts stay portfolio-wide, not filtered to this user --
+    alerts have no assignee concept of their own (they're a fact about
+    the portfolio, not a task handed to someone), matching the "no
+    per-account data scoping" precedent every other shared view in
+    this app already follows (see DECISIONS.md). Tasks, assignments,
+    and unread messages ARE filtered to this user, since those really
+    are personal to them.
     """
+    reference_date = reference_date or datetime.now(timezone.utc).date()
+    today_iso = reference_date.isoformat()
+
     open_assignments = [
         a for a in database.list_assignments(assigned_to_user_id=user_id) if a["status"] != "resolved"
     ]
@@ -83,12 +108,44 @@ def compute_today_view(user_id: int) -> Dict[str, Any]:
     severity_order = {"high": 0, "medium": 1, "low": 2}
     active_alerts.sort(key=lambda a: severity_order.get(a["severity"], 3))
 
+    due_tasks = [
+        tasks_module.task_detail(t) for t in database.get_tasks_due_today_or_overdue(user_id, today_iso)
+    ]
+
+    user = database.get_user(user_id) or {}
+    since = user.get("previous_login_at")
+    if since:
+        new_discrepancies = [d for d in database.list_discrepancies() if d["first_detected_at"] > since]
+        new_alerts = [a for a in database.list_alerts() if a["first_detected_at"] > since]
+        new_comments = [c for c in database.get_recent_comments(limit=100) if c["created_at"] > since]
+    else:
+        new_discrepancies, new_alerts, new_comments = [], [], []
+
+    unread_by_thread = database.get_unread_counts_for_user(user_id)
+    unread_threads = [
+        messaging.thread_detail(database.get_thread(tid), user_id)
+        for tid in unread_by_thread
+        if database.get_thread(tid) is not None
+    ]
+
     return {
         "user_id": user_id,
+        "reference_date": today_iso,
         "assigned_leases": assigned_leases,
         "assigned_discrepancies": assigned_discrepancies,
         "assigned_properties": assigned_properties,
         "active_alerts": active_alerts,
+        "tasks_due_today_or_overdue": due_tasks,
+        "new_since_last_login": {
+            "since": since,
+            "discrepancies": new_discrepancies,
+            "alerts": new_alerts,
+            "comments": new_comments,
+        },
+        "unread_messages": {
+            "total_unread": sum(unread_by_thread.values()),
+            "threads": unread_threads,
+        },
         "summary": {
             "total_open_assignments": len(open_assignments),
             "assigned_lease_count": len(assigned_leases),
@@ -96,5 +153,8 @@ def compute_today_view(user_id: int) -> Dict[str, Any]:
             "assigned_property_count": len(assigned_properties),
             "active_alert_count": len(active_alerts),
             "high_severity_alert_count": sum(1 for a in active_alerts if a["severity"] == "high"),
+            "tasks_due_today_or_overdue_count": len(due_tasks),
+            "new_since_last_login_count": len(new_discrepancies) + len(new_alerts) + len(new_comments),
+            "unread_message_count": sum(unread_by_thread.values()),
         },
     }

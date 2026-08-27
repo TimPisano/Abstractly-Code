@@ -522,6 +522,52 @@ def test_summary_route():
     print("✓ test_summary_route: PASS")
 
 
+def test_bulk_dismiss_route():
+    db_path = _fresh_temp_db()
+    try:
+        client = _authed_client()
+        id1 = database.upsert_alert(alert_type="lease_expiration", natural_key="bulk-a", severity="high", title="t1", message="m1", details={})
+        id2 = database.upsert_alert(alert_type="lease_expiration", natural_key="bulk-b", severity="medium", title="t2", message="m2", details={})
+
+        resp = client.post("/alerts/bulk-dismiss", json={"ids": [id1, id2, 999999], "note": "batch review"})
+        assert resp.status_code == 200, resp.get_json()
+        data = resp.get_json()
+        assert set(data["dismissed"]) == {id1, id2}
+        assert data["not_found"] == [999999]
+        assert database.get_alert(id1)["status"] == "dismissed"
+        assert database.get_alert(id2)["dismissal_note"] == "batch review"
+
+        resp = client.post("/alerts/bulk-dismiss", json={"ids": []})
+        assert resp.status_code == 400
+    finally:
+        os.unlink(db_path)
+    print("✓ test_bulk_dismiss_route: PASS")
+
+
+def test_export_alerts_csv_route():
+    db_path = _fresh_temp_db()
+    try:
+        client = _authed_client()
+        database.upsert_alert(alert_type="tenant_concentration", natural_key="csv-a", severity="high", title="Big tenant risk", message="One tenant is 40% of rent", details={})
+
+        resp = client.get("/alerts/export.csv")
+        assert resp.status_code == 200
+        assert resp.mimetype == "text/csv"
+        body = resp.get_data(as_text=True)
+        assert "Big tenant risk" in body
+        assert "id,type,severity" in body.splitlines()[0]
+
+        resp = client.get("/alerts/export.csv?status=dismissed")
+        body = resp.get_data(as_text=True)
+        assert "Big tenant risk" not in body, "status filter must actually filter the export"
+
+        resp = client.get("/alerts/export.csv?severity=not_a_severity")
+        assert resp.status_code == 400
+    finally:
+        os.unlink(db_path)
+    print("✓ test_export_alerts_csv_route: PASS")
+
+
 if __name__ == "__main__":
     test_upsert_creates_active_alert_on_first_seen()
     test_upsert_never_reactivates_a_dismissed_alert()
@@ -546,4 +592,6 @@ if __name__ == "__main__":
     test_generate_route_and_list_route()
     test_get_and_dismiss_alert_routes()
     test_summary_route()
+    test_bulk_dismiss_route()
+    test_export_alerts_csv_route()
     print("\nAll alert tests passed.")

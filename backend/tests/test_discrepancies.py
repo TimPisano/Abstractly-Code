@@ -421,6 +421,52 @@ def test_discrepancy_summary_route():
     print("✓ test_discrepancy_summary_route: PASS")
 
 
+def test_bulk_resolve_route():
+    db_path = _fresh_temp_db()
+    try:
+        client = _authed_client()
+        id1 = database.upsert_discrepancy(discrepancy_type="lease_risk_flag", natural_key="bulk-a", category="missing_clause", message="m1", details={}, lease_id=1)
+        id2 = database.upsert_discrepancy(discrepancy_type="lease_risk_flag", natural_key="bulk-b", category="missing_clause", message="m2", details={}, lease_id=1)
+
+        resp = client.post("/discrepancies/bulk-resolve", json={"ids": [id1, id2, 999999], "correct_source": "lease_document", "note": "batch cleanup"})
+        assert resp.status_code == 200, resp.get_json()
+        data = resp.get_json()
+        assert set(data["resolved"]) == {id1, id2}
+        assert data["not_found"] == [999999]
+
+        assert database.get_discrepancy(id1)["status"] == "resolved"
+        assert database.get_discrepancy(id2)["status"] == "resolved"
+
+        resp = client.post("/discrepancies/bulk-resolve", json={"ids": [], "correct_source": "x", "note": "n"})
+        assert resp.status_code == 400
+        resp = client.post("/discrepancies/bulk-resolve", json={"ids": [id1], "correct_source": "", "note": ""})
+        assert resp.status_code == 400
+    finally:
+        os.unlink(db_path)
+    print("✓ test_bulk_resolve_route: PASS")
+
+
+def test_export_discrepancies_csv_route():
+    db_path = _fresh_temp_db()
+    try:
+        client = _authed_client()
+        database.upsert_discrepancy(discrepancy_type="lease_risk_flag", natural_key="csv-a", category="missing_clause", message="Missing exclusivity clause", details={}, lease_id=1, severity="high")
+
+        resp = client.get("/discrepancies/export.csv")
+        assert resp.status_code == 200
+        assert resp.mimetype == "text/csv"
+        body = resp.get_data(as_text=True)
+        assert "Missing exclusivity clause" in body
+        assert "id,type,category" in body.splitlines()[0]
+
+        resp = client.get("/discrepancies/export.csv?status=resolved")
+        body = resp.get_data(as_text=True)
+        assert "Missing exclusivity clause" not in body, "status filter must actually filter the export"
+    finally:
+        os.unlink(db_path)
+    print("✓ test_export_discrepancies_csv_route: PASS")
+
+
 if __name__ == "__main__":
     test_upsert_creates_open_discrepancy_on_first_seen()
     test_upsert_same_natural_key_updates_snapshot_but_not_status()
@@ -440,4 +486,6 @@ if __name__ == "__main__":
     test_list_discrepancies_route_filters()
     test_get_discrepancy_route_404_for_nonexistent()
     test_discrepancy_summary_route()
+    test_bulk_resolve_route()
+    test_export_discrepancies_csv_route()
     print("\nAll discrepancy tests passed.")

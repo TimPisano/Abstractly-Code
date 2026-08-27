@@ -84,6 +84,23 @@ def _migrate_schema(conn: sqlite3.Connection) -> None:
             conn.execute(f"ALTER TABLE leases ADD COLUMN {column} {sql_type}")
 
 
+def _migrate_users_table_add_previous_login_at(conn: sqlite3.Connection) -> None:
+    """
+    Adds `previous_login_at`, distinct from `last_login_at`. The
+    daily-briefing endpoint ('what's new since I last logged in') needs
+    the login timestamp from BEFORE this session -- but auth_login()
+    overwrites last_login_at the moment a session starts, so by the time
+    the frontend calls /today, last_login_at already equals "now" and
+    would make "since last login" always empty. update_user_last_login()
+    shifts the old last_login_at into previous_login_at in the same
+    UPDATE, atomically, so this column always holds "the login before
+    the current one" for exactly this purpose.
+    """
+    existing_columns = {row["name"] for row in conn.execute("PRAGMA table_info(users)").fetchall()}
+    if "previous_login_at" not in existing_columns:
+        conn.execute("ALTER TABLE users ADD COLUMN previous_login_at TEXT")
+
+
 def _migrate_discrepancies_table_drop_lease_fk(conn: sqlite3.Connection) -> None:
     """
     Rebuilds an already-existing `discrepancies` table that still has
@@ -334,6 +351,7 @@ def init_db() -> None:
                 FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE SET NULL
             )
         """)
+        _migrate_users_table_add_previous_login_at(conn)
         _seed_first_admin_user(conn)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS assignments (
@@ -429,6 +447,30 @@ def init_db() -> None:
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS tasks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                description TEXT,
+                due_date TEXT,
+                status TEXT NOT NULL DEFAULT 'open',
+                assigned_to_user_id INTEGER,
+                created_by_user_id INTEGER NOT NULL,
+                lease_id INTEGER,
+                discrepancy_id INTEGER,
+                property_address TEXT,
+                source_type TEXT,
+                source_natural_key TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                completed_at TEXT,
+                FOREIGN KEY (assigned_to_user_id) REFERENCES users(id),
+                FOREIGN KEY (created_by_user_id) REFERENCES users(id)
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_assigned_to_user_id ON tasks(assigned_to_user_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_due_date ON tasks(due_date)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)")
         conn.commit()
     finally:
         conn.close()
@@ -454,6 +496,7 @@ def reset_db() -> None:
         conn.execute("DROP TABLE IF EXISTS message_threads")
         conn.execute("DROP TABLE IF EXISTS linked_email_accounts")
         conn.execute("DROP TABLE IF EXISTS oauth_states")
+        conn.execute("DROP TABLE IF EXISTS tasks")
         conn.commit()
     finally:
         conn.close()
@@ -947,9 +990,13 @@ def update_user_password(user_id: int, password_hash: str) -> bool:
 
 
 def update_user_last_login(user_id: int) -> None:
+    """Shifts the existing last_login_at into previous_login_at before overwriting it, atomically -- see _migrate_users_table_add_previous_login_at for why this two-column shift exists (the daily briefing needs the PRIOR login timestamp, not the one being recorded right now)."""
     conn = get_connection()
     try:
-        conn.execute("UPDATE users SET last_login_at = ? WHERE id = ?", (datetime.now(timezone.utc).isoformat(), user_id))
+        conn.execute(
+            "UPDATE users SET previous_login_at = last_login_at, last_login_at = ? WHERE id = ?",
+            (datetime.now(timezone.utc).isoformat(), user_id),
+        )
         conn.commit()
     except OverflowError:
         pass
@@ -1509,6 +1556,170 @@ def delete_linked_email_account(account_id: int) -> bool:
     conn = get_connection()
     try:
         cur = conn.execute("DELETE FROM linked_email_accounts WHERE id = ?", (account_id,))
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+# ----------------------------------------------------------------------
+# Tasks
+# ----------------------------------------------------------------------
+
+def create_task(
+    title: str,
+    created_by_user_id: int,
+    description: Optional[str] = None,
+    due_date: Optional[str] = None,
+    assigned_to_user_id: Optional[int] = None,
+    lease_id: Optional[int] = None,
+    discrepancy_id: Optional[int] = None,
+    property_address: Optional[str] = None,
+    source_type: Optional[str] = None,
+    source_natural_key: Optional[str] = None,
+) -> int:
+    """lease_id/discrepancy_id are intentionally not FK'd -- same 'survives deletion of the thing it referenced' reasoning as discrepancies.lease_id and assignments.lease_id, so a task doesn't silently vanish or corrupt if the linked record is later removed."""
+    conn = get_connection()
+    try:
+        now = datetime.now(timezone.utc).isoformat()
+        cur = conn.execute(
+            """
+            INSERT INTO tasks
+                (title, description, due_date, status, assigned_to_user_id, created_by_user_id,
+                 lease_id, discrepancy_id, property_address, source_type, source_natural_key,
+                 created_at, updated_at)
+            VALUES (?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (title, description, due_date, assigned_to_user_id, created_by_user_id,
+             lease_id, discrepancy_id, property_address, source_type, source_natural_key, now, now),
+        )
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def get_task(task_id: int) -> Optional[Dict[str, Any]]:
+    conn = get_connection()
+    try:
+        row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def list_tasks(
+    assigned_to_user_id: Optional[int] = None,
+    status: Optional[str] = None,
+    due_before: Optional[str] = None,
+    due_after: Optional[str] = None,
+    lease_id: Optional[int] = None,
+    discrepancy_id: Optional[int] = None,
+) -> List[Dict[str, Any]]:
+    """Every filter is optional and AND-combined -- callers pass only the ones they need (the /tasks route maps straight from its own optional query params to these same keyword args)."""
+    conn = get_connection()
+    try:
+        clauses, params = [], []
+        if assigned_to_user_id is not None:
+            clauses.append("assigned_to_user_id = ?")
+            params.append(assigned_to_user_id)
+        if status is not None:
+            clauses.append("status = ?")
+            params.append(status)
+        if due_before is not None:
+            clauses.append("due_date IS NOT NULL AND due_date <= ?")
+            params.append(due_before)
+        if due_after is not None:
+            clauses.append("due_date IS NOT NULL AND due_date >= ?")
+            params.append(due_after)
+        if lease_id is not None:
+            clauses.append("lease_id = ?")
+            params.append(lease_id)
+        if discrepancy_id is not None:
+            clauses.append("discrepancy_id = ?")
+            params.append(discrepancy_id)
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        rows = conn.execute(
+            f"SELECT * FROM tasks {where} ORDER BY (due_date IS NULL), due_date, created_at",
+            params,
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def get_tasks_due_today_or_overdue(user_id: int, reference_date: str) -> List[Dict[str, Any]]:
+    """reference_date is an ISO date string (YYYY-MM-DD). 'Due today or overdue' = not done, has a due date, and that due date is on or before reference_date -- a task with no due date never shows up here (it isn't time-bound, so it can't be overdue)."""
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            """
+            SELECT * FROM tasks
+            WHERE assigned_to_user_id = ? AND status != 'done' AND due_date IS NOT NULL AND due_date <= ?
+            ORDER BY due_date
+            """,
+            (user_id, reference_date),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def update_task_status(task_id: int, status: str) -> Optional[Dict[str, Any]]:
+    conn = get_connection()
+    try:
+        now = datetime.now(timezone.utc).isoformat()
+        completed_at = now if status == "done" else None
+        conn.execute(
+            "UPDATE tasks SET status = ?, completed_at = ?, updated_at = ? WHERE id = ?",
+            (status, completed_at, now, task_id),
+        )
+        conn.commit()
+        row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def update_task_assignee(task_id: int, assigned_to_user_id: Optional[int]) -> Optional[Dict[str, Any]]:
+    conn = get_connection()
+    try:
+        conn.execute(
+            "UPDATE tasks SET assigned_to_user_id = ?, updated_at = ? WHERE id = ?",
+            (assigned_to_user_id, datetime.now(timezone.utc).isoformat(), task_id),
+        )
+        conn.commit()
+        row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def update_task_fields(task_id: int, title: Optional[str] = None, description: Optional[str] = None, due_date: Optional[str] = None, _clear_due_date: bool = False) -> Optional[Dict[str, Any]]:
+    """Only overwrites fields actually passed -- None means 'leave as-is' for title/description, EXCEPT due_date, which needs to support being cleared back to no-due-date; _clear_due_date=True is how a caller says 'set it to NULL' instead of 'I didn't pass one'."""
+    conn = get_connection()
+    try:
+        existing = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+        if existing is None:
+            return None
+        new_title = title if title is not None else existing["title"]
+        new_description = description if description is not None else existing["description"]
+        new_due_date = None if _clear_due_date else (due_date if due_date is not None else existing["due_date"])
+        conn.execute(
+            "UPDATE tasks SET title = ?, description = ?, due_date = ?, updated_at = ? WHERE id = ?",
+            (new_title, new_description, new_due_date, datetime.now(timezone.utc).isoformat(), task_id),
+        )
+        conn.commit()
+        row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def delete_task(task_id: int) -> bool:
+    conn = get_connection()
+    try:
+        cur = conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
         conn.commit()
         return cur.rowcount > 0
     finally:
