@@ -369,6 +369,66 @@ def init_db() -> None:
             )
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_assistant_conversations_user_id ON assistant_conversations(user_id)")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS message_threads (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                thread_type TEXT NOT NULL,
+                name TEXT,
+                created_by_user_id INTEGER NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (created_by_user_id) REFERENCES users(id)
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS message_thread_participants (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                thread_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                joined_at TEXT NOT NULL,
+                last_read_at TEXT,
+                UNIQUE (thread_id, user_id),
+                FOREIGN KEY (thread_id) REFERENCES message_threads(id) ON DELETE CASCADE,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_thread_participants_user_id ON message_thread_participants(user_id)")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                thread_id INTEGER NOT NULL,
+                sender_user_id INTEGER NOT NULL,
+                body TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (thread_id) REFERENCES message_threads(id) ON DELETE CASCADE,
+                FOREIGN KEY (sender_user_id) REFERENCES users(id)
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_messages_thread_id_created_at ON messages(thread_id, created_at)")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS linked_email_accounts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                provider TEXT NOT NULL,
+                provider_email TEXT NOT NULL,
+                access_token_encrypted TEXT NOT NULL,
+                refresh_token_encrypted TEXT NOT NULL,
+                token_expires_at TEXT NOT NULL,
+                scopes TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE (user_id, provider),
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS oauth_states (
+                state TEXT PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                provider TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+        """)
         conn.commit()
     finally:
         conn.close()
@@ -389,6 +449,11 @@ def reset_db() -> None:
         conn.execute("DROP TABLE IF EXISTS users")
         conn.execute("DROP TABLE IF EXISTS assignments")
         conn.execute("DROP TABLE IF EXISTS assistant_conversations")
+        conn.execute("DROP TABLE IF EXISTS messages")
+        conn.execute("DROP TABLE IF EXISTS message_thread_participants")
+        conn.execute("DROP TABLE IF EXISTS message_threads")
+        conn.execute("DROP TABLE IF EXISTS linked_email_accounts")
+        conn.execute("DROP TABLE IF EXISTS oauth_states")
         conn.commit()
     finally:
         conn.close()
@@ -1082,6 +1147,246 @@ def get_assistant_conversations(user_id: int, limit: int = 50) -> List[Dict[str,
         d["route_params"] = json.loads(d["route_params"]) if d["route_params"] else None
         result.append(d)
     return result
+
+
+# ----------------------------------------------------------------------
+# Internal team messaging: direct + group threads. Isolation is
+# enforced entirely through message_thread_participants -- a user can
+# read/post/see a thread ONLY if a row exists here for them; every
+# route-level check (see api.py) and every function below that takes a
+# user_id filters through this table, never returns a thread's content
+# to a non-participant under any circumstance. See is_thread_participant.
+# ----------------------------------------------------------------------
+
+def find_direct_thread(user_id_a: int, user_id_b: int) -> Optional[int]:
+    """
+    The existing 1-on-1 thread between exactly these two users, if one
+    already exists -- so starting a new direct message with someone
+    you already have a thread with reuses it instead of creating a
+    duplicate. A 'direct' thread always has exactly 2 participants by
+    construction (create_thread enforces this), so "thread_type =
+    'direct' AND both users are participants" is sufficient to
+    identify it uniquely without an extra COUNT check.
+    """
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            """
+            SELECT t.id FROM message_threads t
+            JOIN message_thread_participants p1 ON p1.thread_id = t.id AND p1.user_id = ?
+            JOIN message_thread_participants p2 ON p2.thread_id = t.id AND p2.user_id = ?
+            WHERE t.thread_type = 'direct'
+            """,
+            (user_id_a, user_id_b),
+        ).fetchone()
+        return row["id"] if row else None
+    finally:
+        conn.close()
+
+
+def create_thread(thread_type: str, participant_user_ids: List[int], created_by_user_id: int, name: Optional[str] = None) -> int:
+    """
+    For thread_type='direct' with exactly 2 participants, reuses an
+    existing thread between them if one exists (see find_direct_thread)
+    rather than creating a duplicate -- callers should generally check
+    this themselves first if they want to distinguish "reused" from
+    "created" (see api.py's create_thread_route), but this function is
+    safe to call either way.
+    """
+    if thread_type == "direct" and len(participant_user_ids) == 2:
+        existing = find_direct_thread(participant_user_ids[0], participant_user_ids[1])
+        if existing is not None:
+            return existing
+
+    now = datetime.now(timezone.utc).isoformat()
+    conn = get_connection()
+    try:
+        cur = conn.execute(
+            "INSERT INTO message_threads (thread_type, name, created_by_user_id, created_at) VALUES (?, ?, ?, ?)",
+            (thread_type, name, created_by_user_id, now),
+        )
+        thread_id = cur.lastrowid
+        for user_id in set(participant_user_ids):
+            conn.execute(
+                "INSERT INTO message_thread_participants (thread_id, user_id, joined_at, last_read_at) VALUES (?, ?, ?, NULL)",
+                (thread_id, user_id, now),
+            )
+        conn.commit()
+        return thread_id
+    finally:
+        conn.close()
+
+
+def add_thread_participant(thread_id: int, user_id: int) -> bool:
+    """Adds someone to a group thread. Silently a no-op if they're already in it (UNIQUE(thread_id, user_id)) -- same convention as add_lease_tag."""
+    conn = get_connection()
+    try:
+        conn.execute(
+            "INSERT INTO message_thread_participants (thread_id, user_id, joined_at, last_read_at) VALUES (?, ?, ?, NULL)",
+            (thread_id, user_id, datetime.now(timezone.utc).isoformat()),
+        )
+        conn.commit()
+        return True
+    except sqlite3.IntegrityError:
+        return False
+    except OverflowError:
+        return False
+    finally:
+        conn.close()
+
+
+def is_thread_participant(thread_id: int, user_id: int) -> bool:
+    """The one check every message-reading/writing route must pass before touching a thread at all -- see this module's messaging section docstring."""
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT 1 FROM message_thread_participants WHERE thread_id = ? AND user_id = ?", (thread_id, user_id)
+        ).fetchone()
+        return row is not None
+    except OverflowError:
+        return False
+    finally:
+        conn.close()
+
+
+def get_thread(thread_id: int) -> Optional[Dict[str, Any]]:
+    conn = get_connection()
+    try:
+        row = conn.execute("SELECT * FROM message_threads WHERE id = ?", (thread_id,)).fetchone()
+        return dict(row) if row else None
+    except OverflowError:
+        return None
+    finally:
+        conn.close()
+
+
+def get_thread_participants(thread_id: int) -> List[Dict[str, Any]]:
+    conn = get_connection()
+    try:
+        rows = conn.execute("SELECT * FROM message_thread_participants WHERE thread_id = ?", (thread_id,)).fetchall()
+        return [dict(r) for r in rows]
+    except OverflowError:
+        return []
+    finally:
+        conn.close()
+
+
+def list_threads_for_user(user_id: int) -> List[Dict[str, Any]]:
+    """
+    Every thread this user participates in -- deliberately joins
+    through message_thread_participants (never a bare SELECT * FROM
+    message_threads), so a thread the user isn't in can never appear
+    here regardless of any other bug elsewhere. Most-recent-activity
+    first (latest message, or thread creation if it has none yet).
+    """
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            """
+            SELECT t.*, p.last_read_at,
+                   (SELECT MAX(created_at) FROM messages m WHERE m.thread_id = t.id) AS last_message_at
+            FROM message_threads t
+            JOIN message_thread_participants p ON p.thread_id = t.id AND p.user_id = ?
+            ORDER BY COALESCE(last_message_at, t.created_at) DESC, t.id DESC
+            """,
+            (user_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    except OverflowError:
+        return []
+    finally:
+        conn.close()
+
+
+def insert_message(thread_id: int, sender_user_id: int, body: str) -> int:
+    now = datetime.now(timezone.utc).isoformat()
+    conn = get_connection()
+    try:
+        cur = conn.execute(
+            "INSERT INTO messages (thread_id, sender_user_id, body, created_at) VALUES (?, ?, ?, ?)",
+            (thread_id, sender_user_id, body, now),
+        )
+        # Sending a message always marks the sender's own copy of the
+        # thread read as of now -- you obviously already know what you
+        # just wrote, it should never count as unread for you.
+        conn.execute(
+            "UPDATE message_thread_participants SET last_read_at = ? WHERE thread_id = ? AND user_id = ?",
+            (now, thread_id, sender_user_id),
+        )
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def get_message(message_id: int) -> Optional[Dict[str, Any]]:
+    conn = get_connection()
+    try:
+        row = conn.execute("SELECT * FROM messages WHERE id = ?", (message_id,)).fetchone()
+        return dict(row) if row else None
+    except OverflowError:
+        return None
+    finally:
+        conn.close()
+
+
+def get_messages(thread_id: int, since: Optional[str] = None, limit: int = 100) -> List[Dict[str, Any]]:
+    """Oldest first (a message thread reads top-to-bottom). `since` (an ISO timestamp) is for polling -- only messages strictly after it, so a client re-polling an open thread gets just what's new."""
+    limit = max(1, min(limit, 500))
+    conn = get_connection()
+    try:
+        if since:
+            rows = conn.execute(
+                "SELECT * FROM messages WHERE thread_id = ? AND created_at > ? ORDER BY created_at ASC, id ASC LIMIT ?",
+                (thread_id, since, limit),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM messages WHERE thread_id = ? ORDER BY created_at ASC, id ASC LIMIT ?",
+                (thread_id, limit),
+            ).fetchall()
+        return [dict(r) for r in rows]
+    except OverflowError:
+        return []
+    finally:
+        conn.close()
+
+
+def mark_thread_read(thread_id: int, user_id: int) -> None:
+    conn = get_connection()
+    try:
+        conn.execute(
+            "UPDATE message_thread_participants SET last_read_at = ? WHERE thread_id = ? AND user_id = ?",
+            (datetime.now(timezone.utc).isoformat(), thread_id, user_id),
+        )
+        conn.commit()
+    except OverflowError:
+        pass
+    finally:
+        conn.close()
+
+
+def get_unread_counts_for_user(user_id: int) -> Dict[int, int]:
+    """{thread_id: unread_count} for every thread this user is in that has at least one unread message -- a message counts as unread if it's newer than the user's last_read_at (or the thread has never been read at all) AND wasn't sent by the user themselves (see insert_message -- your own messages never count as unread for you, so this mirrors that at read time too, for a participant who somehow still shows one, e.g. a first message in a brand-new thread they didn't send)."""
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            """
+            SELECT p.thread_id, COUNT(m.id) AS unread
+            FROM message_thread_participants p
+            JOIN messages m ON m.thread_id = p.thread_id
+                AND m.sender_user_id != p.user_id
+                AND (p.last_read_at IS NULL OR m.created_at > p.last_read_at)
+            WHERE p.user_id = ?
+            GROUP BY p.thread_id
+            """,
+            (user_id,),
+        ).fetchall()
+        return {row["thread_id"]: row["unread"] for row in rows}
+    except OverflowError:
+        return {}
+    finally:
+        conn.close()
 
 
 def insert_activity(action_type: str, description: str, lease_id: Optional[int] = None) -> int:

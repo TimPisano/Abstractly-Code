@@ -69,6 +69,7 @@ from app.comparison import compare_leases, benchmark_lease
 from app.discrepancies import sync_lease_risk_flags, sync_all_lease_risk_flags_bulk, sync_rent_roll_reconciliation, sync_t12_reconciliation
 from app import assignments as assignments_module
 from app import assistant
+from app import messaging
 from app.portfolio_history import compute_property_trends, compute_portfolio_trends
 from app import cache
 from app.alerts import generate_alerts, get_alert_digest
@@ -1285,6 +1286,128 @@ def assistant_conversations():
     limit = request.args.get('limit', default=50, type=int)
     conversations = database.get_assistant_conversations(current_user()["id"], limit=limit)
     return jsonify(conversations), 200
+
+
+# ----------------------------------------------------------------------
+# Internal team messaging: direct + group threads. Separate from the
+# lease/discrepancy comments feature -- this is private chat tied to
+# no record, isolated strictly to its participants (see
+# app/messaging.py's module docstring). Every route below either
+# lists ONLY the caller's own threads (list_threads_for_user already
+# joins through participancy at the SQL level) or explicitly checks
+# database.is_thread_participant before touching a specific thread --
+# a non-participant gets 404, never 403, so a thread's mere existence
+# isn't confirmed to someone who isn't in it.
+# ----------------------------------------------------------------------
+
+@app.route('/threads', methods=['GET'])
+@require_role()
+def list_threads():
+    threads = database.list_threads_for_user(current_user()["id"])
+    return jsonify([messaging.thread_detail(t, current_user()["id"]) for t in threads]), 200
+
+
+@app.route('/threads', methods=['POST'])
+@require_role()
+def create_thread_route():
+    """
+    Body: {"thread_type": "direct"|"group", "participant_user_ids": [int, ...], "name": str (group only, optional)}.
+    The caller is always added as a participant automatically, whether
+    or not they included their own id. "direct" requires exactly one
+    OTHER participant (so exactly 2 total) -- reuses an existing
+    direct thread with that person if one exists, rather than creating
+    a duplicate (see database.find_direct_thread).
+    """
+    body = request.get_json(silent=True) or {}
+    thread_type = (body.get('thread_type') or '').strip()
+    other_ids = body.get('participant_user_ids') or []
+    name = (body.get('name') or '').strip() or None
+    caller_id = current_user()["id"]
+
+    if thread_type not in messaging.VALID_THREAD_TYPES:
+        return jsonify({"error": f"thread_type must be one of: {', '.join(sorted(messaging.VALID_THREAD_TYPES))}"}), 400
+    if not isinstance(other_ids, list) or not other_ids:
+        return jsonify({"error": "Missing required field: participant_user_ids (non-empty list)"}), 400
+
+    all_ids = sorted(set(other_ids) | {caller_id})
+    for uid in all_ids:
+        if not isinstance(uid, int) or not database.get_user(uid):
+            return jsonify({"error": f"participant_user_ids must all be real team members (invalid: {uid!r})"}), 400
+
+    if thread_type == "direct":
+        if len(all_ids) != 2:
+            return jsonify({"error": "A direct thread needs exactly one other participant"}), 400
+        existing = database.find_direct_thread(all_ids[0], all_ids[1])
+        if existing is not None:
+            return jsonify(messaging.thread_detail(database.get_thread(existing), caller_id)), 200
+
+    thread_id = database.create_thread(thread_type, all_ids, caller_id, name=name)
+    return jsonify(messaging.thread_detail(database.get_thread(thread_id), caller_id)), 201
+
+
+@app.route('/threads/<int:thread_id>/participants', methods=['POST'])
+@require_role()
+def add_thread_participant_route(thread_id):
+    """Body: {"user_id": int}. Group threads only -- a direct thread's participant pair is fixed at creation."""
+    if not database.is_thread_participant(thread_id, current_user()["id"]):
+        return jsonify({"error": "Thread not found"}), 404
+    thread = database.get_thread(thread_id)
+    if thread["thread_type"] != "group":
+        return jsonify({"error": "Only group threads support adding participants"}), 400
+
+    body = request.get_json(silent=True) or {}
+    user_id = body.get('user_id')
+    if not user_id or not database.get_user(user_id):
+        return jsonify({"error": "user_id must be a real team member"}), 400
+
+    database.add_thread_participant(thread_id, user_id)
+    return jsonify(messaging.thread_detail(database.get_thread(thread_id), current_user()["id"])), 200
+
+
+@app.route('/threads/<int:thread_id>/messages', methods=['GET'])
+@require_role()
+def get_thread_messages(thread_id):
+    """GET /threads/<id>/messages?since=<ISO timestamp>&limit=100. `since` is for polling -- omit it for the full (capped) history."""
+    if not database.is_thread_participant(thread_id, current_user()["id"]):
+        return jsonify({"error": "Thread not found"}), 404
+    since = request.args.get('since')
+    limit = request.args.get('limit', default=100, type=int)
+    messages = database.get_messages(thread_id, since=since, limit=limit)
+    return jsonify([messaging.message_detail(m) for m in messages]), 200
+
+
+@app.route('/threads/<int:thread_id>/messages', methods=['POST'])
+@require_role()
+def post_thread_message(thread_id):
+    """Body: {"body": str}."""
+    if not database.is_thread_participant(thread_id, current_user()["id"]):
+        return jsonify({"error": "Thread not found"}), 404
+    body = request.get_json(silent=True) or {}
+    text = (body.get('body') or '').strip()
+    if not text:
+        return jsonify({"error": "Missing required field: body"}), 400
+    if len(text) > 10000:
+        return jsonify({"error": "Message is too long (max 10000 characters)."}), 400
+
+    message_id = database.insert_message(thread_id, current_user()["id"], text)
+    return jsonify(messaging.message_detail(database.get_message(message_id))), 201
+
+
+@app.route('/threads/<int:thread_id>/read', methods=['POST'])
+@require_role()
+def mark_thread_read_route(thread_id):
+    if not database.is_thread_participant(thread_id, current_user()["id"]):
+        return jsonify({"error": "Thread not found"}), 404
+    database.mark_thread_read(thread_id, current_user()["id"])
+    return jsonify({"status": "marked_read"}), 200
+
+
+@app.route('/messages/unread-count', methods=['GET'])
+@require_role()
+def messages_unread_count():
+    """A single cheap number for a polling badge -- see the frontend's existing startLiveActivityPolling() for the established polling convention this is meant to plug into (same idea, scoped to this user's own unread messages instead of portfolio-wide activity)."""
+    counts = database.get_unread_counts_for_user(current_user()["id"])
+    return jsonify({"total_unread": sum(counts.values()), "by_thread": counts}), 200
 
 
 # ----------------------------------------------------------------------
