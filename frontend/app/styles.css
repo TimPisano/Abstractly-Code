@@ -2307,6 +2307,13 @@
 
 .access-gate-card .brand {
     justify-content: center;
+    /* .brand's base color (var(--white)) is for its usual dark-sidebar
+       home -- on this white card it made the label invisible, white on
+       white (confirmed live on the new frontend/app/login.html, which
+       reuses this same class; the admin login page's equivalent
+       .admin-gate-card .brand rule already had this override, this one
+       was just missing it). */
+    color: var(--text-dark);
     margin-bottom: 1.25rem;
 }
 
