@@ -335,6 +335,40 @@ def init_db() -> None:
             )
         """)
         _seed_first_admin_user(conn)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS assignments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                target_type TEXT NOT NULL,
+                target_key TEXT NOT NULL,
+                lease_id INTEGER,
+                discrepancy_id INTEGER,
+                property_address TEXT,
+                assigned_to_user_id INTEGER NOT NULL,
+                assigned_by_user_id INTEGER NOT NULL,
+                status TEXT NOT NULL DEFAULT 'assigned',
+                note TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE (target_type, target_key),
+                FOREIGN KEY (assigned_to_user_id) REFERENCES users(id),
+                FOREIGN KEY (assigned_by_user_id) REFERENCES users(id)
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_assignments_assigned_to ON assignments(assigned_to_user_id)")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS assistant_conversations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                question TEXT NOT NULL,
+                response_type TEXT NOT NULL,
+                answer TEXT NOT NULL,
+                route TEXT,
+                route_params TEXT,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_assistant_conversations_user_id ON assistant_conversations(user_id)")
         conn.commit()
     finally:
         conn.close()
@@ -353,6 +387,8 @@ def reset_db() -> None:
         conn.execute("DROP TABLE IF EXISTS waitlist_signups")
         conn.execute("DROP TABLE IF EXISTS activity_log")
         conn.execute("DROP TABLE IF EXISTS users")
+        conn.execute("DROP TABLE IF EXISTS assignments")
+        conn.execute("DROP TABLE IF EXISTS assistant_conversations")
         conn.commit()
     finally:
         conn.close()
@@ -854,6 +890,198 @@ def update_user_last_login(user_id: int) -> None:
         pass
     finally:
         conn.close()
+
+
+# ----------------------------------------------------------------------
+# Assignments: ownership of a lease, discrepancy, or property. One
+# table covers all three via target_type/target_key (leases/
+# discrepancies have a real int id -- target_key is just str(id);
+# properties have no id at all, only a normalized address string --
+# see app.assignments.derive_target_key). One active assignment per
+# target (UNIQUE(target_type, target_key)) -- reassigning overwrites
+# who owns it, it doesn't stack a list; the activity log (once wired
+# up) is the audit trail for past assignees, not this table.
+# ----------------------------------------------------------------------
+
+def upsert_assignment(
+    target_type: str, target_key: str, assigned_to_user_id: int, assigned_by_user_id: int,
+    lease_id: Optional[int] = None, discrepancy_id: Optional[int] = None,
+    property_address: Optional[str] = None, note: Optional[str] = None,
+) -> int:
+    """
+    Atomic INSERT ... ON CONFLICT DO UPDATE, same pattern as
+    upsert_discrepancy/upsert_alert (see those functions' docstrings
+    for the concurrency-race reasoning this fix originally came from --
+    two people racing to claim the same unowned discrepancy must not
+    500 the loser). Reassigning always resets status to 'assigned' --
+    a freshly (re)assigned item shouldn't silently inherit 'resolved'
+    from whoever had it before.
+    """
+    now = datetime.now(timezone.utc).isoformat()
+    conn = get_connection()
+    try:
+        conn.execute(
+            """
+            INSERT INTO assignments (target_type, target_key, lease_id, discrepancy_id, property_address,
+                assigned_to_user_id, assigned_by_user_id, status, note, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'assigned', ?, ?, ?)
+            ON CONFLICT(target_type, target_key) DO UPDATE SET
+                assigned_to_user_id = excluded.assigned_to_user_id,
+                assigned_by_user_id = excluded.assigned_by_user_id,
+                status = 'assigned',
+                note = excluded.note,
+                updated_at = excluded.updated_at
+            """,
+            (target_type, target_key, lease_id, discrepancy_id, property_address,
+             assigned_to_user_id, assigned_by_user_id, note, now, now),
+        )
+        conn.commit()
+        row = conn.execute(
+            "SELECT id FROM assignments WHERE target_type = ? AND target_key = ?", (target_type, target_key)
+        ).fetchone()
+        return row["id"]
+    finally:
+        conn.close()
+
+
+def update_assignment_status(assignment_id: int, status: str, updated_by_user_id: int) -> Optional[Dict[str, Any]]:
+    """Plain UPDATE by primary key -- SQLite already serializes this correctly on its own (last-write-wins, no exception), unlike the natural-key race upsert_assignment guards against. See DECISIONS.md for why these are deliberately different race shapes needing different treatment."""
+    conn = get_connection()
+    try:
+        cur = conn.execute(
+            "UPDATE assignments SET status = ?, updated_at = ? WHERE id = ?",
+            (status, datetime.now(timezone.utc).isoformat(), assignment_id),
+        )
+        conn.commit()
+        if cur.rowcount == 0:
+            return None
+        row = conn.execute("SELECT * FROM assignments WHERE id = ?", (assignment_id,)).fetchone()
+        return dict(row) if row else None
+    except OverflowError:
+        return None
+    finally:
+        conn.close()
+
+
+def get_assignment(assignment_id: int) -> Optional[Dict[str, Any]]:
+    conn = get_connection()
+    try:
+        row = conn.execute("SELECT * FROM assignments WHERE id = ?", (assignment_id,)).fetchone()
+        return dict(row) if row else None
+    except OverflowError:
+        return None
+    finally:
+        conn.close()
+
+
+def get_assignment_for_target(target_type: str, target_key: str) -> Optional[Dict[str, Any]]:
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT * FROM assignments WHERE target_type = ? AND target_key = ?", (target_type, target_key)
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def get_assignments_for_targets(target_type: str, target_keys: List[str]) -> Dict[str, Dict[str, Any]]:
+    """Batched version of get_assignment_for_target for a whole list of keys at once -- {target_key: assignment}, only for keys that actually have one. Mirrors get_discrepancies_by_ids -- used to annotate a whole lease/discrepancy list in one query, not N+1."""
+    if not target_keys:
+        return {}
+    conn = get_connection()
+    try:
+        placeholders = ",".join("?" for _ in target_keys)
+        rows = conn.execute(
+            f"SELECT * FROM assignments WHERE target_type = ? AND target_key IN ({placeholders})",
+            [target_type] + list(target_keys),
+        ).fetchall()
+        return {row["target_key"]: dict(row) for row in rows}
+    finally:
+        conn.close()
+
+
+def list_assignments(
+    assigned_to_user_id: Optional[int] = None, status: Optional[str] = None, target_type: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    """Any combination of filters may be applied together. Most-recently-updated first."""
+    conn = get_connection()
+    try:
+        clauses, params = [], []
+        if assigned_to_user_id is not None:
+            clauses.append("assigned_to_user_id = ?")
+            params.append(assigned_to_user_id)
+        if status:
+            clauses.append("status = ?")
+            params.append(status)
+        if target_type:
+            clauses.append("target_type = ?")
+            params.append(target_type)
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        rows = conn.execute(f"SELECT * FROM assignments {where} ORDER BY updated_at DESC, id DESC", params).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def delete_assignment(assignment_id: int) -> bool:
+    conn = get_connection()
+    try:
+        cur = conn.execute("DELETE FROM assignments WHERE id = ?", (assignment_id,))
+        conn.commit()
+        return cur.rowcount > 0
+    except OverflowError:
+        return False
+    finally:
+        conn.close()
+
+
+# ----------------------------------------------------------------------
+# Assistant conversations: every question/answer pair a user has asked
+# the AI assistant. Scoped strictly by user_id -- every read function
+# here requires it and filters by it in SQL, never returns another
+# user's rows under any circumstance. See app/assistant.py for what
+# actually generates these.
+# ----------------------------------------------------------------------
+
+def insert_assistant_conversation(
+    user_id: int, question: str, response_type: str, answer: str,
+    route: Optional[str] = None, route_params: Optional[Dict[str, Any]] = None,
+) -> int:
+    conn = get_connection()
+    try:
+        cur = conn.execute(
+            "INSERT INTO assistant_conversations (user_id, question, response_type, answer, route, route_params, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (user_id, question, response_type, answer, route, json.dumps(route_params) if route_params is not None else None,
+             datetime.now(timezone.utc).isoformat()),
+        )
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def get_assistant_conversations(user_id: int, limit: int = 50) -> List[Dict[str, Any]]:
+    """This user's own conversation history, most recent first. limit is clamped to a sane range -- same convention as get_recent_activity."""
+    limit = max(1, min(limit, 200))
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM assistant_conversations WHERE user_id = ? ORDER BY created_at DESC, id DESC LIMIT ?",
+            (user_id, limit),
+        ).fetchall()
+    except OverflowError:
+        return []
+    finally:
+        conn.close()
+
+    result = []
+    for row in rows:
+        d = dict(row)
+        d["route_params"] = json.loads(d["route_params"]) if d["route_params"] else None
+        result.append(d)
+    return result
 
 
 def insert_activity(action_type: str, description: str, lease_id: Optional[int] = None) -> int:

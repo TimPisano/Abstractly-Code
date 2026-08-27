@@ -64,6 +64,7 @@ UNIT_TESTS = [
     "test_performance.py",
     "test_rent_roll_shape_detection.py",
     "test_teams_and_assignments.py",
+    "test_assistant.py",
 ]
 
 LIVE_API_TESTS = [
@@ -84,6 +85,7 @@ LIVE_API_TESTS = [
     "test_live_multiformat_upload_api.py",
     "test_live_sidebar_endpoints_api.py",
     "test_live_performance_api.py",
+    "test_live_assistant_api.py",
 ]
 
 

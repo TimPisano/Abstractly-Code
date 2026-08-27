@@ -1,5 +1,141 @@
 # Implementation Decisions
 
+## AI portfolio assistant + Today view (assignments backend, step 4 of the collaboration plan)
+
+Two requests: (1) a chat-style AI assistant grounded in the real
+portfolio, using the real Claude API, supporting informational
+answers, navigational routing, and clarifying questions when a
+question is ambiguous, rate-limited, with per-account-isolated
+conversation history; (2) confirm the "Today" task/assignment backend
+exists. It didn't -- the collaboration plan's step 4 (assignments)
+had been explicitly deferred, so this pass builds it first, since
+Today depends on it.
+
+**Assignments (step 4, finally built)**: exactly the design from the
+already-approved plan -- one `assignments` table covering leases,
+discrepancies, and properties via `target_type`/`target_key` (see
+`app/assignments.py`'s `derive_target_key`), atomic
+`upsert_assignment` (`INSERT ... ON CONFLICT`, same pattern already
+proven for discrepancies/alerts -- confirmed the concurrency case
+directly: 20 threads racing to claim the same target never raises,
+always resolves to one row), plain-PK `update_assignment_status` for
+status changes (a materially different, already-safe race shape, see
+that function's docstring). `GET/POST /assignments`,
+`GET/PATCH/DELETE /assignments/<id>` -- reads open to any logged-in
+role, writes require analyst+. A property assignment has no existence
+check (assigning an upcoming, not-yet-uploaded acquisition is
+legitimate); lease/discrepancy assignments 404 if the target doesn't
+exist.
+
+**Today view**: `GET /today?user_id=<id>` (defaults to the caller) --
+this user's open (non-resolved) assignments, split by type and
+enriched with the actual lease/discrepancy record (not just ids, so
+the frontend needs no follow-up requests), plus the portfolio's
+active alerts sorted by severity. Alerts are deliberately NOT filtered
+to the user -- they have no assignee concept of their own (a fact
+about the portfolio, not a task handed to someone), consistent with
+this app's "no per-account data scoping" precedent for every other
+shared view. Verified live against the real running server with a
+real assignment and a real tenant-concentration alert (confirmed live
+because the seeded test lease was genuinely 100% of that account's
+portfolio rent) -- not just unit-tested.
+
+**AI assistant**: one Claude API call per question, forced through a
+single tool (`respond_to_user`, see `app/assistant.py`) so the output
+is always a strict, parseable structure instead of free text to guess
+the shape of afterward. `response_type` is exactly the three things
+asked for: `informational` (grounded answer), `navigational` (a real
+route name, and for a specific lease a real `lease_id` -- see below),
+`clarifying` (the question is genuinely ambiguous given the real
+data -- asks back rather than guessing, held to the same "flag
+missing/ambiguous, never fabricate" standard the extraction pipeline
+itself is built to).
+
+Grounding is "stuff a compact, one-line-per-lease portfolio summary
+into the system prompt," not a real embedding/vector-search retrieval
+system -- a deliberate, documented scope choice
+(`build_portfolio_context`'s docstring): for portfolios in the
+low thousands of leases the compact summary still fits one context
+window, so the model finds what's relevant itself with zero retrieval-
+recall failure mode, zero extra infrastructure. Capped at 500 leases
+with an explicit "only the first N of M shown" note in the context
+itself (not a silent truncation the model has no way to know about)
+for portfolios larger than that -- a real retrieval layer would be the
+natural next step if that cap starts mattering in practice.
+
+**Never trust the model's navigation output blindly**:
+`_validate_navigation` checks `route` against the actual set of views
+the frontend renders, and for `route="detail"`, checks `lease_id`
+against the real portfolio's actual lease ids -- a hallucinated route
+name or a lease_id that doesn't exist gets downgraded to a safe
+informational fallback, never passed through as if it were valid
+(confirmed both cases directly, not just reasoned about).
+
+**Rate limiting**: same in-memory, per-process, fixed-window pattern
+already established for `POST /waitlist` (see that code's own
+reasoning for why this style over a new dependency), keyed by
+`user_id` instead of IP -- this is an authenticated endpoint, and IP-
+keying would let one abusive account behind a shared IP throttle
+everyone else on it. 20 questions/minute per user.
+
+**Conversation isolation**: `assistant_conversations.user_id` has a
+REAL foreign-key constraint to `users(id)` -- deliberately, unlike
+`discrepancies.lease_id`'s intentional un-FK'd design, since a
+conversation should never legitimately be orphaned the way a
+discrepancy should survive its lease being deleted. `GET
+/assistant/conversations` has no user-override parameter at all
+(unlike `/today`, which does) -- always the session's own user_id,
+never a request parameter, since a conversation can hold more
+sensitive back-and-forth than a task list and there's no legitimate
+"view a teammate's chat with the assistant" use case. Verified live
+and in a dedicated unit test (`test_conversations_route_is_strictly_
+isolated_per_account`) that two real accounts asking questions in the
+same process never see each other's history. Also confirmed a failed
+(502) call leaves no phantom conversation record -- the persist call
+only ever runs after `ask_assistant` genuinely succeeds.
+
+**Real live-Claude-API testing was NOT completed**: the
+`ANTHROPIC_API_KEY` present in this environment returned "Your credit
+balance is too low to access the Anthropic API" on the one real call
+attempted. Confirmed this is purely a billing block, not a bug --
+Anthropic's own API validated and understood the request enough to
+reach the billing check, and the route's error handling worked exactly
+as designed (the real reason logged server-side via
+`logger.exception`, a clean generic 502 returned to the client, no
+raw traceback, and critically -- confirmed directly -- no phantom
+conversation record left behind from the failed attempt). Per explicit
+instruction, this is not being chased further right now; the user
+will fund the key later and this can be verified live at that point.
+Everything else about the feature (grounding context construction,
+navigation validation, rate limiting, persistence, per-account
+isolation, every route's auth/validation) is verified either by unit
+test against a real mocked-but-SDK-shaped response (real
+`anthropic.types.ToolUseBlock` objects, not bare dicts/MagicMocks) or
+live against the actually-running server.
+
+New `tests/test_live_assistant_api.py` had to solve a real dead end:
+Python's `http.cookiejar` (`DefaultCookiePolicy`) refuses to even
+STORE a `Secure`-flagged cookie received over plain `http://` --
+unlike real browsers, it has no "localhost is a trustworthy origin"
+exemption (see the earlier "step 2 + login page" entry, which found
+the same thing from the other side: browsers DO have this exemption,
+which is what makes local dev over `http://localhost` work at all with
+`SESSION_COOKIE_SECURE=True`). A `urllib`+`http.cookiejar`-based live
+test script silently never sends the session cookie back at all,
+looking exactly like a broken login instead of a testing-tool
+limitation. Fixed by extracting the `Set-Cookie` header manually and
+resending just the `name=value` pair as an explicit `Cookie` header on
+each later request, bypassing `http.cookiejar`'s policy entirely --
+same approach `curl -c/-b` was already using successfully throughout
+this session's testing, which is exactly why curl "just worked" where
+a first attempt at a Python cookie-jar script didn't. **This is the
+same root cause the 16 pre-existing live test files still need fixed**
+(tracked separately, from the step-2 RBAC audit -- not attempted in
+this pass, out of scope for this request) -- now that it's diagnosed
+precisely, fixing those is a known, mechanical change: add a real
+login step using this same manual-cookie-header technique, not
+`http.cookiejar`.
+
 ## Team collaboration infrastructure, step 3: team management
 
 `GET|POST /team/members`, `PATCH /team/members/<id>`, `POST

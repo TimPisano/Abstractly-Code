@@ -1,6 +1,45 @@
 # Progress Summary
 
-**Last updated**: Team collaboration infrastructure, step 3 of the
+**Last updated**: Built the AI portfolio assistant (POST /assistant/ask,
+GET /assistant/conversations) and confirmed/built the Today view (GET
+/today) it was asked to power -- which required finally building
+Assignments (collaboration plan step 4, previously deferred) since
+Today depends on it. Assistant: one Claude API call per question,
+forced through a tool so output is always structured
+(informational/navigational/clarifying), grounded in a compact real-
+portfolio summary (capped, with an explicit note if truncated, not a
+silent drop), navigation output re-validated against the real
+portfolio (never trusts a route name or lease_id the model produced),
+per-user rate limited (20/min), conversations strictly isolated per
+account (real FK constraint + no user-override query param, unlike
+Today's). Assignments: same atomic-upsert pattern already proven for
+discrepancies/alerts, confirmed race-safe with 20 concurrent threads.
+Today: enriched (not just ids) open assignments + portfolio-wide
+active alerts, verified live with a real assignment and a real
+tenant-concentration alert. 39 new unit tests (test_assistant.py +
+additions to test_teams_and_assignments.py), full suite 45/45.
+
+**Real live Claude API testing was not completed** -- the
+ANTHROPIC_API_KEY available in this environment has no credit balance
+("Your credit balance is too low"). Confirmed this is a billing block,
+not a bug (the request was well-formed; error handling worked exactly
+as designed -- clean 502, no phantom conversation record). Per
+explicit instruction, not chasing this further now; the user will
+fund the key and this gets verified live later. Everything else about
+the feature is verified (mocked-but-SDK-shaped unit tests, live route/
+auth/validation/isolation checks). Along the way, solved a real
+Python-tooling dead end for live-testing this app now that RBAC is
+live: http.cookiejar refuses to store Secure-flagged cookies over
+plain http:// (no localhost exemption the way real browsers have) --
+fixed with a manual Set-Cookie/Cookie header pattern, which is also
+the exact fix the 16 pre-existing live test files still need (tracked
+separately from the step-2 RBAC audit, not attempted here -- out of
+scope for this request). See DECISIONS.md's "AI portfolio assistant +
+Today view" entry for full detail.
+
+---
+
+Team collaboration infrastructure, step 3 of the
 approved plan (steps 1-2: real accounts + login page, RBAC audit
 across every route, already shipped). Added real team management:
 `GET|POST /team/members`, `PATCH /team/members/<id>`, `POST

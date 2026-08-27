@@ -67,6 +67,8 @@ from app.portfolio import (
 )
 from app.comparison import compare_leases, benchmark_lease
 from app.discrepancies import sync_lease_risk_flags, sync_all_lease_risk_flags_bulk, sync_rent_roll_reconciliation, sync_t12_reconciliation
+from app import assignments as assignments_module
+from app import assistant
 from app.portfolio_history import compute_property_trends, compute_portfolio_trends
 from app import cache
 from app.alerts import generate_alerts, get_alert_digest
@@ -1100,6 +1102,189 @@ def reset_team_member_password(member_id):
 
     database.update_user_password(member_id, hash_password(password))
     return jsonify({"status": "password_reset"}), 200
+
+
+# ----------------------------------------------------------------------
+# Assignments: giving a lease, discrepancy, or property a specific
+# owner. See app/assignments.py for target_key derivation.
+# ----------------------------------------------------------------------
+
+@app.route('/assignments', methods=['GET'])
+@require_role()
+def list_assignments_route():
+    """GET /assignments?assigned_to=<user_id>&status=<status>&target_type=<type>. Any combination of filters may be applied together."""
+    assigned_to = request.args.get('assigned_to', type=int)
+    status = request.args.get('status')
+    target_type = request.args.get('target_type')
+    if status and status not in assignments_module.VALID_STATUSES:
+        return jsonify({"error": f"status must be one of: {', '.join(sorted(assignments_module.VALID_STATUSES))}"}), 400
+    if target_type and target_type not in assignments_module.VALID_TARGET_TYPES:
+        return jsonify({"error": f"target_type must be one of: {', '.join(sorted(assignments_module.VALID_TARGET_TYPES))}"}), 400
+
+    rows = database.list_assignments(assigned_to_user_id=assigned_to, status=status, target_type=target_type)
+    return jsonify([assignments_module.assignment_detail(a) for a in rows]), 200
+
+
+@app.route('/assignments', methods=['POST'])
+@require_role('analyst')
+def create_assignment_route():
+    """Body: {"target_type": "lease"|"discrepancy"|"property", "target": <id or address>, "assigned_to_user_id": int, "note": str (optional)}."""
+    body = request.get_json(silent=True) or {}
+    target_type = (body.get('target_type') or '').strip()
+    target = body.get('target')
+    assigned_to_user_id = body.get('assigned_to_user_id')
+    note = (body.get('note') or '').strip() or None
+
+    if target_type not in assignments_module.VALID_TARGET_TYPES:
+        return jsonify({"error": f"target_type must be one of: {', '.join(sorted(assignments_module.VALID_TARGET_TYPES))}"}), 400
+    if not target:
+        return jsonify({"error": "Missing required field: target"}), 400
+    if not assigned_to_user_id:
+        return jsonify({"error": "Missing required field: assigned_to_user_id"}), 400
+
+    try:
+        target_key = assignments_module.derive_target_key(target_type, target)
+    except (ValueError, TypeError):
+        return jsonify({"error": f"Invalid target for target_type={target_type!r}: {target!r}"}), 400
+
+    assignee = database.get_user(assigned_to_user_id)
+    if not assignee:
+        return jsonify({"error": "assigned_to_user_id does not match a real team member"}), 400
+
+    lease_id = discrepancy_id = property_address = None
+    if target_type == 'lease':
+        if not database.get_lease(int(target_key)):
+            return jsonify({"error": "Lease not found"}), 404
+        lease_id = int(target_key)
+    elif target_type == 'discrepancy':
+        if not database.get_discrepancy(int(target_key)):
+            return jsonify({"error": "Discrepancy not found"}), 404
+        discrepancy_id = int(target_key)
+    else:
+        # A property is just a string -- no existence check is
+        # possible or required (assigning an upcoming acquisition
+        # that hasn't been uploaded yet is legitimate).
+        property_address = target_key
+
+    assignment_id = database.upsert_assignment(
+        target_type, target_key, assigned_to_user_id, current_user()["id"],
+        lease_id=lease_id, discrepancy_id=discrepancy_id, property_address=property_address, note=note,
+    )
+    database.insert_activity(
+        "assignment_created",
+        f"{assignee['name']} assigned to {target_type} {target_key} by {current_user()['name']}",
+        lease_id=lease_id,
+    )
+    return jsonify(assignments_module.assignment_detail(database.get_assignment(assignment_id))), 201
+
+
+@app.route('/assignments/<int:assignment_id>', methods=['GET'])
+@require_role()
+def get_assignment_route(assignment_id):
+    assignment = database.get_assignment(assignment_id)
+    if not assignment:
+        return jsonify({"error": "Assignment not found"}), 404
+    return jsonify(assignments_module.assignment_detail(assignment)), 200
+
+
+@app.route('/assignments/<int:assignment_id>', methods=['PATCH'])
+@require_role('analyst')
+def update_assignment_route(assignment_id):
+    """Body: {"status": "assigned"|"in_review"|"resolved"}."""
+    if not database.get_assignment(assignment_id):
+        return jsonify({"error": "Assignment not found"}), 404
+
+    body = request.get_json(silent=True) or {}
+    status = (body.get('status') or '').strip()
+    if status not in assignments_module.VALID_STATUSES:
+        return jsonify({"error": f"status must be one of: {', '.join(sorted(assignments_module.VALID_STATUSES))}"}), 400
+
+    updated = database.update_assignment_status(assignment_id, status, current_user()["id"])
+    return jsonify(assignments_module.assignment_detail(updated)), 200
+
+
+@app.route('/assignments/<int:assignment_id>', methods=['DELETE'])
+@require_role('analyst')
+def delete_assignment_route(assignment_id):
+    if not database.delete_assignment(assignment_id):
+        return jsonify({"error": "Assignment not found"}), 404
+    return jsonify({"status": "deleted"}), 200
+
+
+@app.route('/today', methods=['GET'])
+@require_role()
+def today_view():
+    """
+    GET /today?user_id=<id> (optional, defaults to the caller). Powers
+    the daily dashboard: this user's open assignments (leases,
+    discrepancies, properties -- enriched, not just ids) plus the
+    portfolio's currently-active alerts. See
+    assignments.compute_today_view for exactly what "today" means and
+    why alerts aren't filtered to the user. Any logged-in role may
+    view any user's Today, same as every other shared view in this app
+    (no per-account data scoping) -- but the id must be a real user.
+    """
+    user_id = request.args.get('user_id', type=int) or current_user()["id"]
+    if not database.get_user(user_id):
+        return jsonify({"error": "User not found"}), 404
+    return jsonify(assignments_module.compute_today_view(user_id)), 200
+
+
+# ----------------------------------------------------------------------
+# AI assistant: a chat-style helper grounded in the real portfolio.
+# See app/assistant.py for the actual Claude API call + grounding
+# logic -- this route is just validation, rate limiting, and
+# persisting the conversation.
+# ----------------------------------------------------------------------
+
+@app.route('/assistant/ask', methods=['POST'])
+@require_role()
+def assistant_ask():
+    """
+    Body: {"question": str}. Returns
+    {"response_type": "informational"|"navigational"|"clarifying",
+     "answer": str, "route": str|null, "lease_id": int|null}.
+    Every call is persisted to this user's own conversation history
+    (GET /assistant/conversations) -- see database.insert_assistant_conversation.
+    """
+    user = current_user()
+    if assistant.is_rate_limited(user["id"]):
+        return jsonify({"error": f"Too many questions -- please wait a moment and try again (limit: {assistant.RATE_LIMIT_MAX} per minute)."}), 429
+
+    body = request.get_json(silent=True) or {}
+    question = (body.get('question') or '').strip()
+    if not question:
+        return jsonify({"error": "Missing required field: question"}), 400
+    if len(question) > 2000:
+        return jsonify({"error": "Question is too long (max 2000 characters)."}), 400
+
+    try:
+        result = assistant.ask_assistant(question)
+    except assistant.AssistantError:
+        return jsonify({"error": "The assistant is temporarily unavailable. Please try again in a moment."}), 502
+
+    database.insert_assistant_conversation(
+        user["id"], question, result["response_type"], result["answer"],
+        route=result.get("route"), route_params=({"lease_id": result["lease_id"]} if result.get("lease_id") is not None else None),
+    )
+    return jsonify(result), 200
+
+
+@app.route('/assistant/conversations', methods=['GET'])
+@require_role()
+def assistant_conversations():
+    """
+    GET /assistant/conversations?limit=50. ALWAYS the caller's own
+    history -- deliberately no user_id override like /today has, since
+    a conversation can contain more sensitive back-and-forth than a
+    task list, and there's no legitimate "let me see someone else's
+    chat with the assistant" use case the way there is for viewing a
+    teammate's assigned work. Scoped by session user_id only, never a
+    request parameter -- see database.get_assistant_conversations.
+    """
+    limit = request.args.get('limit', default=50, type=int)
+    conversations = database.get_assistant_conversations(current_user()["id"], limit=limit)
+    return jsonify(conversations), 200
 
 
 # ----------------------------------------------------------------------
