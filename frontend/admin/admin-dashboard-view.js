@@ -944,6 +944,7 @@ const Overview = {
         Dashboard.renderHealthSkeleton();
         Dashboard.renderMetricsSkeleton();
         document.getElementById('portfolioConfidenceSummaryPanel').innerHTML = '<p class="loading-inline"><span class="spinner-small"></span> Loading...</p>';
+        document.getElementById('todayPrioritiesContent').innerHTML = '<p class="loading-inline"><span class="spinner-small"></span> Loading...</p>';
 
         Api.portfolioHealthScore()
             .then(h => Dashboard.renderHealthScore(h))
@@ -963,6 +964,75 @@ const Overview = {
         Api.portfolioSummary()
             .then(m => Dashboard.renderMetrics(m))
             .catch(() => { document.getElementById('metricsRow').innerHTML = '<p class="error-text">Failed to load metrics.</p>'; });
+        this.loadTodayPriorities();
+    },
+
+    // "Today's Priorities": real open work merged from three independent
+    // sources (open discrepancies, active alerts, leases flagged for
+    // review) -- NOT personalized per-person assigned tasks, since no
+    // backend assignment feature exists (/assignments is 404 -- checked
+    // live before building this, see DECISIONS.md). Each source is
+    // fetched/handled independently so one failing doesn't blank the
+    // whole panel.
+    async loadTodayPriorities() {
+        const [discrepancies, alerts, leases] = await Promise.allSettled([
+            Api.listDiscrepancies({ status: 'open' }),
+            Api.listAlerts({ status: 'active' }),
+            Api.listLeases(),
+        ]);
+
+        const items = [];
+        if (discrepancies.status === 'fulfilled') {
+            discrepancies.value.forEach(d => items.push({
+                kind: 'discrepancy', severity: d.severity || 'low',
+                text: escapeHtml(d.message), leaseId: d.lease_id, view: 'discrepancies',
+            }));
+        }
+        if (alerts.status === 'fulfilled') {
+            alerts.value.forEach(a => items.push({
+                kind: 'alert', severity: a.severity || 'low',
+                text: `${escapeHtml(a.title)} — ${escapeHtml(a.message)}`, leaseId: a.lease_id, view: 'alerts',
+            }));
+        }
+        if (leases.status === 'fulfilled') {
+            leases.value
+                .filter(l => l.confidence_summary && l.confidence_summary.flagged_for_review > 0)
+                .forEach(l => items.push({
+                    kind: 'review', severity: 'medium',
+                    text: `<strong>${escapeHtml(l.display_name || lease_filename(l))}</strong> has ${l.confidence_summary.flagged_for_review} field${l.confidence_summary.flagged_for_review === 1 ? '' : 's'} flagged for review`,
+                    leaseId: l.id, view: 'dashboard',
+                }));
+        }
+
+        const content = document.getElementById('todayPrioritiesContent');
+        if (items.length === 0) {
+            const anyFailed = [discrepancies, alerts, leases].some(r => r.status === 'rejected');
+            content.innerHTML = anyFailed
+                ? '<p class="error-text">Some of today\'s priorities failed to load — try Refresh.</p>'
+                : '<div class="attention-clear"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg><span>Nothing open right now — the portfolio is caught up.</span></div>';
+            return;
+        }
+
+        const severityRank = { high: 0, medium: 1, low: 2 };
+        items.sort((a, b) => (severityRank[a.severity] ?? 3) - (severityRank[b.severity] ?? 3));
+        const capped = items.slice(0, 8);
+        const kindLabel = { discrepancy: 'Discrepancy', alert: 'Alert', review: 'Needs Review' };
+
+        content.innerHTML = capped.map(item => `
+            <div class="today-priority-item">
+                <div class="today-priority-main">
+                    <span class="today-priority-type">${severityBadgeHtml(item.severity)}</span>
+                    <span class="today-priority-text">
+                        <strong>${kindLabel[item.kind]}:</strong> ${item.text}
+                    </span>
+                </div>
+                <button class="btn-text today-priority-goto" data-view="${item.view}" type="button">View &rarr;</button>
+            </div>
+        `).join('') + (items.length > capped.length ? `<p class="attention-more">+ ${items.length - capped.length} more — see Alerts / Discrepancies / Leases &amp; Rent Rolls.</p>` : '');
+
+        content.querySelectorAll('.today-priority-goto').forEach(btn => {
+            btn.addEventListener('click', () => showView(btn.dataset.view));
+        });
     },
 };
 

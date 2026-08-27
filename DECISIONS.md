@@ -5736,3 +5736,53 @@ sidebar: x=0, width=248px, height=1100px matching the full viewport.
 Uploaded 2 real lease PDFs live specifically to get non-placeholder
 numbers on the metric tiles rather than relying on the shared dev
 database's current (volatile, frequently 0-lease) state.
+
+## AI Assistant (floating chat) and a real "Today" dashboard
+
+Two features meant to make the admin dashboard feel like a daily
+workspace rather than an occasional-use tool.
+
+**AI Assistant** (`frontend/admin/assistant.js`, markup at the
+`.app-shell` level in dashboard.html, a sibling of `<main>` -- same
+persistence reasoning as the sidebar: it must never be inside a
+`.view` or it would be torn down on every navigation). Answers two
+different kinds of questions two different ways, and this split isn't
+a UI convenience -- it reflects what the backend can and can't
+actually do:
+- Informational lease-data questions go to the real `POST /qa` engine
+  (backend/app/qa_engine.py), called portfolio-wide (no `lease_id`) --
+  the exact same deterministic, citation-grounded engine "Ask About
+  This Lease" already uses per-lease. Verified live: "what is the
+  total monthly rent?" returned "$6,250.00... Based on 1 of 1
+  lease(s)" with a real citation quoting the actual source PDF page 1
+  ("$6,250.00 per month, payable in advance...").
+- Navigational questions (mentioning Alerts, Discrepancies, Trends,
+  Reports, Team, Activity, Settings, Upload, or Access Requests) are
+  matched client-side and handled with a real `showView()` call --
+  never sent to `/qa` at all, because that engine only ever knows
+  about lease fields; a question about discrepancies has no
+  informational answer available from it regardless of phrasing, so
+  navigating there directly is the correct behavior, not a shortcut
+  around a smarter backend. "take me to/open/go to <name>" is handled
+  by fetching real leases and searching display name/tenant/address/
+  filename -- verified live both ways: "take me to the lease for Blue
+  Sky Coffee" correctly opened that exact lease's detail page; "open
+  the lease for Acme" (no such tenant in the data) correctly returned
+  "I couldn't find a lease matching...", not a hallucinated result.
+  Verified the panel itself survives navigation (chat history and
+  open/closed state both persist across a `showView()` call it
+  triggers), since it's a shell-level sibling, not view content.
+
+**Today dashboard**: reordered `view-overview` so Quick Actions and a
+new "Today's Priorities" panel are the first things on the page
+(health score/confidence pushed down, still present). Explicitly did
+NOT build personalized "assigned tasks" -- confirmed live before
+writing any code that `GET /assignments` is still 404, so there is no
+backend concept of a task assigned to a specific person yet. Built
+the honest version instead: "Today's Priorities" merges three real,
+already-existing data sources (open discrepancies, active alerts,
+leases with fields flagged for review) into one severity-sorted list,
+each item linking to its real source view -- genuinely "what's open
+right now," not a fabricated personalization. Verified live with real
+data: a real HIGH-severity tenant-concentration alert rendered
+correctly with its full real message and a working "View →" link.

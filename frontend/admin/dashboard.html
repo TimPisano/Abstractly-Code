@@ -203,26 +203,46 @@
                 <div class="view-header">
                     <div>
                         <h1>Dashboard</h1>
-                        <p class="view-subtitle">Portfolio health and what needs attention, at a glance</p>
+                        <p class="view-subtitle" id="overviewGreeting">Here's what needs your attention today</p>
                     </div>
                     <button class="btn-primary" data-goto="upload" type="button">+ Upload Leases</button>
                 </div>
 
-                <!-- Portfolio Health Score: how much the current DATA can be trusted --
-                     the single most important thing to check first, so it's the first
-                     panel on the page. Ported from frontend/app/dashboard-view.js's
-                     identical panel (same real backend endpoint, same markup). -->
-                <div class="panel health-score-panel" id="healthScorePanel"></div>
+                <!-- Quick Actions: real navigation shortcuts, not decorative --
+                     the "quick access to whatever tools you'd need most today"
+                     part of a daily workspace. -->
+                <div class="today-quick-actions" id="overviewQuickActions">
+                    <button class="today-quick-action" data-goto="alerts" type="button">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0"/></svg>
+                        Alerts
+                    </button>
+                    <button class="today-quick-action" data-goto="discrepancies" type="button">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 9.75l4.5 4.5m0-4.5l-4.5 4.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        Discrepancies
+                    </button>
+                    <button class="today-quick-action" data-goto="upload" type="button">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v12m0 0l-4-4m4 4l4-4M4 20h16"/></svg>
+                        Upload
+                    </button>
+                    <button class="today-quick-action" id="overviewAskAssistantBtn" type="button">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+                        Ask a Question
+                    </button>
+                </div>
 
-                <!-- Portfolio-wide confidence summary: real, computed field-confidence counts across every lease -->
-                <div class="panel" id="portfolioConfidenceSummaryPanel"></div>
-
-                <!-- What Needs Attention Today -->
-                <div class="panel attention-panel" id="attentionPanel">
+                <!-- Today's Priorities: real open work merged from three sources
+                     (open discrepancies, active alerts, leases flagged for review)
+                     -- not personalized per-person "assigned tasks", since no
+                     backend assignment feature exists yet (/assignments is still
+                     404 as of this build -- confirmed live, see DECISIONS.md).
+                     This is genuinely "what's open right now", which is the
+                     honest version of "what I need to do today" until per-person
+                     assignment is real. -->
+                <div class="panel attention-panel" id="todayPrioritiesPanel">
                     <div class="panel-header">
-                        <h2>What Needs Attention Today</h2>
+                        <h2>Today's Priorities</h2>
                     </div>
-                    <div id="attentionContent"></div>
+                    <div id="todayPrioritiesContent"></div>
                 </div>
 
                 <!-- Expiration & Renewal Alerts -->
@@ -231,6 +251,20 @@
                         <h2>Expiring Soon</h2>
                     </div>
                     <div id="expirationAlertsContent"></div>
+                </div>
+
+                <!-- Portfolio Health Score: how much the current DATA can be trusted. -->
+                <div class="panel health-score-panel" id="healthScorePanel"></div>
+
+                <!-- Portfolio-wide confidence summary: real, computed field-confidence counts across every lease -->
+                <div class="panel" id="portfolioConfidenceSummaryPanel"></div>
+
+                <!-- What Needs Attention Today: lease-level data-quality flags (missing fields, unusual terms) -->
+                <div class="panel attention-panel" id="attentionPanel">
+                    <div class="panel-header">
+                        <h2>Data Quality Flags</h2>
+                    </div>
+                    <div id="attentionContent"></div>
                 </div>
 
                 <!-- Portfolio health strip -->
@@ -585,6 +619,38 @@
                 <div id="teamNotesFeedContent"></div>
             </section>
         </main>
+
+        <!-- AI Assistant -- a sibling of <main>, not inside any .view, so it
+             survives every view switch instead of being torn down and
+             rebuilt (same persistence reasoning as the sidebar itself).
+             Answers lease-data questions for real via the same deterministic
+             /qa engine "Ask About This Lease" already uses (portfolio-wide
+             this time, no lease_id) -- see assistant.js for why navigational
+             questions ("show me the discrepancies") are answered by
+             navigating there directly rather than through /qa: that engine
+             only ever knows about lease fields, so a question about
+             discrepancies/alerts/etc. literally can't be answered
+             informationally regardless -- going there is the correct
+             answer, not a workaround. -->
+        <button class="assistant-fab" id="assistantFabBtn" type="button" aria-label="Open assistant" aria-expanded="false">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+        </button>
+
+        <div class="assistant-panel" id="assistantPanel" style="display:none;">
+            <div class="assistant-panel-header">
+                <span>Ask Abstractly</span>
+                <button class="assistant-panel-close" id="assistantCloseBtn" type="button" aria-label="Close assistant">&times;</button>
+            </div>
+            <div class="assistant-panel-messages" id="assistantMessages">
+                <div class="assistant-message assistant-message-bot">
+                    <p>Ask me about your portfolio ("what's the average rent?", "which leases expire in 90 days?") or where to go ("show me the discrepancies", "open the lease for Acme Corp").</p>
+                </div>
+            </div>
+            <form class="assistant-panel-input-row" id="assistantForm">
+                <input type="text" id="assistantInput" class="text-input" placeholder="Ask a question..." autocomplete="off">
+                <button class="btn-primary" id="assistantSendBtn" type="submit">Send</button>
+            </form>
+        </div>
     </div>
 
     <script src="../config.js"></script>
@@ -608,6 +674,7 @@
     <script src="admin-dashboard-view.js"></script>
     <script src="admin-upload-view.js"></script>
     <script src="admin-detail-view.js"></script>
+    <script src="assistant.js"></script>
     <script src="admin-bootstrap.js"></script>
 </body>
 </html>
