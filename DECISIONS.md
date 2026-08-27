@@ -5922,3 +5922,42 @@ each item linking to its real source view -- genuinely "what's open
 right now," not a fabricated personalization. Verified live with real
 data: a real HIGH-severity tenant-concentration alert rendered
 correctly with its full real message and a working "View →" link.
+
+## Team messaging and email account linking: not built, no backend yet
+
+Checked before writing any UI: no `/messages`, `/conversations`,
+`/email/status`, `/oauth/*`, or `/auth/google`-style routes exist
+anywhere in `backend/app/api.py`, live or in source, and nothing in
+recent commit history touches either. Per the request's own
+instruction ("once backend support exists" / "don't just build the UI
+shell"), neither was built. Flagged to the user directly rather than
+shipping a chat panel or a "Connect Google" button with nothing real
+behind it.
+
+## Rebrand: "Lease Portfolio" -> "Abstractly" (frontend/app/ only)
+
+`frontend/app/index.html` and `frontend/app/login.html` were the only
+two places still saying "Lease Portfolio" -- leftover from before the
+"Abstractly" rebrand (see the much earlier "Rebrand: Lumen Lease ->
+Abstractly" entry) reached these two files specifically. Renamed the
+`<title>` and both brand labels (the real sidebar brand, and the old
+dead-code self-reported-email gate's brand, kept in sync even though
+unreachable, for consistency if anyone ever inspects it).
+
+**Did not append "— [Company Name]"**: checked the `users` table
+schema and the `/auth/session` response shape -- no `org`/`company`
+field exists anywhere. This isn't an oversight; the team-collaboration
+plan (`.claude/plans/robust-launching-dewdrop.md`) explicitly scoped
+this as **single-organization, not multi-tenant** ("No org_id
+anywhere"). There is no per-account company name to pull, and
+fabricating one (or inventing a fake org concept client-side) would
+violate this project's standing rule against fabricated data. Told
+the user plainly rather than inventing a placeholder.
+
+Verified live: logged in through the real flow (`login.html` ->
+`POST /auth/login` -> redirect to `index.html`), confirmed "Abstractly"
+on the login card, the browser tab title, and the sidebar brand -- then
+navigated to Alerts and re-checked the sidebar brand text was still
+"Abstractly", confirming it's the one persistent sidebar element (not
+re-rendered per view) rather than needing to check all 11 sections
+individually.
