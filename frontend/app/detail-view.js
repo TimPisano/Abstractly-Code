@@ -12,6 +12,14 @@ const LeaseDetail = {
         try {
             this.lease = await Api.getLease(leaseId);
             document.getElementById('detailTitle').textContent = this.lease.display_name || lease_filename(this.lease);
+            const versionBadge = document.getElementById('detailVersionBadge');
+            const versionCount = (this.lease.amendment_count || 0) + 1;
+            if (versionCount > 1) {
+                versionBadge.textContent = `Version ${versionCount}`;
+                versionBadge.style.display = '';
+            } else {
+                versionBadge.style.display = 'none';
+            }
             const tenant = fieldValue(this.lease, 'tenant') || 'Tenant not found';
             const landlord = fieldValue(this.lease, 'landlord') || 'Landlord not found';
             let subtitle = `${tenant} — ${landlord}`;
@@ -274,18 +282,127 @@ const LeaseDetail = {
         }
     },
 
+    // Simple version list: the base lease is Version 1, each amendment
+    // (already ordered oldest-first by GET /leases/<id>/amendments) is
+    // Version 2, 3, ... -- the most recent is "Current" since
+    // get_effective_fields() lets later uploads win per-field. Not a
+    // real diff/comparison view, just "here's what's on file and when
+    // it was added" -- the request explicitly said this doesn't need to
+    // be fancy.
     renderAmendments(amendments) {
         const list = document.getElementById('amendmentsList');
-        if (!amendments || amendments.length === 0) {
-            list.innerHTML = '<p class="empty-inline">No amendments on file.</p>';
+        const versions = [
+            { filename: lease_filename(this.lease), uploaded_at: this.lease.uploaded_at, isBase: true },
+            ...(amendments || []),
+        ];
+        list.innerHTML = versions.map((v, i) => {
+            const versionNum = i + 1;
+            const isCurrent = i === versions.length - 1;
+            return `
+                <div class="amendment-item ${isCurrent ? 'amendment-item-current' : ''}">
+                    <div class="amendment-item-head">
+                        <span class="version-chip ${isCurrent ? 'version-chip-current' : ''}">Version ${versionNum}${v.isBase ? ' (original)' : ''}</span>
+                        ${isCurrent ? '<span class="version-current-label">Current</span>' : ''}
+                    </div>
+                    <div class="amendment-filename">${escapeHtml(v.filename)}</div>
+                    <div class="amendment-date">${formatDate(v.uploaded_at)}</div>
+                </div>
+            `;
+        }).join('');
+    },
+
+    // Resubmit / Upload New Version: same backend mechanism as the old
+    // "Add Amendment" button (POST /leases/<id>/amendments -- a full
+    // re-extraction, later upload wins per-field, see
+    // database.get_effective_fields), just reframed as version upload
+    // with a before/after discrepancy check layered on top.
+    async resubmit(file) {
+        if (!this.lease) return;
+        const status = document.getElementById('resubmitStatus');
+        status.innerHTML = '<p class="loading-inline"><span class="spinner-small"></span> Processing new version…</p>';
+        document.getElementById('resubmitResolutionsPanel').style.display = 'none';
+
+        // Captured BEFORE the upload -- this is the actual "before" side
+        // of the before/after comparison below, not something inferred
+        // after the fact. Scoped to lease_risk_flag discrepancies only:
+        // those are the ones sync_lease_risk_flags() actually
+        // recomputes for this lease on the next risk fetch; a cross-
+        // lease mismatch or rent-roll reconciliation discrepancy isn't
+        // necessarily affected by re-uploading just this one document,
+        // so including them here would risk suggesting a "resolved by
+        // resubmission" that isn't really true.
+        let beforeDiscrepancies = [];
+        try {
+            const all = await Api.listDiscrepancies({ leaseId: this.lease.id, status: 'open' });
+            beforeDiscrepancies = all.filter(d => d.discrepancy_type === 'lease_risk_flag');
+        } catch (err) { /* best-effort -- a failed pre-check just means no reconciliation suggestions after, not a blocked upload */ }
+
+        try {
+            const updatedLease = await Api.uploadAmendment(this.lease.id, file);
+            status.innerHTML = '';
+            showToast('New version uploaded — lease data updated.', 'success');
+            await this.load({ leaseId: updatedLease.id });
+            if (beforeDiscrepancies.length > 0) {
+                await this.checkDiscrepanciesClearedByResubmission(updatedLease.id, beforeDiscrepancies);
+            }
+        } catch (err) {
+            status.innerHTML = `<p class="error-text">Failed to upload new version: ${escapeHtml(err.message)}</p>`;
+        }
+    },
+
+    // Real before/after comparison, not an automatic backend behavior
+    // (no such thing exists yet -- discrepancies never auto-resolve on
+    // their own, see DECISIONS.md). Api.leaseRisks() re-runs risk
+    // analysis against the now-current (post-resubmission) effective
+    // fields and re-syncs each flag's discrepancy_id via
+    // sync_lease_risk_flags -- any `before` discrepancy whose id isn't
+    // among the freshly-synced ones means that exact condition no
+    // longer occurred on this recomputation. Each suggestion still
+    // requires a real click against the real POST /discrepancies/<id>
+    // /resolve endpoint -- this only pre-fills and surfaces it.
+    async checkDiscrepanciesClearedByResubmission(leaseId, beforeDiscrepancies) {
+        let freshFlags;
+        try {
+            freshFlags = await Api.leaseRisks(leaseId);
+        } catch (err) {
             return;
         }
-        list.innerHTML = amendments.map(a => `
-            <div class="amendment-item">
-                <div class="amendment-filename">${escapeHtml(a.filename)}</div>
-                <div class="amendment-date">${formatDate(a.uploaded_at)}</div>
+        const stillPresentIds = new Set((freshFlags || []).map(f => f.discrepancy_id).filter(id => id != null));
+        const cleared = beforeDiscrepancies.filter(d => !stillPresentIds.has(d.id));
+        if (cleared.length === 0) return;
+
+        const panel = document.getElementById('resubmitResolutionsPanel');
+        const list = document.getElementById('resubmitResolutionsList');
+        list.innerHTML = cleared.map(d => `
+            <div class="resubmit-resolution-item" data-discrepancy-id="${d.id}">
+                <p class="resubmit-resolution-message">${escapeHtml(d.message)}</p>
+                <button class="btn-secondary resubmit-resolution-confirm-btn" data-id="${d.id}" type="button">Confirm Resolved</button>
             </div>
         `).join('');
+        panel.style.display = 'block';
+        list.querySelectorAll('.resubmit-resolution-confirm-btn').forEach(btn => {
+            btn.addEventListener('click', () => this.confirmResolvedByResubmission(parseInt(btn.dataset.id, 10)));
+        });
+    },
+
+    async confirmResolvedByResubmission(discrepancyId) {
+        const item = document.querySelector(`.resubmit-resolution-item[data-discrepancy-id="${discrepancyId}"]`);
+        const btn = item ? item.querySelector('.resubmit-resolution-confirm-btn') : null;
+        if (btn) { btn.disabled = true; btn.textContent = 'Resolving…'; }
+        try {
+            await Api.resolveDiscrepancy(discrepancyId, {
+                correctSource: 'Resubmitted document',
+                note: 'Resolved by resubmission — this condition no longer appears in the newly uploaded version.',
+            });
+            showToast('Discrepancy resolved.', 'success');
+            if (item) item.remove();
+            if (!document.querySelector('.resubmit-resolution-item')) {
+                document.getElementById('resubmitResolutionsPanel').style.display = 'none';
+            }
+        } catch (err) {
+            if (btn) { btn.disabled = false; btn.textContent = 'Confirm Resolved'; }
+            showError(`Failed to resolve: ${err.message}`);
+        }
     },
 
     exportJson() {
@@ -489,20 +606,24 @@ function _initDetailViewBindings() {
     document.getElementById('detailAddTagBtn').addEventListener('click', addTag);
     tagInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addTag(); } });
 
+    // Resubmit dropzone: same drag-and-drop pattern as the main Upload
+    // view (dragover/dragleave/drop + click-to-browse via the same
+    // hidden input), scoped to this one lease.
     const amendmentInput = document.getElementById('amendmentFileInput');
-    document.getElementById('addAmendmentBtn').addEventListener('click', () => amendmentInput.click());
-    amendmentInput.addEventListener('change', async (e) => {
+    const dropzone = document.getElementById('resubmitDropzone');
+    dropzone.addEventListener('click', () => amendmentInput.click());
+    dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('dragover'); });
+    dropzone.addEventListener('dragleave', (e) => { e.preventDefault(); dropzone.classList.remove('dragover'); });
+    dropzone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropzone.classList.remove('dragover');
+        const file = e.dataTransfer.files[0];
+        if (file) LeaseDetail.resubmit(file);
+    });
+    amendmentInput.addEventListener('change', (e) => {
         const file = e.target.files[0];
-        if (!file || !LeaseDetail.lease) return;
-        try {
-            const updatedLease = await Api.uploadAmendment(LeaseDetail.lease.id, file);
-            showToast('Amendment added — lease terms updated.', 'success');
-            LeaseDetail.load({ leaseId: updatedLease.id });
-        } catch (err) {
-            showError(`Failed to upload amendment: ${err.message}`);
-        } finally {
-            amendmentInput.value = '';
-        }
+        amendmentInput.value = '';
+        if (file) LeaseDetail.resubmit(file);
     });
 
     const askBtn = document.getElementById('detailQaBtn');

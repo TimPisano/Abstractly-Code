@@ -6183,3 +6183,57 @@ Dashboard, confirmed a real "Task completed." toast, confirmed the
 row left the DOM, confirmed it stayed gone after a genuine full page
 reload (not just an in-memory re-render) -- i.e. confirmed against
 what actually persisted, not just what the UI optimistically showed.
+
+## Lease resubmission: reframed the existing Amendments feature,
+## didn't build a parallel one
+
+Checked the backend before writing anything: `leases.base_lease_id`
+(a self-referencing FK) already gives every lease a "base lease +
+amendments" structure, and `get_effective_fields()` already merges
+them with later-uploaded-wins-per-field semantics -- exactly what a
+Canvas-style "resubmit" needs (newest version's fields take priority,
+older ones stay on file). `GET /leases` already lists base leases
+only, so amendments already don't clutter the main list. Building a
+second, parallel "resubmit" mechanism next to the existing "Add
+Amendment" one would have meant two code paths doing the same thing --
+instead, reframed the one that exists: renamed the panel from
+"Amendments" to "Version History", replaced the click-only file input
+with a real drag-and-drop zone (same pattern as the main Upload view),
+and added a "Version N" badge plus a simple version list (base = V1,
+each amendment = V2, V3, ... oldest first, newest marked "Current").
+Same real `POST /leases/<id>/amendments` endpoint underneath.
+
+**"Resolved by resubmission" -- a real before/after comparison, not
+invented backend behavior**: discrepancies never auto-resolve on
+their own anywhere in this app (confirmed by reading
+`sync_lease_risk_flags` -- it upserts flags that ARE present on a
+fresh computation, but never proactively resolves ones that
+disappeared). Rather than fabricate that behavior or silently skip
+the request, built it as a real before/after diff: capture this
+lease's open `lease_risk_flag` discrepancies before the upload,
+re-run risk analysis after (`GET /leases/<id>/risks`, which already
+re-syncs each flag's `discrepancy_id` against the fresh effective
+data), and surface any discrepancy that dropped out as a "Possibly
+Resolved by This Resubmission" suggestion. Each one still requires a
+real click against the real `POST /discrepancies/<id>/resolve`
+endpoint with `correct_source: "Resubmitted document"` -- this only
+finds and pre-fills the suggestion, the resolution itself is a real,
+attributed action (now correctly sourced from the session user, not
+a request-body field, per the RBAC work), not an automatic backend
+behavior being faked client-side. Scoped the before/after comparison
+to `lease_risk_flag` discrepancies only, not cross-lease mismatches
+or rent-roll/T12 reconciliation ones -- those aren't necessarily
+affected by re-uploading just this one document, so including them
+would risk a false "resolved" suggestion.
+
+Verified live end to end: uploaded a real lease with 3 missing-clause
+discrepancies (`missing_clauses_office.pdf`), resubmitted a different
+real document over it via the actual drag-and-drop zone
+(`office_lease.pdf`), confirmed the version badge became "Version 2",
+risk flags dropped from 3 to 1, two "possibly resolved" suggestions
+appeared, confirmed one for real and verified via a direct API call
+that it now shows `status: "resolved"` with the exact note and the
+real logged-in user's name attached -- not a fabricated resolution.
+Also confirmed `GET /leases` still returns exactly one row for the
+resubmitted lease (not two), matching what the live Dashboard table
+showed.
