@@ -126,6 +126,8 @@ const Discrepancies = {
             if (reopenBtn) reopenBtn.addEventListener('click', () => this.reopen(id));
             const confirmBtn = card.querySelector('.discrepancy-row-confirm-btn');
             if (confirmBtn) confirmBtn.addEventListener('click', () => this.submitResolve(id));
+            const taskBtn = card.querySelector('.discrepancy-row-task-btn');
+            if (taskBtn) taskBtn.addEventListener('click', () => Tasks.createFromDiscrepancy(id));
         });
     },
 
@@ -176,6 +178,7 @@ const Discrepancies = {
                 <p class="alert-card-message">${escapeHtml(d.message)}</p>
                 <div class="alert-card-actions">
                     ${leaseLink}
+                    <button class="btn-text discrepancy-row-task-btn" data-id="${d.id}" type="button">+ Create Task</button>
                     <button class="btn-secondary discrepancy-row-resolve-btn" type="button">${isExpanded ? 'Cancel' : 'Resolve'}</button>
                 </div>
                 ${isExpanded ? this._resolveFormHtml() : ''}

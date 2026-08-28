@@ -143,6 +143,8 @@ const Alerts = {
             if (leaseLink) leaseLink.addEventListener('click', (e) => { e.stopPropagation(); showLeaseDetail(alert.lease_id); });
             const dismissBtn = card.querySelector('.alert-card-dismiss-btn');
             if (dismissBtn) dismissBtn.addEventListener('click', (e) => { e.stopPropagation(); this.dismiss(alert.id); });
+            const taskBtn = card.querySelector('.alert-card-task-btn');
+            if (taskBtn) taskBtn.addEventListener('click', (e) => { e.stopPropagation(); Tasks.createFromAlert(alert.id); });
         });
     },
 
@@ -170,6 +172,7 @@ const Alerts = {
                 ${alert.status === 'dismissed' && alert.dismissal_note ? `<p class="alert-card-dismissed-note">&ldquo;${escapeHtml(alert.dismissal_note)}&rdquo;</p>` : ''}
                 <div class="alert-card-actions">
                     ${alert.lease_id != null ? `<button class="btn-text alert-card-lease-link" type="button">View Lease &rarr;</button>` : ''}
+                    ${alert.status === 'active' ? `<button class="btn-text alert-card-task-btn" type="button">+ Create Task</button>` : ''}
                     ${alert.status === 'active' ? `<button class="btn-secondary alert-card-dismiss-btn" type="button">Dismiss</button>` : ''}
                 </div>
             </div>

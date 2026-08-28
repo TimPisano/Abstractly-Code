@@ -14,6 +14,7 @@ const Dashboard = {
     risksByLeaseId: {},
 
     async load() {
+        this.renderTodayBriefingSkeleton();
         this.renderHealthScoreSkeleton();
         this.renderMetricsSkeleton();
         this.renderAttentionSkeleton();
@@ -44,6 +45,9 @@ const Dashboard = {
         // Independent of the block above and of each other — one
         // panel's data being briefly unavailable shouldn't block or
         // blank out the rest of the dashboard.
+        Api.todayView(window.CURRENT_USER ? window.CURRENT_USER.id : undefined)
+            .then(d => this.renderTodayBriefing(d))
+            .catch(err => { document.getElementById('todayBriefingPanel').innerHTML = `<p class="error-text">Failed to load today's briefing: ${escapeHtml(err.message)}</p>`; });
         Api.portfolioHealthScore()
             .then(h => this.renderHealthScore(h))
             .catch(err => { document.getElementById('healthScorePanel').innerHTML = `<p class="error-text">Failed to load health score: ${escapeHtml(err.message)}</p>`; });
@@ -75,6 +79,135 @@ const Dashboard = {
         Api.portfolioRentRollReconciliation()
             .then(d => this.renderReconciliation(d))
             .catch(() => { document.getElementById('reconciliationContent').innerHTML = '<p class="error-text">Failed to load rent roll reconciliation.</p>'; });
+    },
+
+    // ===================== Today Briefing =====================
+    // Real data from GET /today (backend/app/assignments.py's
+    // compute_today_view) -- this user's tasks due today/overdue, what's
+    // new in the portfolio since their last login, unread messages, and
+    // the portfolio's active alerts (portfolio-wide, not per-user --
+    // alerts have no assignee concept). The one panel on this page that
+    // answers "what do I need to do today" directly, rather than "here's
+    // the state of the portfolio" -- deliberately first, above the
+    // Health Score.
+
+    renderTodayBriefingSkeleton() {
+        document.getElementById('todayBriefingPanel').innerHTML = `
+            <div class="today-briefing-grid">
+                ${[1, 2, 3, 4].map(() => `
+                    <div class="today-briefing-section">
+                        <div class="skeleton skeleton-text-sm" style="width:50%;margin-bottom:0.75rem;"></div>
+                        <div class="skeleton skeleton-text-sm" style="width:80%;"></div>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+    },
+
+    renderTodayBriefing(data) {
+        const panel = document.getElementById('todayBriefingPanel');
+        const tasks = data.tasks_due_today_or_overdue || [];
+        const newSince = data.new_since_last_login || { since: null, discrepancies: [], alerts: [], comments: [] };
+        const unread = data.unread_messages || { total_unread: 0, threads: [] };
+        const activeAlerts = (data.active_alerts || []).slice(0, 3);
+        const newSinceCount = newSince.discrepancies.length + newSince.alerts.length + newSince.comments.length;
+
+        const allEmpty = tasks.length === 0 && newSinceCount === 0 && unread.total_unread === 0 && activeAlerts.length === 0;
+        if (allEmpty) {
+            panel.innerHTML = `
+                <div class="attention-clear">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    <span>Nothing due, nothing new, nothing unread — you're caught up.</span>
+                </div>
+            `;
+            return;
+        }
+
+        panel.innerHTML = `
+            <div class="today-briefing-grid">
+                <div class="today-briefing-section" id="todayBriefingTasksSection">
+                    <h3>Due Today <span class="today-briefing-count" id="todayBriefingTaskCount" ${tasks.length ? '' : 'style="display:none;"'}>${tasks.length}</span></h3>
+                    <div id="todayBriefingTaskList">
+                        ${tasks.length === 0 ? '<p class="empty-inline" id="todayBriefingTasksEmpty">Nothing due.</p>' : tasks.slice(0, 4).map(t => `
+                            <div class="today-briefing-item" data-task-id="${t.id}">
+                                <input type="checkbox" class="task-complete-check today-briefing-task-check" data-id="${t.id}" title="Mark complete">
+                                <span class="${t.due_date && t.due_date < data.reference_date ? 'task-due-overdue' : 'task-due-today'}">${t.due_date && t.due_date < data.reference_date ? 'Overdue' : 'Due today'}</span>
+                                <span>${escapeHtml(t.title)}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                    ${tasks.length > 0 ? `<button class="btn-text today-briefing-link" data-goto="tasks" type="button">Go to Tasks &rarr;</button>` : ''}
+                </div>
+
+                <div class="today-briefing-section">
+                    <h3>New Since Last Login ${newSinceCount ? `<span class="today-briefing-count">${newSinceCount}</span>` : ''}</h3>
+                    ${!newSince.since ? '<p class="empty-inline">First login this session — nothing to compare against yet.</p>'
+                        : newSinceCount === 0 ? '<p class="empty-inline">Nothing new.</p>' : `
+                        <div class="today-briefing-item">${newSince.discrepancies.length} new discrepanc${newSince.discrepancies.length === 1 ? 'y' : 'ies'}</div>
+                        <div class="today-briefing-item">${newSince.alerts.length} new alert${newSince.alerts.length === 1 ? '' : 's'}</div>
+                        <div class="today-briefing-item">${newSince.comments.length} new comment${newSince.comments.length === 1 ? '' : 's'}</div>
+                    `}
+                </div>
+
+                <div class="today-briefing-section">
+                    <h3>Messages ${unread.total_unread ? `<span class="today-briefing-count">${unread.total_unread}</span>` : ''}</h3>
+                    ${unread.total_unread === 0 ? '<p class="empty-inline">No unread messages.</p>' : `
+                        <p class="empty-inline">${unread.total_unread} unread across ${unread.threads.length} conversation${unread.threads.length === 1 ? '' : 's'}.</p>
+                        <button class="btn-text today-briefing-link" id="todayBriefingOpenMessagesBtn" type="button">Open Messages &rarr;</button>
+                    `}
+                </div>
+
+                <div class="today-briefing-section">
+                    <h3>Active Alerts ${data.summary && data.summary.active_alert_count ? `<span class="today-briefing-count">${data.summary.active_alert_count}</span>` : ''}</h3>
+                    ${activeAlerts.length === 0 ? '<p class="empty-inline">Nothing active.</p>' : activeAlerts.map(a => `
+                        <div class="today-briefing-item">${severityBadgeHtml(a.severity)} ${escapeHtml(a.title)}</div>
+                    `).join('')}
+                    ${data.summary && data.summary.active_alert_count > 0 ? `<button class="btn-text today-briefing-link" data-goto="alerts" type="button">Go to Alerts &rarr;</button>` : ''}
+                </div>
+            </div>
+        `;
+        panel.querySelectorAll('[data-goto]').forEach(btn => btn.addEventListener('click', () => showView(btn.dataset.goto)));
+        const msgBtn = document.getElementById('todayBriefingOpenMessagesBtn');
+        if (msgBtn) msgBtn.addEventListener('click', () => Messaging.openPanel());
+        panel.querySelectorAll('.today-briefing-task-check').forEach(cb => {
+            cb.addEventListener('change', () => this.completeTodayTask(parseInt(cb.dataset.id, 10), cb));
+        });
+    },
+
+    // Real POST /tasks/<id>/status call, not just a UI toggle -- confirmed
+    // via the same Api.updateTaskStatus() the Tasks page's own checkbox
+    // uses. Optimistic on success (fades the row out immediately rather
+    // than waiting for a full /today re-fetch), but only AFTER the
+    // backend call actually succeeds -- a failure reverts the checkbox
+    // and leaves the row in place, so what's on screen never claims
+    // something happened that didn't.
+    async completeTodayTask(taskId, checkboxEl) {
+        checkboxEl.disabled = true;
+        try {
+            await Api.updateTaskStatus(taskId, 'done');
+            showToast('Task completed.', 'success');
+            const row = checkboxEl.closest('.today-briefing-item');
+            row.classList.add('today-briefing-item-done');
+            // Brief, deliberately small confirmation (not jarring) before
+            // the row actually leaves -- long enough to register that the
+            // check "took", short enough not to feel like a delay.
+            setTimeout(() => {
+                row.remove();
+                const remaining = document.querySelectorAll('#todayBriefingTaskList .today-briefing-item').length;
+                const countEl = document.getElementById('todayBriefingTaskCount');
+                if (countEl) {
+                    if (remaining > 0) { countEl.textContent = remaining; countEl.style.display = ''; }
+                    else countEl.style.display = 'none';
+                }
+                if (remaining === 0 && !document.getElementById('todayBriefingTasksEmpty')) {
+                    document.getElementById('todayBriefingTaskList').innerHTML = '<p class="empty-inline" id="todayBriefingTasksEmpty">Nothing due.</p>';
+                }
+            }, 450);
+        } catch (err) {
+            checkboxEl.checked = false;
+            checkboxEl.disabled = false;
+            showError(`Failed to complete task: ${err.message}`);
+        }
     },
 
     // "risk_level -> badge" mapping -- delegates to the shared

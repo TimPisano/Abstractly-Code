@@ -115,6 +115,14 @@
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3v18h18M7 15l4-5 3 3 5-7"/></svg>
                         <span class="nav-label">Portfolio Trends</span>
                     </button>
+                    <button class="nav-item nav-item-tasks" data-view="tasks" data-tooltip="Tasks" type="button">
+                        <span class="nav-item-icon-wrap">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                            <span class="nav-badge-dot" id="tasksNavBadgeDot"></span>
+                        </span>
+                        <span class="nav-label">Tasks</span>
+                        <span class="nav-badge nav-label" id="tasksNavBadge" style="display:none;">0</span>
+                    </button>
                 </div>
 
                 <div class="nav-group">
@@ -190,8 +198,13 @@
                 <button class="live-update-dismiss" id="liveUpdateDismissBtn" type="button" aria-label="Dismiss">&times;</button>
             </div>
 
-            <!-- Quick Actions: present on every view, not just the dashboard -->
-            <div class="quick-actions-bar">
+            <!-- Contextual Quick Actions: content is swapped per-section by
+                 renderContextualToolbar() in app.js (event-delegated, not
+                 rebound per render) -- this static markup is just the
+                 dashboard's own default, used as-is until the first
+                 showView() call replaces it. See CONTEXTUAL_TOOLBAR_ACTIONS
+                 in app.js for the full per-view action map. -->
+            <div class="quick-actions-bar" id="quickActionsBar">
                 <button class="quick-action" data-goto="upload" type="button">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 7.5m0 0L7.5 12M12 7.5v9"/></svg>
                     Upload Lease
@@ -227,13 +240,23 @@
                 <div class="view-header">
                     <div>
                         <h1>Portfolio Dashboard</h1>
-                        <p class="view-subtitle">All uploaded leases at a glance</p>
+                        <p class="view-subtitle" id="dashboardGreeting">Your morning briefing — what's due, what's new, and what needs you</p>
                     </div>
                     <div class="view-header-actions">
                         <button class="btn-secondary" id="dashboardExportReportBtn" type="button">Export Report</button>
                         <button class="btn-primary" data-goto="upload" type="button">+ Upload Leases</button>
                     </div>
                 </div>
+
+                <!-- Today Briefing: real data from GET /today (backend/app/
+                     assignments.py's compute_today_view) -- this user's tasks
+                     due today/overdue, what's new in the portfolio since their
+                     last login, unread messages, and the portfolio's active
+                     alerts, all in one place above everything else. Loaded
+                     independently of the panels below (own try/catch in
+                     Dashboard.load()), so a slow/failed /today call never
+                     blocks the rest of the dashboard. -->
+                <div class="panel today-briefing-panel" id="todayBriefingPanel"></div>
 
                 <!-- Portfolio Health Score: the reason to check in daily -- how much the
                      current DATA can be trusted, distinct from the "what needs attention
@@ -486,6 +509,51 @@
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/></svg>
                     <span><strong>Rent growth and turnover here are only as deep as the upload history on file.</strong> Every lease/rent-roll upload is a permanent record, so re-importing a rent roll periodically (or re-uploading a renewed lease) builds real trend data over time — a property with only one upload ever won't show a trend yet, and deleting a lease removes its history along with it.</span>
                 </div>
+            </section>
+
+            <!-- TASKS VIEW -->
+            <section class="view" id="view-tasks">
+                <div class="view-header">
+                    <div>
+                        <h1>Tasks</h1>
+                        <p class="view-subtitle">Your to-dos, with due dates and status — separate from who owns a record (see Assignments on a lease/discrepancy)</p>
+                    </div>
+                    <button class="btn-primary" id="newTaskBtn" type="button">+ New Task</button>
+                </div>
+
+                <div class="tasks-filter-row">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="tasksShowDone"> Show completed
+                    </label>
+                    <select id="tasksAssigneeFilter" class="text-input select-input" title="Filter by assignee"></select>
+                </div>
+
+                <!-- New/edit task form, hidden until "+ New Task" or "Edit" is clicked -->
+                <div class="panel" id="taskFormPanel" style="display:none;">
+                    <form id="taskForm">
+                        <input type="hidden" id="taskFormId">
+                        <label class="settings-form-label" for="taskFormTitle">Title</label>
+                        <input type="text" id="taskFormTitle" class="text-input" placeholder="e.g. Follow up on renewal notice" required>
+                        <label class="settings-form-label" for="taskFormDescription">Description</label>
+                        <textarea id="taskFormDescription" class="text-input" rows="2" placeholder="Optional details"></textarea>
+                        <div class="task-form-row">
+                            <div>
+                                <label class="settings-form-label" for="taskFormDueDate">Due date</label>
+                                <input type="date" id="taskFormDueDate" class="text-input">
+                            </div>
+                            <div>
+                                <label class="settings-form-label" for="taskFormAssignee">Assign to</label>
+                                <select id="taskFormAssignee" class="text-input select-input"></select>
+                            </div>
+                        </div>
+                        <div class="task-form-actions">
+                            <button class="btn-secondary" id="taskFormCancelBtn" type="button">Cancel</button>
+                            <button class="btn-primary" type="submit" id="taskFormSubmitBtn">Create Task</button>
+                        </div>
+                    </form>
+                </div>
+
+                <div id="tasksListContent"></div>
             </section>
 
             <!-- UPLOAD VIEW -->
@@ -833,6 +901,61 @@
                 </div>
             </section>
         </main>
+
+        <!-- Team Messaging -- a sibling of <main>, not inside any .view, so
+             it survives every section switch instead of being torn down
+             and rebuilt (same persistence reasoning as the sidebar and,
+             in the admin surface, the AI assistant panel). Real backend
+             (backend/app/messaging.py): direct + group threads, strict
+             participant-only access. See messaging.js. -->
+        <button class="messaging-fab" id="messagingFabBtn" type="button" aria-label="Open messages" aria-expanded="false">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 10h8m-8 4h5M7 3.5h10A2.5 2.5 0 0119.5 6v10.5a1 1 0 01-1.6.8l-2.9-2.175a2 2 0 00-1.2-.4H7A2.5 2.5 0 014.5 12V6A2.5 2.5 0 017 3.5z"/></svg>
+            <span class="messaging-fab-badge" id="messagingFabBadge" style="display:none;">0</span>
+        </button>
+
+        <div class="messaging-panel" id="messagingPanel" style="display:none;">
+            <!-- Conversation list pane -->
+            <div class="messaging-pane" id="messagingListPane">
+                <div class="messaging-panel-header">
+                    <span>Messages</span>
+                    <div>
+                        <button class="messaging-panel-icon-btn" id="messagingNewBtn" type="button" aria-label="New conversation" title="New conversation">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.5v15m7.5-7.5h-15"/></svg>
+                        </button>
+                        <button class="messaging-panel-icon-btn" id="messagingCloseBtn" type="button" aria-label="Close messages">&times;</button>
+                    </div>
+                </div>
+                <div class="messaging-conversation-list" id="messagingConversationList"></div>
+            </div>
+
+            <!-- New conversation pane -->
+            <div class="messaging-pane" id="messagingNewPane" style="display:none;">
+                <div class="messaging-panel-header">
+                    <button class="messaging-panel-icon-btn" id="messagingNewBackBtn" type="button" aria-label="Back">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.75 19.5L8.25 12l7.5-7.5"/></svg>
+                    </button>
+                    <span>New Conversation</span>
+                    <button class="messaging-panel-icon-btn" id="messagingNewCloseBtn" type="button" aria-label="Close messages">&times;</button>
+                </div>
+                <div class="messaging-teammate-list" id="messagingTeammateList"></div>
+            </div>
+
+            <!-- Thread pane -->
+            <div class="messaging-pane" id="messagingThreadPane" style="display:none;">
+                <div class="messaging-panel-header">
+                    <button class="messaging-panel-icon-btn" id="messagingThreadBackBtn" type="button" aria-label="Back to conversations">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.75 19.5L8.25 12l7.5-7.5"/></svg>
+                    </button>
+                    <span id="messagingThreadTitle">Conversation</span>
+                    <button class="messaging-panel-icon-btn" id="messagingThreadCloseBtn" type="button" aria-label="Close messages">&times;</button>
+                </div>
+                <div class="messaging-thread-messages" id="messagingThreadMessages"></div>
+                <form class="messaging-thread-input-row" id="messagingThreadForm">
+                    <input type="text" id="messagingThreadInput" class="text-input" placeholder="Type a message..." autocomplete="off">
+                    <button class="btn-primary" type="submit">Send</button>
+                </form>
+            </div>
+        </div>
     </div>
 
     <!--

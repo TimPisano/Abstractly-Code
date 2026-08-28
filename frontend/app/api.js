@@ -302,6 +302,108 @@ const Api = {
         return apiRequest(`/activity?limit=${limit}`);
     },
 
+    // ---- Team messaging (backend/app/messaging.py) ----
+    listThreads() {
+        return apiRequest('/threads');
+    },
+    createThread(threadType, participantUserIds, name) {
+        const body = { thread_type: threadType, participant_user_ids: participantUserIds };
+        if (name) body.name = name;
+        return apiRequest('/threads', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    },
+    getThreadMessages(threadId, since) {
+        return apiRequest(`/threads/${threadId}/messages${since ? `?since=${encodeURIComponent(since)}` : ''}`);
+    },
+    sendThreadMessage(threadId, body) {
+        return apiRequest(`/threads/${threadId}/messages`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ body }) });
+    },
+    markThreadRead(threadId) {
+        return apiRequest(`/threads/${threadId}/read`, { method: 'POST' });
+    },
+    unreadMessageCount() {
+        return apiRequest('/messages/unread-count');
+    },
+
+    // ---- Team members (backend/app/api.py, step 3) ----
+    listTeamMembers() {
+        return apiRequest('/team/members');
+    },
+
+    // ---- Assignments / Tasks (backend/app/assignments.py) ----
+    listAssignments({ assignedTo, status, targetType } = {}) {
+        const params = new URLSearchParams();
+        if (assignedTo != null) params.set('assigned_to', assignedTo);
+        if (status) params.set('status', status);
+        if (targetType) params.set('target_type', targetType);
+        const qs = params.toString();
+        return apiRequest(`/assignments${qs ? `?${qs}` : ''}`);
+    },
+    createAssignment(targetType, target, assignedToUserId, note) {
+        const body = { target_type: targetType, target, assigned_to_user_id: assignedToUserId };
+        if (note) body.note = note;
+        return apiRequest('/assignments', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    },
+    updateAssignmentStatus(assignmentId, status) {
+        return apiRequest(`/assignments/${assignmentId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) });
+    },
+    deleteAssignment(assignmentId) {
+        return apiRequest(`/assignments/${assignmentId}`, { method: 'DELETE' });
+    },
+
+    // ---- Today view (backend/app/assignments.py's compute_today_view) ----
+    todayView(userId) {
+        return apiRequest(`/today${userId != null ? `?user_id=${userId}` : ''}`);
+    },
+
+    // ---- Tasks (backend/app/tasks.py) -- distinct from assignments:
+    // a task is a concrete to-do (title/description/due date), an
+    // assignment is "who owns this record". ----
+    listTasks({ assignedTo, status, dueBefore, dueAfter, leaseId, discrepancyId } = {}) {
+        const params = new URLSearchParams();
+        if (assignedTo != null) params.set('assigned_to', assignedTo);
+        if (status) params.set('status', status);
+        if (dueBefore) params.set('due_before', dueBefore);
+        if (dueAfter) params.set('due_after', dueAfter);
+        if (leaseId != null) params.set('lease_id', leaseId);
+        if (discrepancyId != null) params.set('discrepancy_id', discrepancyId);
+        const qs = params.toString();
+        return apiRequest(`/tasks${qs ? `?${qs}` : ''}`);
+    },
+    createTask({ title, description, dueDate, assignedToUserId, leaseId, discrepancyId, propertyAddress } = {}) {
+        const body = { title };
+        if (description) body.description = description;
+        if (dueDate) body.due_date = dueDate;
+        if (assignedToUserId != null) body.assigned_to_user_id = assignedToUserId;
+        if (leaseId != null) body.lease_id = leaseId;
+        if (discrepancyId != null) body.discrepancy_id = discrepancyId;
+        if (propertyAddress) body.property_address = propertyAddress;
+        return apiRequest('/tasks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    },
+    createTaskFromDiscrepancy(discrepancyId, { assignedToUserId, dueDate } = {}) {
+        const body = {};
+        if (assignedToUserId != null) body.assigned_to_user_id = assignedToUserId;
+        if (dueDate) body.due_date = dueDate;
+        return apiRequest(`/tasks/from-discrepancy/${discrepancyId}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    },
+    createTaskFromAlert(alertId, { assignedToUserId, dueDate } = {}) {
+        const body = {};
+        if (assignedToUserId != null) body.assigned_to_user_id = assignedToUserId;
+        if (dueDate) body.due_date = dueDate;
+        return apiRequest(`/tasks/from-alert/${alertId}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    },
+    updateTask(taskId, fields) {
+        return apiRequest(`/tasks/${taskId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(fields) });
+    },
+    assignTask(taskId, assignedToUserId) {
+        return apiRequest(`/tasks/${taskId}/assign`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ assigned_to_user_id: assignedToUserId }) });
+    },
+    updateTaskStatus(taskId, status) {
+        return apiRequest(`/tasks/${taskId}/status`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) });
+    },
+    deleteTask(taskId) {
+        return apiRequest(`/tasks/${taskId}`, { method: 'DELETE' });
+    },
+
     leaseRisks(leaseId) {
         return apiRequest(`/leases/${leaseId}/risks`);
     },

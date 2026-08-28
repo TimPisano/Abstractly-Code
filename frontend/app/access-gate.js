@@ -38,7 +38,7 @@
         'api.js', 'app.js', 'verify-popover.js', 'comments.js', 'discrepancy-modal.js', 'export-modal.js',
         'upload-view.js', 'dashboard-view.js', 'alerts-view.js', 'discrepancies-view.js', 'team-notes-view.js',
         'detail-view.js', 'timeline-view.js', 'rentroll-view.js', 'comparison-view.js',
-        'qa-view.js', 'report-view.js', 'trends-view.js', 'team-view.js',
+        'qa-view.js', 'report-view.js', 'trends-view.js', 'team-view.js', 'tasks-view.js', 'messaging.js',
     ];
 
     const bootLoadingEl = document.getElementById('appBootLoading');
@@ -112,7 +112,13 @@
         showPanel('pending');
     }
 
-    function grant() {
+    function grant(session) {
+        // Stashed globally (not fetched again per-module) so tasks-view.js,
+        // messaging.js, and the Today dashboard rebuild can all know "who
+        // am I" without a duplicate /auth/session round trip -- set before
+        // loadAppScripts() so every dynamically-loaded module sees it
+        // already populated by the time its own load()/init runs.
+        window.CURRENT_USER = session;
         hideBootLoading();
         gateEl.style.display = 'none';
         shellEl.style.display = '';
@@ -329,7 +335,7 @@
             // page, same as any other "not authenticated" outcome.
         }
         if (session.authenticated) {
-            grant();
+            grant(session);
             return;
         }
         window.location.href = 'login.html';

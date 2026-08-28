@@ -6099,3 +6099,87 @@ navigated to Alerts and re-checked the sidebar brand text was still
 "Abstractly", confirming it's the one persistent sidebar element (not
 re-rendered per view) rather than needing to check all 11 sections
 individually.
+
+## Daily workspace layer: contextual toolbar, Tasks, Team Messaging,
+## Today Briefing (frontend/app/, the main analyst-facing app)
+
+Scoped to frontend/app/, not the admin surface -- "analyst" role
+language and "Tasks page" as a new sidebar section both pointed at the
+real team-facing app, not the admin-only one this session had been
+building in for several prior turns. Stated that assumption up front
+rather than asking, since the evidence was strong and another
+clarifying round would have cost more than it saved.
+
+**Contextual toolbar**: the 4 quick-action buttons above every view
+used to be identical everywhere. `renderContextualToolbar()` in app.js
+now swaps them per-section (`CONTEXTUAL_TOOLBAR_ACTIONS` map, one
+delegated click listener on `#quickActionsBar` so re-rendering its
+inner HTML on every `showView()` never needs rebinding). Verified live
+across 5 views that the buttons actually differ and actually navigate.
+
+**Sidebar polish**: increased group-label spacing, added a real
+`:focus-visible` outline (was completely missing -- tabbing through
+gave no visible feedback of where focus was).
+
+**Tasks** (`frontend/app/tasks-view.js`, new sidebar item): real
+backend, `backend/app/tasks.py` -- title/description/due_date/
+assignee/status, distinct from Assignments ("who owns this record").
+Supports creating a task directly from a discrepancy or alert card
+(`Api.createTaskFromDiscrepancy`/`createTaskFromAlert`, wired into
+discrepancies-view.js's and alerts-view.js's own card actions) via the
+real `POST /tasks/from-discrepancy/<id>` / `/from-alert/<id>` routes,
+which carry the source's message/category/severity into the new task
+automatically. Verified live: clicked "+ Create Task" on a real active
+alert, got a real "Task created from alert." toast, confirmed the task
+existed on the Tasks page afterward.
+
+**Team Messaging** (`frontend/app/messaging.js`, floating FAB + panel,
+shell-level sibling of `<main>` so it survives every section switch):
+real backend, `backend/app/messaging.py` -- direct/group threads,
+strict participant-only access. Verified live with two real accounts
+(admin + the seeded analyst test user): sent a message as the analyst
+via a second session, confirmed the admin's unread badge and
+conversation-list badge both showed it, opened the thread and read the
+real message content, replied, confirmed the reply appeared correctly
+attributed. Polling-based (20s for the unread badge, 4s for an open
+thread's new messages via `since=<last message timestamp>`), same
+precedent as `startLiveActivityPolling()`.
+
+**Today Briefing** (Dashboard view, kept as one view per "keep current
+section structure" -- not split into a separate Overview/Leases pair
+the way the admin surface was): a new panel at the very top, above
+Health Score, using the real `GET /today` endpoint
+(`assignments.compute_today_view`) -- this user's tasks due today/
+overdue, what's new in the portfolio since their previous login,
+unread messages, and the portfolio's active alerts. Independent
+`.then()`/`.catch()` in `Dashboard.load()`, same pattern as every
+other panel on this page, so a slow/failed `/today` call never blocks
+the rest of the dashboard.
+
+**Stale backend process, caught before building on top of it**: the
+running Flask process didn't have the code that added `/today`'s
+`tasks_due_today_or_overdue`/`new_since_last_login`/`unread_messages`
+fields -- live response was missing them entirely even though the
+source had them. Restarted the local dev server before writing any
+UI against that shape; re-verified the full response matched source
+afterward. A second, unrelated environment issue hit mid-session:
+CDP test scripts started failing with `ConnectionResetError` --
+traced to a hardcoded debug port (9333) colliding with a *different*
+concurrent session's own CDP browser (same port, different scratchpad
+dir). Fixed by moving this session's test harness to its own port
+rather than touching the other session's process.
+
+**"Complete Task" bug, found and fixed**: the Tasks page's own
+checkbox worked correctly (verified: real `POST /tasks/<id>/status`
+call, real toast, real removal from the list) -- but the NEW Today
+Briefing panel's task rows had no complete control at all, just
+read-only text. That's what was actually being clicked. Added a real
+checkbox per row wired to the same `Api.updateTaskStatus()` call,
+with a deliberately brief (450ms) fade-and-strikethrough before the
+row is removed from the DOM -- enough to register as "this took
+effect", not long enough to feel like a delay. Verified live end to
+end: created a real task due today, clicked its checkbox on the
+Dashboard, confirmed a real "Task completed." toast, confirmed the
+row left the DOM, confirmed it stayed gone after a genuine full page
+reload (not just an in-memory re-render) -- i.e. confirmed against
+what actually persisted, not just what the UI optimistically showed.

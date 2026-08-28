@@ -52,6 +52,113 @@ function registerView(name, handlers) {
 
 let currentViewName = 'dashboard';
 
+/**
+ * Contextual top toolbar: the actions shown change with the active
+ * section instead of the same fixed 4 buttons appearing everywhere.
+ * Every action here is a navigation (data-goto, same mechanism every
+ * other "go to X" button in this app already uses), so one delegated
+ * listener on the container (bound once, see initContextualToolbar())
+ * handles all of them regardless of how many times the inner HTML gets
+ * replaced -- no per-render rebinding needed.
+ *
+ * A view not listed here falls back to the dashboard's own set rather
+ * than rendering an empty bar, so a new view added later doesn't
+ * silently lose its quick actions until someone remembers to add an
+ * entry.
+ */
+const TOOLBAR_ICON_PATHS = {
+    upload: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 7.5m0 0L7.5 12M12 7.5v9"/>',
+    compare: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h18M16.5 3L21 7.5m0 0L16.5 12M21 7.5H3"/>',
+    report: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>',
+    calendar: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>',
+    alert: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0"/>',
+    discrepancy: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.75 9.75l4.5 4.5m0-4.5l-4.5 4.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>',
+    dashboard: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 3h8v8H3V3zm10 0h8v5h-8V3zm0 8h8v10h-8V11zM3 14h8v7H3v-7z"/>',
+    rentroll: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 10h18M3 14h18M7 6h10a2 2 0 012 2v8a2 2 0 01-2 2H7a2 2 0 01-2-2V8a2 2 0 012-2z"/>',
+    task: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>',
+};
+
+const CONTEXTUAL_TOOLBAR_ACTIONS = {
+    dashboard: [
+        { label: 'Upload Lease', icon: 'upload', goto: 'upload' },
+        { label: 'Run Comparison', icon: 'compare', goto: 'comparison' },
+        { label: 'Generate Report', icon: 'report', goto: 'report' },
+        { label: 'View Expirations', icon: 'calendar', goto: 'timeline' },
+    ],
+    alerts: [
+        { label: 'View Discrepancies', icon: 'discrepancy', goto: 'discrepancies' },
+        { label: 'Upload Lease', icon: 'upload', goto: 'upload' },
+    ],
+    discrepancies: [
+        { label: 'View Alerts', icon: 'alert', goto: 'alerts' },
+        { label: 'Upload Lease', icon: 'upload', goto: 'upload' },
+    ],
+    trends: [
+        { label: 'Upload Lease', icon: 'upload', goto: 'upload' },
+        { label: 'View Expirations', icon: 'calendar', goto: 'timeline' },
+    ],
+    upload: [
+        { label: 'Go to Dashboard', icon: 'dashboard', goto: 'dashboard' },
+    ],
+    timeline: [
+        { label: 'Upload Lease', icon: 'upload', goto: 'upload' },
+        { label: 'Generate Report', icon: 'report', goto: 'report' },
+    ],
+    rentroll: [
+        { label: 'Upload Lease', icon: 'upload', goto: 'upload' },
+        { label: 'Run Comparison', icon: 'compare', goto: 'comparison' },
+    ],
+    comparison: [
+        { label: 'Upload Lease', icon: 'upload', goto: 'upload' },
+    ],
+    qa: [
+        { label: 'Go to Dashboard', icon: 'dashboard', goto: 'dashboard' },
+        { label: 'View Discrepancies', icon: 'discrepancy', goto: 'discrepancies' },
+    ],
+    report: [
+        { label: 'Upload Lease', icon: 'upload', goto: 'upload' },
+    ],
+    teamnotes: [
+        { label: 'View Discrepancies', icon: 'discrepancy', goto: 'discrepancies' },
+        { label: 'View Alerts', icon: 'alert', goto: 'alerts' },
+    ],
+    team: [
+        { label: 'Go to Dashboard', icon: 'dashboard', goto: 'dashboard' },
+    ],
+    tasks: [
+        { label: 'Upload Lease', icon: 'upload', goto: 'upload' },
+        { label: 'View Discrepancies', icon: 'discrepancy', goto: 'discrepancies' },
+    ],
+    detail: [
+        { label: 'Go to Dashboard', icon: 'dashboard', goto: 'dashboard' },
+        { label: 'Upload Lease', icon: 'upload', goto: 'upload' },
+    ],
+};
+
+function renderContextualToolbar(viewName) {
+    const bar = document.getElementById('quickActionsBar');
+    if (!bar) return; // e.g. frontend/admin/dashboard.html, which keeps its own static bar
+    const actions = CONTEXTUAL_TOOLBAR_ACTIONS[viewName] || CONTEXTUAL_TOOLBAR_ACTIONS.dashboard;
+    bar.innerHTML = actions.map(a => `
+        <button class="quick-action" data-goto="${a.goto}" type="button">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">${TOOLBAR_ICON_PATHS[a.icon] || ''}</svg>
+            ${escapeHtml(a.label)}
+        </button>
+    `).join('');
+}
+
+// One delegated listener, bound once at boot (see init()) -- survives
+// every renderContextualToolbar() re-render since it's on the
+// container, not the buttons themselves.
+function initContextualToolbar() {
+    const bar = document.getElementById('quickActionsBar');
+    if (!bar) return;
+    bar.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-goto]');
+        if (btn) showView(btn.dataset.goto);
+    });
+}
+
 function showView(viewName, params) {
     document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
     const target = document.getElementById(`view-${viewName}`);
@@ -62,6 +169,7 @@ function showView(viewName, params) {
     });
 
     currentViewName = viewName;
+    renderContextualToolbar(viewName);
     hideLiveUpdateBanner(); // whatever prompted it, navigating anywhere already re-fetches fresh data for the view you land on
 
     const handler = VIEW_HANDLERS[viewName];
@@ -591,6 +699,7 @@ function init() {
     document.querySelectorAll('[data-goto]').forEach(btn => {
         btn.addEventListener('click', () => showView(btn.dataset.goto));
     });
+    initContextualToolbar();
 
     document.getElementById('statsToggleBtn').addEventListener('click', toggleStatsPanel);
     document.getElementById('clearStatsBtn').addEventListener('click', clearStats);
