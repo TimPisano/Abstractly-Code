@@ -6338,3 +6338,41 @@ real logged-in user's name attached -- not a fabricated resolution.
 Also confirmed `GET /leases` still returns exactly one row for the
 resubmitted lease (not two), matching what the live Dashboard table
 showed.
+
+## Login page: fields floating apart / lopsided at mid-widths (fix, 2026-08-28)
+
+Second bug report on the login page, distinct from the earlier
+white-on-white brand-text fix. This time: at certain window widths
+(described as "half-width or partway resized") the card looked
+off-center and the email/password/Sign In fields weren't stacked
+cleanly.
+
+The outer centering CSS (`.access-gate { min-height:100vh; display:
+flex; align-items:center; justify-content:center; }` on
+`.access-gate-card`) was already correct and unchanged -- confirmed
+by re-reading it before touching anything. So the actual bug wasn't
+centering at all; it was inside the card. Grepped `styles.css` for
+`loginForm|accessGateForm|accessGateRequestForm` and found that
+`#accessGateForm, #accessGateRequestForm` had the
+`display:flex;flex-direction:column;gap:0.75rem` rule that turns
+three sibling children (two inputs + a button) into a clean vertical
+stack -- but `#loginForm` (the real login page's form id, added in a
+later commit than this rule) was never added to that selector.
+Without it, the form's children fell back to default inline-block
+flow, which wraps depending on how much horizontal width is
+available -- explaining why it looked fine at some widths and
+"lopsided"/fields-floating-apart at others, rather than being
+consistently broken. Fixed by adding `#loginForm` to the existing
+selector rather than writing a new, duplicate rule.
+
+Verified with a resize-based CDP test (not fresh page loads --
+`Emulation.setDeviceMetricsOverride` on an already-loaded page, to
+match "resizing the browser window" as actually described) across 10
+widths from 1920px down to 320px, including the specific ~half-width
+band called out in the report (960px, 760px). At every width:
+horizontal and vertical card-center offset from viewport center was
+0px, email/password/button were in correct Y order (stacked), all
+three shared the same left edge (X), all three had identical widths,
+and no horizontal scrollbar appeared. Reviewed screenshots at 1920,
+760, 620, and 375px directly to confirm visually, not just via the
+computed metrics.
