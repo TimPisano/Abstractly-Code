@@ -1,5 +1,106 @@
 # Implementation Decisions
 
+## Resubmit lease workflow (Canvas-style versioning, not duplication)
+
+Re-uploading a corrected version of an existing lease used to always
+create a second, independent lease row -- no relationship to the
+original, no reconciliation of discrepancies already raised against
+it. Requested as a Canvas-assignment-resubmission model: replace what's
+current, keep the old version retrievable, don't silently duplicate.
+
+**Versioning lives on `leases` itself, not a separate history table.**
+Three new columns: `status` ('active' | 'superseded'), `supersedes_
+lease_id` (points at the version this one replaced), `version_number`
+(1-based, stored rather than derived so it survives a version in the
+middle of a chain being deleted outright later). A resubmission inserts
+a brand-new lease row rather than mutating the old one in place --
+every existing read path that already keys off a lease's own id
+(`GET /leases/<id>`, field-source citations, amendments) keeps working
+unchanged for both the old and new row. `get_all_leases`/`get_all_
+effective_leases` -- "nearly every portfolio-wide endpoint's read
+path" per that function's own docstring -- exclude `status='superseded'`
+by default, which is what makes the archived version disappear from
+the dashboard/discrepancies/exports/cross-lease-comparisons everywhere
+at once, in one place, rather than needing a fix in every consumer.
+`get_lease`/`get_effective_lease` (fetch-by-exact-id) never filter by
+status, so an archived version stays permanently fetchable directly.
+
+**The hard part: discrepancy natural_key embeds the lease id as literal
+text.** `sync_lease_risk_flags`'s whole design (see discrepancies.py's
+own docstring) is that a discrepancy's natural_key is what makes it
+"the same one" across recomputations -- and that key is a formatted
+string like `lease_risk:{lease_id}:{category}:{field}:{n}` or
+`cross_lease:{lo}:{hi}:{field}`. Repointing only the `lease_id` COLUMN
+on old discrepancies (the obvious first attempt) is not enough: a fresh
+sync pass against the new lease id derives ITS natural_key from the
+NEW id, which is a different string from the old row's stale text, so
+`ON CONFLICT(natural_key)` can't find it -- it creates a duplicate row
+instead of reconciling the existing one, and the untouched old row gets
+wrongly swept up by "not touched this pass, must be fixed now" logic
+even though the real issue never went away. Caught by a real assertion
+failure in testing (`discrepancies_auto_resolved: 2` when it should
+have been 1), not by inspection -- traced to the mismatched natural_key
+before fixing it. `database._repointed_natural_key` regenerates the
+key exactly matching each type's own format (only for `lease_risk_flag`
+/`cross_lease_mismatch`, the two types the resubmission's re-sync pass
+actually recomputes) instead of leaving it stale.
+
+**rent_roll_reconciliation / t12_reconciliation discrepancies and
+alerts are deliberately left untouched by resubmission** -- neither
+their `lease_id` nor their `natural_key`. Repointing one without the
+other reproduces the exact bug just described (two identifying fields
+that disagree); properly reconciling them would mean re-running the
+rent-roll/T12 import that originally produced them, which is a
+different upload than "a corrected lease PDF" and out of scope here.
+Documented rather than silently glossed over, matching this project's
+standing rule against pretending full coverage. `activity_log` entries
+are also never repointed -- an old entry like "uploaded original.pdf"
+is a true historical fact about the OLD row and would become false if
+rewritten to claim it happened to the new one.
+
+**Auto-resolve reuses the existing resolve mechanism, system-attributed
+-- no new discrepancy status invented.** After the re-sync, any
+open lease_risk_flag/cross_lease_mismatch discrepancy tied to the new
+lease that the fresh sync did NOT touch gets resolved via the same
+`resolve_discrepancy`/`discrepancy_resolutions` path a human's resolve
+action uses, with `resolved_by="System"` and a note explaining it was
+the resubmission, not a third "auto_resolved" status the way alerts
+have -- discrepancies' two-state model (open/resolved) plus a
+permanent resolution log already has room to say "why," so it didn't
+need a new state to add this behavior.
+
+**Detection is a soft hint, not an auto-merge.** Requirement 1 asked
+for detecting a likely resubmission by property/unit/tenant OR letting
+the user explicitly pick "replace this lease." The explicit path is
+the reliable one (`POST /leases/<id>/resubmit` on a chosen id) and is
+what everything above hangs off of. The soft-detect path
+(`_find_possible_resubmission_target` on ordinary `POST /leases`)
+only fires on an EXACT normalized match of both tenant name and
+property address against a currently-active lease, and only ever
+attaches a `possible_resubmission_of` hint to the response -- it never
+blocks creation or silently merges anything, on the same "flag for a
+human, don't guess" principle CLAUDE.md's quality bar already applies
+to extracted fields. A fuzzy match was deliberately not attempted; a
+false-positive "this looks like a duplicate" on two genuinely
+different leases would be a worse failure mode than an occasional
+missed hint a human could still catch manually via the version-history
+view.
+
+Tested end-to-end against real generated PDFs (reportlab, not
+synthetic discrepancy rows) run through the actual extraction
+pipeline via the real HTTP routes, and separately verified live
+against the running server: uploaded a lease missing its insurance and
+default/cure clauses (2 real `missing_clause` discrepancies raised by
+the real risk engine), resubmitted a corrected version that fixed the
+insurance clause, left the cure-period issue in place, and removed the
+previously-present security deposit clause -- confirmed live that the
+insurance discrepancy auto-resolved, the cure-period one stayed open
+(refreshed onto the new lease id), a new security-deposit discrepancy
+was created, the old lease became `status=superseded` while remaining
+directly fetchable, the active lease list showed only the new version,
+tags/comments carried forward, and the activity feed logged who and
+when.
+
 ## Team messaging, OAuth email linking, tasks, Today enrichment
 
 Four pieces of work, requested together as "a full daily-workspace

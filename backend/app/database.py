@@ -78,6 +78,22 @@ def _migrate_schema(conn: sqlite3.Connection) -> None:
         "display_name": "TEXT",
         "source_page_start": "INTEGER",
         "source_page_end": "INTEGER",
+        # Resubmission/versioning (see the "resubmit lease" workflow):
+        # status distinguishes the one CURRENT version of a lease from
+        # every version a resubmission has since superseded -- every
+        # existing row backfills to 'active' (the default), which is
+        # correct: nothing was ever superseded before this existed.
+        # supersedes_lease_id points at the version this one replaced
+        # (NULL for an original upload, never for a superseded one --
+        # walking it backward from any version reaches the original).
+        # version_number is 1-based and increments per resubmission
+        # within one lease's chain, purely for human-facing "Version 2"
+        # labeling -- nothing computes from it, it's stored rather than
+        # derived so it stays stable even if a version in the middle of
+        # a chain is later deleted outright (not just superseded).
+        "status": "TEXT NOT NULL DEFAULT 'active'",
+        "supersedes_lease_id": "INTEGER",
+        "version_number": "INTEGER NOT NULL DEFAULT 1",
     }
     for column, sql_type in new_columns.items():
         if column not in existing_columns:
@@ -248,6 +264,8 @@ def init_db() -> None:
         # EXISTS` is safe to run on every init_db() call, including
         # against an already-populated table from before this fix.
         conn.execute("CREATE INDEX IF NOT EXISTS idx_leases_base_lease_id ON leases(base_lease_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_leases_supersedes_lease_id ON leases(supersedes_lease_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_leases_status ON leases(status)")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS waitlist_signups (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -519,6 +537,9 @@ def insert_lease(
     display_name: Optional[str] = None,
     source_page_start: Optional[int] = None,
     source_page_end: Optional[int] = None,
+    status: str = "active",
+    supersedes_lease_id: Optional[int] = None,
+    version_number: int = 1,
 ) -> int:
     """
     Persist one extracted document. Returns its new lease id.
@@ -536,13 +557,20 @@ def insert_lease(
     PDF this lease came from, for leases split out of a multi-lease
     document (FieldExtractor.extract_multiple_leases) — both None for a
     lease that was already a single-lease PDF, or for an amendment.
+
+    `status`/`supersedes_lease_id`/`version_number` are only ever
+    non-default when this call comes from the resubmission flow (see
+    api.py's resubmit_lease) -- every other caller (normal upload,
+    batch upload, rent-roll import, amendment) leaves them at the
+    defaults, producing an ordinary standalone active v1 lease exactly
+    as before this feature existed.
     """
     conn = get_connection()
     try:
         cur = conn.execute(
             "INSERT INTO leases (filename, uploaded_at, extracted_fields, document_type, base_lease_id, "
-            "date_candidates, display_name, source_page_start, source_page_end) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "date_candidates, display_name, source_page_start, source_page_end, status, supersedes_lease_id, version_number) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 filename,
                 datetime.now(timezone.utc).isoformat(),
@@ -553,6 +581,9 @@ def insert_lease(
                 display_name,
                 source_page_start,
                 source_page_end,
+                status,
+                supersedes_lease_id,
+                version_number,
             ),
         )
         conn.commit()
@@ -577,6 +608,211 @@ def update_lease_display_name(lease_id: int, display_name: str) -> bool:
         conn.close()
 
 
+# ----------------------------------------------------------------------
+# Lease resubmission / versioning: a resubmission inserts a brand-new
+# lease row (via insert_lease's status/supersedes_lease_id/version_number
+# params) rather than mutating the old one in place, then this section's
+# functions link the two together and carry every reference that
+# conceptually followed "the lease" (not "this specific extraction")
+# over to the new row -- see api.py's resubmit_lease for the full flow.
+# ----------------------------------------------------------------------
+
+def supersede_lease(lease_id: int) -> bool:
+    """Marks a lease 'superseded' -- excluded from get_all_leases/get_all_effective_leases by default, but still fetchable directly by id (get_lease never filters by status), so an old version stays permanently retrievable, just no longer 'the' current one. Returns False if no such id."""
+    conn = get_connection()
+    try:
+        cur = conn.execute("UPDATE leases SET status = 'superseded' WHERE id = ?", (lease_id,))
+        conn.commit()
+        return cur.rowcount > 0
+    except OverflowError:
+        return False
+    finally:
+        conn.close()
+
+
+def get_lease_version_chain(lease_id: int) -> List[Dict[str, Any]]:
+    """
+    Every version of this lease, oldest first, regardless of which
+    version id was passed in -- walks supersedes_lease_id backward to
+    find the original (v1), then forward from there to collect every
+    later resubmission, so asking about v1, v2, or the current version
+    all return the identical full chain. A lease with no resubmission
+    history returns a list of exactly one (itself).
+    """
+    conn = get_connection()
+    try:
+        current = conn.execute("SELECT * FROM leases WHERE id = ?", (lease_id,)).fetchone()
+        if current is None:
+            return []
+        current = dict(current)
+
+        # Walk backward to the root (v1).
+        node = current
+        while node.get("supersedes_lease_id") is not None:
+            prior = conn.execute("SELECT * FROM leases WHERE id = ?", (node["supersedes_lease_id"],)).fetchone()
+            if prior is None:
+                break
+            node = dict(prior)
+        root_id = node["id"]
+
+        # Walk forward from the root, following whichever lease
+        # supersedes each node in turn, until nothing supersedes the
+        # current end of the chain.
+        chain_rows = [node]
+        while True:
+            nxt = conn.execute("SELECT * FROM leases WHERE supersedes_lease_id = ?", (chain_rows[-1]["id"],)).fetchone()
+            if nxt is None:
+                break
+            chain_rows.append(dict(nxt))
+
+        return [_row_to_dict_from_plain(r) for r in chain_rows]
+    finally:
+        conn.close()
+
+
+def _row_to_dict_from_plain(row_dict: Dict[str, Any]) -> Dict[str, Any]:
+    """Same JSON-decoding _row_to_dict does for a sqlite3.Row, but for a plain dict already pulled out of one (get_lease_version_chain builds plain dicts while walking, since it needs to re-fetch rows across a loop the original sqlite3.Row objects don't survive)."""
+    d = dict(row_dict)
+    d["extracted_fields"] = json.loads(d["extracted_fields"])
+    d["date_candidates"] = json.loads(d["date_candidates"]) if d.get("date_candidates") else None
+    return d
+
+
+def _repointed_natural_key(discrepancy_type: str, natural_key: str, old_lease_id: int, new_lease_id: int) -> str:
+    """
+    natural_key is a formatted string that embeds the lease id as
+    literal text (see discrepancies.py's own docstring on why: it's
+    what makes a discrepancy "the same one" across recomputations). A
+    plain column repoint of discrepancies.lease_id is not enough by
+    itself -- a fresh sync pass derives ITS natural_key from the
+    CURRENT lease id and can only find (and update in place, rather
+    than duplicate) an existing row if that row's natural_key text
+    already says the same id. This regenerates it precisely, matching
+    each type's own format in discrepancies.py exactly:
+      lease_risk_flag:      "lease_risk:{lease_id}:{category}:{field}:{n}"
+      cross_lease_mismatch: "cross_lease:{lo}:{hi}:{field}" (sorted pair)
+                          or "cross_lease:{lease_id}:none:{field}"
+    Only these two types are ever passed in here -- see
+    repoint_lease_references, which only calls this for the types the
+    resubmission re-sync pass actually recomputes.
+    """
+    parts = natural_key.split(":")
+    if discrepancy_type == "lease_risk_flag":
+        if parts[1] == str(old_lease_id):
+            parts[1] = str(new_lease_id)
+        return ":".join(parts)
+
+    # cross_lease_mismatch
+    if parts[2] == "none":
+        if parts[1] == str(old_lease_id):
+            parts[1] = str(new_lease_id)
+        return ":".join(parts)
+    lo_id, hi_id = int(parts[1]), int(parts[2])
+    other_id = hi_id if lo_id == old_lease_id else lo_id
+    new_lo, new_hi = sorted((new_lease_id, other_id))
+    parts[1], parts[2] = str(new_lo), str(new_hi)
+    return ":".join(parts)
+
+
+def repoint_lease_references(old_lease_id: int, new_lease_id: int) -> None:
+    """
+    Carries forward everything that's conceptually about "this lease"
+    (not about the specific extraction that produced the old row) from
+    the superseded version to its replacement: discrepancies, amendments,
+    tags, comments, and any assignment (ownership) record. Called once,
+    right after the new lease row is inserted and before it's synced
+    against risk analysis -- see resubmit_lease in api.py.
+
+    Only discrepancies of type lease_risk_flag / cross_lease_mismatch
+    get their natural_key regenerated (see _repointed_natural_key) --
+    those are the only two types the resubmission's re-sync pass
+    actually recomputes, so they're the only two where a fresh sync
+    needs to find these rows by natural_key to reconcile them.
+    rent_roll_reconciliation / t12_reconciliation discrepancies are
+    deliberately left untouched entirely (neither lease_id nor
+    natural_key) -- repointing lease_id alone without also fixing
+    natural_key would leave a row whose two identifying fields
+    disagree, which is worse than leaving both pointed at the archived
+    version; re-running the rent-roll/T12 reconciliation that actually
+    produced them (a separate upload, not part of resubmitting a lease
+    PDF) is what would properly re-evaluate those, same as before this
+    feature existed.
+
+    Also deliberately NOT repointed: activity_log entries (an old entry
+    like "uploaded original.pdf" is a true historical fact about the
+    OLD row and would become false if rewritten to claim it happened to
+    the new one) and alerts (same natural-key-disagreement reasoning as
+    rent_roll_reconciliation above -- regenerated wholesale by the
+    existing POST /alerts/generate pass instead).
+    """
+    conn = get_connection()
+    try:
+        affected = conn.execute(
+            "SELECT * FROM discrepancies WHERE lease_id = ? OR related_lease_id = ?",
+            (old_lease_id, old_lease_id),
+        ).fetchall()
+        for row in affected:
+            row = dict(row)
+            if row["discrepancy_type"] not in ("lease_risk_flag", "cross_lease_mismatch"):
+                continue
+            new_lease_id_col = new_lease_id if row["lease_id"] == old_lease_id else row["lease_id"]
+            new_related_id_col = new_lease_id if row["related_lease_id"] == old_lease_id else row["related_lease_id"]
+            new_natural_key = _repointed_natural_key(row["discrepancy_type"], row["natural_key"], old_lease_id, new_lease_id)
+            conn.execute(
+                "UPDATE discrepancies SET lease_id = ?, related_lease_id = ?, natural_key = ? WHERE id = ?",
+                (new_lease_id_col, new_related_id_col, new_natural_key, row["id"]),
+            )
+
+        conn.execute("UPDATE leases SET base_lease_id = ? WHERE base_lease_id = ?", (new_lease_id, old_lease_id))
+        conn.execute("UPDATE lease_tags SET lease_id = ? WHERE lease_id = ?", (new_lease_id, old_lease_id))
+        conn.execute("UPDATE comments SET lease_id = ? WHERE lease_id = ?", (new_lease_id, old_lease_id))
+        conn.execute(
+            "UPDATE assignments SET lease_id = ?, target_key = ? WHERE lease_id = ? AND target_type = 'lease'",
+            (new_lease_id, str(new_lease_id), old_lease_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_stale_open_discrepancies_for_lease(lease_id: int, discrepancy_types: List[str], keep_ids: List[int]) -> List[Dict[str, Any]]:
+    """
+    Open discrepancies of the given type(s) attached to this lease
+    (as either lease_id or related_lease_id) that were NOT among the
+    ids a fresh sync pass just touched -- i.e. conditions that used to
+    be flagged and are no longer being detected, the auto-resolve
+    candidates after a resubmission. `discrepancy_types` must be scoped
+    to exactly the types that fresh sync pass actually recomputes
+    (lease_risk_flag, cross_lease_mismatch) -- a type the sync pass
+    never touches in the first place (rent_roll_reconciliation,
+    t12_reconciliation) would look "stale" by this same test on every
+    single call, which is not the same thing as "no longer a problem".
+    """
+    if not discrepancy_types:
+        return []
+    conn = get_connection()
+    try:
+        type_placeholders = ",".join("?" for _ in discrepancy_types)
+        if keep_ids:
+            keep_placeholders = ",".join("?" for _ in keep_ids)
+            query = (
+                f"SELECT * FROM discrepancies WHERE (lease_id = ? OR related_lease_id = ?) "
+                f"AND status = 'open' AND discrepancy_type IN ({type_placeholders}) "
+                f"AND id NOT IN ({keep_placeholders})"
+            )
+            params = [lease_id, lease_id, *discrepancy_types, *keep_ids]
+        else:
+            query = (
+                f"SELECT * FROM discrepancies WHERE (lease_id = ? OR related_lease_id = ?) "
+                f"AND status = 'open' AND discrepancy_type IN ({type_placeholders})"
+            )
+            params = [lease_id, lease_id, *discrepancy_types]
+        rows = conn.execute(query, params).fetchall()
+        return [_discrepancy_row_to_dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
 def get_lease(lease_id: int) -> Optional[Dict[str, Any]]:
     conn = get_connection()
     try:
@@ -594,20 +830,28 @@ def get_lease(lease_id: int) -> Optional[Dict[str, Any]]:
         conn.close()
 
 
-def get_all_leases(document_type: Optional[str] = "lease") -> List[Dict[str, Any]]:
+def get_all_leases(document_type: Optional[str] = "lease", include_superseded: bool = False) -> List[Dict[str, Any]]:
     """
     Base leases only by default (document_type='lease'), ordered by
     upload time. Pass document_type=None to include amendments too.
+
+    Excludes superseded lease versions by default -- a resubmitted-over
+    version should behave as if it doesn't exist for every ordinary
+    "list the leases" caller (dashboard, exports, portfolio-wide
+    computations), same as this function's role before versioning
+    existed. Pass include_superseded=True for the version-history view,
+    which needs every version, current or not.
     """
     conn = get_connection()
     try:
-        if document_type is None:
-            rows = conn.execute("SELECT * FROM leases ORDER BY uploaded_at").fetchall()
-        else:
-            rows = conn.execute(
-                "SELECT * FROM leases WHERE document_type = ? ORDER BY uploaded_at",
-                (document_type,),
-            ).fetchall()
+        clauses, params = [], []
+        if document_type is not None:
+            clauses.append("document_type = ?")
+            params.append(document_type)
+        if not include_superseded:
+            clauses.append("status != 'superseded'")
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        rows = conn.execute(f"SELECT * FROM leases {where} ORDER BY uploaded_at", params).fetchall()
         return [_row_to_dict(r) for r in rows]
     finally:
         conn.close()
@@ -709,6 +953,8 @@ def get_all_effective_leases() -> List[Dict[str, Any]]:
     results = []
     for base in all_leases:
         if base["document_type"] != "lease":
+            continue
+        if base.get("status") == "superseded":
             continue
         amendments = amendments_by_base.get(base["id"], [])
         effective = dict(base["extracted_fields"])

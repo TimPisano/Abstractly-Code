@@ -1,6 +1,35 @@
 # Progress Summary
 
-**Last updated**: Built internal team messaging, OAuth email account
+**Last updated**: Built the "resubmit lease" workflow (Canvas-style:
+replace, don't duplicate). `POST /leases/<id>/resubmit` extracts a
+corrected file, inserts it as a new versioned lease row (`status`,
+`supersedes_lease_id`, `version_number` on `leases`), carries forward
+discrepancies/tags/comments/assignment onto the new id, re-runs risk
+analysis, auto-resolves discrepancies no longer detected (system-
+attributed, same resolve/resolutions audit trail a human's resolve
+uses), and archives the old version (`status='superseded'` -- excluded
+from `get_all_leases`/`get_all_effective_leases` by default, so it
+drops out of the dashboard/discrepancies/exports everywhere at once,
+but stays fetchable forever at its own id). `GET /leases/<id>/versions`
+walks the full chain from any version's id. `POST /leases` now also
+surfaces a soft `possible_resubmission_of` hint (exact tenant+property
+match against an active lease) without blocking or auto-merging
+anything. Found and fixed a real bug along the way: discrepancy
+natural_key embeds the lease id as literal text, so repointing only
+the `lease_id` column left the fresh re-sync unable to find (and thus
+reconcile in place) the old row -- see DECISIONS.md's "Resubmit lease
+workflow" entry for the full trace. Tested end-to-end with real
+generated PDFs through the real extraction pipeline (a lease missing
+its insurance and default/cure clauses, resubmitted with insurance
+fixed, cure period still missing, and security deposit newly removed
+-- confirmed 1 auto-resolve, 1 refreshed-still-open, 1 genuinely-new
+discrepancy), verified live against the running server. 11 new unit
+tests, full suite 48/49 (only failure: the pre-existing local
+`tesseract` gap, unrelated).
+
+---
+
+Built internal team messaging, OAuth email account
 linking, a general tasks system, and enriched the Today view/toolbar
 actions. Messaging: direct + group threads (`GET|POST /threads`,
 `POST /threads/<id>/participants`, `GET|POST /threads/<id>/messages`,

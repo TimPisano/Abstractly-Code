@@ -50,6 +50,8 @@ from app.rent_roll_import import RentRollImportError, parse_csv_rent_roll, parse
 from app.t12_import import T12ImportError, parse_csv_t12, parse_xlsx_t12
 from app.portfolio import (
     FIELD_NAMES,
+    field_value,
+    _normalize_building_address,
     compute_portfolio_metrics,
     compute_expiration_timeline,
     compute_attention_items,
@@ -413,6 +415,9 @@ def _lease_summary(lease):
         "source_page_start": lease.get("source_page_start"),
         "source_page_end": lease.get("source_page_end"),
         "tags": lease.get("tags", []),
+        "status": lease.get("status") or "active",
+        "version_number": lease.get("version_number") or 1,
+        "supersedes_lease_id": lease.get("supersedes_lease_id"),
     }
 
 
@@ -472,6 +477,44 @@ def _persist_split_leases(filename, split_leases):
     return created
 
 
+def _find_possible_resubmission_target(fields, exclude_lease_id=None):
+    """
+    Requirement-1's "detect" half: a soft, advisory match against
+    currently-active leases by (normalized property address, exact
+    tenant name) -- deliberately exact-normalized rather than fuzzy, so
+    this only ever fires on a genuinely confident match, never a
+    guess that could point someone at the wrong lease. Returns a
+    {"lease_id", "display_name", "reason"} dict, or None if there's no
+    single confident match (including when the newly-extracted fields
+    are missing tenant or property_address entirely -- nothing to
+    match on). This never blocks or alters what gets created; it's
+    surfaced to the caller as a hint the frontend can turn into a
+    "did you mean to replace an existing lease?" prompt.
+    """
+    tenant = (field_value({"extracted_fields": fields}, "tenant") or "").strip().lower()
+    address = _normalize_building_address(field_value({"extracted_fields": fields}, "property_address"))
+    if not tenant or not address:
+        return None
+
+    matches = []
+    for lease in database.get_all_effective_leases():
+        if lease["id"] == exclude_lease_id:
+            continue
+        other_tenant = (field_value(lease, "tenant") or "").strip().lower()
+        other_address = _normalize_building_address(field_value(lease, "property_address"))
+        if other_tenant == tenant and other_address == address:
+            matches.append(lease)
+
+    if len(matches) != 1:
+        return None
+    match = matches[0]
+    return {
+        "lease_id": match["id"],
+        "display_name": match.get("display_name") or match["filename"],
+        "reason": "Same tenant and property address as an existing active lease.",
+    }
+
+
 @app.route('/leases', methods=['POST'])
 @require_role('analyst')
 def upload_lease():
@@ -482,6 +525,16 @@ def upload_lease():
     found in the file (see FieldExtractor.extract_multiple_leases). An
     ordinary single-lease document still produces exactly one lease,
     same as before, regardless of which format it arrived in.
+
+    Each created lease is checked against the current portfolio for a
+    likely resubmission match (same tenant + property address) -- see
+    _find_possible_resubmission_target. A match is only ever a hint
+    (`possible_resubmission_of`, null when there isn't one); this route
+    always creates a new lease exactly as before. To actually REPLACE
+    an existing lease rather than create a second one alongside it, use
+    POST /leases/<id>/resubmit instead -- the explicit, auditable path
+    requirement 1's "let the user select 'replace existing lease'"
+    describes.
     """
     file, error = _validate_upload()
     if error:
@@ -494,12 +547,170 @@ def upload_lease():
         return jsonify({"error": message}), status
 
     created = _persist_split_leases(filename, split_leases)
+    for lease_data, summary in zip(split_leases, created):
+        summary["possible_resubmission_of"] = _find_possible_resubmission_target(
+            lease_data["fields"], exclude_lease_id=summary["id"]
+        )
     if len(created) == 1:
         database.insert_activity("lease_uploaded", f"Uploaded {filename}", lease_id=created[0]["id"])
     else:
         database.insert_activity("lease_split", f"Split {filename} into {len(created)} separate leases")
 
     return jsonify({"leases": created, "split_count": len(created)}), 201
+
+
+@app.route('/leases/<int:lease_id>/resubmit', methods=['POST'])
+@require_role('analyst')
+def resubmit_lease(lease_id):
+    """
+    Upload a corrected/updated version of an EXISTING lease -- Canvas-
+    style resubmission: replaces what's current, doesn't create a
+    duplicate. Expects the same multipart 'file' field as POST /leases.
+
+    What happens, in order:
+      1. The existing lease must be active (not itself already
+         superseded -- resubmit the CURRENT version, not an old one;
+         see GET /leases/<id>/versions to find it).
+      2. The new file is extracted exactly like a normal upload. It
+         must contain exactly one lease -- a resubmission is a
+         corrected version of ONE specific document, not a place to
+         discover new leases (a file that splits into several should go
+         through POST /leases or /leases/batch instead).
+      3. A new lease row is inserted (v = old version + 1), and every
+         reference that follows "the lease" rather than "the specific
+         extraction" -- discrepancies, amendments, tags, comments, the
+         assignment record -- is repointed from the old row to the new
+         one (see database.repoint_lease_references).
+      4. Risk analysis (single-lease flags + cross-lease mismatches) is
+         re-run against the new data via the same sync path every other
+         risk computation uses. Any discrepancy that was open and tied
+         to this lease but ISN'T re-detected this pass is automatically
+         resolved (system-attributed, in the same permanent resolution
+         log a human resolve/reopen writes to) -- a genuinely new issue
+         the new data raises creates a new discrepancy exactly like it
+         would for any other lease.
+      5. The old lease is marked superseded -- it stops appearing in
+         GET /leases, the dashboard, exports, and every other "current
+         portfolio" view, but stays fetchable at its own id forever
+         (GET /leases/<old_id>, GET /leases/<old_id>/versions).
+    """
+    old_lease = database.get_lease(lease_id)
+    if not old_lease:
+        return jsonify({"error": "Lease not found"}), 404
+    if old_lease.get("document_type") != "lease":
+        return jsonify({"error": "Only a base lease can be resubmitted, not an amendment."}), 400
+    if old_lease.get("status") == "superseded":
+        current = _current_version_of(lease_id)
+        return jsonify({
+            "error": "This lease has already been superseded by a later resubmission.",
+            "current_lease_id": current["id"] if current else None,
+        }), 409
+
+    file, error = _validate_upload()
+    if error:
+        return error
+
+    filename = file.filename
+    split_leases, error = _extract_leases_from_file_storage(file)
+    if error:
+        message, status = error
+        return jsonify({"error": message}), status
+    if len(split_leases) != 1:
+        return jsonify({
+            "error": f"Resubmission expects a single lease in the file, found {len(split_leases)}. "
+                     "Upload a document containing multiple leases through the regular upload instead."
+        }), 400
+
+    lease_data = split_leases[0]
+    new_version_number = (old_lease.get("version_number") or 1) + 1
+    new_lease_id = database.insert_lease(
+        filename,
+        lease_data["fields"],
+        document_type="lease",
+        date_candidates=lease_data["date_candidates"],
+        display_name=lease_data["display_name"] or old_lease.get("display_name"),
+        source_page_start=lease_data["source_page_start"],
+        source_page_end=lease_data["source_page_end"],
+        status="active",
+        supersedes_lease_id=lease_id,
+        version_number=new_version_number,
+    )
+
+    database.repoint_lease_references(lease_id, new_lease_id)
+    database.supersede_lease(lease_id)
+
+    new_lease = database.get_effective_lease(new_lease_id)
+    flags = _lease_risks(new_lease)
+    touched_discrepancy_ids = [f["discrepancy_id"] for f in flags if f.get("discrepancy_id")]
+
+    stale = database.get_stale_open_discrepancies_for_lease(
+        new_lease_id, ["lease_risk_flag", "cross_lease_mismatch"], touched_discrepancy_ids
+    )
+    user = current_user()
+    for discrepancy in stale:
+        database.resolve_discrepancy(
+            discrepancy["id"],
+            correct_source="resubmission",
+            note=f"Automatically resolved -- no longer detected after {user['name']} resubmitted a corrected "
+                 f"version (v{new_version_number}) of this lease.",
+            resolved_by="System",
+            resolved_by_email=None,
+        )
+
+    _invalidate_lease_derived_caches()
+    _invalidate_discrepancy_derived_caches()
+
+    display_name = lease_data["display_name"] or old_lease.get("display_name") or old_lease["filename"]
+    database.insert_activity(
+        "lease_resubmitted",
+        f"{user['name']} resubmitted a corrected version of {display_name} "
+        f"(v{new_version_number} replaces v{old_lease.get('version_number') or 1})",
+        lease_id=new_lease_id,
+    )
+
+    new_lease["tags"] = database.get_lease_tags(new_lease_id)
+    return jsonify({
+        "lease": _lease_summary(new_lease),
+        "previous_lease_id": lease_id,
+        "version_number": new_version_number,
+        "discrepancies_auto_resolved": len(stale),
+        "discrepancies_still_open": sum(1 for f in flags if f.get("resolution_status") == "open"),
+        "discrepancies_detected": len(flags),
+    }), 201
+
+
+def _current_version_of(lease_id):
+    """Given any lease id in a version chain, the one currently active version -- or None if the whole chain has somehow lost its active member (shouldn't happen; every resubmission always activates exactly one replacement before superseding the one it replaces)."""
+    chain = database.get_lease_version_chain(lease_id)
+    return next((v for v in chain if v.get("status") != "superseded"), None)
+
+
+@app.route('/leases/<int:lease_id>/versions', methods=['GET'])
+@require_role()
+def lease_versions(lease_id):
+    """
+    The full resubmission history for this lease, oldest first, plus
+    which one is current -- works from ANY version's id in the chain
+    (the current one, or any superseded ancestor), so a link to an old
+    archived version can always find its way to what replaced it, and
+    vice versa. 404 only if the id doesn't exist at all.
+    """
+    if not database.get_lease(lease_id):
+        return jsonify({"error": "Lease not found"}), 404
+    chain = database.get_lease_version_chain(lease_id)
+    versions = []
+    for v in chain:
+        versions.append({
+            "id": v["id"],
+            "version_number": v.get("version_number") or 1,
+            "status": v.get("status") or "active",
+            "is_current": v.get("status") != "superseded",
+            "filename": v["filename"],
+            "display_name": v.get("display_name") or v["filename"],
+            "uploaded_at": v["uploaded_at"],
+            "supersedes_lease_id": v.get("supersedes_lease_id"),
+        })
+    return jsonify({"lease_id": lease_id, "versions": versions}), 200
 
 
 @app.route('/leases/batch', methods=['POST'])

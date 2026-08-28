@@ -68,6 +68,7 @@ UNIT_TESTS = [
     "test_messaging.py",
     "test_email_accounts.py",
     "test_tasks.py",
+    "test_lease_resubmission.py",
 ]
 
 LIVE_API_TESTS = [
