@@ -6710,3 +6710,92 @@ Complete" + "Reopen") and the version-redirect path (real resubmission
 via a multipart upload). All test tasks/edits created for verification
 were deleted/reverted afterward rather than left in the shared dev
 database.
+
+## Task workflow extensions (frontend): bulk actions, comments, priority, undo (2026-08-31)
+
+Built the frontend for four extensions to the in-task editing/
+completion workflow. As with the backend session's own work on the
+identical request that landed the same session (commits `874961c`/
+`7bfdec2`), this turned out to be a near-exact race: independently
+designed backend contracts (route names, request/response shapes,
+even the `UNDO_WINDOW_MINUTES = 10` constant and the "undo only the
+single most-recent not-yet-reverted edit" rule) converged closely
+enough that after reconciling a handful of literal duplicate function
+definitions in the shared working tree, the concurrent session's own
+20-test suite (`test_task_workflow_extensions.py`) passed cleanly
+against the merged backend with no changes needed on either side.
+
+**Bulk selection.** Tasks page rows got a second checkbox (`.task-
+select-check`, distinct from the existing per-row "mark complete"
+one) plus a "Select all" toggle and a bulk-action bar that appears
+once at least one row is checked. Complete/Dismiss/Reassign all call
+the real server-side bulk routes (`POST /tasks/bulk-status`,
+`/tasks/bulk-reassign` -- same loop-and-report shape as the existing
+`/alerts/bulk-dismiss`), not a client-side loop over the single-task
+endpoints. Bulk "Complete" on a task tied to a still-open discrepancy
+is impossible to confirm in a batch (no per-task field for "which
+source was correct"), so those get SKIPPED and reported back rather
+than force-completed -- consistent with this app's "never silently
+guess a discrepancy resolution" rule, same reasoning the single-task
+completion flow already established. "Dismiss" turned out to need a
+real `dismissed` task status (added by the backend session) rather
+than delete -- a dismissed task drops out of the active list the same
+way a done one does, but stays recoverable under "Show completed/
+dismissed," where a delete wouldn't.
+
+**Task comments.** Reused the exact `renderCommentsThread` widget
+already shared by the Lease Detail page and Discrepancy Resolution
+modal (comments.js), rather than building a fourth implementation.
+While touching that file, fixed a real, pre-existing bug in it: the
+widget still had an editable "Your name" input and required it before
+posting, even though every comment route has sourced the author from
+the real logged-in session for a while now (`_validate_comment_payload`)
+-- whatever name someone typed was silently discarded. Removed the
+input entirely and simplified every caller's `onSubmit` signature from
+`(author, body)` to `(body)`; this fixes the same latent issue on the
+lease and discrepancy comment threads too, not just the new task one,
+since all three now share the corrected widget.
+
+**Priority.** A task can be flagged high-priority from the create/edit
+form (a checkbox) or toggled directly from the task modal's header.
+Both `GET /tasks` and `GET /today` now sort priority-first server-side
+(`ORDER BY (priority != 'high'), ...`, ahead of the existing due-date
+ordering) -- the Tasks page's own client-side re-sort (which regroups
+done/dismissed tasks to the bottom) was updated to preserve that
+ordering rather than silently undoing it. Verified live: flagged a
+normal-priority task urgent from the modal and watched it jump ahead
+of an earlier-due task on the Dashboard's Today briefing without a
+page reload.
+
+**Undo.** Added a "Field Edit History" section to the task modal
+(nothing rendered `task.field_edits` before this, even though the
+backend already returned it) -- each entry shows old value -> new
+value, who, when, and an "Undo" button when eligible. Eligibility
+(not already reverted, is the single most recent not-yet-reverted edit
+for that field, within the time window, and the task isn't done) is
+mirrored client-side purely so the button doesn't appear when it would
+just 400 -- the real enforcement is server-side
+(`POST /leases/<id>/fields/<name>/edits/<id>/undo`). Undo doesn't
+delete the original edit row; it marks it `reverted_at` and inserts a
+new edit row for the revert itself, so the audit trail stays a
+complete, honest timeline instead of pretending the correction never
+happened. Found and fixed a real bug while building this: the task
+modal's field-save handler only patched the one edited card in place
+and never refreshed `task.field_edits`, so a freshly-made edit didn't
+show up in its own history section until the modal was closed and
+reopened. Fixed by re-fetching the full task detail after a successful
+field save instead of patching state locally.
+
+Verified live end-to-end: selected three tasks and bulk-completed them
+(confirmed gone from the active list); added a task comment and
+confirmed it rendered separately from the field-edit history; edited a
+field, confirmed the new entry appeared in the history immediately
+with a working Undo button, clicked it, and confirmed the field
+reverted to its original value with the edit marked "Undone"; flagged
+a task urgent and watched it surface first on the Dashboard's Today
+view. Re-ran the original single-task flow (open a discrepancy-tied
+task, edit a field, confirm completion is gated, resolve + complete,
+confirm it disappears from the list and stays gone after a full page
+reload) after all of the above and confirmed it still behaves
+identically. All test tasks and field edits created for verification
+were deleted/reverted afterward.

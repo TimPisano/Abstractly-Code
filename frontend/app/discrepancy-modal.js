@@ -134,7 +134,7 @@ const DiscrepancyModal = {
             const comments = await Api.listDiscrepancyComments(discrepancyId);
             if (!document.getElementById('discrepancyComments')) return; // modal closed while loading
             renderCommentsThread(el, comments, {
-                onSubmit: (author, body) => Api.addDiscrepancyComment(discrepancyId, { authorName: author, body }),
+                onSubmit: (body) => Api.addDiscrepancyComment(discrepancyId, body),
             });
         } catch (err) {
             if (el) el.innerHTML = `<p class="error-text">Failed to load notes: ${escapeHtml(err.message)}</p>`;

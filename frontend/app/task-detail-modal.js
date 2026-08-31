@@ -75,11 +75,16 @@ const TaskDetailModal = {
         modal.innerHTML = `
             <div class="discrepancy-modal-header">
                 <div>
-                    <h2>${escapeHtml(t.title)}</h2>
+                    <div class="task-modal-title-row">
+                        ${t.priority === 'high' ? '<span class="task-priority-flag" title="High priority">&#9873; Urgent</span>' : ''}
+                        <h2>${escapeHtml(t.title)}</h2>
+                    </div>
                     <p class="discrepancy-modal-subtitle">${this._metaLine(t)}</p>
                 </div>
                 <button type="button" class="verify-popover-close discrepancy-modal-close" aria-label="Close">&times;</button>
             </div>
+
+            <button class="btn-text task-modal-priority-toggle" id="taskModalPriorityToggle" type="button">${t.priority === 'high' ? 'Remove Urgent Flag' : '&#9873; Flag as Urgent'}</button>
 
             ${t.description ? `<p class="task-modal-description">${escapeHtml(t.description)}</p>` : ''}
 
@@ -104,9 +109,18 @@ const TaskDetailModal = {
                     <div id="taskModalFieldGroups"></div>
                 </div>
             ` : `<p class="empty-inline">This task isn't linked to a lease.</p>`}
+
+            ${this._fieldEditHistorySectionHtml()}
+
+            <div class="task-modal-comments-section">
+                <h3>Discussion</h3>
+                <p class="task-modal-comments-hint">Team notes on this task -- separate from the field edit history above.</p>
+                <div id="taskModalComments"></div>
+            </div>
         `;
 
         modal.querySelector('.discrepancy-modal-close').addEventListener('click', () => this.close());
+        document.getElementById('taskModalPriorityToggle').addEventListener('click', () => this.togglePriority());
         const openLeaseBtn = document.getElementById('taskModalOpenLeaseBtn');
         if (openLeaseBtn) openLeaseBtn.addEventListener('click', () => {
             const leaseId = t.lease.id;
@@ -117,13 +131,33 @@ const TaskDetailModal = {
         this.renderCompleteBar();
         if (t.discrepancy) this.bindDiscrepancySection();
         if (t.lease) this.renderFieldGroups();
+        this.bindFieldEditHistory();
+        this.renderComments();
     },
 
     _metaLine(t) {
         const bits = [];
-        bits.push(t.status === 'done' ? 'Completed' : (t.due_date ? `Due ${formatDate(t.due_date)}` : 'No due date'));
+        bits.push(t.status === 'done' ? 'Completed' : t.status === 'dismissed' ? 'Dismissed' : (t.due_date ? `Due ${formatDate(t.due_date)}` : 'No due date'));
         bits.push(t.assigned_to ? `Assigned to ${t.assigned_to.name}` : 'Unassigned');
         return bits.join(' · ');
+    },
+
+    // ---- Priority (requirement 3) ----
+
+    async togglePriority() {
+        const newPriority = this.task.priority === 'high' ? 'normal' : 'high';
+        const btn = document.getElementById('taskModalPriorityToggle');
+        if (btn) btn.disabled = true;
+        try {
+            const updated = await Api.updateTask(this.task.id, { priority: newPriority });
+            this.task = updated;
+            showToast(newPriority === 'high' ? 'Flagged as urgent.' : 'Urgent flag removed.', 'success');
+            this.render();
+            if (this._onChange) this._onChange(this.task);
+        } catch (err) {
+            showError(`Failed to update priority: ${err.message}`);
+            if (btn) btn.disabled = false;
+        }
     },
 
     // ---- Completion (requirement 4, gated per requirement 5) ----
@@ -340,11 +374,16 @@ const TaskDetailModal = {
 
             input.disabled = true;
             try {
-                const saved = await saveLeaseFieldEdit(this.task.lease.id, fieldKey, newValue === '' ? null : newValue, { taskId: this.task.id });
-                this.task.lease.extracted_fields[fieldKey] = saved;
-                const newCard = this.createFieldCard(fieldKey, saved);
-                card.replaceWith(newCard);
-                this.flashSaved(newCard);
+                await saveLeaseFieldEdit(this.task.lease.id, fieldKey, newValue === '' ? null : newValue, { taskId: this.task.id });
+                // Full re-fetch + re-render, not just a local field/card
+                // patch -- the save also wrote a new lease_field_edits
+                // row (see saveLeaseFieldEdit), and the Field Edit
+                // History section below needs that new row to show up
+                // immediately, not just after the modal is reopened.
+                this.task = await Api.getTask(this.task.id);
+                this.render();
+                const newCard = document.querySelector(`#taskModalFieldGroups .result-card[data-field="${fieldKey}"]`);
+                if (newCard) this.flashSaved(newCard);
                 showToast('Field saved.', 'success');
             } catch (err) {
                 showError(`Failed to save: ${err.message}`);
@@ -368,5 +407,103 @@ const TaskDetailModal = {
     flashSaved(cardEl) {
         cardEl.classList.add('result-card-just-saved');
         setTimeout(() => cardEl.classList.remove('result-card-just-saved'), 1200);
+    },
+
+    // ---- Field Edit History + Undo (requirement 4) ----
+
+    // Must match backend/app/tasks.py's UNDO_WINDOW_MINUTES -- the
+    // server is the real enforcement (see api.py's undo_lease_field_edit),
+    // this only decides whether to show the button at all, so an edit
+    // that's about to expire doesn't offer an Undo that would just 400.
+    UNDO_WINDOW_MINUTES: 10,
+
+    _fieldEditHistorySectionHtml() {
+        const edits = this.task.field_edits || [];
+        if (edits.length === 0) return '';
+        // Oldest-first from the API; most-recent-first reads like a
+        // history/timeline the way every other "recent activity" list
+        // in this app does.
+        const ordered = [...edits].reverse();
+        return `
+            <div class="task-modal-history-section">
+                <h3>Field Edit History</h3>
+                <div class="task-edit-history-list">
+                    ${ordered.map(e => this._editHistoryItemHtml(e)).join('')}
+                </div>
+            </div>
+        `;
+    },
+
+    _editHistoryItemHtml(edit) {
+        const label = FIELD_LABELS[edit.field_name] || edit.field_name;
+        const oldVal = edit.old_value && edit.old_value.value != null ? String(edit.old_value.value) : '(not found)';
+        const newVal = edit.new_value && edit.new_value.value != null ? String(edit.new_value.value) : '(not found)';
+        const canUndo = this._canUndoEdit(edit);
+        return `
+            <div class="task-edit-history-item ${edit.reverted_at ? 'task-edit-history-item-reverted' : ''}">
+                <div class="task-edit-history-main">
+                    <span class="task-edit-history-field">${escapeHtml(label)}</span>
+                    <span class="task-edit-history-change">"${escapeHtml(oldVal)}" &rarr; "${escapeHtml(newVal)}"</span>
+                </div>
+                <div class="task-edit-history-meta">
+                    <span>${escapeHtml(edit.edited_by)} &middot; ${timeAgo(edit.created_at)}</span>
+                    ${edit.reverted_at ? '<span class="task-edit-history-reverted-tag">Undone</span>' : ''}
+                    ${canUndo ? `<button class="btn-text task-edit-history-undo-btn" data-edit-id="${edit.id}" data-field="${escapeHtml(edit.field_name)}" type="button">Undo</button>` : ''}
+                </div>
+            </div>
+        `;
+    },
+
+    // An edit can only be undone while: it hasn't already been reverted,
+    // it's the single most recent (not-yet-reverted) edit for that
+    // field -- undoing an older one while a later edit already
+    // superseded it would silently discard that later value -- it's
+    // still within the undo window, and (this modal's own gate, per
+    // requirement 4) the task isn't done yet. The backend enforces all
+    // of this independently (see undo_lease_field_edit); this mirrors
+    // it client-side purely so the button doesn't appear when it would
+    // just fail.
+    _canUndoEdit(edit) {
+        if (edit.reverted_at) return false;
+        if (this.task.status === 'done') return false;
+        const sameField = (this.task.field_edits || []).filter(e => e.field_name === edit.field_name && !e.reverted_at);
+        if (sameField.length === 0 || sameField[sameField.length - 1].id !== edit.id) return false;
+        const ageMinutes = (Date.now() - new Date(edit.created_at).getTime()) / 60000;
+        return ageMinutes <= this.UNDO_WINDOW_MINUTES;
+    },
+
+    bindFieldEditHistory() {
+        document.querySelectorAll('.task-edit-history-undo-btn').forEach(btn => {
+            btn.addEventListener('click', () => this.undoFieldEdit(parseInt(btn.dataset.editId, 10), btn.dataset.field));
+        });
+    },
+
+    async undoFieldEdit(editId, fieldName) {
+        const btn = document.querySelector(`.task-edit-history-undo-btn[data-edit-id="${editId}"]`);
+        if (btn) { btn.disabled = true; btn.textContent = 'Undoing...'; }
+        try {
+            await Api.undoLeaseFieldEdit(this.task.lease.id, fieldName, editId);
+            showToast('Edit undone.', 'success');
+            this.task = await Api.getTask(this.task.id);
+            this.render();
+            if (this._onChange) this._onChange(this.task);
+        } catch (err) {
+            showError(`Failed to undo: ${err.message}`);
+            if (btn) { btn.disabled = false; btn.textContent = 'Undo'; }
+        }
+    },
+
+    // ---- Comments (requirement 2) -- separate from field_edits above ----
+
+    renderComments() {
+        const container = document.getElementById('taskModalComments');
+        if (!container) return;
+        renderCommentsThread(container, this.task.comments || [], {
+            onSubmit: async (body) => {
+                const updated = await Api.addTaskComment(this.task.id, body);
+                this.task.comments = updated;
+                return updated;
+            },
+        });
     },
 };

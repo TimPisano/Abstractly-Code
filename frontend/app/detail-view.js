@@ -244,7 +244,7 @@ const LeaseDetail = {
             const comments = await Api.listLeaseComments(leaseId);
             if (!this.lease || this.lease.id !== leaseId) return; // navigated away while loading
             renderCommentsThread(el, comments, {
-                onSubmit: (author, body) => Api.addLeaseComment(leaseId, { authorName: author, body }),
+                onSubmit: (body) => Api.addLeaseComment(leaseId, body),
             });
         } catch (err) {
             el.innerHTML = `<p class="error-text">Failed to load notes: ${escapeHtml(err.message)}</p>`;

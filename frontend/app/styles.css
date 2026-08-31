@@ -780,6 +780,25 @@
     flex-wrap: wrap;
 }
 
+.tasks-bulk-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    background-color: var(--background);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 0.625rem 0.875rem;
+    margin-bottom: 0.875rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--text-medium);
+    flex-wrap: wrap;
+}
+
+.task-form-priority-label {
+    margin-top: 0.375rem;
+}
+
 .task-form-row {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -840,6 +859,11 @@
     text-decoration: line-through;
 }
 
+.task-item-dismissed {
+    opacity: 0.55;
+}
+
+.task-select-check,
 .task-complete-check {
     margin-top: 0.25rem;
     width: 1.125rem;
@@ -854,10 +878,45 @@
     min-width: 0;
 }
 
+.task-item-title-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
 .task-item-title {
     font-size: 0.9375rem;
     font-weight: 600;
     color: var(--text-dark);
+}
+
+.task-priority-flag {
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--severity-high);
+    background-color: var(--confidence-low-bg, rgba(220, 38, 38, 0.1));
+    padding: 0.125rem 0.5rem;
+    border-radius: 9999px;
+    flex-shrink: 0;
+}
+
+.task-status-tag {
+    font-size: 0.6875rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    padding: 0.125rem 0.5rem;
+    border-radius: 9999px;
+    flex-shrink: 0;
+}
+
+.task-status-tag-dismissed {
+    color: var(--text-medium);
+    background-color: var(--border-color);
 }
 
 .task-item-description {
@@ -2972,6 +3031,16 @@
     margin-top: 0.0625rem;
 }
 
+.task-modal-title-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.task-modal-priority-toggle {
+    margin-bottom: 1rem;
+}
+
 .task-modal-complete-bar {
     margin-bottom: 1.25rem;
 }
@@ -3068,6 +3137,88 @@
 @keyframes taskModalFieldSaved {
     0% { box-shadow: 0 0 0 3px var(--confidence-high); }
     100% { box-shadow: none; }
+}
+
+.task-modal-history-section {
+    border-top: 1px solid var(--border-color);
+    padding-top: 1.25rem;
+    margin-top: 1.5rem;
+}
+
+.task-modal-history-section h3 {
+    font-size: 1rem;
+    font-weight: 700;
+    margin-bottom: 0.875rem;
+}
+
+.task-edit-history-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.625rem;
+}
+
+.task-edit-history-item {
+    background-color: var(--background);
+    border-radius: var(--radius-sm);
+    padding: 0.625rem 0.875rem;
+}
+
+.task-edit-history-item-reverted {
+    opacity: 0.6;
+}
+
+.task-edit-history-main {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.5rem;
+    font-size: 0.8125rem;
+}
+
+.task-edit-history-field {
+    font-weight: 700;
+    color: var(--text-dark);
+}
+
+.task-edit-history-change {
+    color: var(--text-medium);
+}
+
+.task-edit-history-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-top: 0.25rem;
+    font-size: 0.75rem;
+    color: var(--text-light);
+}
+
+.task-edit-history-reverted-tag {
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--text-medium);
+}
+
+.task-edit-history-undo-btn {
+    margin-left: auto;
+}
+
+.task-modal-comments-section {
+    border-top: 1px solid var(--border-color);
+    padding-top: 1.25rem;
+    margin-top: 1.5rem;
+}
+
+.task-modal-comments-section h3 {
+    font-size: 1rem;
+    font-weight: 700;
+}
+
+.task-modal-comments-hint {
+    font-size: 0.8125rem;
+    color: var(--text-medium);
+    margin-bottom: 0.875rem;
 }
 
 .task-item-title-open {

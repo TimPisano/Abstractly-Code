@@ -1,17 +1,24 @@
 /**
  * Team Notes: a small, reusable comment-thread widget shared by the
- * Lease Detail sidebar and the Discrepancy Resolution modal -- same
- * markup/behavior in both places rather than two separate
- * implementations, backed by the real comments API (see
+ * Lease Detail sidebar, the Discrepancy Resolution modal, and the Task
+ * Detail modal -- same markup/behavior everywhere rather than three
+ * separate implementations, backed by the real comments API (see
  * backend/app/database.py's comments table / GET+POST
- * /leases/<id>/comments and /discrepancies/<id>/comments).
+ * /leases/<id>/comments, /discrepancies/<id>/comments, and
+ * /tasks/<id>/comments).
  *
  * "Visible to the whole team" needs no client-side scoping either --
  * there's no per-account data isolation anywhere in this app yet (see
  * DECISIONS.md), so a plain GET already is everyone's view.
+ *
+ * No "your name" input -- real per-user login exists now (see
+ * access-gate.js's window.CURRENT_USER), and every comment route
+ * always sources the author from the session, ignoring anything a
+ * request body claims (see backend/app/api.py's
+ * _validate_comment_payload). An editable name field here would just
+ * be misleading busywork that the backend silently discards.
  */
 function renderCommentsThread(containerEl, comments, { onSubmit }) {
-    const identity = getUserIdentity();
     containerEl.innerHTML = `
         <div class="comments-list">
             ${comments.length ? comments.map(c => `
@@ -28,7 +35,6 @@ function renderCommentsThread(containerEl, comments, { onSubmit }) {
             `).join('') : '<p class="empty-inline">No notes yet — be the first to leave one.</p>'}
         </div>
         <div class="comment-add-row">
-            <input type="text" class="text-input comment-author-input" placeholder="Your name" value="${escapeHtml(identity.name || '')}">
             <textarea class="text-input comment-body-input" rows="2" placeholder="Add a note for the team..."></textarea>
             <div class="comment-add-actions">
                 <button class="btn-secondary comment-submit-btn" type="button">Add Note</button>
@@ -38,24 +44,21 @@ function renderCommentsThread(containerEl, comments, { onSubmit }) {
     `;
 
     const submitBtn = containerEl.querySelector('.comment-submit-btn');
-    const authorInput = containerEl.querySelector('.comment-author-input');
     const bodyInput = containerEl.querySelector('.comment-body-input');
     const errorEl = containerEl.querySelector('.comment-error-text');
 
     submitBtn.addEventListener('click', async () => {
-        const author = authorInput.value.trim();
         const body = bodyInput.value.trim();
         errorEl.style.display = 'none';
-        if (!author || !body) {
-            errorEl.textContent = 'Your name and a note are both required.';
+        if (!body) {
+            errorEl.textContent = 'A note is required.';
             errorEl.style.display = 'block';
             return;
         }
         submitBtn.disabled = true;
         submitBtn.textContent = 'Posting...';
         try {
-            const updated = await onSubmit(author, body);
-            setUserIdentity(author);
+            const updated = await onSubmit(body);
             renderCommentsThread(containerEl, updated, { onSubmit });
         } catch (err) {
             errorEl.textContent = err.message;

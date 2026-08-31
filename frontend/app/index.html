@@ -523,7 +523,10 @@
 
                 <div class="tasks-filter-row">
                     <label class="checkbox-label">
-                        <input type="checkbox" id="tasksShowDone"> Show completed
+                        <input type="checkbox" id="tasksSelectAll" title="Select all visible tasks"> Select all
+                    </label>
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="tasksShowDone"> Show completed/dismissed
                     </label>
                     <select id="tasksAssigneeFilter" class="text-input select-input" title="Filter by assignee"></select>
                 </div>
@@ -546,11 +549,25 @@
                                 <select id="taskFormAssignee" class="text-input select-input"></select>
                             </div>
                         </div>
+                        <label class="checkbox-label task-form-priority-label">
+                            <input type="checkbox" id="taskFormPriority"> Flag as high priority
+                        </label>
                         <div class="task-form-actions">
                             <button class="btn-secondary" id="taskFormCancelBtn" type="button">Cancel</button>
                             <button class="btn-primary" type="submit" id="taskFormSubmitBtn">Create Task</button>
                         </div>
                     </form>
+                </div>
+
+                <!-- Bulk-selection action bar, hidden until at least one task is checked -->
+                <div class="tasks-bulk-bar" id="tasksBulkBar" style="display:none;">
+                    <span id="tasksBulkCount">0 selected</span>
+                    <button class="btn-secondary" id="tasksBulkCompleteBtn" type="button">Complete</button>
+                    <button class="btn-secondary" id="tasksBulkDismissBtn" type="button">Dismiss</button>
+                    <select id="tasksBulkReassignSelect" class="text-input select-input" title="Reassign selected to...">
+                        <option value="">Reassign to...</option>
+                    </select>
+                    <button class="btn-text" id="tasksBulkClearBtn" type="button">Clear selection</button>
                 </div>
 
                 <div id="tasksListContent"></div>

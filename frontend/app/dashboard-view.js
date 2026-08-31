@@ -131,6 +131,7 @@ const Dashboard = {
                         ${tasks.length === 0 ? '<p class="empty-inline" id="todayBriefingTasksEmpty">Nothing due.</p>' : tasks.slice(0, 4).map(t => `
                             <div class="today-briefing-item" data-task-id="${t.id}">
                                 <input type="checkbox" class="task-complete-check today-briefing-task-check" data-id="${t.id}" title="Mark complete">
+                                ${t.priority === 'high' ? '<span class="task-priority-flag" title="High priority">&#9873;</span>' : ''}
                                 <span class="${t.due_date && t.due_date < data.reference_date ? 'task-due-overdue' : 'task-due-today'}">${t.due_date && t.due_date < data.reference_date ? 'Overdue' : 'Due today'}</span>
                                 <span class="today-briefing-task-title" data-task-open="${t.id}">${escapeHtml(t.title)}</span>
                             </div>

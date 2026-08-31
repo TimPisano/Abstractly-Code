@@ -1,23 +1,35 @@
 /**
- * Tasks View: title/description/due-date/assignee/status to-dos
- * (backend/app/tasks.py) -- distinct from Assignments ("who owns this
- * record"): a task is a concrete to-do that may or may not be about a
- * specific record. Supports creating a task directly from a
- * discrepancy or alert (see createFromDiscrepancy/createFromAlert,
+ * Tasks View: title/description/due-date/assignee/status/priority
+ * to-dos (backend/app/tasks.py) -- distinct from Assignments ("who
+ * owns this record"): a task is a concrete to-do that may or may not
+ * be about a specific record. Supports creating a task directly from
+ * a discrepancy or alert (see createFromDiscrepancy/createFromAlert,
  * wired into discrepancies-view.js's and alerts-view.js's card actions
  * respectively) via the real POST /tasks/from-discrepancy/<id> and
  * /tasks/from-alert/<id> routes, which carry the source's own
  * message/category/severity into the new task automatically.
+ *
+ * Multi-select + bulk actions (Complete/Dismiss/Reassign) use the real
+ * POST /tasks/bulk-status and /tasks/bulk-reassign routes -- server-
+ * side loop-and-report, same pattern as /alerts/bulk-dismiss -- not a
+ * client-side loop over the single-task endpoints. Bulk-completing a
+ * task tied to a still-open discrepancy is impossible to confirm in a
+ * batch (there's no per-task field for "which source was correct"), so
+ * the backend SKIPS those rather than guessing; skipped ids are
+ * reported back and surfaced so the user can resolve them individually
+ * via the task modal.
  */
 const Tasks = {
     all: [],
     teamMembers: [],
     filters: { showDone: false, assignedTo: '' },
     editingId: null,
+    selected: new Set(),
 
     async load() {
         document.getElementById('tasksListContent').innerHTML = '<p class="loading-inline"><span class="spinner-small"></span> Loading...</p>';
         this.hideForm();
+        this.selected.clear();
 
         // GET /team/members is admin-only (the full roster, including
         // emails, is sensitive) -- a non-admin (e.g. an analyst) still
@@ -49,6 +61,10 @@ const Tasks = {
         const currentFilterVal = filterSelect.value;
         filterSelect.innerHTML = `<option value="">Everyone</option>${options}`;
         filterSelect.value = currentFilterVal;
+        const bulkSelect = document.getElementById('tasksBulkReassignSelect');
+        const currentBulkVal = bulkSelect.value;
+        bulkSelect.innerHTML = `<option value="">Reassign to...</option><option value="unassign">Unassign</option>${options}`;
+        bulkSelect.value = currentBulkVal;
     },
 
     async fetchAndRender() {
@@ -56,24 +72,42 @@ const Tasks = {
         if (this.filters.assignedTo) params.assignedTo = parseInt(this.filters.assignedTo, 10);
         let tasks = await Api.listTasks(params);
         // No "not done" filter on the backend (status is a single exact
-        // match) -- done/not-done is a client-side view toggle over the
-        // same full list, same reasoning as every other showX-hidden-
-        // by-default filter in this app (e.g. Alerts' showDismissed).
-        if (!this.filters.showDone) tasks = tasks.filter(t => t.status !== 'done');
+        // match) -- done/dismissed vs. active is a client-side view
+        // toggle over the same full list, same reasoning as every other
+        // showX-hidden-by-default filter in this app (e.g. Alerts'
+        // showDismissed).
+        if (!this.filters.showDone) tasks = tasks.filter(t => t.status !== 'done' && t.status !== 'dismissed');
+        // Backend already orders priority-first (see database.list_tasks),
+        // but this client-side re-sort (done/dismissed always last) needs
+        // to preserve that ordering within the active group, not just
+        // fall back to due-date alone.
         tasks.sort((a, b) => {
-            if (a.status === 'done' && b.status !== 'done') return 1;
-            if (b.status === 'done' && a.status !== 'done') return -1;
+            const aInactive = a.status === 'done' || a.status === 'dismissed';
+            const bInactive = b.status === 'done' || b.status === 'dismissed';
+            if (aInactive && !bInactive) return 1;
+            if (bInactive && !aInactive) return -1;
+            const aHigh = a.priority === 'high', bHigh = b.priority === 'high';
+            if (aHigh && !bHigh) return -1;
+            if (bHigh && !aHigh) return 1;
             if (!a.due_date && !b.due_date) return 0;
             if (!a.due_date) return 1;
             if (!b.due_date) return -1;
             return a.due_date.localeCompare(b.due_date);
         });
         this.all = tasks;
+        // Dropping a selection whose task no longer appears (filtered
+        // out, deleted, or already acted on) keeps the bulk bar's count
+        // honest instead of silently counting a task that isn't even
+        // on screen anymore.
+        const visibleIds = new Set(tasks.map(t => t.id));
+        for (const id of this.selected) if (!visibleIds.has(id)) this.selected.delete(id);
         this.render(tasks);
     },
 
     render(tasks) {
         const el = document.getElementById('tasksListContent');
+        this._updateBulkBar();
+        this._updateSelectAllCheckbox(tasks);
         if (tasks.length === 0) {
             el.innerHTML = `
                 <div class="attention-clear">
@@ -85,6 +119,9 @@ const Tasks = {
         }
         el.innerHTML = `<div class="task-list">${tasks.map(t => this._taskHtml(t)).join('')}</div>`;
 
+        el.querySelectorAll('.task-select-check').forEach(cb => {
+            cb.addEventListener('change', () => this.toggleSelect(parseInt(cb.dataset.id, 10), cb.checked));
+        });
         el.querySelectorAll('.task-complete-check').forEach(cb => {
             cb.addEventListener('change', () => this.toggleDone(parseInt(cb.dataset.id, 10), cb.checked));
         });
@@ -128,11 +165,17 @@ const Tasks = {
         } else if (task.discrepancy) {
             sourceHtml = `<button class="btn-text task-source-link" data-goto-discrepancies="1" type="button">View discrepancy &rarr;</button>`;
         }
+        const statusTag = task.status === 'dismissed' ? '<span class="task-status-tag task-status-tag-dismissed">Dismissed</span>' : '';
         return `
-            <div class="task-item ${task.status === 'done' ? 'task-item-done' : ''}" data-id="${task.id}">
+            <div class="task-item ${task.status === 'done' ? 'task-item-done' : ''} ${task.status === 'dismissed' ? 'task-item-dismissed' : ''}" data-id="${task.id}">
+                <input type="checkbox" class="task-select-check" data-id="${task.id}" ${this.selected.has(task.id) ? 'checked' : ''} title="Select for bulk action">
                 <input type="checkbox" class="task-complete-check" data-id="${task.id}" ${task.status === 'done' ? 'checked' : ''} title="Mark complete">
                 <div class="task-item-body">
-                    <div class="task-item-title task-item-title-open" data-task-open="${task.id}" title="Open task">${escapeHtml(task.title)}</div>
+                    <div class="task-item-title-row">
+                        ${task.priority === 'high' ? '<span class="task-priority-flag" title="High priority">&#9873; Urgent</span>' : ''}
+                        <div class="task-item-title task-item-title-open" data-task-open="${task.id}" title="Open task">${escapeHtml(task.title)}</div>
+                        ${statusTag}
+                    </div>
                     ${task.description ? `<div class="task-item-description">${escapeHtml(task.description)}</div>` : ''}
                     <div class="task-item-meta">
                         <span class="${dueClass}">${dueLabel}</span>
@@ -169,6 +212,91 @@ const Tasks = {
         }
     },
 
+    // ---- Bulk selection ----
+
+    toggleSelect(taskId, checked) {
+        if (checked) this.selected.add(taskId);
+        else this.selected.delete(taskId);
+        this._updateBulkBar();
+        this._updateSelectAllCheckbox(this.all);
+    },
+
+    toggleSelectAll(checked) {
+        if (checked) this.all.forEach(t => this.selected.add(t.id));
+        else this.selected.clear();
+        this.render(this.all);
+    },
+
+    clearSelection() {
+        this.selected.clear();
+        this.render(this.all);
+    },
+
+    _updateSelectAllCheckbox(tasks) {
+        const cb = document.getElementById('tasksSelectAll');
+        if (!cb) return;
+        cb.checked = tasks.length > 0 && tasks.every(t => this.selected.has(t.id));
+    },
+
+    _updateBulkBar() {
+        const bar = document.getElementById('tasksBulkBar');
+        const count = this.selected.size;
+        bar.style.display = count > 0 ? 'flex' : 'none';
+        document.getElementById('tasksBulkCount').textContent = `${count} selected`;
+    },
+
+    async bulkComplete() {
+        const ids = [...this.selected];
+        if (ids.length === 0) return;
+        try {
+            const result = await Api.bulkUpdateTaskStatus(ids, 'done');
+            this._reportBulkResult(result, 'completed');
+            this.selected.clear();
+            await this.fetchAndRender();
+        } catch (err) {
+            showError(`Failed to complete tasks: ${err.message}`);
+        }
+    },
+
+    async bulkDismiss() {
+        const ids = [...this.selected];
+        if (ids.length === 0) return;
+        if (!confirm(`Dismiss ${ids.length} task${ids.length === 1 ? '' : 's'}? They'll be hidden from the active list (still visible under "Show completed/dismissed").`)) return;
+        try {
+            const result = await Api.bulkUpdateTaskStatus(ids, 'dismissed');
+            this._reportBulkResult(result, 'dismissed');
+            this.selected.clear();
+            await this.fetchAndRender();
+        } catch (err) {
+            showError(`Failed to dismiss tasks: ${err.message}`);
+        }
+    },
+
+    async bulkReassign(value) {
+        const ids = [...this.selected];
+        if (ids.length === 0 || !value) return;
+        const assignedToUserId = value === 'unassign' ? null : parseInt(value, 10);
+        try {
+            const result = await Api.bulkReassignTasks(ids, assignedToUserId);
+            const name = value === 'unassign' ? 'Unassigned' : (this.teamMembers.find(u => u.id === assignedToUserId) || {}).name || 'selected member';
+            showToast(`${result.updated.length} task${result.updated.length === 1 ? '' : 's'} reassigned to ${name}.`, 'success');
+            this.selected.clear();
+            document.getElementById('tasksBulkReassignSelect').value = '';
+            await this.fetchAndRender();
+        } catch (err) {
+            showError(`Failed to reassign tasks: ${err.message}`);
+        }
+    },
+
+    _reportBulkResult(result, verb) {
+        const n = result.updated.length;
+        let message = `${n} task${n === 1 ? '' : 's'} ${verb}.`;
+        if (result.skipped_needs_discrepancy && result.skipped_needs_discrepancy.length > 0) {
+            message += ` ${result.skipped_needs_discrepancy.length} skipped — tied to an open discrepancy that needs resolving first (open individually).`;
+        }
+        showToast(message, result.skipped_needs_discrepancy && result.skipped_needs_discrepancy.length > 0 ? 'info' : 'success');
+    },
+
     showForm(prefill) {
         this.editingId = prefill && prefill.id ? prefill.id : null;
         document.getElementById('taskFormId').value = this.editingId || '';
@@ -176,6 +304,7 @@ const Tasks = {
         document.getElementById('taskFormDescription').value = (prefill && prefill.description) || '';
         document.getElementById('taskFormDueDate').value = (prefill && prefill.due_date) || '';
         document.getElementById('taskFormAssignee').value = (prefill && prefill.assigned_to_user_id) || '';
+        document.getElementById('taskFormPriority').checked = !!(prefill && prefill.priority === 'high');
         document.getElementById('taskFormSubmitBtn').textContent = this.editingId ? 'Save Changes' : 'Create Task';
         document.getElementById('taskFormPanel').style.display = 'block';
         document.getElementById('taskFormTitle').focus();
@@ -199,14 +328,15 @@ const Tasks = {
         const dueDate = document.getElementById('taskFormDueDate').value || null;
         const assigneeVal = document.getElementById('taskFormAssignee').value;
         const assignedToUserId = assigneeVal ? parseInt(assigneeVal, 10) : null;
+        const priority = document.getElementById('taskFormPriority').checked ? 'high' : 'normal';
 
         try {
             if (this.editingId) {
-                await Api.updateTask(this.editingId, { title, description, due_date: dueDate });
+                await Api.updateTask(this.editingId, { title, description, due_date: dueDate, priority });
                 await Api.assignTask(this.editingId, assignedToUserId);
                 showToast('Task updated.', 'success');
             } else {
-                await Api.createTask({ title, description, dueDate, assignedToUserId });
+                await Api.createTask({ title, description, dueDate, assignedToUserId, priority });
                 showToast('Task created.', 'success');
             }
             this.hideForm();
@@ -253,6 +383,13 @@ function _initTasksViewBindings() {
         Tasks.filters.assignedTo = e.target.value;
         Tasks.fetchAndRender();
     });
+    document.getElementById('tasksSelectAll').addEventListener('change', (e) => {
+        Tasks.toggleSelectAll(e.target.checked);
+    });
+    document.getElementById('tasksBulkCompleteBtn').addEventListener('click', () => Tasks.bulkComplete());
+    document.getElementById('tasksBulkDismissBtn').addEventListener('click', () => Tasks.bulkDismiss());
+    document.getElementById('tasksBulkClearBtn').addEventListener('click', () => Tasks.clearSelection());
+    document.getElementById('tasksBulkReassignSelect').addEventListener('change', (e) => Tasks.bulkReassign(e.target.value));
 }
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', _initTasksViewBindings);

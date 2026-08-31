@@ -280,17 +280,18 @@ const Api = {
     },
 
     // Team comments/notes -- visible to everyone (this app has no per-
-    // account scoping yet), self-reported author identity same as
-    // discrepancy resolutions.
+    // account scoping yet). Author is always the logged-in session user
+    // (see backend/app/api.py's _validate_comment_payload) -- not a
+    // request-body field, same as discrepancy resolutions.
     listLeaseComments(leaseId) {
         return apiRequest(`/leases/${leaseId}/comments`);
     },
 
-    addLeaseComment(leaseId, { authorName, body, authorEmail }) {
+    addLeaseComment(leaseId, body) {
         return apiRequest(`/leases/${leaseId}/comments`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ author_name: authorName, body, author_email: authorEmail }),
+            body: JSON.stringify({ body }),
         });
     },
 
@@ -306,11 +307,11 @@ const Api = {
         return apiRequest(`/comments/recent?limit=${limit}`);
     },
 
-    addDiscrepancyComment(discrepancyId, { authorName, body, authorEmail }) {
+    addDiscrepancyComment(discrepancyId, body) {
         return apiRequest(`/discrepancies/${discrepancyId}/comments`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ author_name: authorName, body, author_email: authorEmail }),
+            body: JSON.stringify({ body }),
         });
     },
 
@@ -388,7 +389,7 @@ const Api = {
         const qs = params.toString();
         return apiRequest(`/tasks${qs ? `?${qs}` : ''}`);
     },
-    createTask({ title, description, dueDate, assignedToUserId, leaseId, discrepancyId, propertyAddress } = {}) {
+    createTask({ title, description, dueDate, assignedToUserId, leaseId, discrepancyId, propertyAddress, priority } = {}) {
         const body = { title };
         if (description) body.description = description;
         if (dueDate) body.due_date = dueDate;
@@ -396,6 +397,7 @@ const Api = {
         if (leaseId != null) body.lease_id = leaseId;
         if (discrepancyId != null) body.discrepancy_id = discrepancyId;
         if (propertyAddress) body.property_address = propertyAddress;
+        if (priority) body.priority = priority;
         return apiRequest('/tasks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     },
     createTaskFromDiscrepancy(discrepancyId, { assignedToUserId, dueDate } = {}) {
@@ -430,6 +432,30 @@ const Api = {
     },
     deleteTask(taskId) {
         return apiRequest(`/tasks/${taskId}`, { method: 'DELETE' });
+    },
+
+    // ---- Bulk task actions (Tasks page multi-select) ----
+    bulkUpdateTaskStatus(ids, status) {
+        return apiRequest('/tasks/bulk-status', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids, status }) });
+    },
+    bulkReassignTasks(ids, assignedToUserId) {
+        return apiRequest('/tasks/bulk-reassign', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids, assigned_to_user_id: assignedToUserId }) });
+    },
+
+    // ---- Task comments (backend/app/database.py's comments table, task_id column) ----
+    // Also embedded inline on every GET /tasks/<id> response (task_detail's
+    // `comments` key) -- these two exist for posting a new one and for a
+    // standalone refetch, not because the initial load needs a second call.
+    listTaskComments(taskId) {
+        return apiRequest(`/tasks/${taskId}/comments`);
+    },
+    addTaskComment(taskId, body) {
+        return apiRequest(`/tasks/${taskId}/comments`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ body }) });
+    },
+
+    // ---- Undo a recent field edit (see database.revert_lease_field_edit) ----
+    undoLeaseFieldEdit(leaseId, fieldName, editId) {
+        return apiRequest(`/leases/${leaseId}/fields/${fieldName}/edits/${editId}/undo`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
     },
 
     leaseRisks(leaseId) {
