@@ -460,6 +460,56 @@ def test_repoint_lease_references_moves_everything():
     print("✓ test_repoint_lease_references_moves_everything: PASS")
 
 
+def test_resubmit_does_not_let_a_carried_forward_amendment_override_the_correction():
+    """
+    The real bug this guards against: repoint_lease_references used to
+    carry amendments forward onto the new resubmitted lease id. Since
+    get_effective_fields' "latest non-null amendment wins" rule means
+    an amendment always beats the base row for any field it sets, a
+    carried-forward amendment would keep silently overriding the very
+    field the resubmission corrected -- found live via the export ->
+    edit -> resubmit round trip, where a corrected rent amount kept
+    reverting on every read after resubmitting.
+    """
+    db_path = _fresh_temp_db()
+    try:
+        client = _authed_client()
+
+        # v1: missing insurance + cure clauses, has a security deposit clause.
+        old_id = _upload(client, _v1_bytes(), "original.pdf").get_json()["leases"][0]["id"]
+
+        # An amendment overrides rent_amount on the OLD lease.
+        amendment_id = database.insert_lease(
+            "amend.pdf",
+            {**database.get_lease(old_id)["extracted_fields"], "rent_amount": {"value": "$9,999.00", "source": {"page": 1, "quote": "amended rent"}, "confidence": "high"}},
+            document_type="amendment", base_lease_id=old_id,
+        )
+        effective_before = database.get_effective_fields(old_id)
+        assert effective_before["rent_amount"]["value"] == "$9,999.00", "amendment must genuinely govern this field before resubmitting"
+
+        # Resubmit a corrected document -- its own rent_amount is $6,250.00 (see _build_lease_pdf).
+        resp = _resubmit(client, old_id, _v2_bytes())
+        assert resp.status_code == 201, resp.get_json()
+        new_id = resp.get_json()["lease"]["id"]
+
+        effective_after = database.get_effective_fields(new_id)
+        assert effective_after["rent_amount"]["value"] == "$6,250.00", \
+            "the resubmitted document's own value must win -- a carried-forward old amendment must not silently override it"
+
+        # The amendment itself is untouched, permanent history -- still
+        # attached to the archived OLD lease, not deleted.
+        assert database.get_lease(amendment_id)["base_lease_id"] == old_id
+        old_effective = database.get_effective_fields(old_id)
+        assert old_effective["rent_amount"]["value"] == "$9,999.00", "the archived old version's own history is unaffected"
+    finally:
+        os.unlink(db_path)
+        for f in ("_resubmit_test_v1.pdf", "_resubmit_test_v2.pdf"):
+            p = os.path.join(FIXTURES_DIR, f)
+            if os.path.exists(p):
+                os.remove(p)
+    print("✓ test_resubmit_does_not_let_a_carried_forward_amendment_override_the_correction: PASS")
+
+
 def test_get_stale_open_discrepancies_excludes_untouched_types():
     """A rent_roll_reconciliation discrepancy must never be treated as 'stale' by this check -- it's never touched by the lease-risk sync pass in the first place, so absence from that pass proves nothing about it."""
     db_path = _fresh_temp_db()
@@ -511,6 +561,7 @@ if __name__ == "__main__":
     test_resubmit_route_rejects_amendment_document_type()
     test_get_lease_version_chain_single_version()
     test_repoint_lease_references_moves_everything()
+    test_resubmit_does_not_let_a_carried_forward_amendment_override_the_correction()
     test_get_stale_open_discrepancies_excludes_untouched_types()
     test_upload_route_surfaces_possible_resubmission_hint()
     print("\nAll lease resubmission tests passed.")

@@ -71,6 +71,7 @@ UNIT_TESTS = [
     "test_lease_resubmission.py",
     "test_lease_field_editing.py",
     "test_task_workflow_extensions.py",
+    "test_table_upload_extraction.py",
 ]
 
 LIVE_API_TESTS = [

@@ -771,10 +771,26 @@ def repoint_lease_references(old_lease_id: int, new_lease_id: int) -> None:
     """
     Carries forward everything that's conceptually about "this lease"
     (not about the specific extraction that produced the old row) from
-    the superseded version to its replacement: discrepancies, amendments,
-    tags, comments, and any assignment (ownership) record. Called once,
+    the superseded version to its replacement: discrepancies, tags,
+    comments, and any assignment (ownership) record. Called once,
     right after the new lease row is inserted and before it's synced
     against risk analysis -- see resubmit_lease in api.py.
+
+    Deliberately does NOT repoint amendments (base_lease_id) onto the
+    new lease -- a real bug this used to have, found live via the
+    resubmit-a-corrected-file workflow: get_effective_fields' "latest
+    non-null amendment wins" rule means a repointed OLD amendment would
+    keep silently overriding the very field the resubmission was
+    correcting, on every future read, defeating the entire point of
+    resubmitting a corrected document. An amendment is a partial
+    addendum to a SPECIFIC prior document; when that document itself is
+    wholesale replaced by a resubmission, the amendment's relevance is
+    genuinely superseded too (the new document is the corrected,
+    complete, current statement of terms) -- so it stays exactly where
+    it is, attached to the now-archived old version, remaining part of
+    THAT version's own history (still viewable via the old lease's own
+    effective fields, or the lease's version-history view) without
+    bleeding into what the new current version shows.
 
     Only discrepancies of type lease_risk_flag / cross_lease_mismatch
     get their natural_key regenerated (see _repointed_natural_key) --
@@ -816,7 +832,6 @@ def repoint_lease_references(old_lease_id: int, new_lease_id: int) -> None:
                 (new_lease_id_col, new_related_id_col, new_natural_key, row["id"]),
             )
 
-        conn.execute("UPDATE leases SET base_lease_id = ? WHERE base_lease_id = ?", (new_lease_id, old_lease_id))
         conn.execute("UPDATE lease_tags SET lease_id = ? WHERE lease_id = ?", (new_lease_id, old_lease_id))
         conn.execute("UPDATE comments SET lease_id = ? WHERE lease_id = ?", (new_lease_id, old_lease_id))
         conn.execute(

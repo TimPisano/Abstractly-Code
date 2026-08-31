@@ -235,25 +235,86 @@ def _default_lease_name(fields, filename, index, total):
     return base_filename
 
 
+def _try_table_extraction(file_bytes, filename, extension):
+    """
+    Attempts to parse a .csv/.xlsx as a headers+data-rows TABLE --
+    reusing the exact same column-alias matching the dedicated rent-
+    roll importer already uses (rent_roll_import.py's parse_csv_
+    rent_roll/parse_xlsx_rent_roll) -- before falling back to treating
+    the file as label:value prose the way document_extractor.py's
+    _rows_to_lines does.
+
+    Why this exists: this app's own exports (single-lease
+    /leases/<id>/export.xlsx AND the portfolio-wide rent-roll export)
+    are ALWAYS table-shaped -- one header row, one or more data rows.
+    Without this, re-uploading one of them through the general upload
+    or resubmit path fell through to _rows_to_lines, which joins each
+    row's cells into ONE space-separated line (documented there as
+    deliberately built for a label:value spreadsheet, e.g. a "Tenant:"
+    cell next to an "Acme Corp" cell on the same row) -- collapsing a
+    header row into "Filename Tenant Landlord Property Address..." and
+    a data row into "sample_lease.pdf John Smith Property Management
+    LLC...", which FieldExtractor's label:value regex then matches
+    against essentially at random, producing confidently wrong values
+    (a header word as a "value", a landlord name as a "tenant") rather
+    than an honest failure. Found live, reproduced exactly by
+    re-uploading this app's own single-lease export through the
+    general upload endpoint.
+
+    Returns (leases, None) if table parsing found at least one row
+    with at least one recognizable core field (tenant, rent_amount, or
+    property_address) -- same list-of-dicts shape
+    _extract_leases_from_file_storage's caller expects, ready to hand
+    straight to database.insert_lease. Returns (None, None) if table
+    parsing found nothing usable at all (most likely a genuine
+    label:value spreadsheet, not a table, or an unrecognized column
+    layout) -- the caller falls back to prose extraction in that case,
+    so a real label:value spreadsheet lease keeps working exactly as
+    before. Never raises; a malformed file just falls back too.
+    """
+    try:
+        if extension == "csv":
+            parsed = parse_csv_rent_roll(file_bytes, filename)
+        else:
+            parsed = parse_xlsx_rent_roll(file_bytes, filename)
+    except RentRollImportError:
+        return None, None
+
+    leases = []
+    for lease_data in parsed["leases"]:
+        fields = lease_data["extracted_fields"]
+        if not any((fields.get(name) or {}).get("value") for name in ("tenant", "rent_amount", "property_address")):
+            continue
+        leases.append({
+            "fields": fields,
+            "date_candidates": None,
+            "source_page_start": None,
+            "source_page_end": None,
+            "display_name": lease_data["display_name"],
+        })
+    return (leases, None) if leases else (None, None)
+
+
 def _extract_leases_from_file_storage(file_storage):
     """
     Shared pipeline: save an uploaded werkzeug FileStorage to a temp
-    path, run document_extractor.extract_pages() to get this file's
-    text into the one shape every format shares (see that module's
-    docstring), then FieldExtractor.extract_multiple_leases() to split
-    it into one or more per-lease results — a genuine single-lease
-    document always comes back as exactly one result (same fields/
-    confidence/citations extract_fields() alone would have produced).
-    A real multi-lease document instead comes back as N independent
-    results, each extracted only from its own page range — see
-    DECISIONS.md for why that matters (fields and risk-relevant date
-    candidates used to bleed across the constituent leases).
+    path, then either parse it as a table (.csv/.xlsx -- see
+    _try_table_extraction) or run document_extractor.extract_pages()
+    to get this file's text into the one shape every prose format
+    shares (see that module's docstring), then
+    FieldExtractor.extract_multiple_leases() to split it into one or
+    more per-lease results — a genuine single-lease document always
+    comes back as exactly one result (same fields/confidence/
+    citations extract_fields() alone would have produced). A real
+    multi-lease document instead comes back as N independent results,
+    each extracted only from its own page range — see DECISIONS.md
+    for why that matters (fields and risk-relevant date candidates
+    used to bleed across the constituent leases).
 
     Every supported file format (PDF, Excel, CSV/TSV, Word, images,
-    plain text) goes through this exact same function and the exact
-    same FieldExtractor call below it — document_extractor.py's only
-    job is getting each format's raw content into the shared `pages`
-    shape; nothing downstream of that call is format-specific.
+    plain text) goes through this same function; a .csv/.xlsx tries
+    table extraction first and only falls through to the prose path
+    (shared with every other format) if that finds nothing usable.
 
     Returns (leases, None) on success, where `leases` is a non-empty
     list of dicts: {"fields": {...}, "date_candidates": {...},
@@ -271,6 +332,13 @@ def _extract_leases_from_file_storage(file_storage):
 
         with open(temp_path, 'rb') as f:
             file_bytes = f.read()
+
+        if extension in ('csv', 'xlsx'):
+            table_leases, _ = _try_table_extraction(file_bytes, file_storage.filename, extension)
+            if table_leases is not None:
+                return table_leases, None
+            # Table parsing found nothing usable -- fall through to the
+            # shared prose path below, same as every other format.
 
         try:
             pages = document_extractor.extract_pages(file_bytes, file_storage.filename, temp_path)
@@ -578,9 +646,13 @@ def resubmit_lease(lease_id):
          through POST /leases or /leases/batch instead).
       3. A new lease row is inserted (v = old version + 1), and every
          reference that follows "the lease" rather than "the specific
-         extraction" -- discrepancies, amendments, tags, comments, the
-         assignment record -- is repointed from the old row to the new
-         one (see database.repoint_lease_references).
+         extraction" -- discrepancies, tags, comments, the assignment
+         record -- is repointed from the old row to the new one (see
+         database.repoint_lease_references). Amendments deliberately
+         stay attached to the OLD row -- see that function's own
+         docstring for why carrying them forward would silently let a
+         stale amendment keep overriding the very field this
+         resubmission is meant to correct.
       4. Risk analysis (single-lease flags + cross-lease mismatches) is
          re-run against the new data via the same sync path every other
          risk computation uses. Any discrepancy that was open and tied

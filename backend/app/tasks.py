@@ -51,8 +51,9 @@ def task_detail(task: Dict[str, Any]) -> Dict[str, Any]:
         lease = database.get_effective_lease(task["lease_id"])
         # A task's own lease_id is never repointed by a later
         # resubmission (repoint_lease_references only follows
-        # discrepancies/amendments/tags/comments/assignments -- see its
-        # own docstring), so a task created before a full Canvas-style
+        # discrepancies/tags/comments/assignments, deliberately NOT
+        # amendments or tasks -- see its own docstring), so a task
+        # created before a full Canvas-style
         # resubmission (POST /leases/<id>/resubmit, not an amendment)
         # would otherwise show and let a user edit an archived,
         # superseded row that no longer appears anywhere else in the

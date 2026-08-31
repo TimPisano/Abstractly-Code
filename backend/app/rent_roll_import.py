@@ -57,6 +57,12 @@ _COLUMN_ALIASES: Dict[str, List[str]] = {
     # multifamily) -- added for PMS export support, alongside the
     # existing broker-spreadsheet terms.
     "tenant": ["tenant name", "tenant", "lessee", "occupant", "customer", "resident"],
+    # Real broker rent rolls essentially never state a landlord (the
+    # uploader IS the landlord); this exists mainly so re-importing
+    # THIS APP'S OWN export -- which does have a Landlord column, since
+    # a full lease abstraction states it -- doesn't silently drop it,
+    # see api.py's _try_table_extraction for the round-trip this backs.
+    "landlord": ["landlord", "owner", "lessor"],
     "unit": ["unit number", "unit #", "suite #", "unit", "suite", "space"],
     # "Unit SF" is Yardi/AppFolio's own compact form of "square feet".
     "square_footage": ["square footage", "square feet", "sq ft", "sqft", "sf", "rsf", "size", "area", "unit sf"],
@@ -451,6 +457,7 @@ def parse_rent_roll_rows(
             continue
 
         rent = _parse_import_currency(cell("rent_amount"))
+        landlord_str = _cell_to_str(cell("landlord"))
         unit_str = _cell_to_str(cell("unit"))
         sqft_str = _cell_to_str(cell("square_footage"))
         start_str = _cell_to_str(cell("lease_start_date"))
@@ -496,6 +503,8 @@ def parse_rent_roll_rows(
             }
 
         set_field("tenant", tenant_raw, tenant_raw)
+        if landlord_str:
+            set_field("landlord", landlord_str, landlord_str)
         set_field("property_address", address, unit_str if unit_str else (property_str or base_property_address))
         if rent is not None:
             set_field("rent_amount", f"${rent:,.2f}", _cell_to_str(cell("rent_amount")))
