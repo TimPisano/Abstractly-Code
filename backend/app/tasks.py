@@ -16,14 +16,50 @@ VALID_STATUSES = {"open", "in_progress", "done"}
 
 
 def task_detail(task: Dict[str, Any]) -> Dict[str, Any]:
-    """Attaches resolved assignee/creator name+email and, if linked, the lease/discrepancy itself -- so the frontend doesn't need per-task follow-up requests to render a task card."""
+    """
+    Attaches resolved assignee/creator name+email and, if linked, the
+    lease/discrepancy itself -- so the frontend doesn't need per-task
+    follow-up requests to render a task card.
+
+    For a lease-linked task, `lease` is the full effective lease
+    (extracted_fields, each with its own value/source/confidence) --
+    this IS the in-task document view this app supports (see PATCH
+    /leases/<id>/fields/<name> for editing): the app has never stored
+    raw uploaded file bytes, only structured extraction with page/quote
+    citations per field, so "viewing the document" here means the same
+    citation-backed field view every other lease screen already uses,
+    not a raw PDF render. `field_edits` is every correction made to
+    this lease WHILE working this specific task (task_id-scoped, not
+    the lease's whole history -- see database.get_lease_field_edits)
+    -- always present (possibly empty) whenever lease_id is set, so a
+    reviewer opening a task can see exactly what was changed under it
+    without a separate request.
+    """
     result = dict(task)
     assignee = database.get_user(task["assigned_to_user_id"]) if task["assigned_to_user_id"] else None
     creator = database.get_user(task["created_by_user_id"])
     result["assigned_to"] = {"id": assignee["id"], "name": assignee["name"], "email": assignee["email"]} if assignee else None
     result["created_by"] = {"id": creator["id"], "name": creator["name"], "email": creator["email"]} if creator else None
     if task.get("lease_id"):
-        result["lease"] = database.get_effective_lease(task["lease_id"])
+        lease = database.get_effective_lease(task["lease_id"])
+        # A task's own lease_id is never repointed by a later
+        # resubmission (repoint_lease_references only follows
+        # discrepancies/amendments/tags/comments/assignments -- see its
+        # own docstring), so a task created before a full Canvas-style
+        # resubmission (POST /leases/<id>/resubmit, not an amendment)
+        # would otherwise show and let a user edit an archived,
+        # superseded row that no longer appears anywhere else in the
+        # app. Resolve forward to whichever version is current so the
+        # in-task view always reflects live data, same as every other
+        # "current lease" reader in this app.
+        if lease and lease.get("status") == "superseded":
+            chain = database.get_lease_version_chain(task["lease_id"])
+            current = next((v for v in chain if v.get("status") != "superseded"), None)
+            if current and current["id"] != task["lease_id"]:
+                lease = database.get_effective_lease(current["id"])
+                result["lease_redirected_from_id"] = task["lease_id"]
+        result["lease"] = lease
+        result["field_edits"] = database.get_lease_field_edits(task_id=task["id"])
     if task.get("discrepancy_id"):
         result["discrepancy"] = database.get_discrepancy(task["discrepancy_id"])
     return result

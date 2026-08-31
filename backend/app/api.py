@@ -899,7 +899,72 @@ def lease_field_source(lease_id, field_name):
     chain = database.get_field_source_chain(lease_id, field_name)
     if chain is None:
         return jsonify({"error": "Lease not found"}), 404
+    # Manual corrections are a separate provenance kind from a
+    # document's own citation (see database.update_lease_field's
+    # docstring) -- surfaced as their own key alongside `history`
+    # rather than merged into it, so this stays additive and doesn't
+    # change `history`'s existing shape for any caller already reading
+    # it (see test_audit_trail.py).
+    chain["manual_edits"] = database.get_lease_field_edits(lease_id=lease_id, field_name=field_name)
     return jsonify(chain), 200
+
+
+@app.route('/leases/<int:lease_id>/fields/<field_name>', methods=['PATCH'])
+@require_role('analyst')
+def edit_lease_field(lease_id, field_name):
+    """
+    Body: {"value": str|null, "confidence": "high"|"medium"|"low" (optional,
+    default "high" -- a human-entered value is presumed trustworthy
+    unless the editor says otherwise), "note": str (optional), "task_id":
+    int (optional -- links this edit to the task it happened under, see
+    app/tasks.py's task_detail)}.
+
+    Directly overwrites this field on this lease (see
+    database.update_lease_field for what "this lease" means when the
+    field's effective value currently comes from an amendment rather
+    than the base document, and why source is always cleared to null
+    rather than fabricated). Every edit is permanently logged --
+    old value, new value, who, when -- via lease_field_edits, retrievable
+    per-field through GET .../fields/<name>/source's `manual_edits`, or
+    per-task through GET /tasks/<id>'s `field_edits`.
+
+    `value` may be null/blank to explicitly record "I checked -- this
+    genuinely isn't in the lease" (see update_lease_field's docstring
+    on `manually_verified` for how that's distinguished from
+    extraction simply never having found it).
+    """
+    lease = database.get_lease(lease_id)
+    if not lease:
+        return jsonify({"error": "Lease not found"}), 404
+    if field_name not in FIELD_NAMES:
+        return jsonify({"error": f"Unknown field '{field_name}'. Valid fields: {', '.join(FIELD_NAMES)}"}), 400
+
+    body = request.get_json(silent=True) or {}
+    if "value" not in body:
+        return jsonify({"error": "Missing required field: value (use null to clear it)"}), 400
+    value = body.get("value")
+    if isinstance(value, str):
+        value = value.strip() or None
+    confidence = body.get("confidence") or "high"
+    if confidence not in ("high", "medium", "low"):
+        return jsonify({"error": "confidence must be one of: high, medium, low"}), 400
+    note = (body.get("note") or "").strip() or None
+    task_id = body.get("task_id")
+    if task_id is not None and not database.get_task(task_id):
+        return jsonify({"error": "task_id does not match a real task"}), 400
+
+    user = current_user()
+    new_entry = database.update_lease_field(
+        lease_id, field_name, value, edited_by=user["name"], edited_by_email=user["email"],
+        confidence=confidence, note=note, task_id=task_id,
+    )
+    _invalidate_lease_derived_caches()
+    database.insert_activity(
+        "lease_field_edited",
+        f"{user['name']} corrected {field_name.replace('_', ' ')} on {lease.get('display_name') or lease['filename']}",
+        lease_id=lease_id,
+    )
+    return jsonify({"lease_id": lease_id, "field_name": field_name, "field": new_entry}), 200
 
 
 @app.route('/leases/<int:lease_id>', methods=['DELETE'])
@@ -1561,15 +1626,71 @@ def assign_task_route(task_id):
 @app.route('/tasks/<int:task_id>/status', methods=['POST'])
 @require_role('analyst')
 def update_task_status_route(task_id):
-    """Body: {"status": "open"|"in_progress"|"done"}."""
-    if not database.get_task(task_id):
+    """
+    Body: {"status": "open"|"in_progress"|"done", "correct_source": str
+    (optional), "note": str (optional)}. This is the SAME route the
+    "Complete Task" button already used and was verified against
+    end-to-end before this feature existed -- extended here, not
+    replaced, so every existing caller (open/in_progress transitions,
+    a plain "done" on a task with no discrepancy) behaves exactly as
+    before.
+
+    The one new behavior: completing ("done") a task that's tied to a
+    discrepancy (task.discrepancy_id set) which is still open requires
+    a decision about which source was correct, same as resolving that
+    discrepancy directly would (POST /discrepancies/<id>/resolve) --
+    `correct_source`/`note` in THIS request's body. Omitting them does
+    NOT silently guess; it rejects the status change with 400 (same
+    "Missing required field(s)" shape /resolve itself already uses) so
+    the caller is forced to confirm, consistent with that existing
+    flow rather than inventing a second way to resolve a discrepancy.
+    Providing them resolves the discrepancy via the real
+    resolve_discrepancy path (same permanent resolution log a human's
+    direct resolve action writes to) before completing the task.
+
+    If the linked discrepancy is already resolved (by a direct resolve,
+    or auto-resolved by a lease resubmission) by the time this runs,
+    the task completes with no further requirement -- there's nothing
+    left to confirm.
+    """
+    task = database.get_task(task_id)
+    if not task:
         return jsonify({"error": "Task not found"}), 404
     body = request.get_json(silent=True) or {}
     status = (body.get('status') or '').strip()
     if status not in tasks_module.VALID_STATUSES:
         return jsonify({"error": f"status must be one of: {', '.join(sorted(tasks_module.VALID_STATUSES))}"}), 400
+
+    discrepancy_resolved_now = False
+    if status == "done" and task.get("discrepancy_id"):
+        discrepancy = database.get_discrepancy(task["discrepancy_id"])
+        if discrepancy and discrepancy["status"] == "open":
+            correct_source = (body.get('correct_source') or '').strip()
+            note = (body.get('note') or '').strip()
+            missing = [f for f, v in (('correct_source', correct_source), ('note', note)) if not v]
+            if missing:
+                return jsonify({
+                    "error": f"Missing required field(s): {', '.join(missing)} -- this task is tied to an "
+                             "open discrepancy, which must be resolved (confirm which source was correct) "
+                             "before the task can be marked done.",
+                    "discrepancy_id": discrepancy["id"],
+                }), 400
+            user = current_user()
+            database.resolve_discrepancy(discrepancy["id"], correct_source, note, user["name"], user["email"])
+            _invalidate_discrepancy_derived_caches()
+            resolved_discrepancy = database.get_discrepancy(discrepancy["id"])
+            database.insert_activity(
+                "discrepancy_resolved",
+                f"Discrepancy #{discrepancy['id']} ({resolved_discrepancy['category']}) resolved by "
+                f"{user['name']} via completing task \"{task['title']}\": {note}",
+                lease_id=_activity_lease_id(resolved_discrepancy.get("lease_id")),
+            )
+            discrepancy_resolved_now = True
+
     updated = database.update_task_status(task_id, status)
-    return jsonify(tasks_module.task_detail(updated)), 200
+    detail = tasks_module.task_detail(updated)
+    detail["discrepancy_resolved_now"] = discrepancy_resolved_now
+    return jsonify(detail), 200
 
 
 @app.route('/tasks/<int:task_id>', methods=['DELETE'])

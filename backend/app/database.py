@@ -489,6 +489,23 @@ def init_db() -> None:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_assigned_to_user_id ON tasks(assigned_to_user_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_due_date ON tasks(due_date)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS lease_field_edits (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                lease_id INTEGER NOT NULL,
+                field_name TEXT NOT NULL,
+                old_value TEXT NOT NULL,
+                new_value TEXT NOT NULL,
+                edited_by TEXT NOT NULL,
+                edited_by_email TEXT,
+                note TEXT,
+                task_id INTEGER,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (lease_id) REFERENCES leases(id) ON DELETE CASCADE
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_lease_field_edits_lease_id ON lease_field_edits(lease_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_lease_field_edits_task_id ON lease_field_edits(task_id)")
         conn.commit()
     finally:
         conn.close()
@@ -515,6 +532,7 @@ def reset_db() -> None:
         conn.execute("DROP TABLE IF EXISTS linked_email_accounts")
         conn.execute("DROP TABLE IF EXISTS oauth_states")
         conn.execute("DROP TABLE IF EXISTS tasks")
+        conn.execute("DROP TABLE IF EXISTS lease_field_edits")
         conn.commit()
     finally:
         conn.close()
@@ -809,6 +827,108 @@ def get_stale_open_discrepancies_for_lease(lease_id: int, discrepancy_types: Lis
             params = [lease_id, lease_id, *discrepancy_types]
         rows = conn.execute(query, params).fetchall()
         return [_discrepancy_row_to_dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+# ----------------------------------------------------------------------
+# Manual field edits: a human directly correcting an extracted value
+# (as opposed to a new document -- an amendment -- superseding it, or a
+# whole new resubmitted lease version). Mutates the target lease row's
+# extracted_fields in place -- see update_lease_field's own docstring
+# for why this is a real data change, not a cosmetic overlay, and
+# get_lease_field_edits for the audit trail this produces.
+# ----------------------------------------------------------------------
+
+def update_lease_field(
+    lease_id: int,
+    field_name: str,
+    value: Optional[str],
+    edited_by: str,
+    edited_by_email: Optional[str] = None,
+    confidence: str = "high",
+    note: Optional[str] = None,
+    task_id: Optional[int] = None,
+) -> Optional[Dict[str, Any]]:
+    """
+    Overwrites one field's entry on this exact lease row (base lease OR
+    amendment -- callers pass whichever document currently governs the
+    EFFECTIVE value for this field, see api.py's PATCH .../fields/<name>
+    route) with {"value": value, "source": None, "confidence": confidence,
+    "manually_verified": True}. `source` is deliberately None, not a
+    fabricated page/quote -- there IS no document citation for a value a
+    human typed directly; existing renderers (see verify-popover.js's
+    own docstring: "null/undefined renders an honest empty state")
+    already handle a null source correctly, and the real provenance
+    (who, when, from what) lives in the lease_field_edits row this also
+    writes, not smuggled into the citation shape. `manually_verified`
+    lets a future caller distinguish "a human confirmed this field is
+    genuinely absent" (value=None but manually_verified=True) from
+    "extraction never found it" (value=None, no such flag) -- the same
+    distinction requirement 5 of the resubmission-adjacent editing
+    feature cares about: a "Not found" that's been human-checked is a
+    different, more trustworthy state than one that hasn't.
+
+    Because this mutates extracted_fields on the lease row directly
+    (not a new amendment layered on top), every downstream reader that
+    already goes through get_effective_fields/get_effective_lease/
+    get_all_effective_leases -- the dashboard, exports, risk analysis,
+    discrepancy sync -- picks up the change on its very next read, with
+    no separate propagation step required. That's what makes this a
+    real edit to "the actual lease record," not a cosmetic overlay.
+
+    Returns the new field entry, or None if lease_id doesn't exist.
+    """
+    conn = get_connection()
+    try:
+        row = conn.execute("SELECT extracted_fields FROM leases WHERE id = ?", (lease_id,)).fetchone()
+        if row is None:
+            return None
+        fields = json.loads(row["extracted_fields"])
+        old_entry = fields.get(field_name) or {"value": None, "source": None, "confidence": None}
+        new_entry = {"value": value, "source": None, "confidence": confidence, "manually_verified": True}
+        fields[field_name] = new_entry
+
+        now = datetime.now(timezone.utc).isoformat()
+        conn.execute("UPDATE leases SET extracted_fields = ? WHERE id = ?", (json.dumps(fields), lease_id))
+        conn.execute(
+            "INSERT INTO lease_field_edits (lease_id, field_name, old_value, new_value, edited_by, "
+            "edited_by_email, note, task_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (lease_id, field_name, json.dumps(old_entry), json.dumps(new_entry), edited_by, edited_by_email, note, task_id, now),
+        )
+        conn.commit()
+        return new_entry
+    finally:
+        conn.close()
+
+
+def get_lease_field_edits(lease_id: Optional[int] = None, field_name: Optional[str] = None, task_id: Optional[int] = None) -> List[Dict[str, Any]]:
+    """Oldest first -- a correction history reads top-to-bottom like a timeline, same convention as get_discrepancy_resolutions. Any combination of filters may be applied together; at least one should normally be given or this returns every edit ever made across the whole portfolio."""
+    conn = get_connection()
+    try:
+        clauses, params = [], []
+        if lease_id is not None:
+            clauses.append("lease_id = ?")
+            params.append(lease_id)
+        if field_name is not None:
+            clauses.append("field_name = ?")
+            params.append(field_name)
+        if task_id is not None:
+            clauses.append("task_id = ?")
+            params.append(task_id)
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        rows = conn.execute(
+            f"SELECT * FROM lease_field_edits {where} ORDER BY created_at ASC, id ASC", params
+        ).fetchall()
+        results = []
+        for r in rows:
+            d = dict(r)
+            d["old_value"] = json.loads(d["old_value"])
+            d["new_value"] = json.loads(d["new_value"])
+            results.append(d)
+        return results
+    except OverflowError:
+        return []
     finally:
         conn.close()
 
