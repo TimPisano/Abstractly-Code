@@ -149,10 +149,10 @@ const LeaseDetail = {
         valueDiv.addEventListener('click', () => this.startInlineEdit(valueDiv, fieldKey, card));
         body.appendChild(valueDiv);
 
-        if (fieldData.edited) {
+        if (fieldData.manually_verified) {
             const editedBadge = document.createElement('span');
             editedBadge.className = 'edited-badge';
-            editedBadge.textContent = 'Manually Edited';
+            editedBadge.textContent = found ? 'Manually Edited' : 'Manually Verified — Not Found';
             body.appendChild(editedBadge);
         }
 
@@ -195,7 +195,7 @@ const LeaseDetail = {
         if (valueDiv.querySelector('input')) return;
 
         const fieldData = this.lease.extracted_fields[fieldKey];
-        const currentValue = fieldData.value || '';
+        const currentValue = fieldData.value != null ? String(fieldData.value) : '';
         const input = document.createElement('input');
         input.type = 'text';
         input.className = 'field-value-input';
@@ -206,16 +206,29 @@ const LeaseDetail = {
         input.focus();
         input.select();
 
-        const commit = () => {
+        let handled = false;
+        const commit = async () => {
+            if (handled) return;
+            handled = true;
             const newValue = input.value.trim();
-            const wasFound = fieldData.value !== null && fieldData.value !== undefined;
-            const changed = newValue !== (wasFound ? String(fieldData.value) : '');
 
-            fieldData.value = newValue === '' ? null : newValue;
-            if (changed) fieldData.edited = true;
+            if (newValue === currentValue) {
+                card.replaceWith(this.createResultCard(fieldKey, fieldData));
+                return;
+            }
 
-            const newCard = this.createResultCard(fieldKey, fieldData);
-            card.replaceWith(newCard);
+            input.disabled = true;
+            try {
+                const saved = await saveLeaseFieldEdit(this.lease.id, fieldKey, newValue === '' ? null : newValue);
+                this.lease.extracted_fields[fieldKey] = saved;
+                card.replaceWith(this.createResultCard(fieldKey, saved));
+                showToast('Field saved.', 'success');
+            } catch (err) {
+                showError(`Failed to save: ${err.message}`);
+                handled = false;
+                input.disabled = false;
+                input.focus();
+            }
         };
 
         input.addEventListener('blur', commit);

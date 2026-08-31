@@ -551,6 +551,31 @@ function fieldValue(lease, fieldKey) {
     return field ? field.value : null;
 }
 
+/**
+ * Persists an edit to one extracted field's value -- the one real save
+ * path behind every inline field editor in the app (lease detail page,
+ * in-task lease editing), so a manual correction actually lands in the
+ * database instead of only mutating in-memory state that a reload would
+ * throw away.
+ *
+ * Resolves which document row currently governs the field's EFFECTIVE
+ * value first (base lease, or whichever amendment most recently
+ * overrode it -- see backend/app/database.py's get_field_source_chain)
+ * so the edit lands on the row that actually wins the merge, instead of
+ * being silently shadowed by an amendment that already set this same
+ * field. `taskId`, when given, links the edit to the task it happened
+ * under (see GET /tasks/<id>'s `field_edits`).
+ */
+async function saveLeaseFieldEdit(baseLeaseId, fieldName, value, { taskId } = {}) {
+    let targetId = baseLeaseId;
+    try {
+        const chain = await Api.leaseFieldSource(baseLeaseId, fieldName);
+        if (chain && chain.effective_document_id != null) targetId = chain.effective_document_id;
+    } catch (err) { /* best-effort -- fall back to editing the base lease directly */ }
+    const result = await Api.updateLeaseField(targetId, fieldName, { value, taskId });
+    return result.field; // {value, source, confidence, manually_verified}
+}
+
 function confidenceBadgeHtml(confidence, found) {
     if (!found) return `<span class="confidence-badge confidence-none">Not Found</span>`;
     const level = confidence || 'unknown';

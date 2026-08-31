@@ -6501,3 +6501,108 @@ three shared the same left edge (X), all three had identical widths,
 and no horizontal scrollbar appeared. Reviewed screenshots at 1920,
 760, 620, and 375px directly to confirm visually, not just via the
 computed metrics.
+
+## In-task lease editing UI: field cards inside the Task Detail Modal (2026-08-31)
+
+Built the frontend for editing a task's linked lease directly inside
+the task -- new `frontend/app/task-detail-modal.js` (`TaskDetailModal`),
+opened by clicking a task's title on the Tasks page or in the Today
+Briefing panel. This landed the same day the concurrent backend
+session shipped the actual persistence layer it depends on (commit
+`08c5cb4`, "Add in-task document editing"), so most of this entry is
+about reconciling with that work in a shared, actively-changing
+checkout rather than building from scratch.
+
+**A duplicate `update_lease_field` in database.py.** Started writing
+my own backend function of the same name for the same purpose before
+noticing (via `git diff`) that the other session had already added a
+fuller one further down the file -- richer signature
+(`confidence`/`note`/`task_id`, a permanent `lease_field_edits` audit
+table) than what I'd started. Deleted mine entirely rather than
+leaving two same-named functions where Python would silently use
+whichever was defined last. Built the frontend against their real
+contract instead: `PATCH /leases/<id>/fields/<name>` targets whichever
+document row (base lease or amendment) currently governs the field's
+*effective* value -- the caller must resolve that first via
+`GET .../fields/<name>/source`'s `effective_document_id`, not just PATCH
+the base lease's own id, or an edit can be silently shadowed by an
+amendment that already overrides the same field. Added a shared
+`saveLeaseFieldEdit()` helper in app.js that does this resolve-then-
+patch as one step, used by both the lease detail page's inline editor
+and the new task modal's field cards, so both editors share one real
+save path instead of drifting.
+
+**The lease detail page's inline editor never actually saved.**
+Found while reading `detail-view.js` for a pattern to reuse:
+`startInlineEdit`'s commit only mutated the in-memory `fieldData`
+object and re-rendered the card -- no API call at all, so a reload
+silently discarded every "edit." No backend endpoint existed for it
+before today, so this was never wired up. Fixed as part of this work
+(reusing the same `saveLeaseFieldEdit` helper) since it would be
+actively confusing to ship a *second*, working field editor in the
+task modal while the original one on the main lease page kept
+silently no-op'ing.
+
+**A task's `lease_id` isn't repointed by a full resubmission.**
+`repoint_lease_references` (used by `POST /leases/<id>/resubmit`, a
+different, newer mechanism than the amendment-based "resubmit" this
+app already had -- see the versioning system with
+`status`/`supersedes_lease_id`/`version_number`) carries discrepancies,
+amendments, tags, comments, and assignments forward to the new lease
+row it replaces, but not tasks -- an oversight, not a deliberate
+exclusion, since `tasks` didn't exist as a concept when that function
+was likely written. Left uncorrected, a task created before a
+resubmission would show and let someone edit an archived, superseded
+lease that no longer appears anywhere else in the app -- and any edit
+made there would never show up when "checking the lease separately,"
+silently breaking the one thing this whole feature is for. Fixed in
+`tasks_module.task_detail()`: if the attached lease is superseded,
+walk `get_lease_version_chain` to the current version instead, and
+flag `lease_redirected_from_id` so the modal can show an honest notice
+rather than pretending nothing happened. Verified live: created a
+task on a lease, resubmitted that lease via a real multipart upload,
+confirmed `GET /tasks/<id>` correctly redirected to the new version.
+
+**Tasks page was completely broken for non-admin users, blocking
+verification of all of the above.** `Tasks.load()` unconditionally
+awaits `Api.listTeamMembers()` (for the assignee dropdown) before
+rendering anything -- but `GET /team/members` was tightened to
+admin-only at some point (reasonably; it returns the full roster
+including emails), and an analyst hitting that 403 blew up the entire
+load(), so the whole Tasks page showed "Failed to load tasks: Admin
+role required" for every non-admin -- exactly the role this feature is
+for. Fixed by catching the team-members fetch separately: a non-admin
+still sees and works every task, just without a populated "reassign
+to" dropdown.
+
+**Discrepancy resolution + task completion: refactored to the atomic
+backend call once I found it.** Initially wired the modal's "Resolve
+Discrepancy & Complete Task" button to two separate calls
+(`POST /discrepancies/<id>/resolve` then `POST /tasks/<id>/status`),
+which worked but isn't atomic and duplicates a decision the backend
+now owns. After finding the concurrent session had extended
+`POST /tasks/<id>/status` itself to accept `correct_source`/`note` and
+do both in one call (rejecting with 400, not silently guessing, if a
+still-open discrepancy's confirmation is missing), refactored the
+modal to call that single endpoint instead. The modal still gates the
+UI proactively (no bare "Mark Complete" button shown while a linked
+discrepancy is open) so a user is guided straight to the resolve form
+rather than clicking a button that would 400 -- that's a UX flow
+choice layered on top of the backend's real enforcement, not a
+duplicate of it.
+
+Verified live end-to-end with real accounts and real data (not just
+reading code): logged in as the analyst test account, opened a task
+tied to both a lease and an open discrepancy, edited a field (toast +
+a brief highlight pulse on the saved card, per the "clear confirmation
+when saved" requirement), confirmed no bare Complete button while the
+discrepancy was open, resolved it through the gated form, watched the
+task complete and disappear from the Tasks list, reloaded the page
+from scratch and confirmed it stayed gone, and independently checked
+via a direct API call that both the field edit and the discrepancy
+resolution persisted with the correct task_id/user attribution. Also
+tested a plain lease-linked task with no discrepancy (ungated "Mark
+Complete" + "Reopen") and the version-redirect path (real resubmission
+via a multipart upload). All test tasks/edits created for verification
+were deleted/reverted afterward rather than left in the shared dev
+database.

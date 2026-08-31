@@ -2919,6 +2919,173 @@
     margin-bottom: 0.875rem;
 }
 
+/* ===================== Task Detail modal ===================== */
+
+.task-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background-color: rgba(10, 10, 11, 0.45);
+    z-index: 1500;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+}
+
+.task-modal {
+    background-color: var(--white);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-xl);
+    padding: 1.75rem;
+    width: 100%;
+    max-width: 880px;
+    max-height: calc(100vh - 3rem);
+    overflow-y: auto;
+    animation: verifyPopoverIn 0.15s ease-out;
+}
+
+.task-modal-description {
+    font-size: 0.875rem;
+    color: var(--text-medium);
+    line-height: 1.6;
+    margin-bottom: 1.25rem;
+    white-space: pre-wrap;
+}
+
+.task-modal-redirect-notice {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    padding: 0.625rem 0.75rem;
+    background-color: var(--confidence-medium-bg);
+    color: var(--confidence-medium);
+    border-radius: var(--radius-sm);
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    margin-bottom: 1.25rem;
+}
+
+.task-modal-redirect-notice svg {
+    width: 1.125rem;
+    height: 1.125rem;
+    flex-shrink: 0;
+    margin-top: 0.0625rem;
+}
+
+.task-modal-complete-bar {
+    margin-bottom: 1.25rem;
+}
+
+.task-modal-done-banner {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 0.875rem;
+    background-color: var(--confidence-high-bg);
+    color: var(--confidence-high);
+    border-radius: var(--radius-sm);
+    font-size: 0.875rem;
+    font-weight: 600;
+}
+
+.task-modal-done-banner svg {
+    width: 1.125rem;
+    height: 1.125rem;
+    flex-shrink: 0;
+}
+
+.task-modal-done-banner .btn-text {
+    margin-left: auto;
+}
+
+.task-modal-gate-note {
+    font-size: 0.8125rem;
+    color: var(--text-medium);
+    font-style: italic;
+}
+
+.task-modal-discrepancy {
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 1rem;
+    margin-bottom: 1.25rem;
+}
+
+.task-modal-discrepancy-resolved {
+    background-color: var(--confidence-high-bg);
+    border-color: var(--confidence-high);
+}
+
+.task-modal-discrepancy-head {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-medium);
+    margin-bottom: 0.625rem;
+}
+
+.task-modal-resolve-form {
+    margin-top: 0.875rem;
+}
+
+.task-modal-lease-section {
+    border-top: 1px solid var(--border-color);
+    padding-top: 1.25rem;
+}
+
+.task-modal-lease-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 0.25rem;
+}
+
+.task-modal-lease-header h3 {
+    font-size: 1rem;
+    font-weight: 700;
+}
+
+.task-modal-lease-hint {
+    font-size: 0.8125rem;
+    color: var(--text-medium);
+    margin-bottom: 1rem;
+}
+
+.task-modal-results-grid {
+    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+    gap: 1rem;
+}
+
+.result-card-just-saved {
+    animation: taskModalFieldSaved 1.2s ease-out;
+}
+
+@keyframes taskModalFieldSaved {
+    0% { box-shadow: 0 0 0 3px var(--confidence-high); }
+    100% { box-shadow: none; }
+}
+
+.task-item-title-open {
+    cursor: pointer;
+}
+
+.task-item-title-open:hover {
+    text-decoration: underline;
+}
+
+.today-briefing-task-title {
+    cursor: pointer;
+}
+
+.today-briefing-task-title:hover {
+    text-decoration: underline;
+}
+
 /* ===================== Export Report modal ===================== */
 
 .export-modal-includes {

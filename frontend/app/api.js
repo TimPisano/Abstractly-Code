@@ -248,6 +248,22 @@ const Api = {
         return apiRequest(`/leases/${leaseId}/fields/${fieldName}/source`);
     },
 
+    // Directly overwrites one field's value on the document row passed
+    // as leaseId -- callers must target whichever document (base lease
+    // or amendment) currently governs the field's EFFECTIVE value (see
+    // leaseFieldSource's effective_document_id), not necessarily the
+    // base lease's own id, or the edit can be silently shadowed by an
+    // amendment that already overrides the same field. taskId links the
+    // edit to the task it happened under (surfaced back via
+    // GET /tasks/<id>'s field_edits).
+    updateLeaseField(leaseId, fieldName, { value, confidence, note, taskId } = {}) {
+        const body = { value };
+        if (confidence) body.confidence = confidence;
+        if (note) body.note = note;
+        if (taskId != null) body.task_id = taskId;
+        return apiRequest(`/leases/${leaseId}/fields/${fieldName}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    },
+
     // Portfolio history & trends for one property (rent growth, tenant
     // turnover, historical rollover pattern) -- see
     // backend/app/portfolio_history.py.
@@ -358,6 +374,9 @@ const Api = {
     // ---- Tasks (backend/app/tasks.py) -- distinct from assignments:
     // a task is a concrete to-do (title/description/due date), an
     // assignment is "who owns this record". ----
+    getTask(taskId) {
+        return apiRequest(`/tasks/${taskId}`);
+    },
     listTasks({ assignedTo, status, dueBefore, dueAfter, leaseId, discrepancyId } = {}) {
         const params = new URLSearchParams();
         if (assignedTo != null) params.set('assigned_to', assignedTo);
@@ -397,8 +416,17 @@ const Api = {
     assignTask(taskId, assignedToUserId) {
         return apiRequest(`/tasks/${taskId}/assign`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ assigned_to_user_id: assignedToUserId }) });
     },
-    updateTaskStatus(taskId, status) {
-        return apiRequest(`/tasks/${taskId}/status`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) });
+    // correctSource/note are only needed when completing ("done") a task
+    // that's tied to a still-open discrepancy -- the backend resolves
+    // that discrepancy (same real /discrepancies/<id>/resolve path a
+    // direct resolve uses) and completes the task in one call, rejecting
+    // with 400 if they're required but missing rather than silently
+    // completing the task with the discrepancy left open.
+    updateTaskStatus(taskId, status, { correctSource, note } = {}) {
+        const body = { status };
+        if (correctSource) body.correct_source = correctSource;
+        if (note) body.note = note;
+        return apiRequest(`/tasks/${taskId}/status`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     },
     deleteTask(taskId) {
         return apiRequest(`/tasks/${taskId}`, { method: 'DELETE' });

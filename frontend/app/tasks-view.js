@@ -18,9 +18,21 @@ const Tasks = {
     async load() {
         document.getElementById('tasksListContent').innerHTML = '<p class="loading-inline"><span class="spinner-small"></span> Loading...</p>';
         this.hideForm();
+
+        // GET /team/members is admin-only (the full roster, including
+        // emails, is sensitive) -- a non-admin (e.g. an analyst) still
+        // needs to see and work every task, just without the "reassign
+        // to" dropdown being populated. Caught separately from the task
+        // fetch so a 403 here doesn't take down the whole page for the
+        // exact role this Tasks view mainly exists for.
         try {
             this.teamMembers = await Api.listTeamMembers();
             this._populateAssigneeSelects();
+        } catch (err) {
+            this.teamMembers = [];
+        }
+
+        try {
             await this.fetchAndRender();
         } catch (err) {
             document.getElementById('tasksListContent').innerHTML = `<p class="error-text">Failed to load tasks: ${escapeHtml(err.message)}</p>`;
@@ -89,6 +101,12 @@ const Tasks = {
                 else if (link.dataset.gotoDiscrepancies) showView('discrepancies');
             });
         });
+        el.querySelectorAll('[data-task-open]').forEach(titleEl => {
+            titleEl.addEventListener('click', () => {
+                const taskId = parseInt(titleEl.dataset.taskOpen, 10);
+                TaskDetailModal.open(taskId, { onChange: () => this.fetchAndRender() });
+            });
+        });
     },
 
     _dueDateClass(task) {
@@ -114,7 +132,7 @@ const Tasks = {
             <div class="task-item ${task.status === 'done' ? 'task-item-done' : ''}" data-id="${task.id}">
                 <input type="checkbox" class="task-complete-check" data-id="${task.id}" ${task.status === 'done' ? 'checked' : ''} title="Mark complete">
                 <div class="task-item-body">
-                    <div class="task-item-title">${escapeHtml(task.title)}</div>
+                    <div class="task-item-title task-item-title-open" data-task-open="${task.id}" title="Open task">${escapeHtml(task.title)}</div>
                     ${task.description ? `<div class="task-item-description">${escapeHtml(task.description)}</div>` : ''}
                     <div class="task-item-meta">
                         <span class="${dueClass}">${dueLabel}</span>

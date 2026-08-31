@@ -132,7 +132,7 @@ const Dashboard = {
                             <div class="today-briefing-item" data-task-id="${t.id}">
                                 <input type="checkbox" class="task-complete-check today-briefing-task-check" data-id="${t.id}" title="Mark complete">
                                 <span class="${t.due_date && t.due_date < data.reference_date ? 'task-due-overdue' : 'task-due-today'}">${t.due_date && t.due_date < data.reference_date ? 'Overdue' : 'Due today'}</span>
-                                <span>${escapeHtml(t.title)}</span>
+                                <span class="today-briefing-task-title" data-task-open="${t.id}">${escapeHtml(t.title)}</span>
                             </div>
                         `).join('')}
                     </div>
@@ -172,6 +172,14 @@ const Dashboard = {
         panel.querySelectorAll('.today-briefing-task-check').forEach(cb => {
             cb.addEventListener('change', () => this.completeTodayTask(parseInt(cb.dataset.id, 10), cb));
         });
+        panel.querySelectorAll('[data-task-open]').forEach(el => {
+            el.addEventListener('click', () => {
+                const taskId = parseInt(el.dataset.taskOpen, 10);
+                TaskDetailModal.open(taskId, {
+                    onChange: (task) => { if (task.status === 'done') this.removeTodayBriefingTaskRow(task.id); },
+                });
+            });
+        });
     },
 
     // Real POST /tasks/<id>/status call, not just a UI toggle -- confirmed
@@ -186,28 +194,38 @@ const Dashboard = {
         try {
             await Api.updateTaskStatus(taskId, 'done');
             showToast('Task completed.', 'success');
-            const row = checkboxEl.closest('.today-briefing-item');
-            row.classList.add('today-briefing-item-done');
-            // Brief, deliberately small confirmation (not jarring) before
-            // the row actually leaves -- long enough to register that the
-            // check "took", short enough not to feel like a delay.
-            setTimeout(() => {
-                row.remove();
-                const remaining = document.querySelectorAll('#todayBriefingTaskList .today-briefing-item').length;
-                const countEl = document.getElementById('todayBriefingTaskCount');
-                if (countEl) {
-                    if (remaining > 0) { countEl.textContent = remaining; countEl.style.display = ''; }
-                    else countEl.style.display = 'none';
-                }
-                if (remaining === 0 && !document.getElementById('todayBriefingTasksEmpty')) {
-                    document.getElementById('todayBriefingTaskList').innerHTML = '<p class="empty-inline" id="todayBriefingTasksEmpty">Nothing due.</p>';
-                }
-            }, 450);
+            this.removeTodayBriefingTaskRow(taskId);
         } catch (err) {
             checkboxEl.checked = false;
             checkboxEl.disabled = false;
             showError(`Failed to complete task: ${err.message}`);
         }
+    },
+
+    // Shared row-removal tail for "a task due today was just completed"
+    // -- used by the checkbox above AND by TaskDetailModal's onChange
+    // callback (task-detail-modal.js), which calls Api.updateTaskStatus
+    // itself and only needs this view's own row to reflect it afterward,
+    // not to make the backend call a second time.
+    removeTodayBriefingTaskRow(taskId) {
+        const row = document.querySelector(`.today-briefing-item[data-task-id="${taskId}"]`);
+        if (!row) return;
+        row.classList.add('today-briefing-item-done');
+        // Brief, deliberately small confirmation (not jarring) before
+        // the row actually leaves -- long enough to register that the
+        // check "took", short enough not to feel like a delay.
+        setTimeout(() => {
+            row.remove();
+            const remaining = document.querySelectorAll('#todayBriefingTaskList .today-briefing-item').length;
+            const countEl = document.getElementById('todayBriefingTaskCount');
+            if (countEl) {
+                if (remaining > 0) { countEl.textContent = remaining; countEl.style.display = ''; }
+                else countEl.style.display = 'none';
+            }
+            if (remaining === 0 && !document.getElementById('todayBriefingTasksEmpty')) {
+                document.getElementById('todayBriefingTaskList').innerHTML = '<p class="empty-inline" id="todayBriefingTasksEmpty">Nothing due.</p>';
+            }
+        }, 450);
     },
 
     // "risk_level -> badge" mapping -- delegates to the shared
