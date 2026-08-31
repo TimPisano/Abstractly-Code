@@ -786,12 +786,15 @@
                         <p class="view-subtitle">Every lease aggregated into one rollup table, with portfolio totals</p>
                     </div>
                     <div class="table-controls">
+                        <a class="btn-secondary" id="rentRollExportCsvBtn" href="#" download>Download CSV</a>
                         <a class="btn-secondary" id="rentRollExportExcelBtn" href="#" download>Download Excel</a>
                         <button class="btn-secondary" id="rentRollExportSheetsBtn" type="button">Export to Google Sheets</button>
                     </div>
                 </div>
-                <p class="accuracy-note">Exports include this rollup as its own "Portfolio Summary" tab alongside the detailed per-lease data — never mixed into the same table as the individual lease rows.</p>
+                <p class="accuracy-note">Exports include this rollup as its own "Portfolio Summary" tab alongside the detailed per-lease data — never mixed into the same table as the individual lease rows. Click any Tenant, Address, Sq Ft, Rent, or date cell below to correct it in place.</p>
                 <div id="rentRollExportStatus"></div>
+                <div id="rentRollReplaceStatus"></div>
+                <input type="file" id="rentRollReplaceFileInput" accept=".pdf,.xlsx,.xls,.xlsm,.csv,.tsv,.docx,.doc,.jpg,.jpeg,.png,.tif,.tiff,.txt" hidden>
                 <div class="table-scroll">
                     <table class="data-table" id="rentRollTable">
                         <thead>
@@ -803,6 +806,7 @@
                                 <th>Rent / SqFt</th>
                                 <th>Lease Start</th>
                                 <th>Lease End</th>
+                                <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody id="rentRollTableBody"></tbody>

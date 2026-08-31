@@ -127,7 +127,7 @@ const Discrepancies = {
             const confirmBtn = card.querySelector('.discrepancy-row-confirm-btn');
             if (confirmBtn) confirmBtn.addEventListener('click', () => this.submitResolve(id));
             const taskBtn = card.querySelector('.discrepancy-row-task-btn');
-            if (taskBtn) taskBtn.addEventListener('click', () => Tasks.createFromDiscrepancy(id));
+            if (taskBtn) taskBtn.addEventListener('click', () => Tasks.createFromDiscrepancy(id, taskBtn));
         });
     },
 

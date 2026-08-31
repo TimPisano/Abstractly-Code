@@ -141,6 +141,17 @@ const Api = {
         return apiRequest(`/leases/${leaseId}/amendments`, { method: 'POST', body: formData });
     },
 
+    // Canvas-style resubmission: replaces this lease with a corrected
+    // version (a new row, old one marked superseded/archived -- see
+    // backend/app/api.py's resubmit_lease) rather than layering an
+    // amendment on top. Returns {lease, previous_lease_id,
+    // version_number, discrepancies_auto_resolved, ...}.
+    resubmitLease(leaseId, file) {
+        const formData = new FormData();
+        formData.append('file', file);
+        return apiRequest(`/leases/${leaseId}/resubmit`, { method: 'POST', body: formData });
+    },
+
     listAmendments(leaseId) {
         return apiRequest(`/leases/${leaseId}/amendments`);
     },

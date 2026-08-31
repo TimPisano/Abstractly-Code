@@ -347,21 +347,36 @@ const Tasks = {
     },
 
     // Called from discrepancies-view.js / alerts-view.js card actions.
-    async createFromDiscrepancy(discrepancyId) {
+    // `btn`, when given, is disabled for the duration of the call (a
+    // fire-and-forget click with no disable-guard risks a double-click
+    // creating two duplicate tasks from the same source -- every other
+    // async action button in this app already guards against that) and
+    // left in a persistent "✓ Task Created" state on success -- a
+    // toast alone fades in a few seconds and is easy to miss on a
+    // feed you're quickly triaging; a permanently-changed button can't
+    // be missed and also prevents accidentally creating a second task
+    // from the same alert/discrepancy with a stray extra click.
+    async createFromDiscrepancy(discrepancyId, btn) {
+        if (btn) { btn.disabled = true; btn.textContent = 'Creating...'; }
         try {
             await Api.createTaskFromDiscrepancy(discrepancyId, {});
             showToast('Task created from discrepancy.', 'success');
+            if (btn) btn.textContent = '✓ Task Created';
         } catch (err) {
             showError(`Failed to create task: ${err.message}`);
+            if (btn) { btn.disabled = false; btn.textContent = '+ Create Task'; }
         }
     },
 
-    async createFromAlert(alertId) {
+    async createFromAlert(alertId, btn) {
+        if (btn) { btn.disabled = true; btn.textContent = 'Creating...'; }
         try {
             await Api.createTaskFromAlert(alertId, {});
             showToast('Task created from alert.', 'success');
+            if (btn) btn.textContent = '✓ Task Created';
         } catch (err) {
             showError(`Failed to create task: ${err.message}`);
+            if (btn) { btn.disabled = false; btn.textContent = '+ Create Task'; }
         }
     },
 };

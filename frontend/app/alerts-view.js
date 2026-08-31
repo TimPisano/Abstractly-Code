@@ -144,7 +144,7 @@ const Alerts = {
             const dismissBtn = card.querySelector('.alert-card-dismiss-btn');
             if (dismissBtn) dismissBtn.addEventListener('click', (e) => { e.stopPropagation(); this.dismiss(alert.id); });
             const taskBtn = card.querySelector('.alert-card-task-btn');
-            if (taskBtn) taskBtn.addEventListener('click', (e) => { e.stopPropagation(); Tasks.createFromAlert(alert.id); });
+            if (taskBtn) taskBtn.addEventListener('click', (e) => { e.stopPropagation(); Tasks.createFromAlert(alert.id, taskBtn); });
         });
     },
 

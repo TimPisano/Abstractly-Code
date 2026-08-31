@@ -6799,3 +6799,97 @@ confirm it disappears from the list and stays gone after a full page
 reload) after all of the above and confirmed it still behaves
 identically. All test tasks and field edits created for verification
 were deleted/reverted afterward.
+
+## Alerts "Create Task" feedback, Rent Roll download + inline edit + Replace (2026-08-31)
+
+Three fixes/features, one shared root fact discovered along the way:
+the "+ Create Task" button already worked (real backend call, real
+toast) when tested cleanly, but had no defense against a double-click
+creating two duplicate tasks -- every other async action button in
+this app already disables itself during the call, this one didn't.
+
+**Alerts "+ Create Task" feedback.** Extended `Tasks.createFromAlert`/
+`createFromDiscrepancy` (tasks-view.js) to accept the clicked button
+element: disabled for the duration of the call (closes the double-
+click gap), and left in a permanent "✓ Task Created" state on success
+rather than only a toast. A toast alone fades in ~4s and is easy to
+miss on a feed meant for quickly triaging many alerts in a row; a
+button that visibly and permanently changes state can't be missed and
+also prevents accidentally creating a second task from the same
+alert with a stray extra click. Applied the identical fix to
+discrepancies-view.js's own "+ Create Task" button (discrepancies-view.js
+and alerts-view.js share the exact same createFrom* call shape) --
+same latent gap, not explicitly asked for this turn but a two-line
+fix once the pattern existed, not worth leaving unfixed right next to
+the one that was.
+
+**Rent Roll download.** Turned out to already exist end-to-end on the
+backend (`GET /portfolio/rent-roll.csv` / `.xlsx`, `Api.rentRollCsvUrl`/
+`rentRollExcelUrl`) from earlier work -- a concurrent session wired
+the missing "Download CSV" button into the Rent Roll page's toolbar
+the same session this request came in (the Excel button was already
+there). Verified both independently: downloaded each file directly,
+loaded the xlsx with openpyxl and the csv with a plain read, confirmed
+real current portfolio data in both (including a field edited five
+minutes earlier through the new inline-edit feature below, proving
+the export reflects live state, not a cached snapshot).
+
+**Rent Roll inline edit.** Tenant, Address, Sq Ft, Rent, and both
+lease dates are now click-to-edit directly in the rollup table, same
+real save path (`saveLeaseFieldEdit`, app.js) as the lease detail page
+and the task modal -- not a fourth separate implementation. Editing a
+cell that feeds the totals row (Sq Ft, Rent) re-renders the whole
+table after a successful save so the totals and the weighted rent/sqft
+column stay correct, not just the one cell. Table rows are already
+click-to-navigate-to-lease-detail (pre-existing behavior); every new
+interactive element (editable cell spans, the Replace button) calls
+`e.stopPropagation()` on click, same established pattern the existing
+per-cell "verify source" buttons in this same table already use.
+
+**Rent Roll Replace/Resubmit.** A "Replace" button per row triggers a
+shared hidden file input (one input for the whole table, not one per
+row) and calls the REAL Canvas-style resubmission endpoint (`POST
+/leases/<id>/resubmit`, `Api.resubmitLease`) -- old row marked
+superseded/archived (excluded from this rollup and every other
+"current portfolio" view, but still reachable forever at its own id
+via `/leases/<id>/versions`), new row becomes current, discrepancies
+re-synced automatically. Deliberately NOT the older amendment
+mechanism (`POST /leases/<id>/amendments`) the lease detail page's own
+"Resubmit" button still uses from earlier in this project -- that
+predates the /resubmit endpoint's existence; using the newer, more
+correct mechanism here rather than propagating the older one to a
+third place. (The lease detail page's own resubmit UI still uses the
+older mechanism -- worth revisiting later, out of scope today.) A
+small "vN" badge next to the tenant name shows when a lease has been
+resubmitted at least once.
+
+While building the inline edit, found (via a concurrent backend
+session working the same request) that `PATCH /leases/<id>/fields/<name>`
+had a real bug: it wrote directly to whichever `lease_id` the URL
+named, never resolving to whichever document (base lease or amendment)
+actually GOVERNS that field's effective value -- documented as the
+intended behavior in an earlier docstring but never actually
+implemented. An edit landing on a base lease already shadowed by an
+amendment would silently have no visible effect anywhere. Fixed
+server-side (now the authoritative fix; the frontend's own client-side
+resolve-then-patch in `saveLeaseFieldEdit`, added earlier this session,
+becomes a redundant-but-harmless extra round trip rather than the only
+protection -- left as-is rather than touched, to avoid re-verifying
+three already-shipped, already-tested call sites for a minor
+optimization).
+
+Verified live end-to-end: clicked Create Task on a real alert, watched
+the button become "✓ Task Created" and a toast confirm it, checked the
+task existed via a direct API call. Edited a lease's square footage
+inline on the Rent Roll page, confirmed the totals row updated
+immediately, downloaded both CSV and Excel and confirmed the edited
+value appeared in both real files. Clicked Replace on a lease row,
+uploaded a real different lease PDF via a real file input (CDP's
+DOM.setFileInputFiles, not a mocked upload), and confirmed via a
+direct API call to `/leases/<old_id>/versions` that the old version is
+marked `superseded`/`is_current: false` while the new version is
+`active`/`is_current: true`, and that the rollup table immediately
+showed the new lease as current with the old one gone. All test edits
+reverted / test leases left as legitimate resubmitted records
+afterward (a resubmission has no "undo," by design, same as the real
+Canvas-style flow it mirrors).
