@@ -1,6 +1,35 @@
 # Progress Summary
 
-**Last updated**: Built the "resubmit lease" workflow (Canvas-style:
+**Last updated**: Built in-task document editing. A task linked to a
+lease returns the full effective lease (every field with its citation
+-- this app's document view, since raw uploaded file bytes have never
+been stored) plus its own scoped edit history. `PATCH /leases/<id>/
+fields/<name>` corrects a field directly on the lease record (not
+cosmetic -- every downstream reader picks it up on its next read),
+logged permanently in a new `lease_field_edits` table (who/old value/
+new value/when/optional note+task_id), surfaced both per-field (a new
+`manual_edits` key on the existing field-source-chain audit endpoint)
+and per-task (`task_detail`'s `field_edits`). `source` clears to null
+on a manual edit rather than fabricating a page citation -- a new
+`manually_verified` flag distinguishes "a human confirmed this is
+genuinely absent" from "extraction never found it." Extended the
+SAME `POST /tasks/<id>/status` route already verified for the
+Complete Task button (not a second path): completing a task tied to
+a still-open discrepancy now requires `correct_source`/`note`, same
+confirmation the direct discrepancy-resolve flow already requires,
+then resolves it through the real `resolve_discrepancy` function
+before completing the task. Also fixed (credited to the concurrent
+session's `task_detail` hardening): a task's lease view now follows
+forward to the current version if the linked lease was since
+resubmitted, instead of showing an archived row. 17 new unit tests,
+full suite 49/50 (only failure: the pre-existing local `tesseract`
+gap, unrelated). Tested end-to-end with a real generated PDF through
+the actual extraction pipeline and verified live against the running
+server -- see DECISIONS.md's "In-task document editing" entry.
+
+---
+
+Built the "resubmit lease" workflow (Canvas-style:
 replace, don't duplicate). `POST /leases/<id>/resubmit` extracts a
 corrected file, inserts it as a new versioned lease row (`status`,
 `supersedes_lease_id`, `version_number` on `leases`), carries forward

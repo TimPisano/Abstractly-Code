@@ -1,5 +1,130 @@
 # Implementation Decisions
 
+## In-task document editing: correct fields, auto-resolve tied discrepancies
+
+Requested workflow: open a task linked to a lease, view the document
+and its extracted data together, correct a field directly, mark the
+task complete -- and if that task was about resolving a discrepancy,
+resolve it too.
+
+**"View the document" means the existing citation view, not a raw PDF
+render -- said plainly, not glossed over.** This app has never
+persisted uploaded file bytes (confirmed directly against the running
+server and the codebase while investigating an earlier, unrelated
+extraction-accuracy question this same session) -- only structured
+extraction with a page/quote citation per field. `task_detail`
+already attached the full effective lease (every field, its value,
+its citation) whenever `lease_id` is set; that citation-backed view
+IS this app's document view everywhere else (verify-popover, lease
+detail, the discrepancy modal), so building the in-task view meant
+reusing it, not inventing a second document viewer this app has no
+raw-file storage to back.
+
+**Field edits mutate the lease record directly, not a cosmetic
+overlay layered on top.** `database.update_lease_field` does a real
+read-modify-write of `leases.extracted_fields` on the target row.
+Because every downstream reader -- the dashboard, exports, risk
+analysis, discrepancy sync -- already goes through
+`get_effective_fields`/`get_effective_lease`, the edit is live
+everywhere on its very next read with zero extra propagation step,
+which is what makes this "update the actual lease record" rather than
+something bolted on the side. Considered modeling an edit as a
+synthetic amendment document instead (this app already has a "latest
+non-null document wins" merge for base+amendments, and get_field_
+source_chain already renders that as a per-document history) --
+rejected because it would mean fabricating a fake "document" (a
+filename, an uploaded_at) for what's fundamentally someone typing a
+corrected number into a form, and because tracking "who" cleanly
+wants a real edited_by column, which amendments (documents, not
+user actions) have no natural home for.
+
+**Source is cleared to null on a manual edit, never fabricated.**
+`source` on a field entry means "page N, this exact quote" -- there
+IS no page/quote for a value a human typed directly, and inventing
+one (e.g. `{"page": null, "quote": "manually corrected"}`) would have
+broken every existing renderer's `'row' in source ? ... : Page
+${source.page}` branching into a nonsensical "Page null." Real
+renderers (verify-popover.js) already handle a null source with an
+honest empty state by design ("null/undefined renders an honest empty
+state" -- its own comment), so `source=None` is not a gap, it's this
+app's existing convention for "no citation available," applied
+correctly for the first time to a manual edit. A new `manually_
+verified: true` flag on the field entry is the one addition needed
+so a human-confirmed absence (value=None, manually_verified=True) is
+distinguishable from extraction simply never having tried (value=None,
+no such flag) -- directly serving the standing "Not found" ≠ silently
+guessed requirement this project holds everywhere else.
+
+**Edit history is a new table, deliberately not folded into the
+existing per-document field-source-chain.** `lease_field_edits`
+(who/what field/old value/new value/note/when/optional task_id) is
+its own table, following the same shape convention as `discrepancy_
+resolutions` (a text `edited_by`/`edited_by_email`, not a hard user_id
+FK -- consistent with every other resolution-style audit table in
+this app, all predating real accounts and never migrated off text
+attribution since it still works fine sourced from `current_user()`).
+Exposed two ways: appended as a new `manual_edits` key on `GET
+/leases/<id>/fields/<name>/source`'s existing response (purely
+additive -- `history`'s shape is untouched, so this doesn't risk the
+audit-trail feature's own existing test suite), and scoped to one
+task via `task_detail`'s `field_edits` (only the edits made WHILE
+working that specific task, not the lease's whole history -- a
+reviewer opening a task should see what changed under it, not a
+global log). `task_id` is intentionally not FK'd on this table --
+deleting a task later must never destroy the permanent record of what
+was edited under it, same reasoning already established for
+`discrepancies.lease_id` and `tasks.lease_id`/`discrepancy_id`.
+
+**Completing a task tied to an open discrepancy requires the same
+confirmation the direct resolve flow already requires -- never a
+silent guess.** Extended the existing `POST /tasks/<id>/status` route
+(the same one already built and live-verified for the plain "Complete
+Task" checkbox) rather than adding a second completion path: marking
+a discrepancy-linked task "done" while its discrepancy is still open
+now requires `correct_source`/`note` in that same request, rejected
+with the identical "Missing required field(s)" shape `POST
+/discrepancies/<id>/resolve` itself already uses if they're absent --
+so a caller is forced to confirm which source was right, exactly
+matching the existing discrepancy-resolution UX rather than inventing
+a second, looser one. Providing them resolves the discrepancy through
+the real `resolve_discrepancy` function (the same permanent resolution
+log a human's direct resolve writes to), logs its own `discrepancy_
+resolved` activity entry (mirroring, not duplicating, the wording the
+direct-resolve route already uses), then completes the task. If the
+discrepancy is already resolved by the time this runs (resolved
+directly, or auto-resolved by an unrelated lease resubmission), the
+task completes with no further requirement -- there's nothing left to
+confirm, and blocking on it would be a spurious extra step.
+
+**A subtlety caught during testing, credited to the concurrent
+session's own hardening of `task_detail` rather than reverted:**
+`task.lease_id` is never repointed by a lease resubmission (`repoint_
+lease_references` follows discrepancies/amendments/tags/comments/
+assignments, deliberately not tasks -- see that function's own
+docstring). Without a fix, opening an old task after its lease had
+since been resubmitted would show and let someone edit an archived,
+superseded row invisible everywhere else in the app. `task_detail`
+now resolves forward to the lease's current version (via `get_lease_
+version_chain`) whenever the directly-linked one has since been
+superseded, flagging `lease_redirected_from_id` so the caller knows a
+redirect happened. Covered by a dedicated test proving the in-task
+view and an edit both land on the live current version, not the
+archived one.
+
+Tested end-to-end with a real generated PDF through the actual
+extraction pipeline: a lease missing its insurance clause raised a
+real `missing_clause` discrepancy, converted to a task, opened to
+confirm the document+data view showed the real "Not found" citation,
+corrected via `PATCH .../fields/insurance_requirements`, confirmed the
+lease record itself changed (not just the response) and the edit
+appeared in both audit-trail surfaces, confirmed completing the task
+without confirmation was rejected, then completing it WITH
+confirmation actually resolved the discrepancy (verified against the
+DB directly, not just the response) and the task dropped out of the
+`?status=open` active view while remaining retrievable under
+`?status=done` -- all verified live against the running server, not
+just in unit tests.
+
 ## Resubmit lease workflow (Canvas-style versioning, not duplication)
 
 Re-uploading a corrected version of an existing lease used to always
