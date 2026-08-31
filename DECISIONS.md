@@ -1,5 +1,98 @@
 # Implementation Decisions
 
+## Export/re-import round trip: two real bugs found and fixed
+
+Reported: exporting produced only "a single alert (the security
+deposit one)" instead of the full data set, and re-importing an
+edited export didn't update the existing lease/rent-roll record.
+
+**The literal export bug wasn't reproducible.** Every export route
+checked directly -- portfolio rent-roll.csv/.xlsx, single-lease
+export.xlsx, single-lease summary.pdf -- returned complete, correct,
+multi-field data for every active lease. No route is scoped to "the
+most recent alert" or anything alert-shaped at all. This is recorded
+as a real finding, not a shrug: "couldn't reproduce as literally
+described" is useful information, especially since chasing the ACTUAL
+round-trip (export -> edit -> re-import) surfaced the real bug the
+report was almost certainly actually describing.
+
+**Bug 1: re-uploading this app's own exported spreadsheet through the
+general upload/resubmit path produced garbage.**
+`document_extractor.py`'s Excel/CSV handling (`_rows_to_lines`) is
+deliberately built for a LABEL:VALUE spreadsheet -- a lease built as
+"Tenant:" next to "Acme Corp" on the same row, one fact per row (see
+that function's own docstring: joining cells with a space, not a
+separator, specifically so FieldExtractor's label:value regex can
+match "Tenant: Acme Corp" directly). This app's own exports are the
+opposite shape: one HEADER row, one or more DATA rows -- a table.
+Feeding a table through `_rows_to_lines` collapses the header row into
+one run-on line ("Filename Tenant Landlord Property Address...") and
+each data row into another ("sample_lease.pdf John Smith Property
+Management LLC..."), and FieldExtractor's regex then matches against
+that essentially at random -- a header word ends up as a "value", a
+landlord name as a "tenant". Reproduced exactly, deterministically, by
+re-uploading a real single-lease export through `POST /leases`.
+
+Fixed by trying table-based extraction FIRST for `.csv`/`.xlsx`
+uploads specifically (`api.py`'s `_try_table_extraction`, reusing
+`rent_roll_import.py`'s existing header-detection and column-alias
+matching wholesale -- the exact same logic the dedicated rent-roll
+importer already uses, not a reimplementation) -- and only falling
+back to the existing prose path when table parsing finds nothing
+usable (at least one row with a recognizable tenant, rent, or
+property). This preserves a genuine label:value spreadsheet lease
+exactly as it worked before (covered by its own regression test), and
+correctly handles this app's own exports, whether single-row (a
+resubmission) or multi-row (a portfolio rent roll). Also added a
+`landlord` column alias to `rent_roll_import.py` -- entirely absent
+before, since real broker rent rolls essentially never state one, but
+this app's own richer export does, and it was silently dropped on
+every round trip without it.
+
+**Bug 2: even with the value now correctly extracted, resubmitting a
+lease that has an amendment kept silently reverting the correction.**
+`repoint_lease_references` used to carry old amendments forward onto
+the newly resubmitted lease id (`UPDATE leases SET base_lease_id = ?
+WHERE base_lease_id = ?`). Since `get_effective_fields`' "latest
+non-null amendment wins" rule means an amendment always beats the base
+row for any field it sets, the carried-forward OLD amendment kept
+overriding the very field the resubmission was correcting, on every
+future read -- the fresh document's own value was extracted correctly
+and inserted correctly, but never actually visible anywhere, which is
+functionally identical to "the update didn't happen" from the user's
+side. This is architecturally the same failure mode as the earlier
+amendment-governance bug fixed for direct field edits (PATCH .../
+fields/<name>), now found in the resubmit path instead.
+
+Fixed by simply not repointing amendments during resubmission at all
+-- they stay attached to the archived old version. This is the
+correct semantics, not just a workaround: a resubmission is a
+WHOLESALE replacement (the new document is asserted to be the
+corrected, complete, current statement of terms), so an amendment
+written against the superseded document's terms doesn't automatically
+carry forward to override what the new document itself states. The
+amendment isn't deleted -- this app's standing "never destroy history"
+principle -- it remains fully part of the archived old version's own
+history, visible via that version specifically, just no longer bleeds
+into what the new CURRENT version shows.
+
+**Why the pieces fit together**: the lease named in the original
+report (Vertex Analytics) has exactly one risk flag -- a
+security-deposit one -- and exactly one amendment, which happens to
+override `rent_amount`. That's a striking coincidence with "it only
+pulled up a single alert (the security deposit one)": the most likely
+real sequence is an export/edit/re-import attempt on that exact lease
+that appeared to silently fail (bug 2, or bug 1 before an amendment
+was even involved), which reads very naturally as "nothing happened
+except this one alert."
+
+10 new regression tests, full suite 51/52 (only the pre-existing
+unrelated `tesseract` gap). Verified live end to end against the
+running server: exported a real lease with a real governing amendment,
+edited its rent in the downloaded file, resubmitted it, and confirmed
+the SAME lease's version chain showed the new value -- $9,500.00 ->
+$15,750.00 -- with the old version archived, not a duplicate.
+
 ## Create-Task-from-Alert investigation, and a real amendment-editing bug found along the way
 
 Three things were reported broken: "Create Task" on an alert doing

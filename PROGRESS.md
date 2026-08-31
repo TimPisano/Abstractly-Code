@@ -1,6 +1,40 @@
 # Progress Summary
 
-**Last updated**: Investigated three reports: "Create Task" on an
+**Last updated**: Fixed two real bugs in the export/re-import round
+trip. (1) Re-uploading this app's OWN exported spreadsheet (single-
+lease .xlsx, or the portfolio rent-roll .xlsx/.csv) through the
+general upload/resubmit path produced garbage -- document_extractor.py's
+Excel/CSV handling was built for a label:value single-lease
+spreadsheet, not a table, and collapsed a table's header/data rows
+into garbled run-on lines that FieldExtractor's regex matched at
+random. Fixed by trying table-based extraction first for .csv/.xlsx
+(reusing rent_roll_import.py's existing column-alias matching
+wholesale), falling back to the prose path only when table parsing
+finds nothing -- a genuine label:value spreadsheet lease still works
+exactly as before. Also added a missing `landlord` column alias so
+this app's own richer export round-trips that field too. (2) Even
+once the value extracted correctly, resubmitting a lease with an
+amendment kept silently reverting the correction on every read --
+repoint_lease_references was carrying old amendments forward onto the
+new resubmitted lease id, and get_effective_fields' "latest amendment
+wins" rule meant the stale amendment kept beating the fresh document's
+own value. Fixed by leaving amendments attached to the archived old
+version instead (a resubmission is a full replacement; an old
+amendment's terms don't automatically override what the new document
+itself states). The originally-reported symptom ("export only pulled
+up one alert") wasn't reproducible as literally described, but the
+exact lease named in the report has exactly one risk flag (security
+deposit) and exactly one amendment (overriding rent) -- strongly
+matching what bug 2 would produce. 10 new regression tests, full
+suite 51/52 (only the pre-existing unrelated `tesseract` gap).
+Verified live end to end: exported a real lease, edited its rent,
+resubmitted it, confirmed $9,500.00 -> $15,750.00 on the SAME lease's
+version chain, old archived, not a duplicate. See DECISIONS.md's
+"Export/re-import round trip" entry.
+
+---
+
+Investigated three reports: "Create Task" on an
 alert doing nothing, rent roll download, rent roll editing/resubmit.
 "Create Task" was investigated thoroughly live (real browser, the
 real Vertex Analytics alert) and found genuinely working -- no code
