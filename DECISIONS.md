@@ -1,5 +1,109 @@
 # Implementation Decisions
 
+## Task workflow extensions: bulk actions, comments, priority, undo
+
+Four additions on top of in-task editing/completion, requested
+together: bulk task actions, task comments, task priority, and
+undoing a recent field edit.
+
+**Bulk "done" skips discrepancy-tied tasks rather than guessing.**
+`POST /tasks/bulk-status` mirrors the exact loop-and-report shape
+already established for `/discrepancies/bulk-resolve` and `/alerts/
+bulk-dismiss`. The one real design decision: what happens when a
+batch includes a task tied to a still-open discrepancy? The
+single-task route already refuses to guess `correct_source`, and a
+bulk body has no natural per-task field to supply a different
+correct_source for each one -- so bulk "done" SKIPS those (reported
+back in `skipped_needs_discrepancy`, not silently dropped) rather
+than either force-completing them with a fabricated reason or
+rejecting the whole batch over one task that needs a decision. This
+keeps the same "never silently guess" invariant while still letting a
+genuine batch of low-risk, non-discrepancy cleanup tasks (or ones
+already resolved directly beforehand) complete in one call.
+
+**Task comments explicitly log to the activity feed -- deliberately
+diverging from the existing lease/discrepancy comment routes, which
+don't.** Checked first: neither `add_lease_comment` nor `add_
+discrepancy_comment` calls `insert_activity` today. The request for
+this feature was explicit that task comments should appear there, so
+`add_task_comment` does, on purpose, rather than "for consistency"
+silently matching the quieter precedent. `comments` gained a `task_id`
+column (nullable, not FK'd `ON DELETE CASCADE` like `lease_id`/
+`discrepancy_id` are -- team discussion should survive the task being
+deleted later, same permanent-record reasoning as `lease_field_edits.
+task_id`). `task_detail`'s `comments` key is deliberately separate
+from `field_edits` -- one is team conversation, the other a data-
+correction audit trail; conflating them into one list would have
+hidden which kind of entry a reviewer is looking at.
+
+**Priority sorts ahead of due date, not instead of it.** `tasks`
+gained a `priority` column ('normal' | 'high'). `list_tasks` and
+`get_tasks_due_today_or_overdue`'s `ORDER BY` both prepend `(priority
+!= 'high')` ahead of the existing due-date ordering -- every
+high-priority task sorts before every normal one, and due date still
+orders within each of those two groups exactly as before. This is a
+backend-only change: the Today view and every task list surface
+urgent items first automatically, with zero frontend sorting logic
+needed. Verified with a fixture deliberately shaped to catch a lazy
+implementation: a normal task due EARLIER than a high-priority one,
+confirming the high-priority task still sorts first (a naive due-date-
+only sort would have gotten this backwards).
+
+**Undo restores the exact original field entry, not a fresh "manual
+edit."** The tempting-but-wrong implementation would reuse `update_
+lease_field` (which always clears `source` to null, since a manual
+edit has no citation) to write the old value back -- that would
+silently destroy a real page/quote citation if the edit being undone
+had overwritten extraction-sourced data. `revert_lease_field_edit`
+instead restores the edit's stored `old_value` dict verbatim
+(value, source, confidence, manually_verified -- whatever it actually
+was), so undoing a correction that clobbered a real citation brings
+the citation back too, not just the string value. Covered by a
+dedicated test asserting the restored `source` matches the original
+PDF citation exactly.
+
+Eligibility is checked at the API layer, not buried in the database
+function (same validation-lives-in-routes split this codebase uses
+everywhere): not already reverted; must be the single most recent
+not-yet-reverted edit for that lease+field (undoing a stale one while
+a later edit already superseded it would silently discard that later
+value); within `UNDO_WINDOW_MINUTES` (10); and if the edit happened
+under a task, that task must not already be `done`. Deliberately
+**not** blocked by `dismissed` -- dismissing a task is explicitly not
+a completion (see the single-task status route's own reasoning), so
+an edit made under a since-dismissed task can still be undone; only
+`done` (the status that can trigger discrepancy resolution) locks it.
+The reverted-from edit row is marked `reverted_at`, never deleted --
+same append-only audit-trail principle as every other resolution-style
+table in this app -- so the history honestly shows both that a
+correction was made and that it was later undone.
+
+**A genuinely unusual build note, recorded rather than glossed over:**
+significant parts of this feature (the `comments.task_id`/`tasks.
+priority` schema, `revert_lease_field_edit`, the bulk/comment/undo
+routes) appeared in `database.py`/`api.py` already written, correctly
+and to this project's own conventions, partway through this work --
+apparently produced by a concurrent process working the identical
+request in parallel on the same files. Rather than duplicate or
+overwrite that work, it was read in full, verified against a fresh
+test suite, one real gap was found and fixed (task comments weren't
+actually logging to `activity_log` despite the requirement asking for
+it), and the remainder -- `task_detail`'s `comments` attachment, the
+singular `get_lease_field_edit` lookup the undo route's checks need,
+and the full test suite proving all four pieces work together and
+don't regress the original completion flow -- was added on top.
+
+Tested end-to-end and verified live against the running server:
+bulk-completed a batch of similar discrepancy-tied tasks (both
+correctly skipped pending confirmation, not silently resolved), left
+a task comment and confirmed it appeared in the activity feed, marked
+a task high-priority and confirmed it sorted ahead of an earlier-due
+normal task in both the task list and the Today view, edited a field
+to a wrong value and undid it (confirming the lease record itself,
+not just the API response, reverted), and re-ran the original
+completion+discrepancy-resolution scenario from the in-task-editing
+feature to confirm nothing regressed.
+
 ## In-task document editing: correct fields, auto-resolve tied discrepancies
 
 Requested workflow: open a task linked to a lease, view the document

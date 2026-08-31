@@ -1,6 +1,34 @@
 # Progress Summary
 
-**Last updated**: Built in-task document editing. A task linked to a
+**Last updated**: Extended the task workflow with four additions:
+bulk actions (`POST /tasks/bulk-status`, `/tasks/bulk-reassign` --
+bulk "done" skips, never guesses, a discrepancy-tied task's
+correct_source, reporting it back for individual resolution instead),
+task comments (`GET|POST /tasks/<id>/comments`, explicitly logged to
+the activity feed per this feature's specific requirement, unlike
+lease/discrepancy comments which don't log there), task priority
+(`normal`|`high`, settable on create or via PATCH, sorted ahead of
+due-date ordering in both task lists and the Today view -- verified
+with a fixture where a naive due-date-only sort would get the order
+backwards), and undo on a recent field edit (`POST /leases/<id>/
+fields/<name>/edits/<id>/undo`, restoring the exact original field
+entry -- including a real citation if one was overwritten -- within a
+10-minute window, only for the single most recent not-yet-reverted
+edit, and only if the task it happened under isn't already done;
+dismissing a task doesn't lock it, only completing does). 20 new
+tests plus an explicit regression check that the original single-task
+completion + discrepancy-resolution flow still works identically,
+full suite 50/51 (only the pre-existing unrelated `tesseract` gap
+fails). Verified live against the running server. Notable: much of
+this arrived already implemented mid-session by a concurrent process
+working the identical request in parallel on the same files --
+verified in full, one real gap found and fixed (task comments weren't
+actually logging to the activity feed), rest built on top rather than
+duplicated -- see DECISIONS.md's "Task workflow extensions" entry.
+
+---
+
+Built in-task document editing. A task linked to a
 lease returns the full effective lease (every field with its citation
 -- this app's document view, since raw uploaded file bytes have never
 been stored) plus its own scoped edit history. `PATCH /leases/<id>/
