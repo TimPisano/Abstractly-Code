@@ -904,8 +904,17 @@ def lease_field_source(lease_id, field_name):
     # docstring) -- surfaced as their own key alongside `history`
     # rather than merged into it, so this stays additive and doesn't
     # change `history`'s existing shape for any caller already reading
-    # it (see test_audit_trail.py).
-    chain["manual_edits"] = database.get_lease_field_edits(lease_id=lease_id, field_name=field_name)
+    # it (see test_audit_trail.py). A manual edit may have landed on
+    # any document in this field's history -- see edit_lease_field's
+    # own resolve-to-the-governing-document logic -- not only the base
+    # lease id given in the URL, so this collects across every
+    # document `chain["history"]` already lists (base + amendments)
+    # rather than just the one id the caller happened to ask about.
+    manual_edits = []
+    for entry in chain["history"]:
+        manual_edits.extend(database.get_lease_field_edits(lease_id=entry["document_id"], field_name=field_name))
+    manual_edits.sort(key=lambda e: (e["created_at"], e["id"]))
+    chain["manual_edits"] = manual_edits
     return jsonify(chain), 200
 
 
@@ -953,9 +962,25 @@ def edit_lease_field(lease_id, field_name):
     if task_id is not None and not database.get_task(task_id):
         return jsonify({"error": "task_id does not match a real task"}), 400
 
+    # Resolve to whichever document actually GOVERNS this field's
+    # effective value right now -- the base lease, or whichever
+    # amendment most recently overrode it (get_effective_fields'
+    # "latest non-null amendment wins" rule). Editing the base id
+    # blindly, when an amendment already overrides this exact field,
+    # would silently have NO effect anywhere the effective value is
+    # read (lease detail, rent roll, exports, dashboards, discrepancy
+    # re-sync) -- the base row would change, but every reader would
+    # keep showing the unchanged amendment value instead. This was
+    # long documented as the intended behavior (see update_lease_
+    # field's own docstring) but never actually implemented until now
+    # -- found live, via the exact rent-roll-download verification
+    # this feature was built to support.
+    chain = database.get_field_source_chain(lease_id, field_name)
+    target_lease_id = (chain or {}).get("effective_document_id") or lease_id
+
     user = current_user()
     new_entry = database.update_lease_field(
-        lease_id, field_name, value, edited_by=user["name"], edited_by_email=user["email"],
+        target_lease_id, field_name, value, edited_by=user["name"], edited_by_email=user["email"],
         confidence=confidence, note=note, task_id=task_id,
     )
     _invalidate_lease_derived_caches()
@@ -964,7 +989,12 @@ def edit_lease_field(lease_id, field_name):
         f"{user['name']} corrected {field_name.replace('_', ' ')} on {lease.get('display_name') or lease['filename']}",
         lease_id=lease_id,
     )
-    return jsonify({"lease_id": lease_id, "field_name": field_name, "field": new_entry}), 200
+    return jsonify({
+        "lease_id": lease_id,
+        "field_name": field_name,
+        "field": new_entry,
+        "edited_document_id": target_lease_id,
+    }), 200
 
 
 @app.route('/leases/<int:lease_id>', methods=['DELETE'])

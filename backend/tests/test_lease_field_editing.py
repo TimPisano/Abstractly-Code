@@ -182,6 +182,63 @@ def test_patch_field_route_happy_path_and_activity_log():
     print("✓ test_patch_field_route_happy_path_and_activity_log: PASS")
 
 
+def test_patch_field_route_resolves_to_governing_amendment_not_base():
+    """
+    The real bug this guards against: if an amendment already overrides
+    a field, editing the BASE lease id has NO effect on the effective
+    value anywhere (get_effective_fields' "latest non-null amendment
+    wins" rule silently keeps showing the amendment's value) -- found
+    live via the rent-roll-download feature, where a correction
+    appeared to succeed (200, correct field in the response) but never
+    showed up in the lease detail, the rent roll, or any export. The
+    route must resolve to whichever document actually governs the
+    field's current effective value (base or amendment) before editing.
+    """
+    db_path = _fresh_temp_db()
+    try:
+        admin, analyst, _ = _real_users()
+        client = _client_for(analyst, "analyst")
+        base_id = _make_lease(rent_amount="$4,000.00", tenant="Acme Corp")
+        amendment_id = database.insert_lease(
+            "amendment.pdf", _fields(rent_amount="$4,500.00"), document_type="amendment", base_lease_id=base_id,
+        )
+
+        # Confirm the amendment really does govern the effective value first.
+        before = client.get(f"/leases/{base_id}").get_json()
+        assert before["extracted_fields"]["rent_amount"]["value"] == "$4,500.00"
+
+        resp = client.patch(f"/leases/{base_id}/fields/rent_amount", json={"value": "$6,000.00", "note": "correcting the amendment's figure"})
+        assert resp.status_code == 200, resp.get_json()
+        data = resp.get_json()
+        assert data["field"]["value"] == "$6,000.00"
+        assert data["edited_document_id"] == amendment_id, \
+            "must edit the document that actually governs the field, not blindly the base lease id from the URL"
+
+        # The base row itself must be untouched.
+        base_row = database.get_lease(base_id)
+        assert base_row["extracted_fields"]["rent_amount"]["value"] == "$4,000.00"
+
+        # The EFFECTIVE value everywhere must now reflect the edit.
+        after = client.get(f"/leases/{base_id}").get_json()
+        assert after["extracted_fields"]["rent_amount"]["value"] == "$6,000.00"
+
+        # The audit trail must find the edit even though it landed on
+        # the amendment's row, not the base id the caller asked about.
+        chain = client.get(f"/leases/{base_id}/fields/rent_amount/source").get_json()
+        assert chain["effective_value"] == "$6,000.00"
+        assert len(chain["manual_edits"]) == 1
+        assert chain["manual_edits"][0]["note"] == "correcting the amendment's figure"
+
+        # A field the amendment does NOT override must still edit the base row directly.
+        resp2 = client.patch(f"/leases/{base_id}/fields/tenant", json={"value": "Acme Corporation LLC"})
+        assert resp2.status_code == 200
+        assert resp2.get_json()["edited_document_id"] == base_id
+        assert database.get_lease(base_id)["extracted_fields"]["tenant"]["value"] == "Acme Corporation LLC"
+    finally:
+        os.unlink(db_path)
+    print("✓ test_patch_field_route_resolves_to_governing_amendment_not_base: PASS")
+
+
 def test_patch_field_route_validation():
     db_path = _fresh_temp_db()
     try:
@@ -492,6 +549,7 @@ if __name__ == "__main__":
     test_update_lease_field_nonexistent_lease_returns_none()
     test_get_lease_field_edits_filters_and_ordering()
     test_patch_field_route_happy_path_and_activity_log()
+    test_patch_field_route_resolves_to_governing_amendment_not_base()
     test_patch_field_route_validation()
     test_patch_field_route_requires_login_and_analyst_role()
     test_patch_field_route_value_can_be_null()
