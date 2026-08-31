@@ -1,6 +1,35 @@
 # Progress Summary
 
-**Last updated**: Extended the task workflow with four additions:
+**Last updated**: Investigated three reports: "Create Task" on an
+alert doing nothing, rent roll download, rent roll editing/resubmit.
+"Create Task" was investigated thoroughly live (real browser, the
+real Vertex Analytics alert) and found genuinely working -- no code
+change needed there. Found and fixed a real, important bug along the
+way: `PATCH /leases/<id>/fields/<name>` always edited whatever lease
+id the URL gave it, but if an amendment already overrides that field,
+`get_effective_fields`' "amendment always wins" rule kept the
+amendment's value showing everywhere (lease detail, rent roll, every
+export, dashboard) even though the edit itself succeeded and logged
+correctly -- an edit that was real but invisible. `edit_lease_field`
+now resolves to whichever document actually governs the field's
+effective value before editing (the fix both its own and `update_
+lease_field`'s docstrings already described but never actually wired
+up), and returns `edited_document_id` for transparency; the field-
+source-chain audit endpoint now searches every document in a field's
+history, not just the one id in the URL. Added the missing CSV
+download button (Excel already existed; backend CSV route did too,
+just no UI wiring). Rent-roll cell editing and per-row Replace/
+resubmit (built by a concurrent session working this same request in
+parallel) verified live through the real UI. 1 new regression test,
+full suite 50/51 (only the pre-existing unrelated `tesseract` gap).
+See DECISIONS.md's "Create-Task-from-Alert investigation" entry for
+the full trace, including several red herrings ruled out along the
+way (stray days-old test browsers, a misread test-script interleaving)
+before finding the real root cause.
+
+---
+
+Extended the task workflow with four additions:
 bulk actions (`POST /tasks/bulk-status`, `/tasks/bulk-reassign` --
 bulk "done" skips, never guesses, a discrepancy-tied task's
 correct_source, reporting it back for individual resolution instead),

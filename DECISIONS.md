@@ -1,5 +1,91 @@
 # Implementation Decisions
 
+## Create-Task-from-Alert investigation, and a real amendment-editing bug found along the way
+
+Three things were reported broken: "Create Task" on an alert doing
+nothing visible, rent roll download, and rent roll editing/resubmit.
+
+**"Create Task" on an alert: investigated thoroughly, found working.**
+Drove the exact reported flow live (real login, real Alerts page, the
+real "+ Create Task" button on the real Vertex Analytics tenant-
+concentration alert) via headless Chrome + DevTools Protocol -- one
+click produced exactly one `POST /tasks/from-alert/<id>` request, a
+real task with a clear title and the alert's full message carried into
+the description, a success toast, and correct rendering in the Tasks
+view. Assignability was checked separately (`POST /tasks/<id>/assign`
+already works; the card shows "Unassigned" until someone is chosen).
+No code change was needed for this one. A first pass genuinely showed
+two tasks created from one click -- traced to my own test methodology
+(running two separate investigation scripts against a persisted
+browser tab), not a real double-submit bug; a clean, isolated retest
+with a fresh browser profile confirmed exactly one request per click.
+Recorded here rather than silently discarded, since "I couldn't
+reproduce it" is a real, useful answer, not a non-answer -- and the
+investigation surfaced something used below.
+
+**A genuinely important bug, found while verifying rent-roll
+download reflects current data.** `PATCH /leases/<id>/fields/<name>`
+(built earlier this session for in-task editing) always edited
+whatever lease id the URL gave it. If that lease has an amendment
+that already overrides the exact field being corrected,
+`get_effective_fields`' "latest non-null amendment wins" rule means
+the amendment's value keeps winning everywhere the effective value is
+read -- lease detail, rent roll, every export, the dashboard -- even
+though the edit itself succeeded (200, correct value in the response,
+correctly logged to `lease_field_edits`). The edit was real but
+invisible. This wasn't a hypothetical: the very first real lease
+picked for the rent-roll-download check (Vertex Analytics, the same
+lease named in the alert above) has exactly one amendment overriding
+`rent_amount`, so every correction attempt during verification
+silently "reverted" on the very next read -- chased through several
+red herrings (days-old stray headless test browsers left running from
+earlier sessions, a misread interleaving of two of my own test
+scripts' deliberate edit-then-revert sequences) before a raw-SQLite-
+file-vs-HTTP-response trace pinned the real cause precisely: the raw
+file held the new value; the HTTP read didn't.
+
+Both `edit_lease_field`'s and `update_lease_field`'s own docstrings
+already described the correct fix ("callers pass whichever document
+currently governs the effective value") -- someone (me, earlier this
+session) documented the intended behavior and then never actually
+wired it up. Independent confirmation this was real, not a testing
+artifact: the frontend's `saveLeaseFieldEdit` (app.js) had already
+discovered and worked around the exact same bug client-side, calling
+`GET .../fields/<name>/source` to resolve `effective_document_id`
+itself before ever calling the edit API. Fixed at the actual source
+instead, so the guarantee holds for every caller, not only the one
+that happened to add a workaround: `edit_lease_field` now resolves the
+governing document via the existing `get_field_source_chain` before
+editing (falling back to the base id only when nothing governs the
+field yet), and returns `edited_document_id` in its response for
+transparency. The field-source-chain audit endpoint's `manual_edits`
+now searches every document in the field's history, not just the URL's
+id, so an edit that lands on an amendment stays discoverable from the
+base lease's own audit view too.
+
+**Rent roll download and editing/resubmit: both work, verified live
+end to end once the bug above was fixed.** CSV export existed on the
+backend but had no button in the UI (Excel already did) -- added the
+one missing anchor + href wiring, mirroring the existing Excel button
+exactly. Both exports read `database.get_all_effective_leases()`
+fresh per request (no caching layer sits in front of rent-roll
+export), so once the amendment-editing bug was fixed, a correction
+made through the UI is provably reflected in the very next CSV/Excel
+download. Rent-roll in-place cell editing and per-row "Replace"
+(Canvas-style resubmit, reusing `POST /leases/<id>/resubmit` exactly
+as the original single-lease resubmit feature built it -- archiving
+the old version, activating the new one, re-running discrepancy
+checks) were both already built by a concurrent session working this
+same request in parallel; verified both live through the real UI
+event chain (a real click-to-edit cell commit, and a real file picked
+through the hidden `<input type=file>` used by the Replace flow) --
+Replace worked cleanly on the first try; the cell-edit commit
+initially appeared to fail because `.blur()` doesn't reliably fire a
+real `blur` event when called programmatically in headless Chrome (a
+testing-harness limitation, not a product bug -- a real user clicking
+away from an input always triggers it) -- confirmed by dispatching an
+explicit `Event('blur')`, which persisted the edit correctly.
+
 ## Task workflow extensions: bulk actions, comments, priority, undo
 
 Four additions on top of in-task editing/completion, requested
