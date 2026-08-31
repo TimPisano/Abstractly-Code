@@ -21,7 +21,7 @@ Three layers of endpoints:
 from flask import Flask, request, jsonify, Response, session, redirect
 from flask_cors import CORS
 from dotenv import load_dotenv
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 import csv
 import io
 import logging
@@ -1515,7 +1515,7 @@ def list_tasks_route():
 @app.route('/tasks', methods=['POST'])
 @require_role('analyst')
 def create_task_route():
-    """Body: {"title": str, "description": str (optional), "due_date": "YYYY-MM-DD" (optional), "assigned_to_user_id": int (optional), "lease_id": int (optional), "discrepancy_id": int (optional), "property_address": str (optional)}."""
+    """Body: {"title": str, "description": str (optional), "due_date": "YYYY-MM-DD" (optional), "assigned_to_user_id": int (optional), "lease_id": int (optional), "discrepancy_id": int (optional), "property_address": str (optional), "priority": "normal"|"high" (optional, default "normal")}."""
     body = request.get_json(silent=True) or {}
     title = (body.get('title') or '').strip()
     if not title:
@@ -1533,6 +1533,10 @@ def create_task_route():
     if discrepancy_id is not None and not database.get_discrepancy(discrepancy_id):
         return jsonify({"error": "Discrepancy not found"}), 404
 
+    priority = body.get('priority') or 'normal'
+    if priority not in tasks_module.VALID_PRIORITIES:
+        return jsonify({"error": f"priority must be one of: {', '.join(sorted(tasks_module.VALID_PRIORITIES))}"}), 400
+
     task_id = database.create_task(
         title=title,
         created_by_user_id=current_user()["id"],
@@ -1542,6 +1546,7 @@ def create_task_route():
         lease_id=lease_id,
         discrepancy_id=discrepancy_id,
         property_address=(body.get('property_address') or '').strip() or None,
+        priority=priority,
     )
     database.insert_activity("task_created", f"Task created: {title}", lease_id=lease_id)
     return jsonify(tasks_module.task_detail(database.get_task(task_id))), 201
@@ -1595,16 +1600,20 @@ def get_task_route(task_id):
 @app.route('/tasks/<int:task_id>', methods=['PATCH'])
 @require_role('analyst')
 def update_task_route(task_id):
-    """Body: any of {"title": str, "description": str, "due_date": "YYYY-MM-DD"|null}. due_date: null explicitly clears it; omitting the key leaves it unchanged."""
+    """Body: any of {"title": str, "description": str, "due_date": "YYYY-MM-DD"|null, "priority": "normal"|"high"}. due_date: null explicitly clears it; omitting the key leaves it unchanged."""
     if not database.get_task(task_id):
         return jsonify({"error": "Task not found"}), 404
     body = request.get_json(silent=True) or {}
     title = body.get('title')
     if title is not None and not title.strip():
         return jsonify({"error": "title cannot be blank"}), 400
+    priority = body.get('priority')
+    if priority is not None and priority not in tasks_module.VALID_PRIORITIES:
+        return jsonify({"error": f"priority must be one of: {', '.join(sorted(tasks_module.VALID_PRIORITIES))}"}), 400
     clear_due_date = 'due_date' in body and body.get('due_date') is None
     updated = database.update_task_fields(
-        task_id, title=title, description=body.get('description'), due_date=body.get('due_date'), _clear_due_date=clear_due_date
+        task_id, title=title, description=body.get('description'), due_date=body.get('due_date'),
+        _clear_due_date=clear_due_date, priority=priority,
     )
     return jsonify(tasks_module.task_detail(updated)), 200
 
@@ -1699,6 +1708,179 @@ def delete_task_route(task_id):
     if not database.delete_task(task_id):
         return jsonify({"error": "Task not found"}), 404
     return jsonify({"status": "deleted"}), 200
+
+
+@app.route('/tasks/bulk-status', methods=['POST'])
+@require_role('analyst')
+def bulk_update_task_status():
+    """
+    Body: {"ids": [1, 2, 3], "status": "open"|"in_progress"|"done"|"dismissed"}.
+    The Tasks page's multi-select "Complete"/"Dismiss" bulk actions --
+    same loop-and-report shape as /alerts/bulk-dismiss and
+    /discrepancies/bulk-resolve.
+
+    Completing ("done") a task tied to a still-open discrepancy is
+    SKIPPED here, not force-completed -- a bulk action has no per-task
+    field to confirm which source was correct (see the single-task
+    POST /tasks/<id>/status route this mirrors), and guessing would
+    contradict this app's "never silently guess" rule for discrepancy
+    resolution. Skipped ids are reported back so the caller can open
+    each one individually to resolve it there instead.
+    """
+    payload = request.get_json(silent=True) or {}
+    ids = payload.get('ids')
+    status = (payload.get('status') or '').strip()
+    if not isinstance(ids, list) or not ids or not all(isinstance(i, int) for i in ids):
+        return jsonify({"error": "Provide a non-empty 'ids' list of integers"}), 400
+    if status not in tasks_module.VALID_STATUSES:
+        return jsonify({"error": f"status must be one of: {', '.join(sorted(tasks_module.VALID_STATUSES))}"}), 400
+
+    updated, skipped_needs_discrepancy, not_found = [], [], []
+    for task_id in ids:
+        task = database.get_task(task_id)
+        if not task:
+            not_found.append(task_id)
+            continue
+        if status == "done" and task.get("discrepancy_id"):
+            discrepancy = database.get_discrepancy(task["discrepancy_id"])
+            if discrepancy and discrepancy["status"] == "open":
+                skipped_needs_discrepancy.append(task_id)
+                continue
+        database.update_task_status(task_id, status)
+        updated.append(task_id)
+
+    if updated:
+        database.insert_activity(
+            "tasks_bulk_status_updated",
+            f"{current_user()['name']} set {len(updated)} task(s) to '{status}' (bulk)",
+        )
+    return jsonify({"updated": updated, "skipped_needs_discrepancy": skipped_needs_discrepancy, "not_found": not_found}), 200
+
+
+@app.route('/tasks/bulk-reassign', methods=['POST'])
+@require_role('analyst')
+def bulk_reassign_tasks():
+    """Body: {"ids": [1, 2, 3], "assigned_to_user_id": int|null}. null unassigns every listed task."""
+    payload = request.get_json(silent=True) or {}
+    ids = payload.get('ids')
+    assigned_to_user_id = payload.get('assigned_to_user_id')
+    if not isinstance(ids, list) or not ids or not all(isinstance(i, int) for i in ids):
+        return jsonify({"error": "Provide a non-empty 'ids' list of integers"}), 400
+    if assigned_to_user_id is not None and not database.get_user(assigned_to_user_id):
+        return jsonify({"error": "assigned_to_user_id does not match a real team member"}), 400
+
+    updated, not_found = [], []
+    for task_id in ids:
+        if not database.get_task(task_id):
+            not_found.append(task_id)
+            continue
+        database.update_task_assignee(task_id, assigned_to_user_id)
+        updated.append(task_id)
+
+    if updated:
+        assignee_name = database.get_user(assigned_to_user_id)["name"] if assigned_to_user_id is not None else "Unassigned"
+        database.insert_activity(
+            "tasks_bulk_reassigned",
+            f"{current_user()['name']} reassigned {len(updated)} task(s) to {assignee_name} (bulk)",
+        )
+    return jsonify({"updated": updated, "not_found": not_found}), 200
+
+
+@app.route('/tasks/<int:task_id>/comments', methods=['GET'])
+@require_role()
+def list_task_comments(task_id):
+    """Team discussion on this task -- separate from lease_field_edits (that's a data-correction audit trail, this is conversation), visible to everyone, same "whole team" reasoning as lease/discrepancy comments."""
+    if not database.get_task(task_id):
+        return jsonify({"error": "Task not found"}), 404
+    return jsonify(database.get_task_comments(task_id)), 200
+
+
+@app.route('/tasks/<int:task_id>/comments', methods=['POST'])
+@require_role('analyst')
+def add_task_comment(task_id):
+    """
+    Body: {"body": "..."}. The comment's author is always the logged-in
+    session user -- see _validate_comment_payload.
+
+    Unlike lease/discrepancy comments (which don't write to
+    activity_log), a task comment DOES -- explicitly requested so
+    discussion on a task ("checked with the broker, this is
+    intentional") is visible in the same portfolio-wide activity feed
+    as everything else that happens to that task, not just to someone
+    who happens to open the task's comment thread.
+    """
+    task = database.get_task(task_id)
+    if not task:
+        return jsonify({"error": "Task not found"}), 404
+    payload = request.get_json(silent=True) or {}
+    body, error = _validate_comment_payload(payload)
+    if error:
+        return error
+    user = current_user()
+    database.add_comment(user["name"], body, task_id=task_id, author_email=user["email"])
+    database.insert_activity(
+        "task_commented",
+        f"{user['name']} commented on task \"{task['title']}\": {body}",
+        lease_id=_activity_lease_id(task.get("lease_id")),
+    )
+    return jsonify(database.get_task_comments(task_id)), 201
+
+
+@app.route('/leases/<int:lease_id>/fields/<field_name>/edits/<int:edit_id>/undo', methods=['POST'])
+@require_role('analyst')
+def undo_lease_field_edit(lease_id, field_name, edit_id):
+    """
+    Reverts one specific field edit back to the value it held just
+    before that edit was made (see database.revert_lease_field_edit --
+    the original edit row is marked reverted_at, never deleted, and a
+    new lease_field_edits row records the revert itself, so the audit
+    trail stays a complete, honest timeline).
+
+    Only allowed when ALL of the following hold:
+      - the edit hasn't already been reverted
+      - it's the single most recent (not-yet-reverted) edit for this
+        lease+field -- undoing an older one while a later edit already
+        superseded it would silently discard that later value
+      - it happened within tasks_module.UNDO_WINDOW_MINUTES
+      - if the edit is linked to a task (task_id set), that task isn't
+        already done -- once a task is complete, its corrections are
+        final, not something to keep unwinding after the fact (this is
+        the exact "recently... and the task isn't completed yet" gate
+        the in-task Undo option is built around)
+    """
+    edits = database.get_lease_field_edits(lease_id=lease_id, field_name=field_name)
+    matching = next((e for e in edits if e["id"] == edit_id), None)
+    if not matching:
+        return jsonify({"error": "Edit not found for this lease/field"}), 404
+    if matching.get("reverted_at"):
+        return jsonify({"error": "This edit has already been undone."}), 400
+
+    not_reverted = [e for e in edits if not e.get("reverted_at")]
+    latest = not_reverted[-1] if not_reverted else None
+    if not latest or latest["id"] != edit_id:
+        return jsonify({"error": "A newer edit has already been made to this field -- only the most recent edit can be undone."}), 400
+
+    edited_at = datetime.fromisoformat(matching["created_at"])
+    age_minutes = (datetime.now(timezone.utc) - edited_at).total_seconds() / 60
+    if age_minutes > tasks_module.UNDO_WINDOW_MINUTES:
+        return jsonify({"error": f"This edit is more than {tasks_module.UNDO_WINDOW_MINUTES} minutes old and can no longer be undone."}), 400
+
+    if matching.get("task_id"):
+        task = database.get_task(matching["task_id"])
+        if task and task["status"] == "done":
+            return jsonify({"error": "This edit's task is already complete -- undo is only available while the task is still open."}), 400
+
+    user = current_user()
+    restored = database.revert_lease_field_edit(edit_id, user["name"], user["email"])
+    if restored is None:
+        return jsonify({"error": "Lease not found"}), 404
+    _invalidate_lease_derived_caches()
+    database.insert_activity(
+        "lease_field_edit_undone",
+        f"{user['name']} undid a correction to {field_name.replace('_', ' ')} on lease #{lease_id}",
+        lease_id=lease_id,
+    )
+    return jsonify({"lease_id": lease_id, "field_name": field_name, "field": restored}), 200
 
 
 @app.route('/today', methods=['GET'])

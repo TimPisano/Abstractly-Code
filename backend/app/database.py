@@ -117,6 +117,38 @@ def _migrate_users_table_add_previous_login_at(conn: sqlite3.Connection) -> None
         conn.execute("ALTER TABLE users ADD COLUMN previous_login_at TEXT")
 
 
+def _migrate_comments_table_add_task_id(conn: sqlite3.Connection) -> None:
+    """
+    Adds `task_id` so a comment can be attached to a task -- lease_id/
+    discrepancy_id already exist; a comment is otherwise assumed to be
+    about exactly one of the three (enforced at the API layer, same as
+    the existing lease_id/discrepancy_id pair). Not FK'd to tasks(id)
+    ON DELETE CASCADE like the other two are -- a task comment is team
+    discussion ("checked with the broker, this is intentional") that
+    should survive the task itself being deleted later, same "permanent
+    record" reasoning already applied to lease_field_edits.task_id.
+    """
+    existing_columns = {row["name"] for row in conn.execute("PRAGMA table_info(comments)").fetchall()}
+    if "task_id" not in existing_columns:
+        conn.execute("ALTER TABLE comments ADD COLUMN task_id INTEGER")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_comments_task_id ON comments(task_id)")
+
+
+def _migrate_lease_field_edits_table_add_reverted_at(conn: sqlite3.Connection) -> None:
+    """`reverted_at` marks an edit as having been undone (see revert_lease_field_edit) -- kept on the ORIGINAL edit row rather than deleting it, so the audit trail honestly shows both that a correction was made AND that it was later reverted, instead of erasing the fact it ever happened."""
+    existing_columns = {row["name"] for row in conn.execute("PRAGMA table_info(lease_field_edits)").fetchall()}
+    if "reverted_at" not in existing_columns:
+        conn.execute("ALTER TABLE lease_field_edits ADD COLUMN reverted_at TEXT")
+
+
+def _migrate_tasks_table_add_priority(conn: sqlite3.Connection) -> None:
+    """`priority` ('normal' | 'high') -- every existing task backfills to 'normal' (the default), correct since nothing was ever marked urgent before this existed."""
+    existing_columns = {row["name"] for row in conn.execute("PRAGMA table_info(tasks)").fetchall()}
+    if "priority" not in existing_columns:
+        conn.execute("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'normal'")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_priority ON tasks(priority)")
+
+
 def _migrate_discrepancies_table_drop_lease_fk(conn: sqlite3.Connection) -> None:
     """
     Rebuilds an already-existing `discrepancies` table that still has
@@ -355,6 +387,7 @@ def init_db() -> None:
                 FOREIGN KEY (discrepancy_id) REFERENCES discrepancies(id) ON DELETE CASCADE
             )
         """)
+        _migrate_comments_table_add_task_id(conn)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -506,6 +539,8 @@ def init_db() -> None:
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_lease_field_edits_lease_id ON lease_field_edits(lease_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_lease_field_edits_task_id ON lease_field_edits(task_id)")
+        _migrate_lease_field_edits_table_add_reverted_at(conn)
+        _migrate_tasks_table_add_priority(conn)
         conn.commit()
     finally:
         conn.close()
@@ -929,6 +964,73 @@ def get_lease_field_edits(lease_id: Optional[int] = None, field_name: Optional[s
         return results
     except OverflowError:
         return []
+    finally:
+        conn.close()
+
+
+def get_lease_field_edit(edit_id: int) -> Optional[Dict[str, Any]]:
+    """Single edit by id, decoded -- what api.py's undo route checks eligibility against (age window, whether a newer edit has superseded it, whether the task it happened under has since completed) before calling revert_lease_field_edit."""
+    conn = get_connection()
+    try:
+        row = conn.execute("SELECT * FROM lease_field_edits WHERE id = ?", (edit_id,)).fetchone()
+        if row is None:
+            return None
+        d = dict(row)
+        d["old_value"] = json.loads(d["old_value"])
+        d["new_value"] = json.loads(d["new_value"])
+        return d
+    except OverflowError:
+        return None
+    finally:
+        conn.close()
+
+
+def revert_lease_field_edit(edit_id: int, reverted_by: str, reverted_by_email: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """
+    Undoes one specific field edit: restores the field on its lease row
+    to `old_value` (the value it held right before that edit), marks
+    the ORIGINAL edit row `reverted_at` (never deleted -- see
+    _migrate_lease_field_edits_table_add_reverted_at), and inserts a
+    NEW lease_field_edits row for the revert itself. The audit trail
+    stays a complete, append-only timeline this way -- "edited to X,
+    then undone back to Y" -- rather than rewriting history to look
+    like the original edit never happened.
+
+    Whether this specific edit is actually eligible to be undone (not
+    already reverted, not superseded by a later edit to the same
+    field) is the API layer's job to check first, same as every other
+    validation split in this module -- this function trusts the caller
+    and just performs the revert.
+
+    Returns the restored field entry (old_value), or None if edit_id
+    or its lease no longer exist.
+    """
+    conn = get_connection()
+    try:
+        row = conn.execute("SELECT * FROM lease_field_edits WHERE id = ?", (edit_id,)).fetchone()
+        if row is None:
+            return None
+        edit = dict(row)
+        old_value = json.loads(edit["old_value"])
+
+        lease_row = conn.execute("SELECT extracted_fields FROM leases WHERE id = ?", (edit["lease_id"],)).fetchone()
+        if lease_row is None:
+            return None
+        fields = json.loads(lease_row["extracted_fields"])
+        current_value = fields.get(edit["field_name"])
+        fields[edit["field_name"]] = old_value
+
+        now = datetime.now(timezone.utc).isoformat()
+        conn.execute("UPDATE leases SET extracted_fields = ? WHERE id = ?", (json.dumps(fields), edit["lease_id"]))
+        conn.execute("UPDATE lease_field_edits SET reverted_at = ? WHERE id = ?", (now, edit_id))
+        conn.execute(
+            "INSERT INTO lease_field_edits (lease_id, field_name, old_value, new_value, edited_by, "
+            "edited_by_email, note, task_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (edit["lease_id"], edit["field_name"], json.dumps(current_value), json.dumps(old_value),
+             reverted_by, reverted_by_email, f"Undo of edit #{edit_id}", edit["task_id"], now),
+        )
+        conn.commit()
+        return old_value
     finally:
         conn.close()
 
@@ -1943,6 +2045,7 @@ def create_task(
     property_address: Optional[str] = None,
     source_type: Optional[str] = None,
     source_natural_key: Optional[str] = None,
+    priority: str = "normal",
 ) -> int:
     """lease_id/discrepancy_id are intentionally not FK'd -- same 'survives deletion of the thing it referenced' reasoning as discrepancies.lease_id and assignments.lease_id, so a task doesn't silently vanish or corrupt if the linked record is later removed."""
     conn = get_connection()
@@ -1953,11 +2056,11 @@ def create_task(
             INSERT INTO tasks
                 (title, description, due_date, status, assigned_to_user_id, created_by_user_id,
                  lease_id, discrepancy_id, property_address, source_type, source_natural_key,
-                 created_at, updated_at)
-            VALUES (?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 priority, created_at, updated_at)
+            VALUES (?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (title, description, due_date, assigned_to_user_id, created_by_user_id,
-             lease_id, discrepancy_id, property_address, source_type, source_natural_key, now, now),
+             lease_id, discrepancy_id, property_address, source_type, source_natural_key, priority, now, now),
         )
         conn.commit()
         return cur.lastrowid
@@ -2005,8 +2108,13 @@ def list_tasks(
             clauses.append("discrepancy_id = ?")
             params.append(discrepancy_id)
         where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        # High-priority tasks sort first, ahead of due-date ordering --
+        # `(priority != 'high')` is 0 for a high-priority row and 1
+        # otherwise, so ascending puts every high-priority task before
+        # every normal one; due_date/created_at still order within each
+        # of those two groups exactly as before.
         rows = conn.execute(
-            f"SELECT * FROM tasks {where} ORDER BY (due_date IS NULL), due_date, created_at",
+            f"SELECT * FROM tasks {where} ORDER BY (priority != 'high'), (due_date IS NULL), due_date, created_at",
             params,
         ).fetchall()
         return [dict(r) for r in rows]
@@ -2015,14 +2123,14 @@ def list_tasks(
 
 
 def get_tasks_due_today_or_overdue(user_id: int, reference_date: str) -> List[Dict[str, Any]]:
-    """reference_date is an ISO date string (YYYY-MM-DD). 'Due today or overdue' = not done, has a due date, and that due date is on or before reference_date -- a task with no due date never shows up here (it isn't time-bound, so it can't be overdue)."""
+    """reference_date is an ISO date string (YYYY-MM-DD). 'Due today or overdue' = not done or dismissed, has a due date, and that due date is on or before reference_date -- a task with no due date never shows up here (it isn't time-bound, so it can't be overdue). High-priority tasks sort first (see list_tasks' identical ORDER BY reasoning), so the Today briefing surfaces them ahead of anything else due."""
     conn = get_connection()
     try:
         rows = conn.execute(
             """
             SELECT * FROM tasks
-            WHERE assigned_to_user_id = ? AND status != 'done' AND due_date IS NOT NULL AND due_date <= ?
-            ORDER BY due_date
+            WHERE assigned_to_user_id = ? AND status NOT IN ('done', 'dismissed') AND due_date IS NOT NULL AND due_date <= ?
+            ORDER BY (priority != 'high'), due_date
             """,
             (user_id, reference_date),
         ).fetchall()
@@ -2061,8 +2169,8 @@ def update_task_assignee(task_id: int, assigned_to_user_id: Optional[int]) -> Op
         conn.close()
 
 
-def update_task_fields(task_id: int, title: Optional[str] = None, description: Optional[str] = None, due_date: Optional[str] = None, _clear_due_date: bool = False) -> Optional[Dict[str, Any]]:
-    """Only overwrites fields actually passed -- None means 'leave as-is' for title/description, EXCEPT due_date, which needs to support being cleared back to no-due-date; _clear_due_date=True is how a caller says 'set it to NULL' instead of 'I didn't pass one'."""
+def update_task_fields(task_id: int, title: Optional[str] = None, description: Optional[str] = None, due_date: Optional[str] = None, _clear_due_date: bool = False, priority: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """Only overwrites fields actually passed -- None means 'leave as-is' for title/description/priority, EXCEPT due_date, which needs to support being cleared back to no-due-date; _clear_due_date=True is how a caller says 'set it to NULL' instead of 'I didn't pass one'."""
     conn = get_connection()
     try:
         existing = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
@@ -2071,9 +2179,10 @@ def update_task_fields(task_id: int, title: Optional[str] = None, description: O
         new_title = title if title is not None else existing["title"]
         new_description = description if description is not None else existing["description"]
         new_due_date = None if _clear_due_date else (due_date if due_date is not None else existing["due_date"])
+        new_priority = priority if priority is not None else existing["priority"]
         conn.execute(
-            "UPDATE tasks SET title = ?, description = ?, due_date = ?, updated_at = ? WHERE id = ?",
-            (new_title, new_description, new_due_date, datetime.now(timezone.utc).isoformat(), task_id),
+            "UPDATE tasks SET title = ?, description = ?, due_date = ?, priority = ?, updated_at = ? WHERE id = ?",
+            (new_title, new_description, new_due_date, new_priority, datetime.now(timezone.utc).isoformat(), task_id),
         )
         conn.commit()
         row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
@@ -2571,14 +2680,15 @@ def get_discrepancy_summary() -> Dict[str, Any]:
 def add_comment(
     author_name: str, body: str, lease_id: Optional[int] = None,
     discrepancy_id: Optional[int] = None, author_email: Optional[str] = None,
+    task_id: Optional[int] = None,
 ) -> int:
-    """Exactly one of lease_id/discrepancy_id is expected to be set -- enforced by the API layer, not here, consistent with how validation is layered throughout this module."""
+    """Exactly one of lease_id/discrepancy_id/task_id is expected to be set -- enforced by the API layer, not here, consistent with how validation is layered throughout this module."""
     conn = get_connection()
     try:
         cur = conn.execute(
-            "INSERT INTO comments (lease_id, discrepancy_id, author_name, author_email, body, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (lease_id, discrepancy_id, author_name, author_email, body, datetime.now(timezone.utc).isoformat()),
+            "INSERT INTO comments (lease_id, discrepancy_id, task_id, author_name, author_email, body, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (lease_id, discrepancy_id, task_id, author_name, author_email, body, datetime.now(timezone.utc).isoformat()),
         )
         conn.commit()
         return cur.lastrowid
@@ -2605,6 +2715,20 @@ def get_discrepancy_comments(discrepancy_id: int) -> List[Dict[str, Any]]:
     try:
         rows = conn.execute(
             "SELECT * FROM comments WHERE discrepancy_id = ? ORDER BY created_at ASC, id ASC", (discrepancy_id,)
+        ).fetchall()
+        return [dict(r) for r in rows]
+    except OverflowError:
+        return []
+    finally:
+        conn.close()
+
+
+def get_task_comments(task_id: int) -> List[Dict[str, Any]]:
+    """Task discussion -- separate from lease_field_edits (that's a data-correction audit trail, this is team conversation: 'checked with the broker, waiting to hear back')."""
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM comments WHERE task_id = ? ORDER BY created_at ASC, id ASC", (task_id,)
         ).fetchall()
         return [dict(r) for r in rows]
     except OverflowError:

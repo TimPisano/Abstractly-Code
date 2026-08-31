@@ -12,7 +12,14 @@ from typing import Any, Dict, Optional
 
 from app import database
 
-VALID_STATUSES = {"open", "in_progress", "done"}
+VALID_STATUSES = {"open", "in_progress", "done", "dismissed"}
+VALID_PRIORITIES = {"normal", "high"}
+
+# How long after a field edit a revert is still allowed -- see
+# api.py's undo_lease_field_edit. Kept here (not in database.py, which
+# has no business-rule constants elsewhere either) alongside the other
+# task-workflow constants this module already owns.
+UNDO_WINDOW_MINUTES = 10
 
 
 def task_detail(task: Dict[str, Any]) -> Dict[str, Any]:
@@ -62,6 +69,11 @@ def task_detail(task: Dict[str, Any]) -> Dict[str, Any]:
         result["field_edits"] = database.get_lease_field_edits(task_id=task["id"])
     if task.get("discrepancy_id"):
         result["discrepancy"] = database.get_discrepancy(task["discrepancy_id"])
+    # Team discussion on this task -- separate from field_edits (a
+    # data-correction audit trail) and always present regardless of
+    # whether the task is lease-linked, since a comment like "checked
+    # with the broker, this is intentional" makes sense on any task.
+    result["comments"] = database.get_task_comments(task["id"])
     return result
 
 
