@@ -1,5 +1,76 @@
 # Implementation Decisions
 
+## Production deployment groundwork (Render)
+
+Prepared the repo to deploy to Render (see DEPLOYMENT.md for the full
+account-creation/secret-entry walkthrough -- that part genuinely
+requires the user's own account, payment decision, and secret values,
+none of which are things to do unilaterally).
+
+**Render over Vercel/Railway, specifically because of OCR.** The
+backend needs two OS-level binaries beyond pip packages: `tesseract`
+(scanned-lease OCR fallback) and `poppler-utils` (`pdftoppm`, PDF-to-
+image rasterization pdf2image depends on for that same path) --
+confirmed neither is even installed in THIS local dev environment
+(the pre-existing, unrelated `test_document_extractor.py` failure all
+session traces to exactly this). A Node-oriented host's serverless
+functions (Vercel) can't install arbitrary OS packages at all; most
+"point at requirements.txt" Python buildpacks can't either. Render's
+Docker-based Web Services can, given a real Dockerfile
+(`backend/Dockerfile`) -- so that's what got built, rather than
+assuming the native buildpack would somehow cover this and finding
+out only after a real customer uploads a scanned lease and OCR
+silently fails in production.
+
+**`render.yaml` Blueprint, not two manual service-creation clicks.**
+Declares both services (the Flask API as a Docker Web Service, the
+already-no-build-step frontend as a Static Site) in one file, so the
+user applies it once instead of configuring two separate dashboards
+by hand and risking a typo'd setting on one of them. Secrets
+(`FLASK_SECRET_KEY`, `ADMIN_EMAIL`, `ADMIN_PASSWORD_HASH`,
+`TOKEN_ENCRYPTION_KEY`) are declared with `sync: false` -- present as
+placeholders the Blueprint expects, but genuinely blank until the
+user fills them in via Render's dashboard, never committed to the
+repo. `render.yaml` is not itself a secret and is fine to commit.
+
+**config.js made environment-aware, not hardcoded to one value or
+the other.** The single frontend `API_BASE_URL` constant now branches
+on `window.location.hostname` (`localhost`/`127.0.0.1` -> the local
+backend; anything else -> the real deployed one) instead of needing
+to be manually flipped back and forth between local dev and
+production -- the same repo, unchanged, now works correctly in both
+places at once. Verified live (headless browser) that local dev
+still resolves to `localhost:5000` and a full login still works
+end-to-end after this change, before ever pushing it.
+
+**`DB_PATH` env var support added, not just documented as a future
+possibility.** The user chose the free Render tier for now (data
+resets on restart/redeploy, acceptable for a sales-demo instance) but
+will likely want persistent storage before using this with a real
+prospect's real data later. `database.configure()` already existed
+(previously only used by tests) but production startup (`app/api.py`)
+never called it -- meaning there was actually no way to point the
+real app at a different DB file without a code change, despite
+`DEFAULT_DB_PATH` living in an env-var-friendly place already. Wired
+an optional `DB_PATH` env var into startup so the eventual "add a
+persistent disk" upgrade (documented in DEPLOYMENT.md) is genuinely a
+Render-dashboard-only change when the user is ready for it, not
+something requiring me (or anyone) to come back and patch the code
+first. Confirmed live: setting `DB_PATH` redirects `database.
+get_db_path()` correctly; leaving it unset behaves identically to
+before (full suite still 51/52, only the pre-existing tesseract gap).
+
+**What was explicitly NOT done, and why**: no domain was purchased
+(the user chose the default Render URL for now -- DEPLOYMENT.md's
+"Adding a custom domain later" section covers the ~10-minute DNS
+step whenever they're ready), no Render account was created, no
+secrets were entered anywhere, and the actual live deployment has not
+happened yet -- all of that requires the user's own account, payment
+method, and secret values, which aren't things to do on someone's
+behalf even when technically possible. What's actually deployed
+(URLs, live-tested end to end) gets documented here once the user has
+completed those account-side steps and the real deployment exists.
+
 ## Export/re-import round trip: two real bugs found and fixed
 
 Reported: exporting produced only "a single alert (the security

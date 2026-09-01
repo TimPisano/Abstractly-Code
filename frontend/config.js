@@ -12,7 +12,22 @@
  * one document share a single top-level lexical scope, so a later
  * script can reference this const by name with no import needed.
  *
- * To point this frontend at a real backend deployment, change the one
- * line below — nothing else in the frontend needs to change.
+ * Environment-aware rather than a single hardcoded value, specifically
+ * so this ONE file (and this repo) works unchanged for both local dev
+ * and the real deployment — nobody has to remember to flip this back
+ * and forth, and a local `git pull` on the deployed server (or vice
+ * versa) can never accidentally ship the wrong backend URL. Detected
+ * by hostname, not by guessing from the port or protocol, since
+ * that's the one thing that's reliably different between "this is
+ * localhost" and "this is the real deployed static site."
  */
-const API_BASE_URL = 'http://localhost:5000';
+const API_BASE_URL = (() => {
+    const host = window.location.hostname;
+    if (host === 'localhost' || host === '127.0.0.1') {
+        return 'http://localhost:5000';
+    }
+    // The real deployed backend -- see render.yaml and DEPLOYMENT.md
+    // for exactly how this URL is provisioned and why it's this
+    // specific name.
+    return 'https://abstractly-api.onrender.com';
+})();

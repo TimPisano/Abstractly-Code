@@ -1,6 +1,34 @@
 # Progress Summary
 
-**Last updated**: Fixed two real bugs in the export/re-import round
+**Last updated**: Prepared the repo for production deployment to
+Render (chosen over Vercel/Railway specifically because the backend
+needs real OS binaries -- tesseract + poppler for OCR fallback --
+that a serverless/native-buildpack host can't install; Render's
+Docker-based Web Services can). Added `backend/Dockerfile` (Python
+3.11-slim + tesseract-ocr + poppler-utils + gunicorn), `render.yaml`
+(a Blueprint deploying both the backend API and the static frontend
+in one step), made `frontend/config.js`'s backend URL environment-
+aware (auto-detects local vs. production by hostname, so one repo
+works unchanged in both places -- verified live that local dev still
+works after this change), and wired up an optional `DB_PATH` env var
+so upgrading to persistent storage later (once real prospect data
+needs to survive restarts) is a Render-dashboard-only change, no code
+edit required. User chose: default `*.onrender.com` URL for now (no
+domain purchase yet), free tier for now (data resets on restart --
+documented clearly, with the exact upgrade path when ready). See
+`DEPLOYMENT.md` for the full account-creation/secret-entry walkthrough
+-- genuinely needs the user's own Render account, GitHub connection,
+and secret values (fresh production `FLASK_SECRET_KEY`, admin
+password hash, `TOKEN_ENCRYPTION_KEY`), none of which I can create on
+their behalf. Full test suite unaffected by the `DB_PATH` addition:
+51/52 (only the pre-existing unrelated `tesseract` gap). The actual
+live deployment doesn't exist yet -- next step is the user completing
+DEPLOYMENT.md's steps, then I test the resulting live URL end to end.
+See DECISIONS.md's "Production deployment groundwork" entry.
+
+---
+
+Fixed two real bugs in the export/re-import round
 trip. (1) Re-uploading this app's OWN exported spreadsheet (single-
 lease .xlsx, or the portfolio rent-roll .xlsx/.csv) through the
 general upload/resubmit path produced garbage -- document_extractor.py's

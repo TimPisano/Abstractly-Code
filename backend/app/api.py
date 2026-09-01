@@ -156,6 +156,21 @@ LOCAL_DEV_MODE = os.environ.get('LOCAL_DEV_MODE', '').strip().lower() in ('1', '
 
 logger = logging.getLogger(__name__)
 
+# DB_PATH: points the SQLite file somewhere other than database.py's
+# own default location (backend/lease_portfolio.db) -- unset almost
+# everywhere (including plain local dev), so this is a no-op there.
+# What it's actually for: a hosting platform's persistent disk is
+# mounted at a specific path (e.g. Render's /app/data), and the
+# database file needs to live ON that disk, not on the container's
+# own ephemeral filesystem, to survive a restart or redeploy. Setting
+# this one env var and attaching the disk is the entire upgrade -- no
+# other code change, since every read/write already goes through
+# database.get_connection(), which always uses whatever path was last
+# configured here.
+_db_path_override = os.environ.get('DB_PATH', '').strip()
+if _db_path_override:
+    database.configure(_db_path_override)
+
 database.init_db()
 
 

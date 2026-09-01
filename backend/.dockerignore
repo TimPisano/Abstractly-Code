@@ -1,0 +1,14 @@
+# Keeps the deploy image lean and guarantees local secrets/data never
+# get baked into the image (a Docker image built once and pushed to a
+# registry is a much easier way to leak a secret than a normal file
+# checkout, since it's a binary blob nobody reads before it ships).
+venv/
+__pycache__/
+*.pyc
+.env
+*.db
+*.db-journal
+credentials/*.json
+tests/
+.git/
+.gitignore
