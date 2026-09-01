@@ -116,18 +116,29 @@ you're ready for any of them:
 
 ## Your live URLs
 
-Once both services finish deploying (Render shows "Live" with a green
-dot):
+Once both services finish deploying (Render shows "Live"/"Deployed"
+with a green status):
 
-- **Public site (landing page, homepage)**: `https://abstractly.onrender.com`
+- **Public site (landing page, homepage)**: `https://abstractly-n0id.onrender.com`
+  ("abstractly" was already taken by someone else on Render — names
+  are global — so Render auto-suffixed ours. Check your own service's
+  actual URL in the Render dashboard rather than assuming it matches
+  this exactly, in case it gets recreated later and picks a different
+  suffix.)
 - **Backend API** (not meant to be visited directly, but useful to
   sanity-check): `https://abstractly-api.onrender.com/health` should
-  return `{"status":"healthy"}`
+  return `{"status":"healthy"}` ("abstractly-api" was available, no
+  suffix needed.)
 
-If either name was already taken by someone else on Render (names are
-global), Render will tell you at Blueprint-apply time and let you pick
-a different one — if so, update `render.yaml`'s two `name:` fields and
-`frontend/config.js`'s production URL to match, then redeploy.
+If a name is taken (Render tells you at Blueprint-apply time, or you
+can just check the dashboard afterward), the two places that need to
+match the *frontend's* real URL are `render.yaml`'s
+`ADMIN_ALLOWED_ORIGINS` value (CORS) and the same variable's live
+value in the `abstractly-api` service's Environment tab in the Render
+dashboard (a `render.yaml` edit alone doesn't necessarily take effect
+on an already-running service immediately). If the *backend's* name is
+taken instead, update `frontend/config.js`'s production
+`API_BASE_URL` to match its real URL.
 
 ## Free-tier behavior you should know about
 
