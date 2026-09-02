@@ -2703,6 +2703,47 @@
     color: var(--error-color);
 }
 
+.access-gate-message.is-success {
+    color: var(--success-color);
+}
+
+/* "Forgot password?" -- a flex item inside #loginForm's column stack
+   (see the #loginForm rule above), sat hard against the right edge
+   directly under the password field it relates to. Negative top margin
+   pulls it out of the form's own 0.75rem gap so it reads as attached to
+   the password field rather than as a third, equally-weighted row
+   between the field and the Sign In button. */
+.access-gate-forgot-link {
+    align-self: flex-end;
+    margin-top: -0.25rem;
+    font-size: 0.8125rem;
+    color: var(--text-medium);
+    text-decoration: none;
+}
+
+.access-gate-forgot-link:hover {
+    color: var(--primary-color);
+    text-decoration: underline;
+}
+
+/* .access-gate-link sets `display:inline-block`, and an AUTHOR rule
+   beats the UA stylesheet's `[hidden] { display:none }` -- so without
+   this, the `hidden` attribute silently does nothing on these links and
+   they render whether or not the JS meant to show them. Needed by
+   reset-password.html's hidden-until-the-token-is-dead recovery link;
+   applied to the shared class rather than that one id so the next
+   `hidden` link added here can't hit the same trap. */
+.access-gate-link[hidden] {
+    display: none;
+}
+
+/* When the dead-link recovery link IS showing, it and "Back to sign in"
+   are two separate destinations and must not run together on one line. */
+#resetRequestNewLink:not([hidden]) {
+    display: block;
+    margin-bottom: -0.5rem;
+}
+
 .access-gate-link {
     display: inline-block;
     margin-top: 1.25rem;

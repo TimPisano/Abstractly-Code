@@ -23,6 +23,19 @@
  * API_BASE_URL comes from ../config.js, loaded before this script.
  */
 
+// reset-password.js sends people here as ?reset=1 after a successful
+// password change. Confirm it on arrival so the trip ends with visible
+// proof it worked, rather than dropping them on an ordinary login form
+// with no indication anything happened. The param is stripped from the
+// URL afterward so a refresh (or a bookmark) doesn't keep re-asserting
+// a reset that happened once, minutes ago.
+if (new URLSearchParams(window.location.search).get('reset') === '1') {
+    const messageEl = document.getElementById('loginMessage');
+    messageEl.textContent = 'Password updated. Sign in with your new password.';
+    messageEl.classList.add('is-success');
+    window.history.replaceState({}, '', window.location.pathname);
+}
+
 document.getElementById('loginForm').addEventListener('submit', async (e) => {
     e.preventDefault();
 
@@ -32,7 +45,10 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
     const submitBtn = document.getElementById('loginSubmitBtn');
 
     messageEl.textContent = '';
-    messageEl.classList.remove('is-error');
+    // Both, not just is-error: a leftover is-success from the
+    // post-reset banner above would otherwise still be on the element
+    // and paint a subsequent login *error* in the success color.
+    messageEl.classList.remove('is-error', 'is-success');
     submitBtn.disabled = true;
     submitBtn.textContent = 'Signing in...';
 

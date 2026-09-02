@@ -37,6 +37,7 @@ UNIT_TESTS = [
     "test_waitlist_email.py",
     "test_access_gate.py",
     "test_admin_auth.py",
+    "test_password_reset.py",
     "test_multi_lease_detection.py",
     "test_multi_lease_structural_variation.py",
     "test_sheets_export.py",

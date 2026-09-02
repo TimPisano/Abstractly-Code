@@ -7143,3 +7143,93 @@ showed the new lease as current with the old one gone. All test edits
 reverted / test leases left as legitimate resubmitted records
 afterward (a resubmission has no "undo," by design, same as the real
 Canvas-style flow it mirrors).
+
+## "Forgot password?" self-service reset (2026-09-02)
+
+A concurrent session had already landed most of the backend (the
+`password_reset_tokens` table, `create/consume_password_reset_token`,
+both `/auth/*` routes, `send_password_reset_email`) plus the two new
+frontend pages before this session started. This entry covers what was
+missing, what was wrong, and the two real bugs found while testing it.
+
+**Token scheme: random + hashed, not `itsdangerous`.** The request
+suggested `URLSafeTimedSerializer`. What shipped is
+`secrets.token_urlsafe(32)` with only the SHA-256 hash stored, and
+expiry enforced against the row's `created_at`. Kept deliberately: an
+itsdangerous token is *stateless*, which means it stays valid until it
+expires and cannot be made single-use or revoked without a server-side
+record anyway. Since the "single-use" requirement forces that record to
+exist regardless, a stateless signature adds a second mechanism without
+removing the first. Storing only the hash also means a leak of this
+table yields no usable links -- the same reasoning that keeps
+`users.password_hash` a hash. Expiry is 1 hour as asked.
+
+**Timing side channel (found live, fixed).** The endpoint returned a
+byte-identical body for registered and unregistered addresses, as
+required -- but it sent the email *inline*, so a real account took
+~1.4s (a full SMTP round trip, up to a 10s timeout) while an unknown
+one returned in ~5ms. Measured: a ~260x gap, trivially enough to
+enumerate which addresses have accounts, which is precisely what the
+generic body exists to prevent. An identical response body is worthless
+if the response *time* answers the question. Fixed by moving the send
+to a daemon thread (`_send_email_off_request_path`); re-measured at 7ms
+vs 20ms, i.e. indistinguishable noise. Verified separately that the
+send still completes on the background thread with the correct
+recipient and URL -- the fix must not quietly break delivery.
+
+**Rate limiting: per email AND per IP, and the email counter must
+count non-accounts.** The inherited implementation was per-IP only, at
+5 per 5 minutes. Now 3/hour on both keys, as specified. The subtle part
+is that the per-email counter has to advance for *every* syntactically
+valid address, not just ones that resolve to a user -- if only real
+accounts were counted, then "does a 4th request 429?" becomes exactly
+the existence oracle the generic response was built to close. There is
+a test asserting the throttle behaves identically for a registered and
+an unregistered address. The limiter is also now lock-guarded and
+prunes expired keys; previously it was an unbounded dict on a public
+unauthenticated endpoint, i.e. attacker-controlled memory growth.
+
+**`hidden` silently did nothing on `.access-gate-link` (pre-existing).**
+The dead-token recovery link is `hidden` until needed, but
+`.access-gate-link { display:inline-block }` is an *author* rule and
+therefore beats the UA stylesheet's `[hidden] { display:none }` -- so
+the link rendered unconditionally, including on a perfectly valid reset
+page. Fixed with `.access-gate-link[hidden] { display:none }`, applied
+to the shared class rather than the one id so the next `hidden` link
+added here can't hit the same trap. Worth noting the near-miss: the
+obvious fix for the *layout* issue (`display:block` to stop the two
+links running together) would itself have overridden `hidden` again and
+masked the bug permanently; it's scoped `:not([hidden])` for that
+reason.
+
+**Also fixed:** `reset-password.html` shipped referencing a
+`reset-password.js` that did not exist, so the page was inert -- that
+file is now written. The login page had no "Forgot password?" link at
+all (the top-line requirement); it now sits right-aligned directly
+under the password field. And `login.js` cleared only `is-error` when
+re-submitting, so a leftover `is-success` from the post-reset banner
+would have painted a subsequent *login failure* in the success color.
+
+Deliberately not pre-validating the token on page load: a "is this
+token good?" endpoint is a free oracle for testing stolen tokens, and
+the token is single-use, so a pre-check either burns it before the
+person types anything or must be non-consuming and therefore abusable.
+The token is submitted once, with the new password, and an invalid one
+is reported in that same response.
+
+Tested end to end twice over: a 12-case suite in
+`backend/tests/test_password_reset.py` (wired into run_all_tests.py,
+SMTP stubbed throughout per the earlier real-inbox incident), and a
+full real-browser walkthrough -- click the link on the login page,
+submit an email, open the emailed reset URL, set a new password, land
+back on login with the success banner, and sign in with the new
+password. Verified alongside: identical UI message for registered vs
+unregistered, the dead-token recovery path, mismatched-confirmation
+handling, and that a failed length check does *not* consume the token
+(otherwise one typo would cost a whole new email).
+
+Known limits, unchanged from the rest of this app: the rate limiter is
+in-process and per-worker (no shared store; same accepted ceiling as
+email_service's own send-side limit), and on a deployment with no
+persistent DB or no SMTP credentials a reset link may never arrive or
+may not outlive the process that issued it. See DEPLOYMENT.md.

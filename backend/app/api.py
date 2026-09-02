@@ -23,12 +23,14 @@ from flask_cors import CORS
 from dotenv import load_dotenv
 from datetime import date, datetime, timedelta, timezone
 import csv
+import hashlib
 import io
 import logging
 import os
 import re
 import secrets
 import tempfile
+import threading
 import time
 
 # Loads backend/.env (if present) into os.environ before anything below
@@ -1395,6 +1397,193 @@ def auth_change_password():
         return jsonify({"error": "Current password is incorrect"}), 401
 
     database.update_user_password(user["id"], hash_password(new_password))
+    return jsonify({"status": "password_updated"}), 200
+
+
+# ---- "Forgot password?" — self-service reset over email --------------
+#
+# Two routes, both public (a locked-out person has no session):
+#   POST /auth/forgot-password  {"email"}          -> always the same
+#       generic 200, whether or not the address has an account, so this
+#       endpoint can't be used to probe which emails are registered.
+#   POST /auth/reset-password   {"token","new_password"} -> consumes a
+#       single-use, 1-hour token (see database.consume_password_reset_token)
+#       and sets the new password.
+#
+# The token is `secrets.token_urlsafe(32)`; only its SHA-256 hash is
+# stored (database.create_password_reset_token), the raw value lives
+# only in the emailed link. The reset link's origin is taken from the
+# request's own Origin header, but only if it's in ALLOWED_ORIGINS --
+# otherwise it falls back to the first configured origin, so a spoofed
+# Origin can never point the link at an attacker's domain.
+#
+# NOTE: on a deployment with no EMAIL_USER/EMAIL_APP_PASSWORD set, the
+# send is a silent no-op (email_service._send's existing fail-safe) and
+# the person will never receive a link -- the route still returns the
+# same generic 200. And on a deployment with no persistent database
+# (Render free tier), the users table and these tokens are both wiped
+# on every restart -- a reset link often won't outlive the dyno that
+# issued it. See DEPLOYMENT.md / DECISIONS.md.
+
+_PASSWORD_RESET_TOKEN_TTL_SECONDS = 3600
+
+_FORGOT_PASSWORD_RATE_LIMIT_MAX = 3
+_FORGOT_PASSWORD_RATE_LIMIT_WINDOW_SECONDS = 3600
+
+# Two independent counters, both required:
+#   per IP    -- stops one host cycling through many addresses to find
+#                which ones are registered (the generic response hides
+#                existence, but volume alone is still abuse).
+#   per email -- stops a distributed/rotating-IP attacker mailbombing
+#                one person's inbox with reset links, which a per-IP
+#                limit alone does nothing about.
+# Keyed "ip:<addr>" / "email:<addr>" in one dict so both share this
+# pruning and locking.
+_forgot_password_rate_limit_state = {}  # key -> [monotonic timestamps in window]
+_forgot_password_rate_limit_lock = threading.Lock()
+
+
+def _forgot_password_rate_limited(keys) -> bool:
+    """
+    True if ANY of `keys` has already hit the cap in the current window.
+    Every key is recorded on every call regardless -- see the caller for
+    why the email key must be counted even when no such account exists
+    (counting only real accounts would turn a 429 into an existence
+    oracle, defeating the generic response).
+
+    In-process and per-worker, like email_service's own send-side limit:
+    it resets on restart and doesn't coordinate across gunicorn workers.
+    That's a real ceiling on how strong this can be, accepted here for
+    the same reason it was there -- a shared store (Redis) is
+    infrastructure this project doesn't have, and a leaky per-worker
+    limit still removes the trivial single-host flood this is aimed at.
+    """
+    now = time.monotonic()
+    cutoff = now - _FORGOT_PASSWORD_RATE_LIMIT_WINDOW_SECONDS
+    with _forgot_password_rate_limit_lock:
+        # Prune every expired key, not just the ones being touched --
+        # without this the dict grows once per distinct IP/email seen
+        # and never shrinks, which on a public unauthenticated endpoint
+        # is a memory leak an attacker controls the size of.
+        for key in [k for k, ts in _forgot_password_rate_limit_state.items() if not ts or ts[-1] <= cutoff]:
+            del _forgot_password_rate_limit_state[key]
+
+        limited = False
+        for key in keys:
+            timestamps = [t for t in _forgot_password_rate_limit_state.get(key, []) if t > cutoff]
+            if len(timestamps) >= _FORGOT_PASSWORD_RATE_LIMIT_MAX:
+                limited = True
+            timestamps.append(now)
+            _forgot_password_rate_limit_state[key] = timestamps
+        return limited
+
+
+def _reset_forgot_password_rate_limit_for_tests():
+    """Test-only: clears the in-memory rate limit state between runs sharing a process (mirrors email_service._reset_rate_limit_state_for_tests)."""
+    with _forgot_password_rate_limit_lock:
+        _forgot_password_rate_limit_state.clear()
+
+
+def _reset_link_base() -> str:
+    """The frontend origin to build the reset link against -- the request's own Origin if it's allow-listed, else the first configured origin."""
+    origin = (request.headers.get("Origin") or "").strip().rstrip("/")
+    if origin and origin in ALLOWED_ORIGINS:
+        return origin
+    return ALLOWED_ORIGINS[0].rstrip("/") if ALLOWED_ORIGINS else ""
+
+
+def _send_email_off_request_path(send_fn, *args):
+    """
+    Fire-and-forget email send on a daemon thread.
+
+    Required for /auth/forgot-password specifically, and it is a
+    SECURITY control, not a latency optimization. Sending inline made
+    the response ~1.4s for a registered address (a real SMTP round
+    trip, up to email_service.SMTP_TIMEOUT_SECONDS on a slow server)
+    versus ~5ms for an unregistered one -- measured, a ~260x gap. That
+    turns response time into a reliable account-existence oracle and
+    completely defeats the identical response body this endpoint
+    returns to hide exactly that. Off the request path, the response
+    time no longer depends on whether an account was found.
+
+    Safe to background: email_service's send functions take plain
+    string arguments (no Flask request context needed), already swallow
+    every exception internally, and guard their own shared state with a
+    lock. Nothing here needs the result -- delivery is best-effort by
+    design, same as every other send in this app.
+    """
+    threading.Thread(
+        target=_send_email_best_effort, args=(send_fn, *args), daemon=True,
+    ).start()
+
+
+@app.route('/auth/forgot-password', methods=['POST'])
+def auth_forgot_password():
+    """
+    Body: {"email": str}. Always returns the same generic 200 -- never
+    reveals whether the address has an account. For a real, active
+    user, generates a single-use 1-hour reset token and emails the
+    link (best-effort -- a mail failure still returns 200).
+    """
+    body = request.get_json(silent=True) or {}
+    email = (body.get("email") or "").strip()
+    generic = jsonify({"message": "If an account exists for that email, a reset link is on its way."})
+
+    # Rate-limited on BOTH the caller's IP and the submitted address,
+    # and deliberately before the account lookup: the email counter has
+    # to advance for every syntactically valid address whether or not it
+    # belongs to a real user. Counting only real accounts would make a
+    # 429-vs-200 difference reveal exactly what the generic response
+    # exists to hide.
+    rate_limit_keys = [f"ip:{request.remote_addr or 'unknown'}"]
+    if email and _EMAIL_RE.match(email):
+        rate_limit_keys.append(f"email:{email.lower()}")
+    if _forgot_password_rate_limited(rate_limit_keys):
+        return jsonify({"error": "Too many reset requests. Please try again later."}), 429
+
+    if not email or not _EMAIL_RE.match(email):
+        return generic, 200
+
+    user = database.get_user_by_email(email)
+    if user and user["status"] == "active":
+        raw_token = secrets.token_urlsafe(32)
+        token_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+        database.create_password_reset_token(user["id"], token_hash)
+
+        base = _reset_link_base()
+        reset_url = f"{base}/app/reset-password.html?token={raw_token}"
+        # Off the request path on purpose -- an inline SMTP round trip
+        # only happens for real accounts, which made response time a
+        # loud account-existence oracle. See
+        # _send_email_off_request_path.
+        _send_email_off_request_path(email_service.send_password_reset_email, user["email"], reset_url)
+
+    return generic, 200
+
+
+@app.route('/auth/reset-password', methods=['POST'])
+def auth_reset_password():
+    """
+    Body: {"token": str, "new_password": str}. Consumes the token (see
+    database.consume_password_reset_token -- single-use, 1-hour) and
+    sets the new password. Any logged-in role's password can be reset
+    this way; the token itself is the proof of identity.
+    """
+    body = request.get_json(silent=True) or {}
+    token = (body.get("token") or "").strip()
+    new_password = body.get("new_password") or ""
+
+    if not new_password or len(new_password) < 8:
+        return jsonify({"error": "New password must be at least 8 characters"}), 400
+    if not token:
+        return jsonify({"error": "This reset link is invalid or has expired. Request a new one."}), 400
+
+    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    user_id = database.consume_password_reset_token(token_hash, _PASSWORD_RESET_TOKEN_TTL_SECONDS)
+    if user_id is None:
+        return jsonify({"error": "This reset link is invalid or has expired. Request a new one."}), 400
+
+    database.update_user_password(user_id, hash_password(new_password))
     return jsonify({"status": "password_updated"}), 200
 
 

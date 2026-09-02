@@ -405,6 +405,16 @@ def init_db() -> None:
         _migrate_users_table_add_previous_login_at(conn)
         _seed_first_admin_user(conn)
         conn.execute("""
+            CREATE TABLE IF NOT EXISTS password_reset_tokens (
+                token_hash TEXT PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                created_at TEXT NOT NULL,
+                used_at TEXT,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user_id ON password_reset_tokens(user_id)")
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS assignments (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 target_type TEXT NOT NULL,
@@ -1468,6 +1478,70 @@ def update_user_password(user_id: int, password_hash: str) -> bool:
         return cur.rowcount > 0
     except OverflowError:
         return False
+    finally:
+        conn.close()
+
+
+def create_password_reset_token(user_id: int, token_hash: str) -> None:
+    """
+    Stores a single-use password reset token, keyed by the SHA-256
+    hash of the random token (the raw token itself only ever exists in
+    the reset link that's emailed -- a leak of this table must not hand
+    an attacker working reset links, exactly the same reasoning that
+    keeps users.password_hash a hash and not the password).
+
+    Any earlier unused token for the same user is deleted first, so a
+    person who clicks "forgot password" twice only ever has one live
+    link -- the most recent one -- and the older email's link stops
+    working immediately.
+    """
+    conn = get_connection()
+    try:
+        conn.execute("DELETE FROM password_reset_tokens WHERE user_id = ? AND used_at IS NULL", (user_id,))
+        conn.execute(
+            "INSERT INTO password_reset_tokens (token_hash, user_id, created_at) VALUES (?, ?, ?)",
+            (token_hash, user_id, datetime.now(timezone.utc).isoformat()),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def consume_password_reset_token(token_hash: str, max_age_seconds: int = 3600) -> Optional[int]:
+    """
+    Looks up a reset token by its hash and, if it's valid (exists,
+    never used, not older than max_age_seconds), marks it used and
+    returns the user_id it belongs to. Returns None otherwise --
+    unknown, already-used, or expired all look identical to the caller,
+    which must treat every None as "this link is no longer valid."
+
+    Marking used and checking age happen in one call so a token can
+    never be redeemed twice, even by two requests racing each other:
+    the UPDATE ... WHERE used_at IS NULL is atomic, and only the
+    request whose UPDATE actually changed a row gets the user_id.
+    """
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT user_id, created_at FROM password_reset_tokens WHERE token_hash = ? AND used_at IS NULL",
+            (token_hash,),
+        ).fetchone()
+        if row is None:
+            return None
+
+        age = (datetime.now(timezone.utc) - datetime.fromisoformat(row["created_at"])).total_seconds()
+        if age > max_age_seconds:
+            return None
+
+        cur = conn.execute(
+            "UPDATE password_reset_tokens SET used_at = ? WHERE token_hash = ? AND used_at IS NULL",
+            (datetime.now(timezone.utc).isoformat(), token_hash),
+        )
+        conn.commit()
+        if cur.rowcount == 0:
+            # Another request consumed it between the SELECT and here.
+            return None
+        return row["user_id"]
     finally:
         conn.close()
 

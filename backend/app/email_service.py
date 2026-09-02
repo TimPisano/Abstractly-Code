@@ -228,6 +228,42 @@ def send_waitlist_approval_email(to_email: str) -> bool:
     return _send(to_email, subject, text_body, html_body)
 
 
+def send_password_reset_email(to_email: str, reset_url: str) -> bool:
+    """
+    Sent when someone uses "Forgot password?" on a login page. The URL
+    carries a single-use, one-hour token (see
+    database.create_password_reset_token). Never reveals whether the
+    address actually has an account -- the route that calls this
+    returns the same generic response either way, and only calls this
+    at all for a real, active user.
+
+    reset_url is built server-side from the request's own (allow-listed)
+    origin plus a freshly generated token -- it is not caller- or
+    user-supplied free text -- so it's embedded without escaping, same
+    as this module's other hardcoded/trusted strings.
+    """
+    subject = "Reset your Abstractly password"
+    text_body = (
+        "We received a request to reset the password for your Abstractly "
+        "account.\n\n"
+        f"Open this link to choose a new one (it expires in 1 hour):\n{reset_url}\n\n"
+        "If you didn't request this, you can ignore this email -- your "
+        "password won't change until the link is used.\n\n"
+        "Best,\nTim Pisano"
+    )
+    html_body = _email_html(
+        heading="Reset your password.",
+        paragraphs=[
+            "We received a request to reset the password for your Abstractly account.",
+            f'<a href="{reset_url}" style="color:{_COLOR_ACCENT};">Choose a new password</a> '
+            "&mdash; this link expires in 1 hour and can only be used once.",
+            "If you didn&rsquo;t request this, you can ignore this email &mdash; your "
+            "password won&rsquo;t change until the link is used.",
+        ],
+    )
+    return _send(to_email, subject, text_body, html_body)
+
+
 def _email_html(heading: str, paragraphs) -> str:
     """
     A restrained, minimal HTML shell — inline styles only (email clients
