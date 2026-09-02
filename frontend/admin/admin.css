@@ -203,8 +203,8 @@ body {
 }
 
 .assistant-message-bot.is-error {
-    border-color: var(--error-color, #c0392b);
-    color: var(--error-color, #c0392b);
+    border-color: var(--error-color);
+    color: var(--error-color);
 }
 
 .assistant-message-citations {
@@ -429,7 +429,7 @@ body {
 
 .admin-gate-subtitle {
     color: var(--text-medium);
-    font-size: 0.9rem;
+    font-size: 0.9375rem;
     line-height: 1.5;
     margin: 0 0 1.5rem;
 }
@@ -442,7 +442,7 @@ body {
 
 .admin-gate-message {
     min-height: 1.2em;
-    font-size: 0.85rem;
+    font-size: 0.875rem;
     color: var(--text-medium);
     margin: 0.75rem 0 0;
 }
@@ -606,7 +606,7 @@ body {
 }
 
 .btn-deny:hover:not(:disabled) {
-    background: var(--error-light, #fbeceb);
+    background: var(--error-light);
 }
 
 .btn-deny:disabled, .btn-secondary:disabled {
