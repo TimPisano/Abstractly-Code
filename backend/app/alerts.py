@@ -92,9 +92,19 @@ def _detect_new_discrepancy_alerts() -> List[Dict[str, Any]]:
             "lease_id": disc.get("lease_id"),
             "severity": severity,
             "title": f"New discrepancy: {disc['category'].replace('_', ' ')}",
+            # No raw route/path reference here -- every place this message
+            # actually renders (admin dashboard's Today's Priorities, the
+            # app's own Alerts feed) already shows a real "View ->" link
+            # right next to it; a literal internal path in the body text
+            # was leftover from before that existed and just read as a
+            # broken/unprofessional detail once it did.
+            # disc['message'] never ends in its own punctuation (it's a
+            # plain factual statement, e.g. "...below the portfolio
+            # average ($7,750/mo)") -- a leading period here, not just a
+            # space, so this doesn't read as one run-on sentence.
             "message": (
-                f"{disc['message']} This hasn't been reviewed yet -- resolve it at "
-                f"/discrepancies/{disc['id']} once you've confirmed which source is correct."
+                f"{disc['message']}. This hasn't been reviewed yet -- "
+                f"confirm which source is correct before resolving it."
             ),
             "details": {"discrepancy_id": disc["id"], "discrepancy_type": disc["discrepancy_type"], "category": disc["category"], "field": disc.get("field")},
         })

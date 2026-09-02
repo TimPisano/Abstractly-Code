@@ -1,32 +1,27 @@
 /**
- * Access gate for /app.
+ * Access check for /app: real per-user login only (see
+ * backend/app/auth.py). Checks GET /auth/session on load; an
+ * authenticated session loads the rest of the app, anything else (not
+ * logged in, or the backend unreachable) redirects to the real login
+ * page. Also responsible for loading the rest of the app's scripts,
+ * and only after access is confirmed -- so no dashboard/API calls ever
+ * fire before it passes. There is no gate UI of its own to show or
+ * hide here -- #appBootLoading (index.html) covers the brief window
+ * while the session check is in flight.
  *
- * Three ways in:
- *  1. LOCAL_DEV_MODE=true in backend/.env (local testing only). Reported
- *     by the backend's /config endpoint -- it can only be set by whoever
- *     controls the server process, never by a request, so a client can't
- *     flip it on itself.
- *  2. A waitlist email with status 'approved', re-checked against the
- *     backend on every load (not just cached client-side), so a later
- *     revocation takes effect the next time this page loads.
- *  3. A brand-new request, submitted right here (not just from the
- *     marketing landing page), which lands the visitor on a dedicated
- *     "pending approval" screen -- not just an inline message next to
- *     the sign-in form -- until an admin approves it.
- *
- * This is NOT real authentication -- there's no password and no proof
- * the visitor typing an email actually owns it, just a self-reported
- * match against the waitlist's approval status. See DECISIONS.md
- * "Access gate uses self-reported email, not real auth" for the full
- * reasoning and what real auth would need to add on top of this.
- *
- * Also responsible for loading the rest of the app's scripts, and only
- * after access is confirmed -- so no dashboard/API calls ever fire
- * before the gate passes.
+ * This file used to also implement an older, pre-real-auth access
+ * model (a self-reported-email waitlist flow with its own sign-in/
+ * request-access/pending-approval panels, no password, no proof of
+ * identity) that a real per-user `users` table replaced entirely --
+ * see DECISIONS.md's "Reliability hardening pass"/team-collaboration
+ * entries. That flow was retired but its ~250 lines of dead code and
+ * matching unreachable HTML in index.html were deliberately left in
+ * place at the time (to avoid churn on a file also under active
+ * feature work) rather than removed. Removed now, during a dedicated
+ * consistency/cleanup pass, once that reason no longer applied.
  */
 (function () {
     // API_BASE_URL comes from ../config.js, loaded before this script.
-    const STORAGE_KEY = 'leaseAbstractionApprovedEmail';
 
     // Order matters: api.js and app.js must load before the view modules
     // that depend on their globals (Api, AppState, registerView, etc).
@@ -43,74 +38,10 @@
     ];
 
     const bootLoadingEl = document.getElementById('appBootLoading');
-    const gateEl = document.getElementById('accessGate');
     const shellEl = document.getElementById('appShell');
 
-    // Called from every place that decides what to show first (the
-    // gate, in any of its 3 panels, or the app itself) -- idempotent,
-    // safe to call more than once (e.g. every time the pending screen's
-    // "Check again" re-decides what to show).
     function hideBootLoading() {
         bootLoadingEl.style.display = 'none';
-    }
-
-    const panels = {
-        signIn: document.getElementById('accessGateSignInPanel'),
-        request: document.getElementById('accessGateRequestPanel'),
-        pending: document.getElementById('accessGatePendingPanel'),
-    };
-
-    const formEl = document.getElementById('accessGateForm');
-    const emailEl = document.getElementById('accessGateEmail');
-    const submitBtn = document.getElementById('accessGateSubmitBtn');
-    const messageEl = document.getElementById('accessGateMessage');
-    const showRequestBtn = document.getElementById('accessGateShowRequestBtn');
-
-    const requestFormEl = document.getElementById('accessGateRequestForm');
-    const requestEmailEl = document.getElementById('accessGateRequestEmail');
-    const requestSubmitBtn = document.getElementById('accessGateRequestSubmitBtn');
-    const requestMessageEl = document.getElementById('accessGateRequestMessage');
-    const backToSignInBtn = document.getElementById('accessGateBackToSignInBtn');
-
-    const pendingEmailEl = document.getElementById('accessGatePendingEmail');
-    const recheckBtn = document.getElementById('accessGateRecheckBtn');
-    const pendingBackBtn = document.getElementById('accessGatePendingBackBtn');
-
-    let pendingEmail = null;
-
-    function showPanel(name) {
-        Object.entries(panels).forEach(([key, el]) => {
-            el.style.display = key === name ? '' : 'none';
-        });
-    }
-
-    function showSignIn(prefillEmail, message, isError) {
-        hideBootLoading();
-        gateEl.style.display = '';
-        shellEl.style.display = 'none';
-        showPanel('signIn');
-        if (prefillEmail) emailEl.value = prefillEmail;
-        messageEl.textContent = message || '';
-        messageEl.classList.toggle('is-error', !!isError);
-    }
-
-    function showRequestAccess(prefillEmail) {
-        hideBootLoading();
-        gateEl.style.display = '';
-        shellEl.style.display = 'none';
-        showPanel('request');
-        requestEmailEl.value = prefillEmail || emailEl.value || '';
-        requestMessageEl.textContent = '';
-        requestMessageEl.classList.remove('is-error');
-    }
-
-    function showPending(email) {
-        hideBootLoading();
-        gateEl.style.display = '';
-        shellEl.style.display = 'none';
-        pendingEmail = email;
-        pendingEmailEl.textContent = email;
-        showPanel('pending');
     }
 
     function grant(session) {
@@ -121,7 +52,6 @@
         // already populated by the time its own load()/init runs.
         window.CURRENT_USER = session;
         hideBootLoading();
-        gateEl.style.display = 'none';
         shellEl.style.display = '';
         loadAppScripts();
     }
@@ -184,148 +114,6 @@
         return { response, data };
     }
 
-    async function fetchConfig() {
-        const { response, data } = await fetchJson(`${API_BASE_URL}/config`);
-        if (!response.ok) throw new Error('config request failed');
-        return data;
-    }
-
-    async function checkAccess(email) {
-        const { response, data } = await fetchJson(`${API_BASE_URL}/waitlist/check`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email }),
-        });
-        if (!response.ok) throw new Error(data.error || 'Something went wrong. Please try again.');
-        return data; // { approved, found }
-    }
-
-    async function submitAccessRequest(email) {
-        const { response, data } = await fetchJson(`${API_BASE_URL}/waitlist`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email }),
-        });
-        if (!response.ok) throw new Error(data.error || 'Something went wrong. Please try again.');
-        return data;
-    }
-
-    function cacheEmail(email) {
-        try { localStorage.setItem(STORAGE_KEY, email); } catch (e) { /* localStorage unavailable -- just won't persist across reloads */ }
-    }
-
-    function clearCachedEmail() {
-        try { localStorage.removeItem(STORAGE_KEY); } catch (e) { /* ignore */ }
-    }
-
-    // ---- Panel 1: sign in with an already-approved email ----
-
-    formEl.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const email = emailEl.value.trim();
-        submitBtn.disabled = true;
-        submitBtn.textContent = 'Checking...';
-        messageEl.textContent = '';
-        messageEl.classList.remove('is-error');
-
-        try {
-            const result = await checkAccess(email);
-            if (result.approved) {
-                cacheEmail(email);
-                grant();
-                return;
-            }
-            if (result.found) {
-                cacheEmail(email);
-                showPending(email);
-            } else {
-                showSignIn(email, "That email isn't on the list yet. You can request access below.", true);
-            }
-        } catch (err) {
-            showSignIn(email, err.message || "Couldn't reach the server. Is the backend running?", true);
-        } finally {
-            submitBtn.disabled = false;
-            submitBtn.textContent = 'Continue';
-        }
-    });
-
-    showRequestBtn.addEventListener('click', () => showRequestAccess());
-
-    // ---- Panel 2: request access (new signup, right here -- not only
-    // reachable by navigating away to the marketing landing page) ----
-
-    requestFormEl.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const email = requestEmailEl.value.trim();
-        requestSubmitBtn.disabled = true;
-        requestSubmitBtn.textContent = 'Submitting...';
-        requestMessageEl.textContent = '';
-        requestMessageEl.classList.remove('is-error');
-
-        try {
-            await submitAccessRequest(email);
-            cacheEmail(email);
-            showPending(email);
-        } catch (err) {
-            requestMessageEl.textContent = err.message || "Couldn't reach the server. Is the backend running?";
-            requestMessageEl.classList.add('is-error');
-        } finally {
-            requestSubmitBtn.disabled = false;
-            requestSubmitBtn.textContent = 'Request Access';
-        }
-    });
-
-    backToSignInBtn.addEventListener('click', () => showSignIn(requestEmailEl.value));
-
-    // ---- Panel 3: pending approval ----
-
-    recheckBtn.addEventListener('click', async () => {
-        if (!pendingEmail) return;
-        recheckBtn.disabled = true;
-        recheckBtn.textContent = 'Checking...';
-
-        try {
-            const result = await checkAccess(pendingEmail);
-            if (result.approved) {
-                cacheEmail(pendingEmail);
-                grant();
-                return;
-            }
-            if (!result.found) {
-                // The underlying signup was removed since we last checked.
-                clearCachedEmail();
-                showSignIn(pendingEmail, 'That request is no longer on file. Enter your email to try again.', true);
-            }
-            // Still pending -- stay on this screen, nothing else to show;
-            // the button resetting below is enough feedback that the
-            // check ran and nothing has changed yet.
-        } catch (err) {
-            // Network hiccup checking again isn't worth leaving the
-            // pending screen over -- just let the visitor retry.
-        } finally {
-            recheckBtn.disabled = false;
-            recheckBtn.textContent = 'Check again';
-        }
-    });
-
-    pendingBackBtn.addEventListener('click', () => {
-        clearCachedEmail();
-        showSignIn(pendingEmail);
-    });
-
-    // ---- Initial load ----
-    //
-    // Gate is now real per-user login (see backend/app/auth.py), not the
-    // self-reported-email flow this file's panels/checkAccess()/
-    // LOCAL_DEV_MODE-bypass logic above were built around -- that
-    // machinery is retired (dead code, kept in place rather than torn
-    // out here to minimize churn on a file the collaboration-platform
-    // frontend work also touches; a real per-user `users` table replaced
-    // the waitlist-approval-based access model entirely, see
-    // DECISIONS.md's "Reliability hardening pass"/team-collaboration
-    // entries). The only question now is "does /auth/session say we're
-    // logged in" -- if not, redirect to the real login page rather than
-    // rendering any of the panels above.
     (async function init() {
         let session = { authenticated: false };
         try {

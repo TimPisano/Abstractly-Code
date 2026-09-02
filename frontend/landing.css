@@ -821,15 +821,24 @@ html {
     color: rgba(246, 243, 236, 0.8);
 }
 
+/* A filled checkmark, not a hollow ring -- an empty circle next to
+   "what's included" reads ambiguously (could as easily mean an
+   unchecked box), where a checkmark is unambiguous at a glance. */
 .pricing-feature-list li::before {
-    content: '';
+    content: '\2713';
     position: absolute;
     left: 0;
-    top: 0.4375rem;
-    width: 0.75rem;
-    height: 0.75rem;
+    top: 0.125rem;
+    width: 0.875rem;
+    height: 0.875rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     border-radius: var(--radius-full);
-    border: 1.5px solid var(--lux-accent);
+    background: var(--lux-accent);
+    color: var(--white);
+    font-size: 0.5625rem;
+    line-height: 1;
 }
 
 .pricing-cta {

@@ -86,3 +86,167 @@ Phase 2 touches both login screens.
 Status: **done, committing.**
 
 ---
+
+## Phase 2 — Rebuild every core screen for consistency and polish
+
+**Scope mapping, flagged rather than guessed silently:** the brief
+names screens that don't map 1:1 onto what exists. Stating the
+interpretation used, so it can be corrected:
+
+- "Landing/marketing page" → `frontend/index.html` + `pricing.html`.
+- "Login and signup" → `frontend/app/login.html` is the real login.
+  There is no traditional self-serve signup — confirmed by a very
+  recent commit's own research (`e202334`): "this app has no self-serve
+  signup — an admin creates each team member's login directly." The
+  closest thing to "signup" is the landing page's waitlist "Request
+  Access" form (prospective customers, not existing team members).
+  Treating that as "signup" for this audit.
+- "Onboarding flow" → the zero-lease dashboard first-run state, which
+  was *just* reworked in the commit immediately before this session
+  (sample-lease button, simplified empty dashboard). Auditing it, not
+  rebuilding it from scratch, given how recent that work is.
+- "Main dashboard" / "lease upload flow" / "the abstraction results/
+  review screen" / "the rent roll validation screen" → the app's
+  Dashboard, Upload, Lease Detail (this IS "abstraction results" — the
+  extracted-field review/verify/edit screen), and Rent Roll views,
+  respectively, inside `frontend/app/index.html`.
+- "Admin and owner logins" → **correction, mid-audit**: this was
+  initially read as plain language for "the regular account holder"
+  (no `owner` role existed in `ROLE_RANK` when Phase 1 started). A
+  concurrent session then built a REAL owner console while this phase
+  was in progress (`frontend/owner/login.html` + `index.html`, a
+  standalone `is_owner`-gated mini-SPA for the SaaS product owner --
+  account management + revenue/expense tracking, distinct from the
+  admin role and from every CRE end-user screen). Corrected scope:
+  "admin login" = `frontend/admin/index.html`, "owner login" =
+  `frontend/owner/login.html`, now audited below.
+
+**Found while mapping the scope, fixed immediately (belongs equally to
+Phase 1's "don't leave old and new mixed"):** `frontend/app/index.html`
+shipped an entire dead 3-panel access-gate UI (self-reported-email
+sign-in / request-access / pending-approval panels) plus ~250 lines of
+matching JS in `access-gate.js` — leftover from before real per-user
+login existed. The code's own comments confirmed it: *"Gate is now real
+per-user login... that machinery is retired (dead code, kept in place
+... to minimize churn)."* It never rendered (the real init() always
+either grants a session or redirects to `login.html`) but it still
+shipped as bytes, CSS, and a maintenance trap. Removed the dead HTML,
+trimmed `access-gate.js` from 344 → ~130 lines, and removed one now-
+orphaned CSS block (`.access-gate-pending-icon`, confirmed unused
+anywhere else first). **Verified live**, not assumed: cleared cookies,
+confirmed an unauthenticated visit to `index.html` still redirects to
+`login.html`; logged in for real and confirmed the dashboard still
+renders with `CURRENT_USER` populated and the boot spinner correctly
+hidden.
+
+### Screen-by-screen findings
+
+**Pricing (`pricing.html`).** Two real issues, both fixed:
+1. Feature-list bullets were a hollow ring (`border`, no fill) next to
+   "what's included in this tier" copy -- ambiguous at a glance (reads
+   as easily as "not selected" as "included"). Replaced with a filled
+   brass checkmark, reusing the palette rather than inventing a new
+   color.
+2. The bottom dark CTA section appeared fully invisible in a
+   full-page screenshot. Investigated rather than assumed broken: it's
+   a real, correctly-built scroll-reveal (`.reveal`/`.in-view`,
+   `IntersectionObserver`-driven, with explicit fallbacks for
+   `prefers-reduced-motion` and no-IntersectionObserver-support) --
+   my screenshot method just doesn't trigger real scroll events.
+   Verified with an actual `scrollTo()` that it fires correctly. Not a
+   bug; false alarm, documented so it isn't "fixed" again later by
+   someone hitting the same false alarm.
+
+**Upload / Rent Roll / Lease Detail (main app).** Already clean,
+consistent, well-organized -- no changes needed on Upload or Rent Roll.
+Lease Detail (the "abstraction results/review" screen) has a real
+"no clear single primary action" issue: six buttons of identical
+`.btn-secondary` visual weight in the top toolbar (Export Report,
+Export JSON, Download Excel, Export to Google Sheets, Download Summary
+Memo, plus Delete as `.btn-danger`) before the actual review content
+even starts. **Flagged, not restructured**: the thorough fix is
+consolidating the five export paths into one "Export ▾" menu, which
+means building a real dropdown component (and its own keyboard/focus
+handling, which Phase 5 cares about) -- judged too large a structural
+change to make safely mid-audit across five more remaining phases.
+Noting it here as the clear next step if there's time, rather than
+either leaving it silently or rushing a riskier fix.
+
+**Admin dashboard.** Found and fixed a real bug, not a style issue:
+the "Today's Priorities" digest was showing raw internal route paths
+directly in user-facing copy -- literally `"...resolve it at
+/discrepancies/155492 once you've confirmed which source is
+correct."` A real "View →" link already sits right next to every one
+of these rows, making the path reference both confusing (a CRE
+professional has no reason to know what `/discrepancies/155492`
+means) and redundant. Traced to `backend/app/alerts.py`'s
+`_detect_new_discrepancy_alerts()` -- the message text predates the
+"View →" link's existence and was never revisited. Removed the path
+reference; also fixed a punctuation bug on the same line (the
+appended sentence ran directly into the discrepancy's own message
+with no separator, e.g. "...by 40% This hasn't been reviewed" with no
+period). This is shared backend infrastructure -- verified the fix
+renders correctly both on the admin dashboard AND the main app's own
+Alerts feed (same underlying data), not just the one screen it was
+first noticed on.
+
+**Also noticed on the admin dashboard, deliberately NOT fixed:** the
+same "Today's Priorities" list appears to show the same underlying
+rent-mismatch issue twice -- once as a plain "Discrepancy: ..." row and
+again as an "Alert: New discrepancy: ..." row with near-identical
+text. This may be two genuinely different tracked records surfacing
+by design, or it may be real duplication in how the priorities list
+aggregates discrepancies + alerts. **Flagging rather than guessing**:
+this needs tracing through the aggregation logic to determine which
+it is before touching it, and risks breaking a working dedup
+assumption elsewhere if changed without that -- didn't attempt it
+during this pass.
+
+**Owner console (`frontend/owner/`).** Brand new -- built by a
+concurrent session literally while this phase was in progress, so it
+predated Phase 1's token audit entirely. Found the whole stylesheet
+(`owner.css`) used ad-hoc round decimals (0.2rem, 0.35rem, 0.4rem,
+0.6rem, 0.7rem, 0.8rem, 0.85rem, 0.9rem, 0.95rem, 1.1rem, 1.4rem,
+1.6rem -- 12 distinct values, ~30 declarations) instead of the
+0.0625rem grid every other stylesheet in this product uses. Every one
+mapped to its nearest on-grid value (all deltas ≤0.05rem, i.e.
+imperceptible) via a scripted pass, verified after with the same
+grid-check used in Phase 1 (zero off-grid values remain). The two
+`h1` sizes got a more deliberate fix than "nearest grid step": the
+login card's `h1` now matches `.access-gate-card h1` /
+`.admin-gate-card h1` exactly (`1.25rem` -- same role, all three
+logins), and the in-console page-header `h1` now matches the main
+app's `.view-header h1` (`1.75rem` -- same role, a page title).
+
+Also found and fixed a **real functional bug, not styling**: owner
+login always failed with "This account does not have owner access,"
+for every account including a genuine owner. `login.js` checks
+`data.is_owner` on the `/auth/login` response, and the running
+backend process was started before that field existed in the route's
+response -- a stale-process issue (confirmed by reading the
+route: `is_owner` was already correctly in the code and the session).
+Restarted the backend; verified a real owner login now redirects
+correctly and the console renders. **This is a live-environment
+caveat worth knowing about, not a code defect**: any deployed instance
+needs a restart after a backend change for it to take effect, same as
+every other backend fix this session has needed to verify.
+
+**Flagging, not changing:** the owner login page uses a dark/near-black
+full-page background (`var(--lux-charcoal)`), while both other login
+pages (app, admin) use the light ivory background + white card
+convention. This reads as a deliberate choice (signaling "this is a
+different, more restricted surface than a team login," similar to how
+this app already uses dark sections purposefully elsewhere -- the
+sidebar, the landing hero) rather than an accident, and the copy
+reinforces it ("Not a team login. Sign in with the operator
+account."). Left as-is rather than forcing visual parity with the
+other two logins, but flagging explicitly since it's a real,
+noticeable, currently-unexplained inconsistency between three
+otherwise near-identical screens.
+
+**Access-gate dead-code removal** (see above, this phase) also
+belongs in this section as a Phase 2 deliverable, not just Phase 1's.
+
+Status: **Phase 2 done, committing.**
+
+---
