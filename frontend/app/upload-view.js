@@ -513,6 +513,10 @@ registerView('upload', Upload);
 // DOMContentLoaded already fired -- see the comment in app.js for why a
 // readyState check is needed here instead of a plain addEventListener.
 function _initUploadViewBindings() {
+    document.getElementById('uploadTrySampleLeaseBtn').addEventListener('click', () => {
+        Dashboard.trySampleLease();
+    });
+
     const uploadBox = document.getElementById('uploadBox');
     const fileInput = document.getElementById('fileInput');
 

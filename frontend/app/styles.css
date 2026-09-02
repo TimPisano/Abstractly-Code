@@ -3442,6 +3442,35 @@
     padding: 1.5rem;
 }
 
+.getting-started-panel {
+    padding: 2rem 1.75rem;
+    text-align: center;
+}
+
+.getting-started-panel h2 {
+    margin: 0 0 0.5rem;
+}
+
+.getting-started-panel p {
+    color: var(--text-medium);
+    max-width: 40rem;
+    margin: 0 auto 1.25rem;
+}
+
+.getting-started-actions {
+    display: flex;
+    justify-content: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.getting-started-note {
+    margin-top: 0.75rem;
+    min-height: 1.25rem;
+    color: var(--text-medium);
+    font-size: 0.875rem;
+}
+
 .health-score-card {
     display: flex;
     align-items: center;

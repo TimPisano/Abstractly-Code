@@ -19,6 +19,7 @@ Three layers of endpoints:
 """
 
 from flask import Flask, request, jsonify, Response, session, redirect
+from werkzeug.datastructures import FileStorage
 from flask_cors import CORS
 from dotenv import load_dotenv
 from datetime import date, datetime, timedelta, timezone
@@ -641,6 +642,38 @@ def upload_lease():
     else:
         database.insert_activity("lease_split", f"Split {filename} into {len(created)} separate leases")
 
+    return jsonify({"leases": created, "split_count": len(created)}), 201
+
+
+_SAMPLE_LEASE_PATH = os.path.join(os.path.dirname(__file__), '..', 'sample_data', 'sample_lease.pdf')
+
+
+@app.route('/leases/sample', methods=['POST'])
+@require_role('analyst')
+def upload_sample_lease():
+    """
+    One-click "try it with sample data" for a first-time user: runs a
+    bundled real lease PDF through the exact same extraction/persist
+    pipeline as POST /leases (never a canned/fake response), so what
+    the user sees is genuinely what the product does. The created
+    lease is tagged "Sample" so it's obviously not real portfolio data
+    and easy to filter out or delete from the normal lease list/detail
+    view -- no separate deletion mechanism needed.
+    """
+    with open(_SAMPLE_LEASE_PATH, 'rb') as f:
+        file_storage = FileStorage(stream=io.BytesIO(f.read()), filename='sample_lease.pdf', content_type='application/pdf')
+
+    split_leases, error = _extract_leases_from_file_storage(file_storage)
+    if error:
+        message, status = error
+        return jsonify({"error": message}), status
+
+    created = _persist_split_leases('sample_lease.pdf', split_leases)
+    for summary in created:
+        database.add_lease_tag(summary["id"], "Sample")
+        summary["tags"] = ["Sample"]
+
+    database.insert_activity("lease_uploaded", "Tried the sample lease", lease_id=created[0]["id"])
     return jsonify({"leases": created, "split_count": len(created)}), 201
 
 

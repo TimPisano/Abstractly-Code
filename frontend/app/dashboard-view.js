@@ -26,6 +26,7 @@ const Dashboard = {
         document.getElementById('dashboardSummaryMemoBtn').href = Api.portfolioSummaryPdfUrl();
         document.getElementById('dashboardExportStatus').innerHTML = '';
 
+        let isNewAccount = false;
         try {
             const [leases, metrics, risks] = await Promise.all([
                 Api.listLeases(),
@@ -35,19 +36,32 @@ const Dashboard = {
             AppState.leases = leases;
             this.risksByLeaseId = {};
             risks.forEach(r => { this.risksByLeaseId[r.lease_id] = r.flags; });
+            isNewAccount = leases.length === 0;
 
             this.renderMetrics(metrics);
             this.renderTable(leases);
+            this.applyGettingStartedState(isNewAccount);
         } catch (err) {
             showError(`Failed to load dashboard: ${err.message}`);
         }
 
         // Independent of the block above and of each other — one
         // panel's data being briefly unavailable shouldn't block or
-        // blank out the rest of the dashboard.
+        // blank out the rest of the dashboard. On a brand-new,
+        // zero-lease account, the panels below all have nothing to say
+        // yet ("not enough data" x6+) -- skipped entirely in favor of
+        // the single Getting Started panel above (see
+        // applyGettingStartedState). They un-skip themselves the
+        // moment a first lease exists, next time this loads.
         Api.todayView(window.CURRENT_USER ? window.CURRENT_USER.id : undefined)
             .then(d => this.renderTodayBriefing(d))
             .catch(err => { document.getElementById('todayBriefingPanel').innerHTML = `<p class="error-text">Failed to load today's briefing: ${escapeHtml(err.message)}</p>`; });
+        Api.recentActivity(10)
+            .then(a => this.renderActivity(a))
+            .catch(() => { document.getElementById('activityFeed').innerHTML = '<p class="error-text">Failed to load activity.</p>'; });
+
+        if (isNewAccount) return;
+
         Api.portfolioHealthScore()
             .then(h => this.renderHealthScore(h))
             .catch(err => { document.getElementById('healthScorePanel').innerHTML = `<p class="error-text">Failed to load health score: ${escapeHtml(err.message)}</p>`; });
@@ -63,9 +77,6 @@ const Dashboard = {
         Api.portfolioHealth()
             .then(h => this.renderHealth(h))
             .catch(() => { document.getElementById('healthStrip').innerHTML = '<p class="error-text">Failed to load portfolio health.</p>'; });
-        Api.recentActivity(10)
-            .then(a => this.renderActivity(a))
-            .catch(() => { document.getElementById('activityFeed').innerHTML = '<p class="error-text">Failed to load activity.</p>'; });
 
         Api.portfolioTenantConcentration()
             .then(d => this.renderTenantConcentration(d))
@@ -79,6 +90,30 @@ const Dashboard = {
         Api.portfolioRentRollReconciliation()
             .then(d => this.renderReconciliation(d))
             .catch(() => { document.getElementById('reconciliationContent').innerHTML = '<p class="error-text">Failed to load rent roll reconciliation.</p>'; });
+    },
+
+    // Toggles the single "see it in action" panel vs. the six-plus
+    // metric/risk panels that have nothing real to show on a
+    // zero-lease account -- see the panel's own HTML comment in
+    // index.html for why this collapses them instead of leaving each
+    // to render its own "not enough data" message.
+    applyGettingStartedState(isNewAccount) {
+        document.getElementById('gettingStartedPanel').style.display = isNewAccount ? '' : 'none';
+        ['healthScorePanel', 'portfolioConfidenceSummaryPanel', 'attentionPanel', 'expirationAlertsPanel', 'compositionPanel', 'healthStrip', 'metricsRow']
+            .forEach(id => { const el = document.getElementById(id); if (el) el.style.display = isNewAccount ? 'none' : ''; });
+    },
+
+    async trySampleLease(statusElId) {
+        const statusEl = statusElId ? document.getElementById(statusElId) : null;
+        if (statusEl) statusEl.textContent = 'Trying a sample lease...';
+        try {
+            const result = await Api.trySampleLease();
+            const leaseId = result.leases[0].id;
+            showView('detail', { leaseId });
+        } catch (err) {
+            if (statusEl) statusEl.textContent = '';
+            showError(`Couldn't load the sample lease: ${err.message}`);
+        }
     },
 
     // ===================== Today Briefing =====================
@@ -1228,6 +1263,13 @@ registerView('dashboard', Dashboard);
 function _initDashboardViewBindings() {
     document.getElementById('dashboardExportReportBtn').addEventListener('click', () => {
         ExportModal.open({ scopeLabel: 'Whole Portfolio' });
+    });
+
+    document.getElementById('trySampleLeaseBtn').addEventListener('click', () => {
+        Dashboard.trySampleLease('trySampleLeaseStatus');
+    });
+    document.getElementById('dashboardTrySampleLeaseBtn').addEventListener('click', () => {
+        Dashboard.trySampleLease();
     });
 
     document.getElementById('dashboardFilter').addEventListener('input', () => {

@@ -258,6 +258,23 @@
                      blocks the rest of the dashboard. -->
                 <div class="panel today-briefing-panel" id="todayBriefingPanel"></div>
 
+                <!-- Getting Started: shown ONLY on a brand-new, zero-lease
+                     account, in place of the metric/risk panels below (which
+                     have nothing to say yet -- every one of them would
+                     otherwise render its own "not enough data" message,
+                     six-plus times in a row, before a first-time user reaches
+                     anything actionable). Hidden the moment a first lease
+                     exists -- see Dashboard.load(). -->
+                <div class="panel getting-started-panel" id="gettingStartedPanel" style="display:none;">
+                    <h2>See Abstractly in action</h2>
+                    <p>Try it instantly with a real sample lease, or upload your own — either way, you'll see extracted rent, dates, and terms in seconds.</p>
+                    <div class="getting-started-actions">
+                        <button class="btn-primary" id="trySampleLeaseBtn" type="button">Try a Sample Lease</button>
+                        <button class="btn-secondary" data-goto="upload" type="button">Upload Your Own Lease</button>
+                    </div>
+                    <p class="getting-started-note" id="trySampleLeaseStatus"></p>
+                </div>
+
                 <!-- Portfolio Health Score: the reason to check in daily -- how much the
                      current DATA can be trusted, distinct from the "what needs attention
                      today" panel below. Always first, above the fold. -->
@@ -351,7 +368,10 @@
                         </div>
                         <p class="empty-state-title">No leases uploaded yet</p>
                         <p class="empty-state-hint">Upload your first lease PDF and we'll extract the key terms automatically — rent, dates, escalations, and more.</p>
-                        <button class="btn-primary" data-goto="upload" type="button">Upload your first lease</button>
+                        <div class="getting-started-actions">
+                            <button class="btn-primary" data-goto="upload" type="button">Upload your first lease</button>
+                            <button class="btn-secondary" id="dashboardTrySampleLeaseBtn" type="button">Try a Sample Lease</button>
+                        </div>
                     </div>
                     <div class="selection-summary-panel" id="selectionSummaryPanel" style="display:none;">
                         <div class="selection-summary-header">
@@ -579,6 +599,9 @@
                     <div>
                         <h1>Upload Leases</h1>
                         <p class="view-subtitle">Drop one or more lease documents to extract and add them to your portfolio</p>
+                    </div>
+                    <div class="view-header-actions">
+                        <button class="btn-secondary" id="uploadTrySampleLeaseBtn" type="button">Try a Sample Lease Instead</button>
                     </div>
                 </div>
 
