@@ -88,7 +88,7 @@ from app.rent_roll_export import generate_rent_roll_csv, generate_rent_roll_exce
 from app.report import generate_portfolio_report_html
 from app.summary_memo import generate_lease_summary_pdf, generate_portfolio_summary_pdf, monthly_report_extra_sections
 from app.sheets_export import export_to_google_sheets, SheetsExportError
-from app.auth import verify_password, require_role, require_owner, current_user, hash_password
+from app.auth import verify_password, require_role, require_owner, current_user, current_account_id, hash_password
 
 
 app = Flask(__name__)
@@ -549,13 +549,14 @@ def _persist_split_leases(filename, split_leases):
         lease_id = database.insert_lease(
             filename,
             lease_data["fields"],
+            current_account_id(),
             document_type="lease",
             date_candidates=lease_data["date_candidates"],
             display_name=lease_data["display_name"],
             source_page_start=lease_data["source_page_start"],
             source_page_end=lease_data["source_page_end"],
         )
-        lease = database.get_effective_lease(lease_id)
+        lease = database.get_effective_lease(lease_id, account_id=current_account_id())
         lease["tags"] = []
         created.append(_lease_summary(lease))
     if created:
@@ -583,7 +584,7 @@ def _find_possible_resubmission_target(fields, exclude_lease_id=None):
         return None
 
     matches = []
-    for lease in database.get_all_effective_leases():
+    for lease in database.get_all_effective_leases(account_id=current_account_id()):
         if lease["id"] == exclude_lease_id:
             continue
         other_tenant = (field_value(lease, "tenant") or "").strip().lower()
@@ -716,7 +717,7 @@ def resubmit_lease(lease_id):
          portfolio" view, but stays fetchable at its own id forever
          (GET /leases/<old_id>, GET /leases/<old_id>/versions).
     """
-    old_lease = database.get_lease(lease_id)
+    old_lease = database.get_lease(lease_id, account_id=current_account_id())
     if not old_lease:
         return jsonify({"error": "Lease not found"}), 404
     if old_lease.get("document_type") != "lease":
@@ -748,6 +749,7 @@ def resubmit_lease(lease_id):
     new_lease_id = database.insert_lease(
         filename,
         lease_data["fields"],
+        old_lease["account_id"],
         document_type="lease",
         date_candidates=lease_data["date_candidates"],
         display_name=lease_data["display_name"] or old_lease.get("display_name"),
@@ -761,7 +763,7 @@ def resubmit_lease(lease_id):
     database.repoint_lease_references(lease_id, new_lease_id)
     database.supersede_lease(lease_id)
 
-    new_lease = database.get_effective_lease(new_lease_id)
+    new_lease = database.get_effective_lease(new_lease_id, account_id=current_account_id())
     flags = _lease_risks(new_lease)
     touched_discrepancy_ids = [f["discrepancy_id"] for f in flags if f.get("discrepancy_id")]
 
@@ -777,6 +779,7 @@ def resubmit_lease(lease_id):
                  f"version (v{new_version_number}) of this lease.",
             resolved_by="System",
             resolved_by_email=None,
+            account_id=current_account_id(),
         )
 
     _invalidate_lease_derived_caches()
@@ -817,7 +820,7 @@ def lease_versions(lease_id):
     archived version can always find its way to what replaced it, and
     vice versa. 404 only if the id doesn't exist at all.
     """
-    if not database.get_lease(lease_id):
+    if not database.get_lease(lease_id, account_id=current_account_id()):
         return jsonify({"error": "Lease not found"}), 404
     chain = database.get_lease_version_chain(lease_id)
     versions = []
@@ -950,10 +953,11 @@ def import_rent_roll():
         lease_id = database.insert_lease(
             filename,
             lease_data["extracted_fields"],
+            current_account_id(),
             document_type="lease",
             display_name=lease_data["display_name"],
         )
-        lease = database.get_effective_lease(lease_id)
+        lease = database.get_effective_lease(lease_id, account_id=current_account_id())
         lease["tags"] = []
         created.append(_lease_summary(lease))
 
@@ -979,7 +983,7 @@ def list_leases():
     effective field values. Optional ?tag=X filters to leases carrying
     that exact tag.
     """
-    leases = database.get_all_effective_leases()
+    leases = database.get_all_effective_leases(account_id=current_account_id())
 
     tag_filter = request.args.get('tag')
     if tag_filter:
@@ -996,7 +1000,7 @@ def list_leases():
 @app.route('/leases/<int:lease_id>', methods=['GET'])
 @require_role()
 def get_lease_detail(lease_id):
-    lease = database.get_effective_lease(lease_id)
+    lease = database.get_effective_lease(lease_id, account_id=current_account_id())
     if not lease:
         return jsonify({"error": "Lease not found"}), 404
     lease["tags"] = database.get_lease_tags(lease_id)
@@ -1064,7 +1068,7 @@ def edit_lease_field(lease_id, field_name):
     on `manually_verified` for how that's distinguished from
     extraction simply never having found it).
     """
-    lease = database.get_lease(lease_id)
+    lease = database.get_lease(lease_id, account_id=current_account_id())
     if not lease:
         return jsonify({"error": "Lease not found"}), 404
     if field_name not in FIELD_NAMES:
@@ -1081,7 +1085,7 @@ def edit_lease_field(lease_id, field_name):
         return jsonify({"error": "confidence must be one of: high, medium, low"}), 400
     note = (body.get("note") or "").strip() or None
     task_id = body.get("task_id")
-    if task_id is not None and not database.get_task(task_id):
+    if task_id is not None and not database.get_task(task_id, account_id=current_account_id()):
         return jsonify({"error": "task_id does not match a real task"}), 400
 
     # Resolve to whichever document actually GOVERNS this field's
@@ -1122,10 +1126,10 @@ def edit_lease_field(lease_id, field_name):
 @app.route('/leases/<int:lease_id>', methods=['DELETE'])
 @require_role('analyst')
 def delete_lease(lease_id):
-    lease = database.get_lease(lease_id)
+    lease = database.get_lease(lease_id, account_id=current_account_id())
     if not lease:
         return jsonify({"error": "Lease not found"}), 404
-    database.delete_lease(lease_id)
+    database.delete_lease(lease_id, account_id=current_account_id())
     _invalidate_lease_derived_caches()
     # Logged with lease_id=None (not lease_id) since the row this would
     # reference no longer exists once delete_lease() returns.
@@ -1156,11 +1160,11 @@ def bulk_delete_leases():
     deleted = []
     not_found = []
     for lease_id in ids:
-        lease = database.get_lease(lease_id)
+        lease = database.get_lease(lease_id, account_id=current_account_id())
         if not lease:
             not_found.append(lease_id)
             continue
-        database.delete_lease(lease_id)
+        database.delete_lease(lease_id, account_id=current_account_id())
         database.insert_activity("lease_deleted", f"Deleted {lease['filename']}")
         deleted.append(lease_id)
 
@@ -1173,7 +1177,7 @@ def bulk_delete_leases():
 @require_role('analyst')
 def upload_amendment(lease_id):
     """Upload an amendment/addendum document (any supported format -- see document_extractor.py) and link it to an existing base lease."""
-    base_lease = database.get_lease(lease_id)
+    base_lease = database.get_lease(lease_id, account_id=current_account_id())
     if not base_lease:
         return jsonify({"error": "Base lease not found"}), 404
     if base_lease["document_type"] != "lease":
@@ -1197,12 +1201,12 @@ def upload_amendment(lease_id):
     # amendment records with no clear base lease of their own.
     amendment_data = split_leases[0]
     database.insert_lease(
-        filename, amendment_data["fields"], document_type="amendment", base_lease_id=lease_id,
+        filename, amendment_data["fields"], base_lease["account_id"], document_type="amendment", base_lease_id=lease_id,
         date_candidates=amendment_data["date_candidates"],
     )
     database.insert_activity("amendment_uploaded", f"Added amendment {filename} to {base_lease['filename']}", lease_id=lease_id)
     _invalidate_lease_derived_caches()
-    lease = database.get_effective_lease(lease_id)
+    lease = database.get_effective_lease(lease_id, account_id=current_account_id())
     lease["tags"] = database.get_lease_tags(lease_id)
     return jsonify(_lease_summary(lease)), 201
 
@@ -1210,7 +1214,7 @@ def upload_amendment(lease_id):
 @app.route('/leases/<int:lease_id>/amendments', methods=['GET'])
 @require_role()
 def list_amendments(lease_id):
-    base_lease = database.get_lease(lease_id)
+    base_lease = database.get_lease(lease_id, account_id=current_account_id())
     if not base_lease:
         return jsonify({"error": "Lease not found"}), 404
     amendments = database.get_amendments(lease_id)
@@ -1224,7 +1228,7 @@ def list_amendments(lease_id):
 @require_role('analyst')
 def rename_lease(lease_id):
     """Body: {"display_name": str}. The only field this endpoint can change — renaming, not editing extracted fields (that's the inline-edit workflow on the detail page, unrelated to this)."""
-    lease = database.get_lease(lease_id)
+    lease = database.get_lease(lease_id, account_id=current_account_id())
     if not lease:
         return jsonify({"error": "Lease not found"}), 404
 
@@ -1236,7 +1240,7 @@ def rename_lease(lease_id):
         return jsonify({"error": "display_name must be 200 characters or fewer"}), 400
 
     database.update_lease_display_name(lease_id, display_name)
-    updated = database.get_effective_lease(lease_id)
+    updated = database.get_effective_lease(lease_id, account_id=current_account_id())
     updated["tags"] = database.get_lease_tags(lease_id)
     return jsonify(_lease_summary(updated)), 200
 
@@ -1244,7 +1248,7 @@ def rename_lease(lease_id):
 @app.route('/leases/<int:lease_id>/tags', methods=['GET'])
 @require_role()
 def list_lease_tags(lease_id):
-    lease = database.get_lease(lease_id)
+    lease = database.get_lease(lease_id, account_id=current_account_id())
     if not lease:
         return jsonify({"error": "Lease not found"}), 404
     return jsonify(database.get_lease_tags(lease_id)), 200
@@ -1254,7 +1258,7 @@ def list_lease_tags(lease_id):
 @require_role('analyst')
 def add_lease_tag_route(lease_id):
     """Body: {"tag": str}."""
-    lease = database.get_lease(lease_id)
+    lease = database.get_lease(lease_id, account_id=current_account_id())
     if not lease:
         return jsonify({"error": "Lease not found"}), 404
 
@@ -1272,7 +1276,7 @@ def add_lease_tag_route(lease_id):
 @app.route('/leases/<int:lease_id>/tags/<path:tag>', methods=['DELETE'])
 @require_role('analyst')
 def remove_lease_tag_route(lease_id, tag):
-    lease = database.get_lease(lease_id)
+    lease = database.get_lease(lease_id, account_id=current_account_id())
     if not lease:
         return jsonify({"error": "Lease not found"}), 404
     database.remove_lease_tag(lease_id, tag)
@@ -1299,7 +1303,7 @@ def _validate_comment_payload(payload):
 @require_role()
 def list_lease_comments(lease_id):
     """Team notes on this lease, oldest first, visible to everyone -- this app has no per-account data scoping at all yet, so "the whole team" is just everyone who can reach this API."""
-    if not database.get_lease(lease_id):
+    if not database.get_lease(lease_id, account_id=current_account_id()):
         return jsonify({"error": "Lease not found"}), 404
     return jsonify(database.get_lease_comments(lease_id)), 200
 
@@ -1308,7 +1312,7 @@ def list_lease_comments(lease_id):
 @require_role('analyst')
 def add_lease_comment(lease_id):
     """Body: {"body": "..."}. The comment's author is always the logged-in session user -- see _validate_comment_payload."""
-    if not database.get_lease(lease_id):
+    if not database.get_lease(lease_id, account_id=current_account_id()):
         return jsonify({"error": "Lease not found"}), 404
 
     payload = request.get_json(silent=True) or {}
@@ -1346,7 +1350,7 @@ def bulk_tag_leases():
     tagged = []
     not_found = []
     for lease_id in ids:
-        lease = database.get_lease(lease_id)
+        lease = database.get_lease(lease_id, account_id=current_account_id())
         if not lease:
             not_found.append(lease_id)
             continue
@@ -1396,6 +1400,7 @@ def auth_login():
     session["name"] = user["name"]
     session["role"] = user["role"]
     session["is_owner"] = bool(user.get("is_owner"))
+    session["account_id"] = user.get("account_id")
     database.update_user_last_login(user["id"])
     return jsonify({
         "id": user["id"], "email": user["email"], "name": user["name"], "role": user["role"],
@@ -1647,7 +1652,7 @@ def _user_public(user):
 @app.route('/team/members', methods=['GET'])
 @require_role('admin')
 def list_team_members():
-    return jsonify([_user_public(u) for u in database.list_users()]), 200
+    return jsonify([_user_public(u) for u in database.list_users(account_id=current_account_id())]), 200
 
 
 @app.route('/team/members', methods=['POST'])
@@ -1670,7 +1675,11 @@ def create_team_member():
     if len(password) < 8:
         return jsonify({"error": "Password must be at least 8 characters"}), 400
 
-    result = database.create_user(email, name, hash_password(password), role, created_by_user_id=current_user()["id"])
+    creator = current_user()
+    result = database.create_user(
+        email, name, hash_password(password), role,
+        created_by_user_id=creator["id"], account_id=creator["account_id"],
+    )
     if result["status"] == "duplicate":
         return jsonify({"error": "A team member with that email already exists"}), 409
 
@@ -1689,7 +1698,7 @@ def create_team_member():
 def update_team_member(member_id):
     """Body: any of {"name", "role", "status"}. Only the fields present are changed."""
     user = database.get_user(member_id)
-    if not user:
+    if not user or user.get("account_id") != current_account_id():
         return jsonify({"error": "Team member not found"}), 404
 
     body = request.get_json(silent=True) or {}
@@ -1716,7 +1725,8 @@ def update_team_member(member_id):
 @require_role('admin')
 def reset_team_member_password(member_id):
     """Body: {"password"}. Admin-initiated reset, same as create -- the new password is shared with the member out-of-band."""
-    if not database.get_user(member_id):
+    target = database.get_user(member_id)
+    if not target or target.get("account_id") != current_account_id():
         return jsonify({"error": "Team member not found"}), 404
 
     body = request.get_json(silent=True) or {}
@@ -1772,16 +1782,21 @@ def create_assignment_route():
         return jsonify({"error": f"Invalid target for target_type={target_type!r}: {target!r}"}), 400
 
     assignee = database.get_user(assigned_to_user_id)
-    if not assignee:
+    # Cross-account check: a team member can only ever be assigned
+    # something within their OWN account -- without this, account A
+    # could assign work to a real user_id that happens to belong to
+    # account B, leaking that B-account user's identity/existence and
+    # putting A's data on B's plate.
+    if not assignee or assignee.get("account_id") != current_account_id():
         return jsonify({"error": "assigned_to_user_id does not match a real team member"}), 400
 
     lease_id = discrepancy_id = property_address = None
     if target_type == 'lease':
-        if not database.get_lease(int(target_key)):
+        if not database.get_lease(int(target_key), account_id=current_account_id()):
             return jsonify({"error": "Lease not found"}), 404
         lease_id = int(target_key)
     elif target_type == 'discrepancy':
-        if not database.get_discrepancy(int(target_key)):
+        if not database.get_discrepancy(int(target_key), account_id=current_account_id()):
             return jsonify({"error": "Discrepancy not found"}), 404
         discrepancy_id = int(target_key)
     else:
@@ -1851,6 +1866,7 @@ def list_tasks_route():
     rows = database.list_tasks(
         assigned_to_user_id=assigned_to, status=status, due_before=due_before,
         due_after=due_after, lease_id=lease_id, discrepancy_id=discrepancy_id,
+        account_id=current_account_id(),
     )
     return jsonify([tasks_module.task_detail(t) for t in rows]), 200
 
@@ -1865,15 +1881,17 @@ def create_task_route():
         return jsonify({"error": "Missing required field: title"}), 400
 
     assigned_to_user_id = body.get('assigned_to_user_id')
-    if assigned_to_user_id is not None and not database.get_user(assigned_to_user_id):
-        return jsonify({"error": "assigned_to_user_id does not match a real team member"}), 400
+    if assigned_to_user_id is not None:
+        assignee = database.get_user(assigned_to_user_id)
+        if not assignee or assignee.get("account_id") != current_account_id():
+            return jsonify({"error": "assigned_to_user_id does not match a real team member"}), 400
 
     lease_id = body.get('lease_id')
-    if lease_id is not None and not database.get_lease(lease_id):
+    if lease_id is not None and not database.get_lease(lease_id, account_id=current_account_id()):
         return jsonify({"error": "Lease not found"}), 404
 
     discrepancy_id = body.get('discrepancy_id')
-    if discrepancy_id is not None and not database.get_discrepancy(discrepancy_id):
+    if discrepancy_id is not None and not database.get_discrepancy(discrepancy_id, account_id=current_account_id()):
         return jsonify({"error": "Discrepancy not found"}), 404
 
     priority = body.get('priority') or 'normal'
@@ -1883,6 +1901,7 @@ def create_task_route():
     task_id = database.create_task(
         title=title,
         created_by_user_id=current_user()["id"],
+        account_id=current_account_id(),
         description=body.get('description'),
         due_date=body.get('due_date'),
         assigned_to_user_id=assigned_to_user_id,
@@ -1892,7 +1911,7 @@ def create_task_route():
         priority=priority,
     )
     database.insert_activity("task_created", f"Task created: {title}", lease_id=lease_id)
-    return jsonify(tasks_module.task_detail(database.get_task(task_id))), 201
+    return jsonify(tasks_module.task_detail(database.get_task(task_id, account_id=current_account_id()))), 201
 
 
 @app.route('/tasks/from-discrepancy/<int:discrepancy_id>', methods=['POST'])
@@ -1901,11 +1920,13 @@ def create_task_from_discrepancy_route(discrepancy_id):
     """Body: {"assigned_to_user_id": int (optional), "due_date": "YYYY-MM-DD" (optional)}. Carries the discrepancy's category/severity/message into the new task automatically."""
     body = request.get_json(silent=True) or {}
     assigned_to_user_id = body.get('assigned_to_user_id')
-    if assigned_to_user_id is not None and not database.get_user(assigned_to_user_id):
-        return jsonify({"error": "assigned_to_user_id does not match a real team member"}), 400
+    if assigned_to_user_id is not None:
+        _assignee = database.get_user(assigned_to_user_id)
+        if not _assignee or _assignee.get("account_id") != current_account_id():
+            return jsonify({"error": "assigned_to_user_id does not match a real team member"}), 400
     try:
         detail = tasks_module.create_task_from_discrepancy(
-            discrepancy_id, current_user()["id"], assigned_to_user_id=assigned_to_user_id, due_date=body.get('due_date')
+            discrepancy_id, current_user()["id"], current_account_id(), assigned_to_user_id=assigned_to_user_id, due_date=body.get('due_date')
         )
     except ValueError as e:
         return jsonify({"error": str(e)}), 404
@@ -1919,11 +1940,13 @@ def create_task_from_alert_route(alert_id):
     """Body: {"assigned_to_user_id": int (optional), "due_date": "YYYY-MM-DD" (optional)}. Carries the alert's title/severity/message into the new task automatically."""
     body = request.get_json(silent=True) or {}
     assigned_to_user_id = body.get('assigned_to_user_id')
-    if assigned_to_user_id is not None and not database.get_user(assigned_to_user_id):
-        return jsonify({"error": "assigned_to_user_id does not match a real team member"}), 400
+    if assigned_to_user_id is not None:
+        _assignee = database.get_user(assigned_to_user_id)
+        if not _assignee or _assignee.get("account_id") != current_account_id():
+            return jsonify({"error": "assigned_to_user_id does not match a real team member"}), 400
     try:
         detail = tasks_module.create_task_from_alert(
-            alert_id, current_user()["id"], assigned_to_user_id=assigned_to_user_id, due_date=body.get('due_date')
+            alert_id, current_user()["id"], current_account_id(), assigned_to_user_id=assigned_to_user_id, due_date=body.get('due_date')
         )
     except ValueError as e:
         return jsonify({"error": str(e)}), 404
@@ -1934,7 +1957,7 @@ def create_task_from_alert_route(alert_id):
 @app.route('/tasks/<int:task_id>', methods=['GET'])
 @require_role()
 def get_task_route(task_id):
-    task = database.get_task(task_id)
+    task = database.get_task(task_id, account_id=current_account_id())
     if not task:
         return jsonify({"error": "Task not found"}), 404
     return jsonify(tasks_module.task_detail(task)), 200
@@ -1944,7 +1967,7 @@ def get_task_route(task_id):
 @require_role('analyst')
 def update_task_route(task_id):
     """Body: any of {"title": str, "description": str, "due_date": "YYYY-MM-DD"|null, "priority": "normal"|"high"}. due_date: null explicitly clears it; omitting the key leaves it unchanged."""
-    if not database.get_task(task_id):
+    if not database.get_task(task_id, account_id=current_account_id()):
         return jsonify({"error": "Task not found"}), 404
     body = request.get_json(silent=True) or {}
     title = body.get('title')
@@ -1965,12 +1988,14 @@ def update_task_route(task_id):
 @require_role('analyst')
 def assign_task_route(task_id):
     """Body: {"assigned_to_user_id": int|null}. null unassigns the task."""
-    if not database.get_task(task_id):
+    if not database.get_task(task_id, account_id=current_account_id()):
         return jsonify({"error": "Task not found"}), 404
     body = request.get_json(silent=True) or {}
     assigned_to_user_id = body.get('assigned_to_user_id')
-    if assigned_to_user_id is not None and not database.get_user(assigned_to_user_id):
-        return jsonify({"error": "assigned_to_user_id does not match a real team member"}), 400
+    if assigned_to_user_id is not None:
+        _assignee = database.get_user(assigned_to_user_id)
+        if not _assignee or _assignee.get("account_id") != current_account_id():
+            return jsonify({"error": "assigned_to_user_id does not match a real team member"}), 400
     updated = database.update_task_assignee(task_id, assigned_to_user_id)
     return jsonify(tasks_module.task_detail(updated)), 200
 
@@ -2005,7 +2030,7 @@ def update_task_status_route(task_id):
     the task completes with no further requirement -- there's nothing
     left to confirm.
     """
-    task = database.get_task(task_id)
+    task = database.get_task(task_id, account_id=current_account_id())
     if not task:
         return jsonify({"error": "Task not found"}), 404
     body = request.get_json(silent=True) or {}
@@ -2015,7 +2040,7 @@ def update_task_status_route(task_id):
 
     discrepancy_resolved_now = False
     if status == "done" and task.get("discrepancy_id"):
-        discrepancy = database.get_discrepancy(task["discrepancy_id"])
+        discrepancy = database.get_discrepancy(task["discrepancy_id"], account_id=current_account_id())
         if discrepancy and discrepancy["status"] == "open":
             correct_source = (body.get('correct_source') or '').strip()
             note = (body.get('note') or '').strip()
@@ -2028,9 +2053,9 @@ def update_task_status_route(task_id):
                     "discrepancy_id": discrepancy["id"],
                 }), 400
             user = current_user()
-            database.resolve_discrepancy(discrepancy["id"], correct_source, note, user["name"], user["email"])
+            database.resolve_discrepancy(discrepancy["id"], correct_source, note, user["name"], user["email"], account_id=current_account_id())
             _invalidate_discrepancy_derived_caches()
-            resolved_discrepancy = database.get_discrepancy(discrepancy["id"])
+            resolved_discrepancy = database.get_discrepancy(discrepancy["id"], account_id=current_account_id())
             database.insert_activity(
                 "discrepancy_resolved",
                 f"Discrepancy #{discrepancy['id']} ({resolved_discrepancy['category']}) resolved by "
@@ -2048,7 +2073,7 @@ def update_task_status_route(task_id):
 @app.route('/tasks/<int:task_id>', methods=['DELETE'])
 @require_role('analyst')
 def delete_task_route(task_id):
-    if not database.delete_task(task_id):
+    if not database.delete_task(task_id, account_id=current_account_id()):
         return jsonify({"error": "Task not found"}), 404
     return jsonify({"status": "deleted"}), 200
 
@@ -2080,12 +2105,12 @@ def bulk_update_task_status():
 
     updated, skipped_needs_discrepancy, not_found = [], [], []
     for task_id in ids:
-        task = database.get_task(task_id)
+        task = database.get_task(task_id, account_id=current_account_id())
         if not task:
             not_found.append(task_id)
             continue
         if status == "done" and task.get("discrepancy_id"):
-            discrepancy = database.get_discrepancy(task["discrepancy_id"])
+            discrepancy = database.get_discrepancy(task["discrepancy_id"], account_id=current_account_id())
             if discrepancy and discrepancy["status"] == "open":
                 skipped_needs_discrepancy.append(task_id)
                 continue
@@ -2109,12 +2134,14 @@ def bulk_reassign_tasks():
     assigned_to_user_id = payload.get('assigned_to_user_id')
     if not isinstance(ids, list) or not ids or not all(isinstance(i, int) for i in ids):
         return jsonify({"error": "Provide a non-empty 'ids' list of integers"}), 400
-    if assigned_to_user_id is not None and not database.get_user(assigned_to_user_id):
-        return jsonify({"error": "assigned_to_user_id does not match a real team member"}), 400
+    if assigned_to_user_id is not None:
+        _assignee = database.get_user(assigned_to_user_id)
+        if not _assignee or _assignee.get("account_id") != current_account_id():
+            return jsonify({"error": "assigned_to_user_id does not match a real team member"}), 400
 
     updated, not_found = [], []
     for task_id in ids:
-        if not database.get_task(task_id):
+        if not database.get_task(task_id, account_id=current_account_id()):
             not_found.append(task_id)
             continue
         database.update_task_assignee(task_id, assigned_to_user_id)
@@ -2133,7 +2160,7 @@ def bulk_reassign_tasks():
 @require_role()
 def list_task_comments(task_id):
     """Team discussion on this task -- separate from lease_field_edits (that's a data-correction audit trail, this is conversation), visible to everyone, same "whole team" reasoning as lease/discrepancy comments."""
-    if not database.get_task(task_id):
+    if not database.get_task(task_id, account_id=current_account_id()):
         return jsonify({"error": "Task not found"}), 404
     return jsonify(database.get_task_comments(task_id)), 200
 
@@ -2152,7 +2179,7 @@ def add_task_comment(task_id):
     as everything else that happens to that task, not just to someone
     who happens to open the task's comment thread.
     """
-    task = database.get_task(task_id)
+    task = database.get_task(task_id, account_id=current_account_id())
     if not task:
         return jsonify({"error": "Task not found"}), 404
     payload = request.get_json(silent=True) or {}
@@ -2209,7 +2236,7 @@ def undo_lease_field_edit(lease_id, field_name, edit_id):
         return jsonify({"error": f"This edit is more than {tasks_module.UNDO_WINDOW_MINUTES} minutes old and can no longer be undone."}), 400
 
     if matching.get("task_id"):
-        task = database.get_task(matching["task_id"])
+        task = database.get_task(matching["task_id"], account_id=current_account_id())
         if task and task["status"] == "done":
             return jsonify({"error": "This edit's task is already complete -- undo is only available while the task is still open."}), 400
 
@@ -2236,11 +2263,13 @@ def today_view():
     portfolio's currently-active alerts. See
     assignments.compute_today_view for exactly what "today" means and
     why alerts aren't filtered to the user. Any logged-in role may
-    view any user's Today, same as every other shared view in this app
-    (no per-account data scoping) -- but the id must be a real user.
+    view any TEAMMATE's Today (their own account's shared context, same
+    as every other in-account view) -- but not a user in a different
+    account, which would leak that account's assignment/task data.
     """
     user_id = request.args.get('user_id', type=int) or current_user()["id"]
-    if not database.get_user(user_id):
+    target_user = database.get_user(user_id)
+    if not target_user or target_user.get("account_id") != current_account_id():
         return jsonify({"error": "User not found"}), 404
     return jsonify(assignments_module.compute_today_view(user_id)), 200
 
@@ -2345,7 +2374,8 @@ def create_thread_route():
 
     all_ids = sorted(set(other_ids) | {caller_id})
     for uid in all_ids:
-        if not isinstance(uid, int) or not database.get_user(uid):
+        participant = isinstance(uid, int) and database.get_user(uid)
+        if not participant or participant.get("account_id") != current_account_id():
             return jsonify({"error": f"participant_user_ids must all be real team members (invalid: {uid!r})"}), 400
 
     if thread_type == "direct":
@@ -2371,7 +2401,8 @@ def add_thread_participant_route(thread_id):
 
     body = request.get_json(silent=True) or {}
     user_id = body.get('user_id')
-    if not user_id or not database.get_user(user_id):
+    new_participant = user_id and database.get_user(user_id)
+    if not new_participant or new_participant.get("account_id") != current_account_id():
         return jsonify({"error": "user_id must be a real team member"}), 400
 
     database.add_thread_participant(thread_id, user_id)
@@ -2675,25 +2706,25 @@ def check_waitlist_access():
 
 def _lease_risks(lease):
     """Risk flags for one effective lease, using its own stored date_candidates, the current portfolio average, and any cross-lease mismatches with other leases at the same property as context."""
-    all_leases = database.get_all_effective_leases()
+    all_leases = database.get_all_effective_leases(account_id=current_account_id())
     context = portfolio_context_for_risk_analysis(all_leases)
     date_candidates = lease.get("date_candidates")
     cross_lease_flags = compute_cross_lease_mismatches(all_leases).get(lease["id"], [])
     flags = analyze_lease_risks(lease["extracted_fields"], context, date_candidates, cross_lease_flags)
-    return sync_lease_risk_flags(lease["id"], flags)
+    return sync_lease_risk_flags(lease["id"], flags, lease["account_id"])
 
 
 @app.route('/portfolio/summary', methods=['GET'])
 @require_role()
 def portfolio_summary():
-    leases = database.get_all_effective_leases()
+    leases = database.get_all_effective_leases(account_id=current_account_id())
     return jsonify(compute_portfolio_metrics(leases)), 200
 
 
 @app.route('/portfolio/timeline', methods=['GET'])
 @require_role()
 def portfolio_timeline():
-    leases = database.get_all_effective_leases()
+    leases = database.get_all_effective_leases(account_id=current_account_id())
     return jsonify(compute_expiration_timeline(leases)), 200
 
 
@@ -2701,7 +2732,7 @@ def portfolio_timeline():
 @require_role()
 def portfolio_attention():
     """'What needs attention today' — expiring soon, missing data, unusual terms. See compute_attention_items for the exact definitions."""
-    leases = database.get_all_effective_leases()
+    leases = database.get_all_effective_leases(account_id=current_account_id())
     return jsonify(compute_attention_items(leases)), 200
 
 
@@ -2709,7 +2740,7 @@ def portfolio_attention():
 @require_role()
 def portfolio_expiration_alerts():
     """Dashboard widget data: leases expiring within 90/60/30 days, plus renewal-notice deadlines closing soon -- see compute_expiration_alerts for the exact windows and why the two lists are kept separate."""
-    leases = database.get_all_effective_leases()
+    leases = database.get_all_effective_leases(account_id=current_account_id())
     return jsonify(compute_expiration_alerts(leases)), 200
 
 
@@ -2717,7 +2748,7 @@ def portfolio_expiration_alerts():
 @require_role()
 def portfolio_health():
     """Morning-glance health strip: % verified, avg days to expiration, rent exposure expiring in 6/12 months."""
-    leases = database.get_all_effective_leases()
+    leases = database.get_all_effective_leases(account_id=current_account_id())
     return jsonify(compute_portfolio_health(leases)), 200
 
 
@@ -2725,7 +2756,7 @@ def portfolio_health():
 @require_role()
 def portfolio_confidence_summary():
     """The trust-mechanism number: field counts by confidence tier across the whole portfolio, plus how many were flagged for review during validation. See compute_portfolio_confidence_summary."""
-    leases = database.get_all_effective_leases()
+    leases = database.get_all_effective_leases(account_id=current_account_id())
     return jsonify(compute_portfolio_confidence_summary(leases)), 200
 
 
@@ -2767,7 +2798,7 @@ def portfolio_health_score_route():
 @require_role()
 def portfolio_tenant_concentration():
     """How much of total rent depends on a small number of tenants -- top-1/3/5 cumulative share, Herfindahl-Hirschman Index, and a high/moderate/low read. See compute_tenant_concentration."""
-    leases = database.get_all_effective_leases()
+    leases = database.get_all_effective_leases(account_id=current_account_id())
     return jsonify(compute_tenant_concentration(leases)), 200
 
 
@@ -2782,7 +2813,7 @@ def portfolio_rollover():
     about what "today" means if a request happened to straddle
     midnight. See compute_walt and compute_rollover_schedule.
     """
-    leases = database.get_all_effective_leases()
+    leases = database.get_all_effective_leases(account_id=current_account_id())
     reference_date = date.today()
     return jsonify({
         "walt": compute_walt(leases, reference_date=reference_date),
@@ -2794,7 +2825,7 @@ def portfolio_rollover():
 @require_role()
 def portfolio_loss_to_lease():
     """Upside vs. this portfolio's own best-achieved rent/sqft per building (no external market-rent data source exists -- see compute_loss_to_lease's docstring for why this is an internal proxy, not true market rent)."""
-    leases = database.get_all_effective_leases()
+    leases = database.get_all_effective_leases(account_id=current_account_id())
     return jsonify(compute_loss_to_lease(leases)), 200
 
 
@@ -2822,7 +2853,7 @@ def portfolio_property_trends():
         return jsonify({"error": "property_address is required"}), 400
 
     def _compute():
-        leases = database.get_all_effective_leases()
+        leases = database.get_all_effective_leases(account_id=current_account_id())
         return compute_property_trends(leases, property_address)
 
     trends = cache.get_or_compute(f"trends:property:{property_address}", _compute)
@@ -2850,7 +2881,7 @@ def portfolio_trends_route():
     Cached (see app/cache.py) -- invalidated whenever a lease mutates,
     60s TTL as a safety net regardless.
     """
-    result = cache.get_or_compute("trends:portfolio", lambda: compute_portfolio_trends(database.get_all_effective_leases()))
+    result = cache.get_or_compute("trends:portfolio", lambda: compute_portfolio_trends(database.get_all_effective_leases(account_id=current_account_id())))
     return jsonify(result), 200
 
 
@@ -2858,9 +2889,9 @@ def portfolio_trends_route():
 @require_role()
 def portfolio_rent_roll_reconciliation():
     """Cross-checks an imported rent roll (see /leases/import-rent-roll) against the actual lease PDFs on file for the same units, flagging tenant/rent/end-date disagreements. See compute_rent_roll_reconciliation."""
-    leases = database.get_all_effective_leases()
+    leases = database.get_all_effective_leases(account_id=current_account_id())
     result = compute_rent_roll_reconciliation(leases)
-    result["mismatches"] = sync_rent_roll_reconciliation(result["mismatches"])
+    result["mismatches"] = sync_rent_roll_reconciliation(result["mismatches"], current_account_id())
     return jsonify(result), 200
 
 
@@ -2915,10 +2946,10 @@ def portfolio_t12_reconciliation():
     except T12ImportError as e:
         return jsonify({"error": str(e)}), 400
 
-    leases = database.get_all_effective_leases()
+    leases = database.get_all_effective_leases(account_id=current_account_id())
     result = compute_t12_reconciliation(leases, property_address, parsed["annual_rental_income"])
     result["t12_source"] = parsed["source"]
-    result = sync_t12_reconciliation(result)
+    result = sync_t12_reconciliation(result, current_account_id())
     return jsonify(result), 200
 
 
@@ -2934,7 +2965,7 @@ def recent_activity():
 @require_role()
 def portfolio_risks():
     """Risk flags for every lease in the portfolio, most-flagged-first isn't imposed here — callers sort/filter as needed."""
-    leases = database.get_all_effective_leases()
+    leases = database.get_all_effective_leases(account_id=current_account_id())
     context = portfolio_context_for_risk_analysis(leases)
     cross_lease_mismatches = compute_cross_lease_mismatches(leases)
 
@@ -2955,14 +2986,14 @@ def portfolio_risks():
     # resolution reads) instead of sync_lease_risk_flags per lease --
     # see sync_all_lease_risk_flags_bulk's docstring. Mutates every
     # flag dict in `results` in place, same as the per-lease version.
-    sync_all_lease_risk_flags_bulk(per_lease_flags)
+    sync_all_lease_risk_flags_bulk(per_lease_flags, current_account_id())
     return jsonify(results), 200
 
 
 @app.route('/leases/<int:lease_id>/risks', methods=['GET'])
 @require_role()
 def lease_risks(lease_id):
-    lease = database.get_effective_lease(lease_id)
+    lease = database.get_effective_lease(lease_id, account_id=current_account_id())
     if not lease:
         return jsonify({"error": "Lease not found"}), 404
     flags = _lease_risks(lease)
@@ -2983,7 +3014,7 @@ def _activity_lease_id(lease_id):
     renumber the discrepancies that referenced it), so it can't be
     passed straight through without checking the lease still exists.
     """
-    return lease_id if lease_id is not None and database.get_lease(lease_id) else None
+    return lease_id if lease_id is not None and database.get_lease(lease_id, account_id=current_account_id()) else None
 
 
 @app.route('/discrepancies', methods=['GET'])
@@ -3006,7 +3037,7 @@ def list_discrepancies():
     lease_id = request.args.get('lease_id', type=int)
     discrepancy_type = request.args.get('type')
 
-    discrepancies = database.list_discrepancies(status=status, lease_id=lease_id, discrepancy_type=discrepancy_type)
+    discrepancies = database.list_discrepancies(status=status, lease_id=lease_id, discrepancy_type=discrepancy_type, account_id=current_account_id())
     return jsonify(discrepancies), 200
 
 
@@ -3023,13 +3054,13 @@ def discrepancies_summary():
     this digest can never disagree with what that list returns -- see
     database.get_discrepancy_summary's own docstring.
     """
-    return jsonify(database.get_discrepancy_summary()), 200
+    return jsonify(database.get_discrepancy_summary(account_id=current_account_id())), 200
 
 
 @app.route('/discrepancies/<int:discrepancy_id>', methods=['GET'])
 @require_role()
 def get_discrepancy(discrepancy_id):
-    discrepancy = database.get_discrepancy(discrepancy_id)
+    discrepancy = database.get_discrepancy(discrepancy_id, account_id=current_account_id())
     if not discrepancy:
         return jsonify({"error": "Discrepancy not found"}), 404
     return jsonify(_discrepancy_detail(discrepancy)), 200
@@ -3049,7 +3080,7 @@ def resolve_discrepancy(discrepancy_id):
     logged-in session user now (see current_user()), never a
     request-body field the caller could put any name into.
     """
-    if not database.get_discrepancy(discrepancy_id):
+    if not database.get_discrepancy(discrepancy_id, account_id=current_account_id()):
         return jsonify({"error": "Discrepancy not found"}), 404
 
     payload = request.get_json(silent=True) or {}
@@ -3062,9 +3093,9 @@ def resolve_discrepancy(discrepancy_id):
 
     user = current_user()
     resolved_by, resolved_by_email = user["name"], user["email"]
-    resolution = database.resolve_discrepancy(discrepancy_id, correct_source, note, resolved_by, resolved_by_email)
+    resolution = database.resolve_discrepancy(discrepancy_id, correct_source, note, resolved_by, resolved_by_email, account_id=current_account_id())
     _invalidate_discrepancy_derived_caches()
-    discrepancy = database.get_discrepancy(discrepancy_id)
+    discrepancy = database.get_discrepancy(discrepancy_id, account_id=current_account_id())
     database.insert_activity(
         "discrepancy_resolved",
         f"Discrepancy #{discrepancy_id} ({discrepancy['category']}) resolved by {resolved_by}: {note}",
@@ -3077,7 +3108,7 @@ def resolve_discrepancy(discrepancy_id):
 @require_role('analyst')
 def reopen_discrepancy(discrepancy_id):
     """Body: {"note": "..."}. Only valid on a currently-resolved discrepancy. Who reopened it is always the logged-in session user."""
-    discrepancy = database.get_discrepancy(discrepancy_id)
+    discrepancy = database.get_discrepancy(discrepancy_id, account_id=current_account_id())
     if not discrepancy:
         return jsonify({"error": "Discrepancy not found"}), 404
     if discrepancy["status"] != "resolved":
@@ -3090,9 +3121,9 @@ def reopen_discrepancy(discrepancy_id):
 
     user = current_user()
     resolved_by, resolved_by_email = user["name"], user["email"]
-    resolution = database.reopen_discrepancy(discrepancy_id, note, resolved_by, resolved_by_email)
+    resolution = database.reopen_discrepancy(discrepancy_id, note, resolved_by, resolved_by_email, account_id=current_account_id())
     _invalidate_discrepancy_derived_caches()
-    discrepancy = database.get_discrepancy(discrepancy_id)
+    discrepancy = database.get_discrepancy(discrepancy_id, account_id=current_account_id())
     database.insert_activity(
         "discrepancy_reopened",
         f"Discrepancy #{discrepancy_id} ({discrepancy['category']}) reopened by {resolved_by}: {note}",
@@ -3129,11 +3160,11 @@ def bulk_resolve_discrepancies():
     user = current_user()
     resolved, not_found = [], []
     for discrepancy_id in ids:
-        if not database.get_discrepancy(discrepancy_id):
+        if not database.get_discrepancy(discrepancy_id, account_id=current_account_id()):
             not_found.append(discrepancy_id)
             continue
-        database.resolve_discrepancy(discrepancy_id, correct_source, note, user["name"], user["email"])
-        discrepancy = database.get_discrepancy(discrepancy_id)
+        database.resolve_discrepancy(discrepancy_id, correct_source, note, user["name"], user["email"], account_id=current_account_id())
+        discrepancy = database.get_discrepancy(discrepancy_id, account_id=current_account_id())
         database.insert_activity(
             "discrepancy_resolved",
             f"Discrepancy #{discrepancy_id} ({discrepancy['category']}) resolved by {user['name']} (bulk): {note}",
@@ -3153,7 +3184,7 @@ def export_discrepancies_csv():
         return jsonify({"error": "status must be 'open' or 'resolved'"}), 400
     lease_id = request.args.get('lease_id', type=int)
     discrepancy_type = request.args.get('type')
-    rows = database.list_discrepancies(status=status, lease_id=lease_id, discrepancy_type=discrepancy_type)
+    rows = database.list_discrepancies(status=status, lease_id=lease_id, discrepancy_type=discrepancy_type, account_id=current_account_id())
 
     buf = io.StringIO()
     writer = csv.writer(buf)
@@ -3168,7 +3199,7 @@ def export_discrepancies_csv():
 @require_role()
 def list_discrepancy_comments(discrepancy_id):
     """Team notes on this discrepancy, oldest first -- separate from its resolution log (discrepancy_resolutions): a comment is a running discussion, a resolution is the final "here's which source is correct and why" decision."""
-    if not database.get_discrepancy(discrepancy_id):
+    if not database.get_discrepancy(discrepancy_id, account_id=current_account_id()):
         return jsonify({"error": "Discrepancy not found"}), 404
     return jsonify(database.get_discrepancy_comments(discrepancy_id)), 200
 
@@ -3177,7 +3208,7 @@ def list_discrepancy_comments(discrepancy_id):
 @require_role('analyst')
 def add_discrepancy_comment(discrepancy_id):
     """Body: {"body": "..."}. The comment's author is always the logged-in session user -- see _validate_comment_payload."""
-    if not database.get_discrepancy(discrepancy_id):
+    if not database.get_discrepancy(discrepancy_id, account_id=current_account_id()):
         return jsonify({"error": "Discrepancy not found"}), 404
 
     payload = request.get_json(silent=True) or {}
@@ -3221,7 +3252,7 @@ def alerts_generate():
     manually -- email delivery of these alerts is explicitly out of
     scope for this pass, see DECISIONS.md.
     """
-    return jsonify(generate_alerts()), 200
+    return jsonify(generate_alerts(current_account_id())), 200
 
 
 @app.route('/alerts', methods=['GET'])
@@ -3237,20 +3268,20 @@ def list_alerts_route():
 
     alert_type = request.args.get('type')
     lease_id = request.args.get('lease_id', type=int)
-    return jsonify(database.list_alerts(status=status, alert_type=alert_type, severity=severity, lease_id=lease_id)), 200
+    return jsonify(database.list_alerts(status=status, alert_type=alert_type, severity=severity, lease_id=lease_id, account_id=current_account_id())), 200
 
 
 @app.route('/alerts/summary', methods=['GET'])
 @require_role()
 def alerts_summary():
     """A digest suitable for a notification-feed header or a future email digest: active-alert counts by severity and by type. Reflects whatever was persisted as of the last /alerts/generate run, not a fresh computation."""
-    return jsonify(get_alert_digest()), 200
+    return jsonify(get_alert_digest(current_account_id())), 200
 
 
 @app.route('/alerts/<int:alert_id>', methods=['GET'])
 @require_role()
 def get_alert_route(alert_id):
-    alert = database.get_alert(alert_id)
+    alert = database.get_alert(alert_id, account_id=current_account_id())
     if not alert:
         return jsonify({"error": "Alert not found"}), 404
     return jsonify(alert), 200
@@ -3265,15 +3296,15 @@ def dismiss_alert_route(alert_id):
     user now, never a request-body field the caller could put any name
     into.
     """
-    if not database.get_alert(alert_id):
+    if not database.get_alert(alert_id, account_id=current_account_id()):
         return jsonify({"error": "Alert not found"}), 404
 
     payload = request.get_json(silent=True) or {}
     note = (payload.get('note') or '').strip() or None
     dismissed_by = current_user()["name"]
 
-    database.dismiss_alert(alert_id, dismissed_by, note)
-    return jsonify(database.get_alert(alert_id)), 200
+    database.dismiss_alert(alert_id, dismissed_by, note, account_id=current_account_id())
+    return jsonify(database.get_alert(alert_id, account_id=current_account_id())), 200
 
 
 @app.route('/alerts/bulk-dismiss', methods=['POST'])
@@ -3289,10 +3320,10 @@ def bulk_dismiss_alerts():
     dismissed_by = current_user()["name"]
     dismissed, not_found = [], []
     for alert_id in ids:
-        if not database.get_alert(alert_id):
+        if not database.get_alert(alert_id, account_id=current_account_id()):
             not_found.append(alert_id)
             continue
-        database.dismiss_alert(alert_id, dismissed_by, note)
+        database.dismiss_alert(alert_id, dismissed_by, note, account_id=current_account_id())
         dismissed.append(alert_id)
     return jsonify({"dismissed": dismissed, "not_found": not_found}), 200
 
@@ -3309,7 +3340,7 @@ def export_alerts_csv():
         return jsonify({"error": "severity must be 'high', 'medium', or 'low'"}), 400
     alert_type = request.args.get('type')
     lease_id = request.args.get('lease_id', type=int)
-    rows = database.list_alerts(status=status, alert_type=alert_type, severity=severity, lease_id=lease_id)
+    rows = database.list_alerts(status=status, alert_type=alert_type, severity=severity, lease_id=lease_id, account_id=current_account_id())
 
     buf = io.StringIO()
     writer = csv.writer(buf)
@@ -3336,12 +3367,12 @@ def ask_question():
 
     lease_id = body.get("lease_id")
     if lease_id is not None:
-        lease = database.get_effective_lease(lease_id)
+        lease = database.get_effective_lease(lease_id, account_id=current_account_id())
         if not lease:
             return jsonify({"error": "Lease not found"}), 404
         leases = [lease]
     else:
-        leases = database.get_all_effective_leases()
+        leases = database.get_all_effective_leases(account_id=current_account_id())
 
     result = answer_question(question, leases)
     return jsonify(result), 200
@@ -3362,7 +3393,7 @@ def leases_compare():
 
     leases = []
     for lease_id in ids:
-        lease = database.get_effective_lease(lease_id)
+        lease = database.get_effective_lease(lease_id, account_id=current_account_id())
         if not lease:
             return jsonify({"error": f"Lease {lease_id} not found"}), 404
         leases.append(lease)
@@ -3404,7 +3435,7 @@ def leases_selection_summary():
 
     leases = []
     for lease_id in ids:
-        lease = database.get_effective_lease(lease_id)
+        lease = database.get_effective_lease(lease_id, account_id=current_account_id())
         if not lease:
             return jsonify({"error": f"Lease {lease_id} not found"}), 404
         leases.append(lease)
@@ -3416,11 +3447,11 @@ def leases_selection_summary():
 @require_role()
 def lease_benchmark(lease_id):
     """Benchmarks one lease against every OTHER lease in the portfolio (this lease excluded from its own comparison average)."""
-    lease = database.get_effective_lease(lease_id)
+    lease = database.get_effective_lease(lease_id, account_id=current_account_id())
     if not lease:
         return jsonify({"error": "Lease not found"}), 404
 
-    other_leases = [l for l in database.get_all_effective_leases() if l["id"] != lease_id]
+    other_leases = [l for l in database.get_all_effective_leases(account_id=current_account_id()) if l["id"] != lease_id]
     if not other_leases:
         return jsonify({"error": "No other leases in the portfolio to benchmark against yet"}), 400
 
@@ -3430,7 +3461,7 @@ def lease_benchmark(lease_id):
 @app.route('/portfolio/rent-roll.csv', methods=['GET'])
 @require_role()
 def rent_roll_csv():
-    leases = database.get_all_effective_leases()
+    leases = database.get_all_effective_leases(account_id=current_account_id())
     csv_text = generate_rent_roll_csv(leases)
     database.insert_activity("rent_roll_exported", f"Exported rent roll as CSV ({len(leases)} leases)")
     return Response(
@@ -3443,7 +3474,7 @@ def rent_roll_csv():
 @app.route('/portfolio/rent-roll.xlsx', methods=['GET'])
 @require_role()
 def rent_roll_excel():
-    leases = database.get_all_effective_leases()
+    leases = database.get_all_effective_leases(account_id=current_account_id())
     excel_bytes = generate_rent_roll_excel(leases)
     database.insert_activity("rent_roll_exported", f"Exported rent roll as Excel ({len(leases)} leases)")
     return Response(
@@ -3464,7 +3495,7 @@ def portfolio_export_google_sheets():
     in sheets_export.py); any other exception falls through to the
     global error handler like everywhere else in this file.
     """
-    leases = database.get_all_effective_leases()
+    leases = database.get_all_effective_leases(account_id=current_account_id())
     try:
         result = export_to_google_sheets(leases)
     except SheetsExportError as e:
@@ -3481,7 +3512,7 @@ def portfolio_export_google_sheets():
 @require_role()
 def lease_export_excel(lease_id):
     """Same formatted workbook as the portfolio-wide export, scoped to one lease (a single data row)."""
-    lease = database.get_effective_lease(lease_id)
+    lease = database.get_effective_lease(lease_id, account_id=current_account_id())
     if not lease:
         return jsonify({"error": "Lease not found"}), 404
 
@@ -3505,7 +3536,7 @@ def lease_summary_pdf(lease_id):
     mismatches) -- meant to be forwarded to someone who will never open
     the app. See summary_memo.py.
     """
-    lease = database.get_effective_lease(lease_id)
+    lease = database.get_effective_lease(lease_id, account_id=current_account_id())
     if not lease:
         return jsonify({"error": "Lease not found"}), 404
 
@@ -3610,7 +3641,7 @@ def investment_memo_excel():
 @require_role('analyst')
 def lease_export_google_sheets(lease_id):
     """Same Google Sheets export as the portfolio-wide one, scoped to one lease (a single data row)."""
-    lease = database.get_effective_lease(lease_id)
+    lease = database.get_effective_lease(lease_id, account_id=current_account_id())
     if not lease:
         return jsonify({"error": "Lease not found"}), 404
 
@@ -3631,7 +3662,7 @@ def _leases_for_ids(ids):
     """Fetches each id's effective (amendment-merged) lease record, or returns a (response, status) error tuple for the first id not found -- same shape callers already check for from other route helpers in this file."""
     leases = []
     for lease_id in ids:
-        lease = database.get_effective_lease(lease_id)
+        lease = database.get_effective_lease(lease_id, account_id=current_account_id())
         if not lease:
             return None, (jsonify({"error": f"Lease {lease_id} not found"}), 404)
         leases.append(lease)
@@ -3712,7 +3743,7 @@ def portfolio_report():
     endpoints below are real export actions with no such view-load
     trigger, so those do log.
     """
-    leases = database.get_all_effective_leases()
+    leases = database.get_all_effective_leases(account_id=current_account_id())
     metrics = compute_portfolio_metrics(leases)
     timeline = compute_expiration_timeline(leases)
     context = portfolio_context_for_risk_analysis(leases)
@@ -3743,7 +3774,7 @@ def portfolio_summary_pdf():
     table, the portfolio-wide confidence summary, and the
     highest-severity risk flags across every lease. See summary_memo.py.
     """
-    leases = database.get_all_effective_leases()
+    leases = database.get_all_effective_leases(account_id=current_account_id())
     context = portfolio_context_for_risk_analysis(leases)
     cross_lease_mismatches = compute_cross_lease_mismatches(leases)
     confidence_summary = compute_portfolio_confidence_summary(leases)
@@ -3789,7 +3820,7 @@ def portfolio_monthly_report_pdf():
     (this route's body) would not need to change; only what triggers it
     and what happens to the resulting bytes.
     """
-    leases = database.get_all_effective_leases()
+    leases = database.get_all_effective_leases(account_id=current_account_id())
     context = portfolio_context_for_risk_analysis(leases)
     cross_lease_mismatches = compute_cross_lease_mismatches(leases)
     confidence_summary = compute_portfolio_confidence_summary(leases)

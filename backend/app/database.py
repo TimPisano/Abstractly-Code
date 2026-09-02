@@ -135,6 +135,78 @@ def _migrate_users_table_add_is_owner(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE users ADD COLUMN is_owner INTEGER NOT NULL DEFAULT 0")
 
 
+def _migrate_accounts_table_and_backfill_id(conn: sqlite3.Connection) -> int:
+    """
+    Creates the `accounts` table -- the real tenant/customer boundary,
+    distinct from `users` (a login that BELONGS TO one account; several
+    users can share an account, e.g. co-workers at the same company) --
+    if it doesn't already exist, and returns the account_id every
+    pre-existing row in every other table should backfill to.
+
+    Before this migration, this app was a single shared workspace with
+    no tenant separation at all (confirmed: no org_id/tenant_id/
+    customer_id anywhere) -- every row that already exists in any
+    table, regardless of which one, belonged to that one shared
+    workspace, because there was no such thing as a second one. So:
+    if `users` already has real rows (an existing single-tenant
+    install being upgraded), this creates one "Legacy Workspace"
+    account and returns its id -- there's no way to retroactively
+    split old data across several imaginary tenants, and no need to,
+    since it was genuinely all one tenant. If `users` is empty (a
+    fresh install, or this is running before _seed_first_admin_user
+    gets a chance to create the first real user), returns 0 -- a
+    placeholder that never actually ends up stored on a real row,
+    since every table receiving it via _add_account_id_column is
+    equally empty at that point; _seed_first_admin_user creates its
+    OWN fresh account for the first real admin right after this runs,
+    exactly like a genuinely new company signing up should.
+    """
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS accounts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'active',
+            plan TEXT NOT NULL DEFAULT 'free'
+        )
+    """)
+
+    users_columns = {row["name"] for row in conn.execute("PRAGMA table_info(users)").fetchall()}
+    if "account_id" in users_columns:
+        # Already migrated in an earlier init_db() call. Every
+        # _add_account_id_column() call this return value feeds is
+        # itself a no-op once its target column already exists, so
+        # the specific value returned here doesn't matter.
+        return 0
+
+    existing_user_count = conn.execute("SELECT COUNT(*) AS c FROM users").fetchone()["c"]
+    if existing_user_count == 0:
+        return 0
+
+    cur = conn.execute(
+        "INSERT INTO accounts (name, created_at, status, plan) VALUES (?, ?, 'active', 'free')",
+        ("Legacy Workspace", datetime.now(timezone.utc).isoformat()),
+    )
+    return cur.lastrowid
+
+
+def _add_account_id_column(conn: sqlite3.Connection, table: str, backfill_account_id: int) -> None:
+    """
+    Shared step of the multi-tenant migration (see
+    _migrate_accounts_table_and_backfill_id above and DECISIONS.md's
+    "Real multi-tenant data isolation" entry): adds `account_id` to
+    one customer-data table, backfilling every pre-existing row to
+    `backfill_account_id`. Safe to call on a table with zero existing
+    rows (a fresh install) -- the DEFAULT then never actually gets
+    stored on any row. Idempotent, like every other migration in this
+    file -- a no-op if the column already exists.
+    """
+    existing_columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+    if "account_id" not in existing_columns:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN account_id INTEGER NOT NULL DEFAULT {int(backfill_account_id)}")
+        conn.execute(f"CREATE INDEX IF NOT EXISTS idx_{table}_account_id ON {table}(account_id)")
+
+
 def _migrate_comments_table_add_task_id(conn: sqlite3.Connection) -> None:
     """
     Adds `task_id` so a comment can be attached to a task -- lease_id/
@@ -270,6 +342,13 @@ def _seed_first_admin_user(conn: sqlite3.Connection) -> None:
     persistent-disk deployment (see DEPLOYMENT.md) without a manual
     step: the users table gets wiped and this function re-seeds a
     fresh admin+owner row from the same env vars every time.
+
+    Creates a brand-new `accounts` row for this seeded admin (not the
+    migration's "Legacy Workspace" backfill account, if one exists) --
+    the first-ever admin represents a genuinely new company signing up,
+    not a continuation of old shared data. Must run AFTER
+    _migrate_accounts_table_and_backfill_id (so the `accounts` table
+    and `users.account_id` column already exist).
     """
     existing = conn.execute("SELECT id FROM users LIMIT 1").fetchone()
     if existing:
@@ -280,10 +359,17 @@ def _seed_first_admin_user(conn: sqlite3.Connection) -> None:
     if not email or not password_hash:
         return
 
+    now = datetime.now(timezone.utc).isoformat()
+    cur = conn.execute(
+        "INSERT INTO accounts (name, created_at, status, plan) VALUES (?, ?, 'active', 'free')",
+        (f"{email}'s Workspace", now),
+    )
+    account_id = cur.lastrowid
+
     conn.execute(
-        "INSERT INTO users (email, name, password_hash, role, status, created_at, created_by_user_id, is_owner) "
-        "VALUES (?, 'Admin', ?, 'admin', 'active', ?, NULL, 1)",
-        (email, password_hash, datetime.now(timezone.utc).isoformat()),
+        "INSERT INTO users (email, name, password_hash, role, status, created_at, created_by_user_id, is_owner, account_id) "
+        "VALUES (?, 'Admin', ?, 'admin', 'active', ?, NULL, 1, ?)",
+        (email, password_hash, now, account_id),
     )
 
 
@@ -431,6 +517,22 @@ def init_db() -> None:
         """)
         _migrate_users_table_add_previous_login_at(conn)
         _migrate_users_table_add_is_owner(conn)
+        # Multi-tenant data isolation (see DECISIONS.md's "Real
+        # multi-tenant data isolation" entry): `accounts` is the real
+        # tenant boundary. Must run before _seed_first_admin_user
+        # below, since that function's INSERT into `users` needs the
+        # account_id column to already exist -- and it deliberately
+        # creates its OWN fresh account rather than using
+        # `_backfill_account_id`, since the first-ever admin
+        # represents a genuinely new company, not old shared data.
+        _backfill_account_id = _migrate_accounts_table_and_backfill_id(conn)
+        _add_account_id_column(conn, "users", _backfill_account_id)
+        _add_account_id_column(conn, "leases", _backfill_account_id)
+        _add_account_id_column(conn, "activity_log", _backfill_account_id)
+        _add_account_id_column(conn, "lease_tags", _backfill_account_id)
+        _add_account_id_column(conn, "discrepancies", _backfill_account_id)
+        _add_account_id_column(conn, "alerts", _backfill_account_id)
+        _add_account_id_column(conn, "comments", _backfill_account_id)
         _seed_first_admin_user(conn)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS password_reset_tokens (
@@ -627,6 +729,26 @@ def init_db() -> None:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_lease_field_edits_task_id ON lease_field_edits(task_id)")
         _migrate_lease_field_edits_table_add_reverted_at(conn)
         _migrate_tasks_table_add_priority(conn)
+        # Remaining multi-tenant account_id columns -- these tables
+        # are only created above this point in this same function, so
+        # they couldn't be migrated back where `_backfill_account_id`
+        # was first computed (right before _seed_first_admin_user).
+        # `assistant_conversations`, `linked_email_accounts`,
+        # `oauth_states`, `password_reset_tokens`, `message_thread_
+        # participants`, and `messages` deliberately do NOT get their
+        # own account_id: each is already inherently scoped by a
+        # NOT NULL user_id/thread_id FK to a table that itself now
+        # carries account_id (users, message_threads), so a route that
+        # already verifies "this user_id belongs to the current
+        # account" or "this thread_id belongs to the current account"
+        # has no cross-account leak surface left to close with a
+        # redundant column. `waitlist_signups` also gets none -- it's
+        # pre-account by definition (people requesting access, not yet
+        # belonging to any account).
+        _add_account_id_column(conn, "assignments", _backfill_account_id)
+        _add_account_id_column(conn, "message_threads", _backfill_account_id)
+        _add_account_id_column(conn, "tasks", _backfill_account_id)
+        _add_account_id_column(conn, "lease_field_edits", _backfill_account_id)
         conn.commit()
     finally:
         conn.close()
@@ -672,6 +794,7 @@ def _row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
 def insert_lease(
     filename: str,
     extracted_fields: Dict[str, Any],
+    account_id: int,
     document_type: str = "lease",
     base_lease_id: Optional[int] = None,
     date_candidates: Optional[Dict[str, Any]] = None,
@@ -684,6 +807,12 @@ def insert_lease(
 ) -> int:
     """
     Persist one extracted document. Returns its new lease id.
+
+    account_id is required (no default) -- see DECISIONS.md's "Real
+    multi-tenant data isolation" entry -- every lease belongs to
+    exactly the uploading user's account (auth.current_account_id()),
+    forcing every call site to be explicit about it rather than
+    silently defaulting to an unscoped or wrong account.
 
     `date_candidates` (shape: {"start": [...], "end": [...]}, from
     FieldExtractor.find_all_date_candidates) is stored alongside the
@@ -710,8 +839,8 @@ def insert_lease(
     try:
         cur = conn.execute(
             "INSERT INTO leases (filename, uploaded_at, extracted_fields, document_type, base_lease_id, "
-            "date_candidates, display_name, source_page_start, source_page_end, status, supersedes_lease_id, version_number) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "date_candidates, display_name, source_page_start, source_page_end, status, supersedes_lease_id, version_number, account_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 filename,
                 datetime.now(timezone.utc).isoformat(),
@@ -725,6 +854,7 @@ def insert_lease(
                 status,
                 supersedes_lease_id,
                 version_number,
+                account_id,
             ),
         )
         conn.commit()
@@ -1138,10 +1268,22 @@ def revert_lease_field_edit(edit_id: int, reverted_by: str, reverted_by_email: O
         conn.close()
 
 
-def get_lease(lease_id: int) -> Optional[Dict[str, Any]]:
+def get_lease(lease_id: int, account_id: Optional[int] = None) -> Optional[Dict[str, Any]]:
+    """
+    account_id: when given, the row is only returned if it belongs to
+    that account -- returns None (indistinguishable from "no such
+    lease") otherwise, so a route can 404 without leaking whether the
+    id belongs to someone else's data. None (the default) skips the
+    check -- used only by internal callers that already know they're
+    account-safe (e.g. the owner console, or a caller that just
+    verified the same lease's account itself).
+    """
     conn = get_connection()
     try:
-        row = conn.execute("SELECT * FROM leases WHERE id = ?", (lease_id,)).fetchone()
+        if account_id is not None:
+            row = conn.execute("SELECT * FROM leases WHERE id = ? AND account_id = ?", (lease_id, account_id)).fetchone()
+        else:
+            row = conn.execute("SELECT * FROM leases WHERE id = ?", (lease_id,)).fetchone()
         return _row_to_dict(row) if row else None
     except OverflowError:
         # SQLite's INTEGER column is a signed 64-bit int; an id outside
@@ -1155,7 +1297,7 @@ def get_lease(lease_id: int) -> Optional[Dict[str, Any]]:
         conn.close()
 
 
-def get_all_leases(document_type: Optional[str] = "lease", include_superseded: bool = False) -> List[Dict[str, Any]]:
+def get_all_leases(document_type: Optional[str] = "lease", include_superseded: bool = False, account_id: Optional[int] = None) -> List[Dict[str, Any]]:
     """
     Base leases only by default (document_type='lease'), ordered by
     upload time. Pass document_type=None to include amendments too.
@@ -1166,6 +1308,11 @@ def get_all_leases(document_type: Optional[str] = "lease", include_superseded: b
     computations), same as this function's role before versioning
     existed. Pass include_superseded=True for the version-history view,
     which needs every version, current or not.
+
+    account_id: when given, only that account's rows are returned.
+    None (the default) returns every account's rows -- for internal/
+    owner-console callers only; every regular route must pass the
+    current session's account_id.
     """
     conn = get_connection()
     try:
@@ -1175,6 +1322,9 @@ def get_all_leases(document_type: Optional[str] = "lease", include_superseded: b
             params.append(document_type)
         if not include_superseded:
             clauses.append("status != 'superseded'")
+        if account_id is not None:
+            clauses.append("account_id = ?")
+            params.append(account_id)
         where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
         rows = conn.execute(f"SELECT * FROM leases {where} ORDER BY uploaded_at", params).fetchall()
         return [_row_to_dict(r) for r in rows]
@@ -1182,10 +1332,19 @@ def get_all_leases(document_type: Optional[str] = "lease", include_superseded: b
         conn.close()
 
 
-def delete_lease(lease_id: int) -> None:
-    """Deletes a lease and any amendments linked to it."""
+def delete_lease(lease_id: int, account_id: Optional[int] = None) -> None:
+    """
+    Deletes a lease and any amendments linked to it. account_id: when
+    given, only deletes if the lease belongs to that account (a no-op
+    otherwise) -- callers must pass the current session's account_id
+    to prevent account A from deleting account B's lease by id.
+    """
     conn = get_connection()
     try:
+        if account_id is not None:
+            owned = conn.execute("SELECT id FROM leases WHERE id = ? AND account_id = ?", (lease_id, account_id)).fetchone()
+            if not owned:
+                return
         conn.execute("DELETE FROM leases WHERE base_lease_id = ?", (lease_id,))
         conn.execute("DELETE FROM leases WHERE id = ?", (lease_id,))
         conn.commit()
@@ -1198,6 +1357,15 @@ def delete_lease(lease_id: int) -> None:
 
 
 def get_amendments(base_lease_id: int) -> List[Dict[str, Any]]:
+    """
+    No account_id parameter -- every caller of this function already
+    has a base_lease_id that it either just fetched with an account
+    check (get_effective_lease/get_effective_fields below) or trusts
+    internally (owner console). An amendment always shares its base
+    lease's account_id (enforced at the /leases/<id>/amendments POST
+    route), so filtering by base_lease_id alone is already correctly
+    scoped as long as the caller verified the base first.
+    """
     conn = get_connection()
     try:
         rows = conn.execute(
@@ -1211,16 +1379,17 @@ def get_amendments(base_lease_id: int) -> List[Dict[str, Any]]:
         conn.close()
 
 
-def get_effective_fields(lease_id: int) -> Optional[Dict[str, Any]]:
+def get_effective_fields(lease_id: int, account_id: Optional[int] = None) -> Optional[Dict[str, Any]]:
     """
     Merge a base lease's extracted_fields with its amendments' non-null
     fields — later-uploaded amendments take priority per field. Returns
-    None if lease_id doesn't exist. This is what portfolio metrics, risk
-    analysis, comparison, and the Q&A engine should read from, not the
-    raw base lease alone, so an amendment (e.g. a rent increase
-    addendum) is actually reflected in portfolio math.
+    None if lease_id doesn't exist (or doesn't belong to account_id,
+    when given). This is what portfolio metrics, risk analysis,
+    comparison, and the Q&A engine should read from, not the raw base
+    lease alone, so an amendment (e.g. a rent increase addendum) is
+    actually reflected in portfolio math.
     """
-    base = get_lease(lease_id)
+    base = get_lease(lease_id, account_id=account_id)
     if not base:
         return None
 
@@ -1232,9 +1401,9 @@ def get_effective_fields(lease_id: int) -> Optional[Dict[str, Any]]:
     return effective
 
 
-def get_effective_lease(lease_id: int) -> Optional[Dict[str, Any]]:
+def get_effective_lease(lease_id: int, account_id: Optional[int] = None) -> Optional[Dict[str, Any]]:
     """Like get_lease, but with extracted_fields replaced by the effective (amendment-merged) fields."""
-    base = get_lease(lease_id)
+    base = get_lease(lease_id, account_id=account_id)
     if not base:
         return None
     effective_fields = get_effective_fields(lease_id)
@@ -1244,7 +1413,7 @@ def get_effective_lease(lease_id: int) -> Optional[Dict[str, Any]]:
     return result
 
 
-def get_all_effective_leases() -> List[Dict[str, Any]]:
+def get_all_effective_leases(account_id: Optional[int] = None) -> List[Dict[str, Any]]:
     """
     All base leases (not amendments) with their fields amendment-merged
     -- same output shape as calling get_effective_lease() on every base
@@ -1262,10 +1431,23 @@ def get_all_effective_leases() -> List[Dict[str, Any]]:
     the number of leases gets anywhere close to what would actually
     strain SQLite itself. Fetching every lease (base + amendments) in
     one query and merging in Python removes the N+1 pattern entirely.
+
+    account_id: filters at the SQL level -- since an amendment always
+    shares its base lease's account_id, this correctly keeps every
+    base+amendment pair from the SAME account together while
+    excluding every other account's leases entirely. None (the
+    default) returns every account's leases -- for internal/owner-
+    console callers only; every regular portfolio-wide route must
+    pass the current session's account_id, which is nearly EVERY
+    caller of this function -- this is the single highest-leverage
+    scoping point in the whole codebase (see DECISIONS.md).
     """
     conn = get_connection()
     try:
-        rows = conn.execute("SELECT * FROM leases ORDER BY uploaded_at").fetchall()
+        if account_id is not None:
+            rows = conn.execute("SELECT * FROM leases WHERE account_id = ? ORDER BY uploaded_at", (account_id,)).fetchall()
+        else:
+            rows = conn.execute("SELECT * FROM leases ORDER BY uploaded_at").fetchall()
     finally:
         conn.close()
 
@@ -1455,7 +1637,8 @@ def deny_waitlist_signup(signup_id: int) -> bool:
 # ----------------------------------------------------------------------
 
 def create_user(
-    email: str, name: str, password_hash: str, role: str = "viewer", created_by_user_id: Optional[int] = None
+    email: str, name: str, password_hash: str, role: str = "viewer",
+    created_by_user_id: Optional[int] = None, account_id: Optional[int] = None,
 ) -> Dict[str, Any]:
     """
     Returns {"status": "created", "id": ...} on success, or
@@ -1464,13 +1647,22 @@ def create_user(
     reason: a UNIQUE-constraint collision here is an expected,
     friendly outcome (an admin fat-fingering an add-member form twice,
     or two admins racing to add the same person), not a server error.
+
+    account_id: a new team member joins their CREATING admin's
+    account (co-workers at the same company) -- callers should pass
+    the creating admin's own account_id, not a fresh one. There is
+    deliberately no path in this codebase today that creates a brand
+    new account for a brand new company (see DECISIONS.md's "Real
+    multi-tenant data isolation" entry) -- account_id is required here
+    (not defaulted) so a caller can't silently create an orphaned
+    account_id=NULL user by omitting it.
     """
     conn = get_connection()
     try:
         cur = conn.execute(
-            "INSERT INTO users (email, name, password_hash, role, status, created_at, created_by_user_id) "
-            "VALUES (?, ?, ?, ?, 'active', ?, ?)",
-            (email.strip().lower(), name, password_hash, role, datetime.now(timezone.utc).isoformat(), created_by_user_id),
+            "INSERT INTO users (email, name, password_hash, role, status, created_at, created_by_user_id, account_id) "
+            "VALUES (?, ?, ?, ?, 'active', ?, ?, ?)",
+            (email.strip().lower(), name, password_hash, role, datetime.now(timezone.utc).isoformat(), created_by_user_id, account_id),
         )
         conn.commit()
         return {"status": "created", "id": cur.lastrowid}
@@ -1501,11 +1693,23 @@ def get_user_by_email(email: str) -> Optional[Dict[str, Any]]:
         conn.close()
 
 
-def list_users() -> List[Dict[str, Any]]:
-    """Every team member, active and deactivated alike (the Team view distinguishes them in the UI), oldest first."""
+def list_users(account_id: Optional[int] = None) -> List[Dict[str, Any]]:
+    """
+    Every team member, active and deactivated alike (the Team view
+    distinguishes them in the UI), oldest first.
+
+    account_id: when given, only that account's users are returned --
+    the regular Team view MUST pass the current session's account_id,
+    or every admin would see (and could suspend/reset-password on)
+    every other account's team too. None (the default) returns every
+    account -- for the owner console only.
+    """
     conn = get_connection()
     try:
-        rows = conn.execute("SELECT * FROM users ORDER BY created_at ASC").fetchall()
+        if account_id is not None:
+            rows = conn.execute("SELECT * FROM users WHERE account_id = ? ORDER BY created_at ASC", (account_id,)).fetchall()
+        else:
+            rows = conn.execute("SELECT * FROM users ORDER BY created_at ASC").fetchall()
         return [dict(r) for r in rows]
     finally:
         conn.close()
@@ -2270,6 +2474,7 @@ def delete_linked_email_account(account_id: int) -> bool:
 def create_task(
     title: str,
     created_by_user_id: int,
+    account_id: int,
     description: Optional[str] = None,
     due_date: Optional[str] = None,
     assigned_to_user_id: Optional[int] = None,
@@ -2289,11 +2494,11 @@ def create_task(
             INSERT INTO tasks
                 (title, description, due_date, status, assigned_to_user_id, created_by_user_id,
                  lease_id, discrepancy_id, property_address, source_type, source_natural_key,
-                 priority, created_at, updated_at)
-            VALUES (?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 priority, created_at, updated_at, account_id)
+            VALUES (?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (title, description, due_date, assigned_to_user_id, created_by_user_id,
-             lease_id, discrepancy_id, property_address, source_type, source_natural_key, priority, now, now),
+             lease_id, discrepancy_id, property_address, source_type, source_natural_key, priority, now, now, account_id),
         )
         conn.commit()
         return cur.lastrowid
@@ -2301,10 +2506,13 @@ def create_task(
         conn.close()
 
 
-def get_task(task_id: int) -> Optional[Dict[str, Any]]:
+def get_task(task_id: int, account_id: Optional[int] = None) -> Optional[Dict[str, Any]]:
     conn = get_connection()
     try:
-        row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+        if account_id is not None:
+            row = conn.execute("SELECT * FROM tasks WHERE id = ? AND account_id = ?", (task_id, account_id)).fetchone()
+        else:
+            row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
         return dict(row) if row else None
     finally:
         conn.close()
@@ -2317,8 +2525,9 @@ def list_tasks(
     due_after: Optional[str] = None,
     lease_id: Optional[int] = None,
     discrepancy_id: Optional[int] = None,
+    account_id: Optional[int] = None,
 ) -> List[Dict[str, Any]]:
-    """Every filter is optional and AND-combined -- callers pass only the ones they need (the /tasks route maps straight from its own optional query params to these same keyword args)."""
+    """Every filter is optional and AND-combined -- callers pass only the ones they need (the /tasks route maps straight from its own optional query params to these same keyword args). account_id: every regular route must pass the current session's account_id."""
     conn = get_connection()
     try:
         clauses, params = [], []
@@ -2340,6 +2549,9 @@ def list_tasks(
         if discrepancy_id is not None:
             clauses.append("discrepancy_id = ?")
             params.append(discrepancy_id)
+        if account_id is not None:
+            clauses.append("account_id = ?")
+            params.append(account_id)
         where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
         # High-priority tasks sort first, ahead of due-date ordering --
         # `(priority != 'high')` is 0 for a high-priority row and 1
@@ -2424,10 +2636,14 @@ def update_task_fields(task_id: int, title: Optional[str] = None, description: O
         conn.close()
 
 
-def delete_task(task_id: int) -> bool:
+def delete_task(task_id: int, account_id: Optional[int] = None) -> bool:
+    """account_id: when given, only deletes if the task belongs to that account -- callers must pass the current session's account_id to prevent account A from deleting account B's task by id."""
     conn = get_connection()
     try:
-        cur = conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+        if account_id is not None:
+            cur = conn.execute("DELETE FROM tasks WHERE id = ? AND account_id = ?", (task_id, account_id))
+        else:
+            cur = conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
         conn.commit()
         return cur.rowcount > 0
     finally:
@@ -2584,6 +2800,7 @@ def upsert_discrepancy(
     category: str,
     message: str,
     details: Dict[str, Any],
+    account_id: int,
     lease_id: Optional[int] = None,
     related_lease_id: Optional[int] = None,
     field: Optional[str] = None,
@@ -2617,8 +2834,8 @@ def upsert_discrepancy(
         conn.execute(
             """
             INSERT INTO discrepancies (discrepancy_type, natural_key, lease_id, related_lease_id,
-                category, field, severity, message, details, status, first_detected_at, last_seen_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)
+                category, field, severity, message, details, status, first_detected_at, last_seen_at, account_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?)
             ON CONFLICT(natural_key) DO UPDATE SET
                 category = excluded.category,
                 field = excluded.field,
@@ -2629,7 +2846,7 @@ def upsert_discrepancy(
                 related_lease_id = excluded.related_lease_id,
                 last_seen_at = excluded.last_seen_at
             """,
-            (discrepancy_type, natural_key, lease_id, related_lease_id, category, field, severity, message, json.dumps(details), now, now),
+            (discrepancy_type, natural_key, lease_id, related_lease_id, category, field, severity, message, json.dumps(details), now, now, account_id),
         )
         conn.commit()
         # A second SELECT after the atomic upsert above is race-free --
@@ -2674,8 +2891,8 @@ def upsert_discrepancies_bulk(items: List[Dict[str, Any]]) -> Dict[str, int]:
             conn.execute(
                 """
                 INSERT INTO discrepancies (discrepancy_type, natural_key, lease_id, related_lease_id,
-                    category, field, severity, message, details, status, first_detected_at, last_seen_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)
+                    category, field, severity, message, details, status, first_detected_at, last_seen_at, account_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?)
                 ON CONFLICT(natural_key) DO UPDATE SET
                     category = excluded.category,
                     field = excluded.field,
@@ -2689,7 +2906,7 @@ def upsert_discrepancies_bulk(items: List[Dict[str, Any]]) -> Dict[str, int]:
                 (
                     item["discrepancy_type"], item["natural_key"], item.get("lease_id"), item.get("related_lease_id"),
                     item["category"], item.get("field"), item.get("severity"), item["message"],
-                    json.dumps(item["details"]), now, now,
+                    json.dumps(item["details"]), now, now, item["account_id"],
                 ),
             )
         conn.commit()
@@ -2756,10 +2973,13 @@ def get_discrepancy_by_natural_key(natural_key: str) -> Optional[Dict[str, Any]]
         conn.close()
 
 
-def get_discrepancy(discrepancy_id: int) -> Optional[Dict[str, Any]]:
+def get_discrepancy(discrepancy_id: int, account_id: Optional[int] = None) -> Optional[Dict[str, Any]]:
     conn = get_connection()
     try:
-        row = conn.execute("SELECT * FROM discrepancies WHERE id = ?", (discrepancy_id,)).fetchone()
+        if account_id is not None:
+            row = conn.execute("SELECT * FROM discrepancies WHERE id = ? AND account_id = ?", (discrepancy_id, account_id)).fetchone()
+        else:
+            row = conn.execute("SELECT * FROM discrepancies WHERE id = ?", (discrepancy_id,)).fetchone()
         return _discrepancy_row_to_dict(row) if row else None
     except OverflowError:
         return None
@@ -2771,8 +2991,9 @@ def list_discrepancies(
     status: Optional[str] = None,
     lease_id: Optional[int] = None,
     discrepancy_type: Optional[str] = None,
+    account_id: Optional[int] = None,
 ) -> List[Dict[str, Any]]:
-    """Most-recently-seen first. Any combination of filters may be applied together."""
+    """Most-recently-seen first. Any combination of filters may be applied together. account_id: every regular route must pass the current session's account_id; None (the default) is for internal/owner-console callers only."""
     conn = get_connection()
     try:
         clauses, params = [], []
@@ -2785,6 +3006,9 @@ def list_discrepancies(
         if discrepancy_type:
             clauses.append("discrepancy_type = ?")
             params.append(discrepancy_type)
+        if account_id is not None:
+            clauses.append("account_id = ?")
+            params.append(account_id)
         where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
         rows = conn.execute(
             f"SELECT * FROM discrepancies {where} ORDER BY last_seen_at DESC, id DESC", params
@@ -2802,11 +3026,15 @@ def _add_resolution(
     correct_source: Optional[str],
     resolved_by_email: Optional[str],
     new_status: str,
+    account_id: Optional[int] = None,
 ) -> Optional[Dict[str, Any]]:
     now = datetime.now(timezone.utc).isoformat()
     conn = get_connection()
     try:
-        exists = conn.execute("SELECT id FROM discrepancies WHERE id = ?", (discrepancy_id,)).fetchone()
+        if account_id is not None:
+            exists = conn.execute("SELECT id FROM discrepancies WHERE id = ? AND account_id = ?", (discrepancy_id, account_id)).fetchone()
+        else:
+            exists = conn.execute("SELECT id FROM discrepancies WHERE id = ?", (discrepancy_id,)).fetchone()
         if not exists:
             return None
         cur = conn.execute(
@@ -2833,7 +3061,7 @@ def _add_resolution(
 
 
 def resolve_discrepancy(
-    discrepancy_id: int, correct_source: str, note: str, resolved_by: str, resolved_by_email: Optional[str] = None
+    discrepancy_id: int, correct_source: str, note: str, resolved_by: str, resolved_by_email: Optional[str] = None, account_id: Optional[int] = None
 ) -> Optional[Dict[str, Any]]:
     """
     Logs a resolution and marks the discrepancy 'resolved'. Always
@@ -2841,16 +3069,17 @@ def resolve_discrepancy(
     resolved discrepancy again (e.g. a second reviewer confirming, or
     updating the note) just appends another permanent entry to the log
     rather than being rejected, since nothing about that should be
-    treated as an error. Returns None if discrepancy_id doesn't exist.
+    treated as an error. Returns None if discrepancy_id doesn't exist
+    (or doesn't belong to account_id, when given).
     """
-    return _add_resolution(discrepancy_id, "resolved", note, resolved_by, correct_source, resolved_by_email, "resolved")
+    return _add_resolution(discrepancy_id, "resolved", note, resolved_by, correct_source, resolved_by_email, "resolved", account_id=account_id)
 
 
 def reopen_discrepancy(
-    discrepancy_id: int, note: str, resolved_by: str, resolved_by_email: Optional[str] = None
+    discrepancy_id: int, note: str, resolved_by: str, resolved_by_email: Optional[str] = None, account_id: Optional[int] = None
 ) -> Optional[Dict[str, Any]]:
-    """Logs a reopen action and marks the discrepancy 'open' again. Returns None if discrepancy_id doesn't exist."""
-    return _add_resolution(discrepancy_id, "reopened", note, resolved_by, None, resolved_by_email, "open")
+    """Logs a reopen action and marks the discrepancy 'open' again. Returns None if discrepancy_id doesn't exist (or doesn't belong to account_id, when given)."""
+    return _add_resolution(discrepancy_id, "reopened", note, resolved_by, None, resolved_by_email, "open", account_id=account_id)
 
 
 def get_discrepancy_resolutions(discrepancy_id: int) -> List[Dict[str, Any]]:
@@ -2868,7 +3097,7 @@ def get_discrepancy_resolutions(discrepancy_id: int) -> List[Dict[str, Any]]:
         conn.close()
 
 
-def get_discrepancy_summary() -> Dict[str, Any]:
+def get_discrepancy_summary(account_id: Optional[int] = None) -> Dict[str, Any]:
     """
     Counts across every discrepancy, by status/severity/type -- the
     header-stat digest a "Discrepancies" sidebar tab needs (how many
@@ -2880,10 +3109,17 @@ def get_discrepancy_summary() -> Dict[str, Any]:
     itself returns -- see portfolio_health_score.py's own discrepancy-
     scoping logic for the DIFFERENT, narrower scope that function
     needs instead, and why.
+
+    account_id: every regular route must pass the current session's
+    account_id; None (the default) is for internal/owner-console
+    callers only.
     """
     conn = get_connection()
     try:
-        rows = conn.execute("SELECT status, severity, discrepancy_type FROM discrepancies").fetchall()
+        if account_id is not None:
+            rows = conn.execute("SELECT status, severity, discrepancy_type FROM discrepancies WHERE account_id = ?", (account_id,)).fetchall()
+        else:
+            rows = conn.execute("SELECT status, severity, discrepancy_type FROM discrepancies").fetchall()
     finally:
         conn.close()
 
@@ -3047,6 +3283,7 @@ def upsert_alert(
     title: str,
     message: str,
     details: Dict[str, Any],
+    account_id: int,
     lease_id: Optional[int] = None,
 ) -> int:
     """
@@ -3079,8 +3316,8 @@ def upsert_alert(
         conn.execute(
             """
             INSERT INTO alerts (alert_type, natural_key, lease_id, severity, title, message, details,
-                status, first_detected_at, last_seen_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
+                status, first_detected_at, last_seen_at, account_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)
             ON CONFLICT(natural_key) DO UPDATE SET
                 severity = excluded.severity,
                 title = excluded.title,
@@ -3090,7 +3327,7 @@ def upsert_alert(
                 status = CASE WHEN alerts.status = 'auto_resolved' THEN 'active' ELSE alerts.status END,
                 last_seen_at = excluded.last_seen_at
             """,
-            (alert_type, natural_key, lease_id, severity, title, message, json.dumps(details), now, now),
+            (alert_type, natural_key, lease_id, severity, title, message, json.dumps(details), now, now, account_id),
         )
         conn.commit()
         row = conn.execute("SELECT id FROM alerts WHERE natural_key = ?", (natural_key,)).fetchone()
@@ -3132,8 +3369,8 @@ def upsert_alerts_bulk(items: List[Dict[str, Any]]) -> None:
             conn.execute(
                 """
                 INSERT INTO alerts (alert_type, natural_key, lease_id, severity, title, message, details,
-                    status, first_detected_at, last_seen_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
+                    status, first_detected_at, last_seen_at, account_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)
                 ON CONFLICT(natural_key) DO UPDATE SET
                     severity = excluded.severity,
                     title = excluded.title,
@@ -3145,7 +3382,7 @@ def upsert_alerts_bulk(items: List[Dict[str, Any]]) -> None:
                 """,
                 (
                     item["alert_type"], item["natural_key"], item.get("lease_id"), item["severity"],
-                    item["title"], item["message"], json.dumps(item["details"]), now, now,
+                    item["title"], item["message"], json.dumps(item["details"]), now, now, item["account_id"],
                 ),
             )
         conn.commit()
@@ -3195,11 +3432,14 @@ def auto_resolve_alert(alert_id: int) -> bool:
         conn.close()
 
 
-def dismiss_alert(alert_id: int, dismissed_by: str, note: Optional[str] = None) -> bool:
-    """Marks an alert 'dismissed' with who/when/why. Always allowed regardless of current status (dismissing an already-auto_resolved alert is a legitimate 'yes, and don't bring it back' action). Returns False if no such id."""
+def dismiss_alert(alert_id: int, dismissed_by: str, note: Optional[str] = None, account_id: Optional[int] = None) -> bool:
+    """Marks an alert 'dismissed' with who/when/why. Always allowed regardless of current status (dismissing an already-auto_resolved alert is a legitimate 'yes, and don't bring it back' action). Returns False if no such id (or it doesn't belong to account_id, when given)."""
     conn = get_connection()
     try:
-        exists = conn.execute("SELECT id FROM alerts WHERE id = ?", (alert_id,)).fetchone()
+        if account_id is not None:
+            exists = conn.execute("SELECT id FROM alerts WHERE id = ? AND account_id = ?", (alert_id, account_id)).fetchone()
+        else:
+            exists = conn.execute("SELECT id FROM alerts WHERE id = ?", (alert_id,)).fetchone()
         if not exists:
             return False
         conn.execute(
@@ -3214,10 +3454,13 @@ def dismiss_alert(alert_id: int, dismissed_by: str, note: Optional[str] = None) 
         conn.close()
 
 
-def get_alert(alert_id: int) -> Optional[Dict[str, Any]]:
+def get_alert(alert_id: int, account_id: Optional[int] = None) -> Optional[Dict[str, Any]]:
     conn = get_connection()
     try:
-        row = conn.execute("SELECT * FROM alerts WHERE id = ?", (alert_id,)).fetchone()
+        if account_id is not None:
+            row = conn.execute("SELECT * FROM alerts WHERE id = ? AND account_id = ?", (alert_id, account_id)).fetchone()
+        else:
+            row = conn.execute("SELECT * FROM alerts WHERE id = ?", (alert_id,)).fetchone()
         return _alert_row_to_dict(row) if row else None
     except OverflowError:
         return None
@@ -3230,8 +3473,9 @@ def list_alerts(
     alert_type: Optional[str] = None,
     severity: Optional[str] = None,
     lease_id: Optional[int] = None,
+    account_id: Optional[int] = None,
 ) -> List[Dict[str, Any]]:
-    """Any combination of filters may be applied together. Ordered by severity (high first) then most-recently-seen -- a notification feed's natural reading order."""
+    """Any combination of filters may be applied together. Ordered by severity (high first) then most-recently-seen -- a notification feed's natural reading order. account_id: every regular route must pass the current session's account_id; None (the default) is for internal/owner-console callers only."""
     conn = get_connection()
     try:
         clauses, params = [], []
@@ -3247,6 +3491,9 @@ def list_alerts(
         if lease_id is not None:
             clauses.append("lease_id = ?")
             params.append(lease_id)
+        if account_id is not None:
+            clauses.append("account_id = ?")
+            params.append(account_id)
         where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
         rows = conn.execute(
             f"SELECT * FROM alerts {where} "

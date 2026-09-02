@@ -221,7 +221,7 @@ def detect_all_candidates(leases: List[Dict[str, Any]], reference_date=None) -> 
     )
 
 
-def generate_alerts(reference_date=None) -> Dict[str, Any]:
+def generate_alerts(account_id: int, reference_date=None) -> Dict[str, Any]:
     """
     Runs all four detectors against the current portfolio state,
     upserts each candidate (see database.upsert_alert for exactly what
@@ -234,10 +234,15 @@ def generate_alerts(reference_date=None) -> Dict[str, Any]:
     button in an admin panel) -- re-running against unchanged data
     produces zero new rows and zero status changes.
 
+    account_id scopes both the portfolio scanned AND the alerts
+    upserted/auto-resolved to exactly one account -- required (no
+    default) so this always runs for the current session's account,
+    never accidentally across every account.
+
     Returns {"created": N, "refreshed": N, "auto_resolved": N,
     "active_count": N, "by_severity": {...}}.
     """
-    leases = database.get_all_effective_leases()
+    leases = database.get_all_effective_leases(account_id=account_id)
     candidates = detect_all_candidates(leases, reference_date=reference_date)
 
     # Bulk path: one batched existence check, one batched upsert, one
@@ -261,18 +266,19 @@ def generate_alerts(reference_date=None) -> Dict[str, Any]:
             "title": c["title"],
             "message": c["message"],
             "details": c["details"],
+            "account_id": account_id,
             "lease_id": c.get("lease_id"),
         }
         for c in candidates
     ])
 
     to_auto_resolve = [
-        alert["id"] for alert in database.list_alerts(status="active")
+        alert["id"] for alert in database.list_alerts(status="active", account_id=account_id)
         if alert["alert_type"] in _MANAGED_ALERT_TYPES and alert["natural_key"] not in seen_keys
     ]
     auto_resolved = database.auto_resolve_alerts_bulk(to_auto_resolve)
 
-    active_alerts = database.list_alerts(status="active")
+    active_alerts = database.list_alerts(status="active", account_id=account_id)
     by_severity: Dict[str, int] = {"high": 0, "medium": 0, "low": 0}
     for alert in active_alerts:
         by_severity[alert["severity"]] = by_severity.get(alert["severity"], 0) + 1
@@ -286,9 +292,9 @@ def generate_alerts(reference_date=None) -> Dict[str, Any]:
     }
 
 
-def get_alert_digest() -> Dict[str, Any]:
+def get_alert_digest(account_id: int) -> Dict[str, Any]:
     """A summary suitable for a notification-feed header or a future email digest: counts of currently-active alerts by severity and by type. Does NOT run generation -- callers should generate_alerts() first if they want this to reflect the latest data."""
-    active_alerts = database.list_alerts(status="active")
+    active_alerts = database.list_alerts(status="active", account_id=account_id)
     by_severity: Dict[str, int] = {"high": 0, "medium": 0, "low": 0}
     by_type: Dict[str, int] = {t: 0 for t in _MANAGED_ALERT_TYPES}
     for alert in active_alerts:

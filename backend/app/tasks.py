@@ -78,9 +78,9 @@ def task_detail(task: Dict[str, Any]) -> Dict[str, Any]:
     return result
 
 
-def create_task_from_discrepancy(discrepancy_id: int, created_by_user_id: int, assigned_to_user_id: Optional[int] = None, due_date: Optional[str] = None) -> Dict[str, Any]:
+def create_task_from_discrepancy(discrepancy_id: int, created_by_user_id: int, account_id: int, assigned_to_user_id: Optional[int] = None, due_date: Optional[str] = None) -> Dict[str, Any]:
     """Carries over the discrepancy's own message/category/severity into the task's title/description, and links lease_id straight through, so the assignee doesn't have to re-open the discrepancy just to know what the task is about."""
-    disc = database.get_discrepancy(discrepancy_id)
+    disc = database.get_discrepancy(discrepancy_id, account_id=account_id)
     if disc is None:
         raise ValueError("Discrepancy not found")
     title = f"Resolve discrepancy: {disc['message']}"
@@ -93,6 +93,7 @@ def create_task_from_discrepancy(discrepancy_id: int, created_by_user_id: int, a
     task_id = database.create_task(
         title=title,
         created_by_user_id=created_by_user_id,
+        account_id=account_id,
         description=description,
         due_date=due_date,
         assigned_to_user_id=assigned_to_user_id,
@@ -104,8 +105,8 @@ def create_task_from_discrepancy(discrepancy_id: int, created_by_user_id: int, a
     return task_detail(database.get_task(task_id))
 
 
-def create_task_from_alert(alert_id: int, created_by_user_id: int, assigned_to_user_id: Optional[int] = None, due_date: Optional[str] = None) -> Dict[str, Any]:
-    alert = database.get_alert(alert_id)
+def create_task_from_alert(alert_id: int, created_by_user_id: int, account_id: int, assigned_to_user_id: Optional[int] = None, due_date: Optional[str] = None) -> Dict[str, Any]:
+    alert = database.get_alert(alert_id, account_id=account_id)
     if alert is None:
         raise ValueError("Alert not found")
     title = f"Follow up: {alert['title']}"
@@ -113,6 +114,7 @@ def create_task_from_alert(alert_id: int, created_by_user_id: int, assigned_to_u
     task_id = database.create_task(
         title=title,
         created_by_user_id=created_by_user_id,
+        account_id=account_id,
         description=description,
         due_date=due_date,
         assigned_to_user_id=assigned_to_user_id,

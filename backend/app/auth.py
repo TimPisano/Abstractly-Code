@@ -76,16 +76,23 @@ def verify_password(email: str, password: str):
 
 def current_user():
     """
-    The logged-in user's {"id", "email", "name", "role", "is_owner"},
-    or None if there's no session. Reads straight from the signed
-    session cookie -- this is what resolved_by/author_name/
+    The logged-in user's {"id", "email", "name", "role", "is_owner",
+    "account_id"}, or None if there's no session. Reads straight from
+    the signed session cookie -- this is what resolved_by/author_name/
     dismissed_by/actor_user_id are sourced from now, never a
     client-supplied request-body field.
 
-    is_owner defaults to False for any session predating this field
+    is_owner defaults to False for any session predating that field
     (an old cookie from before the owner console existed) -- correct,
     since owner status is only ever granted explicitly (see
     require_owner) and such a session was never granted it.
+
+    account_id defaults to None for any session predating the
+    multi-tenant migration -- such a session is stale (its user row
+    now has a real account_id in the database; the cookie just hasn't
+    re-authenticated since) and should be treated as un-scoped/no
+    access rather than silently matched against account_id=NULL rows,
+    which don't exist. See current_account_id().
     """
     if not session.get("user_id"):
         return None
@@ -95,7 +102,22 @@ def current_user():
         "name": session.get("name"),
         "role": session.get("role"),
         "is_owner": bool(session.get("is_owner", False)),
+        "account_id": session.get("account_id"),
     }
+
+
+def current_account_id():
+    """
+    The logged-in user's account_id (the real tenant/customer
+    boundary -- see DECISIONS.md's "Real multi-tenant data isolation"
+    entry), or None if there's no session or the session predates
+    that field. Every route that reads or writes customer data
+    (leases, discrepancies, alerts, comments, tasks, ...) must scope
+    its query by this value -- never trust a client-supplied
+    account_id, there isn't one; it always comes from the session.
+    """
+    user = current_user()
+    return user["account_id"] if user else None
 
 
 def require_role(min_role: str = "viewer"):

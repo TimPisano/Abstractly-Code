@@ -38,7 +38,7 @@ def _annotate(flag_like: Dict[str, Any], discrepancy_id: int) -> None:
                 break
 
 
-def sync_lease_risk_flags(lease_id: int, flags: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def sync_lease_risk_flags(lease_id: int, flags: List[Dict[str, Any]], account_id: int) -> List[Dict[str, Any]]:
     """
     Upserts every flag in this lease's risk-flag list (single-lease
     categories AND cross_lease_mismatch flags -- both share this one
@@ -80,6 +80,7 @@ def sync_lease_risk_flags(lease_id: int, flags: List[Dict[str, Any]]) -> List[Di
                 severity=flag.get("severity"),
                 message=flag.get("message", ""),
                 details=flag,
+                account_id=account_id,
                 lease_id=row_lease_id,
                 related_lease_id=row_related_id,
             )
@@ -95,6 +96,7 @@ def sync_lease_risk_flags(lease_id: int, flags: List[Dict[str, Any]]) -> List[Di
                 severity=flag.get("severity"),
                 message=flag.get("message", ""),
                 details=flag,
+                account_id=account_id,
                 lease_id=lease_id,
             )
 
@@ -103,7 +105,7 @@ def sync_lease_risk_flags(lease_id: int, flags: List[Dict[str, Any]]) -> List[Di
     return flags
 
 
-def sync_all_lease_risk_flags_bulk(per_lease_flags: List[tuple]) -> None:
+def sync_all_lease_risk_flags_bulk(per_lease_flags: List[tuple], account_id: int) -> None:
     """
     Bulk sibling of sync_lease_risk_flags for syncing EVERY lease's risk
     flags in one pass (GET /portfolio/risks) instead of one lease at a
@@ -150,6 +152,7 @@ def sync_all_lease_risk_flags_bulk(per_lease_flags: List[tuple]) -> None:
                     "severity": flag.get("severity"),
                     "message": flag.get("message", ""),
                     "details": flag,
+                    "account_id": account_id,
                     "lease_id": row_lease_id,
                     "related_lease_id": row_related_id,
                 })
@@ -165,6 +168,7 @@ def sync_all_lease_risk_flags_bulk(per_lease_flags: List[tuple]) -> None:
                     "severity": flag.get("severity"),
                     "message": flag.get("message", ""),
                     "details": flag,
+                    "account_id": account_id,
                     "lease_id": lease_id,
                 })
 
@@ -192,7 +196,7 @@ def sync_all_lease_risk_flags_bulk(per_lease_flags: List[tuple]) -> None:
                     break
 
 
-def sync_rent_roll_reconciliation(mismatches: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def sync_rent_roll_reconciliation(mismatches: List[Dict[str, Any]], account_id: int) -> List[Dict[str, Any]]:
     """Upserts every rent-roll-vs-lease-PDF mismatch and annotates each dict in place. Returns the same list."""
     for mismatch in mismatches:
         rr_id = mismatch.get("rent_roll_lease_id")
@@ -211,6 +215,7 @@ def sync_rent_roll_reconciliation(mismatches: List[Dict[str, Any]]) -> List[Dict
             severity="medium",
             message=message,
             details=mismatch,
+            account_id=account_id,
             lease_id=rr_id,
             related_lease_id=doc_id,
         )
@@ -218,7 +223,7 @@ def sync_rent_roll_reconciliation(mismatches: List[Dict[str, Any]]) -> List[Dict
     return mismatches
 
 
-def sync_t12_reconciliation(result: Dict[str, Any]) -> Dict[str, Any]:
+def sync_t12_reconciliation(result: Dict[str, Any], account_id: int) -> Dict[str, Any]:
     """
     Upserts (and annotates in place) the one T12-vs-rent-roll
     discrepancy for this property, IF it's currently flagged or a
@@ -254,6 +259,7 @@ def sync_t12_reconciliation(result: Dict[str, Any]) -> Dict[str, Any]:
         severity="medium" if result.get("flagged") else None,
         message=message,
         details=result,
+        account_id=account_id,
     )
     _annotate(result, discrepancy_id)
     return result
