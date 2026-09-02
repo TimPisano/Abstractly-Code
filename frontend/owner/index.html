@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
+    <title>Owner Console — Abstractly</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap">
+    <link rel="stylesheet" href="../design-system.css">
+    <link rel="stylesheet" href="owner.css">
+</head>
+<body>
+
+    <div class="owner-shell" id="ownerShell" style="display:none;">
+        <header class="owner-header">
+            <div class="owner-brand">Abstractly <span class="owner-brand-tag">Owner Console</span></div>
+            <div class="owner-header-right">
+                <span id="ownerEmailLabel"></span>
+                <button class="btn-secondary" id="logoutBtn">Log Out</button>
+            </div>
+        </header>
+
+        <nav class="owner-tabs">
+            <button class="owner-tab active" data-tab="accounts">Accounts</button>
+            <button class="owner-tab" data-tab="finance">Revenue &amp; Expenses</button>
+        </nav>
+
+        <main class="owner-main">
+            <!-- ===================== Accounts ===================== -->
+            <section class="owner-panel active" id="panel-accounts">
+                <div class="owner-panel-header">
+                    <h1>Accounts</h1>
+                    <p class="owner-panel-subtitle">Every login in the system. Not separate customer tenants — everyone shares the same portfolio today.</p>
+                </div>
+
+                <div class="owner-filters">
+                    <input type="text" id="filterEmail" class="text-input" placeholder="Search by email…">
+                    <select id="filterStatus" class="text-input">
+                        <option value="">All statuses</option>
+                        <option value="active">Active</option>
+                        <option value="deactivated">Deactivated</option>
+                    </select>
+                    <input type="date" id="filterSignupAfter" class="text-input" title="Signed up after">
+                    <input type="date" id="filterSignupBefore" class="text-input" title="Signed up before">
+                    <button class="btn-secondary" id="clearFiltersBtn">Clear</button>
+                </div>
+
+                <div id="accountsContent"><p class="loading-inline"><span class="spinner-small"></span> Loading accounts…</p></div>
+            </section>
+
+            <!-- ===================== Finance ===================== -->
+            <section class="owner-panel" id="panel-finance">
+                <div class="owner-panel-header">
+                    <h1>Revenue &amp; Expenses</h1>
+                    <p class="owner-panel-subtitle">Manual entries — no billing integration is connected yet.</p>
+                </div>
+
+                <div class="owner-finance-totals" id="financeTotals"></div>
+
+                <div class="owner-trend-wrap">
+                    <h2>Monthly trend</h2>
+                    <div id="financeTrend"></div>
+                </div>
+
+                <div class="owner-finance-columns">
+                    <div class="owner-finance-col">
+                        <h2>Revenue</h2>
+                        <form id="revenueForm" class="owner-entry-form">
+                            <input type="date" id="revenueDate" class="text-input" required>
+                            <input type="number" step="0.01" id="revenueAmount" class="text-input" placeholder="Amount" required>
+                            <input type="text" id="revenueSource" class="text-input" placeholder="Source / customer" required>
+                            <input type="text" id="revenueNote" class="text-input" placeholder="Note (optional)">
+                            <button type="submit" class="btn-primary">Add Revenue Entry</button>
+                        </form>
+                        <div id="revenueList"></div>
+                    </div>
+                    <div class="owner-finance-col">
+                        <h2>Expenses</h2>
+                        <form id="expenseForm" class="owner-entry-form">
+                            <input type="date" id="expenseDate" class="text-input" required>
+                            <input type="number" step="0.01" id="expenseAmount" class="text-input" placeholder="Amount" required>
+                            <select id="expenseCategory" class="text-input" required>
+                                <option value="">Category…</option>
+                                <option value="Hosting">Hosting</option>
+                                <option value="Tools">Tools</option>
+                                <option value="Marketing">Marketing</option>
+                                <option value="Other">Other</option>
+                            </select>
+                            <input type="text" id="expenseNote" class="text-input" placeholder="Note (optional)">
+                            <button type="submit" class="btn-primary">Add Expense Entry</button>
+                        </form>
+                        <div id="expenseList"></div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- ===================== Account detail modal ===================== -->
+    <div class="owner-modal-overlay" id="accountModalOverlay" style="display:none;">
+        <div class="owner-modal">
+            <button class="owner-modal-close" id="accountModalClose">&times;</button>
+            <div id="accountModalContent"></div>
+        </div>
+    </div>
+
+    <script src="../config.js"></script>
+    <script src="owner-app.js"></script>
+</body>
+</html>

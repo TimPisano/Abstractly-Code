@@ -1,0 +1,457 @@
+/**
+ * Owner console styles. Deliberately plain -- numbers and a simple
+ * chart, not a dashboard full of vanity metrics (explicit requirement
+ * from the operator). Reuses design-system.css tokens; no separate
+ * palette.
+ */
+
+.text-input {
+    padding: 0.625rem 0.875rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    font-size: 0.9rem;
+    background: var(--white);
+    color: var(--text-dark);
+    width: 100%;
+}
+
+.text-input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+}
+
+/* ---- Login gate ---- */
+
+.owner-gate {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--lux-charcoal);
+    padding: 1.5rem;
+}
+
+.owner-gate-card {
+    background: var(--white);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-xl);
+    padding: 2.5rem;
+    width: 100%;
+    max-width: 380px;
+}
+
+.owner-gate-card h1 {
+    font-size: 1.4rem;
+    margin: 0.5rem 0 0.25rem;
+}
+
+.owner-gate-subtitle {
+    color: var(--text-medium);
+    font-size: 0.875rem;
+    margin-bottom: 1.5rem;
+}
+
+.owner-gate-card form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.owner-gate-message {
+    margin-top: 0.75rem;
+    font-size: 0.875rem;
+    min-height: 1.25rem;
+}
+
+.owner-gate-message.is-error {
+    color: var(--error-color);
+}
+
+.owner-brand {
+    font-weight: 800;
+    font-size: 1.1rem;
+    letter-spacing: -0.01em;
+}
+
+.owner-brand-tag {
+    font-weight: 500;
+    color: var(--text-medium);
+    font-size: 0.8rem;
+    margin-left: 0.5rem;
+}
+
+/* ---- Shell ---- */
+
+.owner-shell {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.owner-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem 1.75rem;
+    background: var(--lux-charcoal);
+    color: var(--lux-ivory);
+}
+
+.owner-header-right {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    font-size: 0.875rem;
+    color: var(--slate-300);
+}
+
+.owner-tabs {
+    display: flex;
+    gap: 0.25rem;
+    padding: 0 1.75rem;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--white);
+}
+
+.owner-tab {
+    padding: 0.9rem 1.1rem;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--text-medium);
+    cursor: pointer;
+}
+
+.owner-tab.active {
+    color: var(--text-dark);
+    border-bottom-color: var(--primary-color);
+}
+
+.owner-main {
+    flex: 1;
+    padding: 1.75rem;
+    max-width: 1100px;
+    width: 100%;
+    margin: 0 auto;
+}
+
+.owner-panel {
+    display: none;
+}
+
+.owner-panel.active {
+    display: block;
+}
+
+.owner-panel-header h1 {
+    font-size: 1.4rem;
+    margin-bottom: 0.25rem;
+}
+
+.owner-panel-subtitle {
+    color: var(--text-medium);
+    font-size: 0.875rem;
+    margin-bottom: 1.25rem;
+}
+
+/* ---- Filters ---- */
+
+.owner-filters {
+    display: flex;
+    gap: 0.6rem;
+    margin-bottom: 1.25rem;
+    flex-wrap: wrap;
+}
+
+.owner-filters .text-input {
+    width: auto;
+    flex: 1 1 160px;
+}
+
+/* ---- Accounts table ---- */
+
+.owner-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--white);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    box-shadow: var(--shadow-sm);
+}
+
+.owner-table th, .owner-table td {
+    text-align: left;
+    padding: 0.75rem 1rem;
+    font-size: 0.875rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.owner-table th {
+    background: var(--slate-50);
+    color: var(--text-medium);
+    font-weight: 600;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.owner-table tr:last-child td {
+    border-bottom: none;
+}
+
+.owner-row-link {
+    color: var(--primary-color);
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.owner-status-pill {
+    display: inline-block;
+    padding: 0.2rem 0.6rem;
+    border-radius: var(--radius-full);
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.owner-status-active { background: var(--success-light); color: var(--success-color); }
+.owner-status-deactivated { background: var(--error-light); color: var(--error-color); }
+
+.owner-row-actions {
+    display: flex;
+    gap: 0.4rem;
+}
+
+.owner-row-actions button {
+    padding: 0.35rem 0.7rem;
+    font-size: 0.8rem;
+}
+
+/* ---- Modal ---- */
+
+.owner-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(10, 10, 11, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    padding: 1.5rem;
+}
+
+.owner-modal {
+    background: var(--white);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-xl);
+    padding: 2rem;
+    max-width: 480px;
+    width: 100%;
+    max-height: 85vh;
+    overflow-y: auto;
+    position: relative;
+}
+
+.owner-modal-close {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    line-height: 1;
+    cursor: pointer;
+    color: var(--text-medium);
+}
+
+.owner-modal h2 {
+    font-size: 1.1rem;
+    margin-bottom: 1rem;
+}
+
+.owner-modal-stats {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.6rem;
+    margin: 1rem 0;
+}
+
+.owner-modal-stat {
+    background: var(--slate-50);
+    border-radius: var(--radius-md);
+    padding: 0.6rem 0.8rem;
+}
+
+.owner-modal-stat-value {
+    font-size: 1.1rem;
+    font-weight: 700;
+}
+
+.owner-modal-stat-label {
+    font-size: 0.75rem;
+    color: var(--text-medium);
+}
+
+.owner-modal-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    margin-top: 1.25rem;
+}
+
+.owner-reset-pw-row {
+    display: flex;
+    gap: 0.5rem;
+}
+
+/* ---- Finance ---- */
+
+.owner-finance-totals {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 0.75rem;
+    margin-bottom: 1.75rem;
+}
+
+.owner-total-tile {
+    background: var(--white);
+    border-radius: var(--radius-md);
+    padding: 1.1rem 1.25rem;
+    box-shadow: var(--shadow-sm);
+}
+
+.owner-total-value {
+    font-size: 1.6rem;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+}
+
+.owner-total-label {
+    font-size: 0.8rem;
+    color: var(--text-medium);
+    margin-top: 0.2rem;
+}
+
+.owner-total-tile.is-profit .owner-total-value.is-negative { color: var(--error-color); }
+.owner-total-tile.is-profit .owner-total-value.is-positive { color: var(--success-color); }
+
+.owner-trend-wrap {
+    background: var(--white);
+    border-radius: var(--radius-md);
+    padding: 1.25rem;
+    box-shadow: var(--shadow-sm);
+    margin-bottom: 1.75rem;
+}
+
+.owner-trend-wrap h2 {
+    font-size: 0.95rem;
+    margin-bottom: 1rem;
+}
+
+.owner-trend-row {
+    display: grid;
+    grid-template-columns: 70px 1fr 90px;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 0.8rem;
+    padding: 0.35rem 0;
+}
+
+.owner-trend-bar-track {
+    height: 10px;
+    background: var(--slate-100);
+    border-radius: var(--radius-full);
+    position: relative;
+    overflow: hidden;
+}
+
+.owner-trend-bar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    border-radius: var(--radius-full);
+}
+
+.owner-trend-bar.rev { background: var(--success-color); }
+.owner-trend-bar.exp { background: var(--error-color); opacity: 0.65; }
+
+.owner-trend-legend {
+    display: flex;
+    gap: 1.25rem;
+    font-size: 0.75rem;
+    color: var(--text-medium);
+    margin-bottom: 0.75rem;
+}
+
+.owner-trend-legend-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 0.35rem;
+}
+
+.owner-finance-columns {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+}
+
+.owner-finance-col h2 {
+    font-size: 0.95rem;
+    margin-bottom: 0.75rem;
+}
+
+.owner-entry-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    background: var(--white);
+    border-radius: var(--radius-md);
+    padding: 1rem;
+    box-shadow: var(--shadow-sm);
+    margin-bottom: 1rem;
+}
+
+.owner-entry-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.6rem 0.8rem;
+    background: var(--white);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-sm);
+    margin-bottom: 0.5rem;
+    font-size: 0.85rem;
+}
+
+.owner-entry-row-meta {
+    color: var(--text-medium);
+    font-size: 0.75rem;
+}
+
+.owner-entry-delete {
+    background: none;
+    border: none;
+    color: var(--error-color);
+    cursor: pointer;
+    font-size: 0.8rem;
+}
+
+.owner-empty {
+    color: var(--text-medium);
+    font-size: 0.875rem;
+    padding: 1rem 0;
+}
+
+@media (max-width: 720px) {
+    .owner-finance-columns {
+        grid-template-columns: 1fr;
+    }
+    .owner-table {
+        display: block;
+        overflow-x: auto;
+    }
+}

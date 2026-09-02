@@ -1,0 +1,62 @@
+/**
+ * Owner console login. Posts to the SAME /auth/login every role uses
+ * (see backend/app/api.py) -- there is no separate owner auth system.
+ * This page's own job is just rejecting a real, successful login for
+ * a non-owner account, exactly the same pattern as
+ * frontend/admin/login.js checking role !== 'admin' -- except this
+ * checks is_owner, which is deliberately independent of role (see
+ * backend/app/auth.py's require_owner docstring). The real security
+ * boundary is server-side (require_owner() 404s every /owner/* route
+ * for a non-owner) -- this client check is UX only, so a non-owner
+ * gets a clear message instead of a confusing blank/broken console.
+ *
+ * credentials: 'include' is required -- frontend and backend are
+ * different origins in this project's setup, so fetch omits cookies
+ * cross-origin by default.
+ */
+
+document.getElementById('ownerLoginForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const emailInput = document.getElementById('ownerEmail');
+    const passwordInput = document.getElementById('ownerPassword');
+    const messageEl = document.getElementById('ownerLoginMessage');
+    const submitBtn = document.getElementById('ownerLoginSubmitBtn');
+
+    messageEl.textContent = '';
+    messageEl.classList.remove('is-error');
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Signing in...';
+
+    try {
+        let response;
+        try {
+            response = await fetch(`${API_BASE_URL}/auth/login`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: emailInput.value.trim(), password: passwordInput.value }),
+            });
+        } catch (networkErr) {
+            throw new Error("Couldn't reach the server. Check your connection and try again.");
+        }
+        const data = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+            throw new Error(data.error || 'Something went wrong. Please try again.');
+        }
+
+        if (!data.is_owner) {
+            throw new Error('This account does not have owner access.');
+        }
+
+        window.location.href = 'index.html';
+    } catch (err) {
+        messageEl.textContent = err.message;
+        messageEl.classList.add('is-error');
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Sign In';
+        passwordInput.value = '';
+        passwordInput.focus();
+    }
+});
