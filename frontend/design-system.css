@@ -180,6 +180,21 @@
     box-sizing: border-box;
 }
 
+/* Belt-and-suspenders against horizontal overflow on mobile: a single
+   un-wrapped flex/grid row anywhere on the page (a button toolbar, a
+   data table) will otherwise widen the whole layout viewport on a real
+   phone well past the device width, shrinking everything else down
+   with it rather than just scrolling the one offending element -- found
+   auditing the dashboard/rent-roll/owner-console screens at 375px,
+   where this silently turned the entire page into a zoomed-out desktop
+   layout. Individual overflowing elements should still be fixed to
+   wrap/scroll on their own (see .today-briefing-grid, .table-controls,
+   .owner-header); this only stops any we missed from taking the whole
+   page down with them. */
+html {
+    overflow-x: hidden;
+}
+
 body {
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
@@ -187,6 +202,7 @@ body {
     background-color: var(--background);
     color: var(--text-dark);
     line-height: 1.5;
+    overflow-x: hidden;
 }
 
 button, input {

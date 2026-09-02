@@ -312,3 +312,78 @@ belongs conceptually to this phase too).
 Status: **Phase 3 done, committing.**
 
 ---
+
+## Phase 4 — Responsive pass
+
+Checked every core screen at 375px (mobile) and 768px (tablet) with a
+real Chrome instance under CDP device emulation (not just a resize of
+a desktop window) -- landing/pricing, the three login screens (app,
+admin, owner), the authenticated app's dashboard, upload, lease
+detail, and rent roll, the admin dashboard, and the owner console.
+
+**A methodology trap worth recording**: the CDP screenshot helper's
+`full_page=True` path re-applies and then clears its own device
+emulation override as a side effect. Any plain screenshot taken later
+in the same script silently reverted to the desktop window's real
+size (1440x1000) even though a `window.innerWidth` check moments
+earlier correctly reported 375. Fixed by re-applying the mobile
+override immediately before every single screenshot rather than once
+at script start -- this is a test-harness gotcha, not a product bug,
+but it produced three convincingly "broken" login-page screenshots
+before it was traced, so it's noted here in case it resurfaces.
+
+**Real bug found and fixed: mobile viewport could be silently widened
+by a single un-wrapped element.** On a real phone (and reproducibly
+under CDP mobile emulation), an element that overflows its container
+without anything clipping it doesn't just get cut off locally -- the
+whole page's effective viewport widens to fit it, shrinking every
+line of text and every other element down with it. This hit three
+screens:
+
+| Screen | Root cause | Fix |
+|---|---|---|
+| Dashboard | `.today-briefing-grid`'s `minmax(220px, 1fr)` × 3 columns has a hard 220px floor per track that doesn't relax below 768px | Added `grid-template-columns: 1fr` inside the existing `@media (max-width: 768px)` block |
+| Dashboard, Rent Roll | `.main-content`, a flex item in a column-direction flex container, wasn't reliably stretching to the container's cross-axis width once a wide descendant (a button row, a table) was inside it -- `min-width: 0` alone didn't fix this in Chrome's flex layout, `width: 100%` did | Added explicit `width: 100%` to `.main-content` in the mobile media query |
+| Owner Console | `.owner-header` (brand + email + Log Out) had no `flex-wrap`, so at 375px the Log Out button was pushed off the edge and clipped | Added `flex-wrap: wrap` to the base rule, plus a mobile override so the email/button pair drops to its own full-width row instead of squeezing next to the brand |
+
+Also added a blanket `overflow-x: hidden` on `html`/`body` in
+`design-system.css` (shared by every entry point) as a safety net --
+belt-and-suspenders against the same "one overflowing element widens
+the whole page" failure mode for anything not explicitly caught
+above. The three fixes above address the actual causes; this just
+stops a future miss from taking the whole page down with it, at the
+cost of clipping (rather than reflowing) anything that still doesn't
+fit -- worth remembering if a future screen looks fine on paper but a
+control seems to have vanished at a narrow width, since the CSS
+container-query-style breakpoints that already existed were doing
+their job in every OTHER case checked (the sidebar's intentional
+horizontal-scroll nav strip on mobile, the rent roll table's own
+`.table-scroll` wrapper, the lease detail toolbar's 6-button wrap, the
+`view-header`/`quick-actions-bar`/`table-controls` wrap rules) --
+those were flagged as fine, not touched.
+
+**Flagging, not changing**: the sidebar becomes a horizontally-
+scrollable single-row tab strip below 768px (a prior session's
+deliberate choice, documented in its own CSS comment) rather than a
+hamburger menu. It has no visual affordance (fade edge, arrow) hinting
+that more nav items are reachable by scrolling right -- a reasonable
+mobile pattern, but the lack of a scroll hint is a judgment call on
+discoverability, not something that reads as broken. Left alone here;
+noted as a possible Phase 6 micro-polish candidate.
+
+**Tablet (768px)**: no overflow found on any of the same screens once
+the mobile fixes above landed (the `.main-content: width: 100%` fix in
+particular resolved what would otherwise have been the same class of
+issue here too). Multi-column layouts (today's briefing, owner
+console's accounts table) render with real columns rather than a
+cramped single-column squeeze, which is the expected tablet behavior
+distinct from the mobile layout, not just a smaller version of
+desktop.
+
+Screenshots for this phase (before/after and tablet) live under
+`/tmp/p4m_*.png` and `/tmp/p4t_*.png` on this machine -- not committed
+to the repo (temp verification artifacts, not project files).
+
+Status: **Phase 4 done, committing.**
+
+---

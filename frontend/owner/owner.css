@@ -94,6 +94,8 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.75rem;
     padding: 1rem 1.75rem;
     background: var(--lux-charcoal);
     color: var(--lux-ivory);
@@ -457,5 +459,12 @@
     .owner-table {
         display: block;
         overflow-x: auto;
+    }
+    /* Email + Log Out no longer share a row with the brand -- at 375px
+       there isn't room for both without truncating the email or
+       clipping the button (see Phase 4 responsive audit). */
+    .owner-header-right {
+        width: 100%;
+        justify-content: space-between;
     }
 }

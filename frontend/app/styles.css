@@ -2584,6 +2584,12 @@
     }
 
     .main-content {
+        /* flex's cross-axis "stretch" alone wasn't reliably capping this
+           to the viewport width here -- wide descendants (a data table,
+           an un-wrapped button row) could still pull it past 375px
+           despite min-width:0 above, taking the whole page with it. An
+           explicit 100% is a hard, unambiguous cap. */
+        width: 100%;
         padding: 1.25rem;
     }
 
@@ -2593,6 +2599,14 @@
 
     .view-header {
         flex-direction: column;
+    }
+
+    /* Base rule's minmax(220px, 1fr) floor is wider than a phone screen
+       -- three tracks refusing to shrink below 220px each forced the
+       whole page well past the viewport. One column below this
+       breakpoint instead of trying to keep them side by side. */
+    .today-briefing-grid {
+        grid-template-columns: 1fr;
     }
 }
 
