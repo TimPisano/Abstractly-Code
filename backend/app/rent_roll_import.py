@@ -183,14 +183,24 @@ def _is_non_address_property_header(normalized_header: str) -> bool:
     return "property" in words and bool(words & _NON_ADDRESS_PROPERTY_WORDS)
 
 # A row is skipped (not imported as a tenant) if its tenant cell, once
-# normalized, is blank or matches one of these. Broker rent rolls
-# routinely include vacant-unit rows and a totals/subtotal row at the
-# bottom -- neither is a real lease, and importing "Total" as if it
-# were a tenant would fabricate a fake mega-tenant that doesn't exist
-# (the exact failure mode compute_tenant_concentration's own docstring
-# already worries about for a missing tenant name -- this is the same
-# concern, applied at the import boundary instead).
-_NON_TENANT_KEYWORDS = {"vacant", "vacancy", "total", "totals", "subtotal", "sub total", "n a", "na"}
+# normalized, is blank, exactly matches one of these, OR starts with one
+# of these as its own word/phrase (e.g. "Subtotal Floor 1", "Total (12
+# units)") -- a real subtotal/total row's tenant-column text is often not
+# the bare keyword alone. Checked as a leading-word/phrase match, not a
+# substring, so a real tenant whose name merely CONTAINS one of these
+# words elsewhere (e.g. "Totally Awesome Tenant") is never caught by
+# this -- "totally" doesn't start with "total " (with the trailing
+# space), only an actual "Total ..." row does. Broker rent rolls
+# routinely include vacant-unit rows and a totals/subtotal row -- neither
+# is a real lease, and importing one as if it were a tenant would
+# fabricate a fake mega-tenant that doesn't exist (the exact failure mode
+# compute_tenant_concentration's own docstring already worries about for
+# a missing tenant name -- this is the same concern, applied at the
+# import boundary instead). "0" is included for the same reason: a rent
+# roll that marks a vacant unit's tenant cell with a literal "0" (instead
+# of blank/VACANT/Vacant) should not import a fake tenant literally named
+# "0".
+_NON_TENANT_KEYWORDS = {"vacant", "vacancy", "total", "totals", "subtotal", "sub total", "n a", "na", "0"}
 
 # Matches a Unit/Suite cell that already spells out its own designator
 # (e.g. "Suite 101", "Ste. 101", "Unit 5", "Apt 2", "#12"), as opposed to
@@ -348,7 +358,15 @@ def _is_real_tenant_name(tenant_raw: Optional[str]) -> bool:
         return False
     normalized = re.sub(r"[^\w\s]", " ", tenant_raw.lower())
     normalized = re.sub(r"\s+", " ", normalized).strip()
-    return normalized not in _NON_TENANT_KEYWORDS
+    if normalized in _NON_TENANT_KEYWORDS:
+        return False
+    # Leading-phrase match too, not just a whole-cell exact match -- see
+    # _NON_TENANT_KEYWORDS' own comment for why ("Subtotal Floor 1" needs
+    # to be caught, not just a bare "Subtotal"). The trailing space in
+    # the startswith check is what keeps this a real word/phrase boundary
+    # rather than a substring match, so "Totally Awesome Tenant" is never
+    # mistaken for a "Total ..." row.
+    return not any(normalized.startswith(keyword + " ") for keyword in _NON_TENANT_KEYWORDS)
 
 
 def parse_rent_roll_rows(
@@ -561,34 +579,62 @@ def parse_csv_rent_roll(file_bytes: bytes, filename: str, base_property_address:
 def parse_xlsx_rent_roll(file_bytes: bytes, filename: str, base_property_address: Optional[str] = None) -> Dict[str, Any]:
     """
     Reads an .xlsx file's bytes and parses it via parse_rent_roll_rows.
-    Uses the first (active) worksheet. Raises RentRollImportError for a
-    genuinely empty or unreadable file. Auto-detects which row is the
-    real header (see _find_header_row) -- same reasoning as
-    parse_csv_rent_roll.
+    Raises RentRollImportError for a genuinely empty or unreadable file.
+    Auto-detects which row is the real header (see _find_header_row) --
+    same reasoning as parse_csv_rent_roll.
+
+    Checks every worksheet in the workbook, not just the first (active)
+    one, using the first sheet where a header row with BOTH a
+    recognizable tenant and rent column can be found -- a portfolio-wide
+    PMS export routinely has a "Summary"/cover sheet before the actual
+    per-unit data tab, and openpyxl's own `workbook.active` is just
+    whichever sheet was selected when the file was last saved, which is
+    no guarantee that's the one with real data (a real bug found via
+    stress-testing: a workbook with a blank "Summary" sheet first and the
+    real rent roll on a second "Detail" sheet was silently treated as
+    having no usable data at all, because only the active sheet was ever
+    read).
     """
     try:
         workbook = load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
     except Exception as exc:
         raise RentRollImportError(f"Couldn't read this file as an Excel workbook: {exc}")
 
-    sheet = workbook.active
-    # Same true-row-number tracking as parse_csv_rent_roll, and for the
-    # same reason -- see the comment there.
-    numbered_rows = [
-        (i, list(row)) for i, row in enumerate(sheet.iter_rows(values_only=True), start=1)
-        if any(cell is not None and str(cell).strip() for cell in row)
-    ]
-
-    if not numbered_rows:
+    if not workbook.sheetnames:
         raise RentRollImportError("This Excel file is empty -- nothing to import.")
 
-    row_contents = [row for _, row in numbered_rows]
-    header_idx = _find_header_row(row_contents)
-    headers = row_contents[header_idx]
-    data_entries = numbered_rows[header_idx + 1:]
-    data_rows = [row for _, row in data_entries]
-    data_row_numbers = [n for n, _ in data_entries]
-    return parse_rent_roll_rows(
-        list(headers), data_rows, filename, base_property_address,
-        header_row_offset=header_idx, row_numbers=data_row_numbers,
-    )
+    any_sheet_had_rows = False
+    for sheet_name in workbook.sheetnames:
+        sheet = workbook[sheet_name]
+        # Same true-row-number tracking as parse_csv_rent_roll, and for
+        # the same reason -- see the comment there.
+        numbered_rows = [
+            (i, list(row)) for i, row in enumerate(sheet.iter_rows(values_only=True), start=1)
+            if any(cell is not None and str(cell).strip() for cell in row)
+        ]
+        if not numbered_rows:
+            continue
+        any_sheet_had_rows = True
+
+        row_contents = [row for _, row in numbered_rows]
+        header_idx = _find_header_row(row_contents)
+        headers = row_contents[header_idx]
+        if "tenant" not in _match_columns(headers) or "rent_amount" not in _match_columns(headers):
+            continue  # this sheet has no usable header row -- try the next one
+
+        data_entries = numbered_rows[header_idx + 1:]
+        data_rows = [row for _, row in data_entries]
+        data_row_numbers = [n for n, _ in data_entries]
+        return parse_rent_roll_rows(
+            list(headers), data_rows, filename, base_property_address,
+            header_row_offset=header_idx, row_numbers=data_row_numbers,
+        )
+
+    if not any_sheet_had_rows:
+        raise RentRollImportError("This Excel file is empty -- nothing to import.")
+
+    # No sheet had a usable header -- delegate to parse_rent_roll_rows'
+    # own clear error by calling it on the first non-empty sheet's rows,
+    # so the message stays in exactly one place rather than being
+    # duplicated here.
+    return parse_rent_roll_rows([], [], filename, base_property_address)
