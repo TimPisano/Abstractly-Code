@@ -177,7 +177,7 @@ def _source_verification_component(leases: List[Dict[str, Any]]) -> Dict[str, An
     }
 
 
-def _current_open_discrepancies(leases: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def _current_open_discrepancies(leases: List[Dict[str, Any]], account_id: int) -> List[Dict[str, Any]]:
     """
     Open discrepancies relevant to the portfolio AS IT EXISTS RIGHT NOW
     -- deliberately NOT database.list_discrepancies(status="open")
@@ -211,7 +211,7 @@ def _current_open_discrepancies(leases: List[Dict[str, Any]]) -> List[Dict[str, 
     current_addresses = {_normalize_building_address(field_value(l, "property_address")) for l in leases} - {None}
 
     relevant = []
-    for disc in database.list_discrepancies(status="open"):
+    for disc in database.list_discrepancies(status="open", account_id=account_id):
         lease_id, related_id = disc.get("lease_id"), disc.get("related_lease_id")
         if lease_id is not None or related_id is not None:
             if lease_id in current_lease_ids or related_id in current_lease_ids:
@@ -242,9 +242,9 @@ def _current_open_discrepancies(leases: List[Dict[str, Any]]) -> List[Dict[str, 
     return relevant
 
 
-def _unresolved_discrepancies_component(leases: List[Dict[str, Any]]) -> Dict[str, Any]:
+def _unresolved_discrepancies_component(leases: List[Dict[str, Any]], account_id: int) -> Dict[str, Any]:
     lease_count = len(leases)
-    open_count = len(_current_open_discrepancies(leases))
+    open_count = len(_current_open_discrepancies(leases, account_id))
     if lease_count == 0:
         return {"score": None, "weight": WEIGHTS["unresolved_discrepancies"], "open_count": open_count, "discrepancies_per_lease": None}
 
@@ -299,6 +299,7 @@ def _data_freshness_component(
 
 
 def compute_portfolio_health_score(
+    account_id: int,
     reference_date: Optional[date] = None,
     staleness_threshold_months: float = DEFAULT_STALENESS_THRESHOLD_MONTHS,
 ) -> Dict[str, Any]:
@@ -311,14 +312,19 @@ def compute_portfolio_health_score(
 
     score/rating are None/"No Data" for an empty portfolio -- an
     unscored portfolio is not the same thing as a known-bad one.
+
+    account_id is required (not defaulted) -- see DECISIONS.md's "Real
+    multi-tenant data isolation" entry -- so this always scores exactly
+    one account's portfolio, never every account's leases/discrepancies
+    combined.
     """
     reference_date = reference_date or date.today()
-    leases = database.get_all_effective_leases()
+    leases = database.get_all_effective_leases(account_id=account_id)
 
     components = {
         "confidence_distribution": _confidence_distribution_component(leases),
         "source_verification": _source_verification_component(leases),
-        "unresolved_discrepancies": _unresolved_discrepancies_component(leases),
+        "unresolved_discrepancies": _unresolved_discrepancies_component(leases, account_id),
         "data_freshness": _data_freshness_component(leases, reference_date, staleness_threshold_months),
     }
 

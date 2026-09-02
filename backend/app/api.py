@@ -534,6 +534,19 @@ def _invalidate_discrepancy_derived_caches():
     cache.invalidate("health_score")
 
 
+def _log_activity(action_type, description, lease_id=None):
+    """
+    Thin wrapper around database.insert_activity that supplies the
+    current session's account_id automatically -- the actual call site
+    used everywhere in this file (~39 places), so account scoping the
+    activity feed only required changing this one function plus
+    database.insert_activity's signature, not every individual call
+    site. See that function's own docstring for why account_id can't
+    just be left optional there.
+    """
+    return database.insert_activity(action_type, description, current_account_id(), lease_id=lease_id)
+
+
 def _persist_split_leases(filename, split_leases):
     """
     Persists every lease FieldExtractor.extract_multiple_leases()
@@ -639,9 +652,9 @@ def upload_lease():
             lease_data["fields"], exclude_lease_id=summary["id"]
         )
     if len(created) == 1:
-        database.insert_activity("lease_uploaded", f"Uploaded {filename}", lease_id=created[0]["id"])
+        _log_activity("lease_uploaded", f"Uploaded {filename}", lease_id=created[0]["id"])
     else:
-        database.insert_activity("lease_split", f"Split {filename} into {len(created)} separate leases")
+        _log_activity("lease_split", f"Split {filename} into {len(created)} separate leases")
 
     return jsonify({"leases": created, "split_count": len(created)}), 201
 
@@ -674,7 +687,7 @@ def upload_sample_lease():
         database.add_lease_tag(summary["id"], "Sample")
         summary["tags"] = ["Sample"]
 
-    database.insert_activity("lease_uploaded", "Tried the sample lease", lease_id=created[0]["id"])
+    _log_activity("lease_uploaded", "Tried the sample lease", lease_id=created[0]["id"])
     return jsonify({"leases": created, "split_count": len(created)}), 201
 
 
@@ -786,7 +799,7 @@ def resubmit_lease(lease_id):
     _invalidate_discrepancy_derived_caches()
 
     display_name = lease_data["display_name"] or old_lease.get("display_name") or old_lease["filename"]
-    database.insert_activity(
+    _log_activity(
         "lease_resubmitted",
         f"{user['name']} resubmitted a corrected version of {display_name} "
         f"(v{new_version_number} replaces v{old_lease.get('version_number') or 1})",
@@ -880,9 +893,9 @@ def upload_leases_batch():
     # out of a 10-item activity feed.
     if total_leases_created == 1:
         only = next(r for r in results if r["success"])
-        database.insert_activity("lease_uploaded", f"Uploaded {only['filename']}", lease_id=only["leases"][0]["id"])
+        _log_activity("lease_uploaded", f"Uploaded {only['filename']}", lease_id=only["leases"][0]["id"])
     elif total_leases_created > 1:
-        database.insert_activity(
+        _log_activity(
             "batch_upload",
             f"Uploaded a batch of {total_leases_created} leases from {succeeded_files} file(s)",
         )
@@ -965,7 +978,7 @@ def import_rent_roll():
         _invalidate_lease_derived_caches()
 
     skipped_note = f" ({len(parsed['skipped_rows'])} row(s) skipped)" if parsed["skipped_rows"] else ""
-    database.insert_activity("rent_roll_imported", f"Imported {len(created)} lease(s) from {filename}{skipped_note}")
+    _log_activity("rent_roll_imported", f"Imported {len(created)} lease(s) from {filename}{skipped_note}")
 
     return jsonify({
         "leases": created,
@@ -1110,7 +1123,7 @@ def edit_lease_field(lease_id, field_name):
         confidence=confidence, note=note, task_id=task_id,
     )
     _invalidate_lease_derived_caches()
-    database.insert_activity(
+    _log_activity(
         "lease_field_edited",
         f"{user['name']} corrected {field_name.replace('_', ' ')} on {lease.get('display_name') or lease['filename']}",
         lease_id=lease_id,
@@ -1133,7 +1146,7 @@ def delete_lease(lease_id):
     _invalidate_lease_derived_caches()
     # Logged with lease_id=None (not lease_id) since the row this would
     # reference no longer exists once delete_lease() returns.
-    database.insert_activity("lease_deleted", f"Deleted {lease['filename']}")
+    _log_activity("lease_deleted", f"Deleted {lease['filename']}")
     return jsonify({"deleted": lease_id}), 200
 
 
@@ -1165,7 +1178,7 @@ def bulk_delete_leases():
             not_found.append(lease_id)
             continue
         database.delete_lease(lease_id, account_id=current_account_id())
-        database.insert_activity("lease_deleted", f"Deleted {lease['filename']}")
+        _log_activity("lease_deleted", f"Deleted {lease['filename']}")
         deleted.append(lease_id)
 
     if deleted:
@@ -1204,7 +1217,7 @@ def upload_amendment(lease_id):
         filename, amendment_data["fields"], base_lease["account_id"], document_type="amendment", base_lease_id=lease_id,
         date_candidates=amendment_data["date_candidates"],
     )
-    database.insert_activity("amendment_uploaded", f"Added amendment {filename} to {base_lease['filename']}", lease_id=lease_id)
+    _log_activity("amendment_uploaded", f"Added amendment {filename} to {base_lease['filename']}", lease_id=lease_id)
     _invalidate_lease_derived_caches()
     lease = database.get_effective_lease(lease_id, account_id=current_account_id())
     lease["tags"] = database.get_lease_tags(lease_id)
@@ -1321,7 +1334,7 @@ def add_lease_comment(lease_id):
         return error
 
     user = current_user()
-    database.add_comment(user["name"], body, lease_id=lease_id, author_email=user["email"])
+    database.add_comment(user["name"], body, current_account_id(), lease_id=lease_id, author_email=user["email"])
     return jsonify(database.get_lease_comments(lease_id)), 201
 
 
@@ -1689,7 +1702,7 @@ def create_team_member():
     # collaboration-platform plan; the actor's name is embedded in the
     # description for now, same convention every other insert_activity
     # call site in this file still uses today.
-    database.insert_activity("team_member_added", f"{name} ({email}) added to the team as {role} by {current_user()['name']}")
+    _log_activity("team_member_added", f"{name} ({email}) added to the team as {role} by {current_user()['name']}")
     return jsonify(_user_public(user)), 201
 
 
@@ -1755,7 +1768,7 @@ def list_assignments_route():
     if target_type and target_type not in assignments_module.VALID_TARGET_TYPES:
         return jsonify({"error": f"target_type must be one of: {', '.join(sorted(assignments_module.VALID_TARGET_TYPES))}"}), 400
 
-    rows = database.list_assignments(assigned_to_user_id=assigned_to, status=status, target_type=target_type)
+    rows = database.list_assignments(assigned_to_user_id=assigned_to, status=status, target_type=target_type, account_id=current_account_id())
     return jsonify([assignments_module.assignment_detail(a) for a in rows]), 200
 
 
@@ -1806,21 +1819,21 @@ def create_assignment_route():
         property_address = target_key
 
     assignment_id = database.upsert_assignment(
-        target_type, target_key, assigned_to_user_id, current_user()["id"],
+        target_type, target_key, assigned_to_user_id, current_user()["id"], current_account_id(),
         lease_id=lease_id, discrepancy_id=discrepancy_id, property_address=property_address, note=note,
     )
-    database.insert_activity(
+    _log_activity(
         "assignment_created",
         f"{assignee['name']} assigned to {target_type} {target_key} by {current_user()['name']}",
         lease_id=lease_id,
     )
-    return jsonify(assignments_module.assignment_detail(database.get_assignment(assignment_id))), 201
+    return jsonify(assignments_module.assignment_detail(database.get_assignment(assignment_id, account_id=current_account_id()))), 201
 
 
 @app.route('/assignments/<int:assignment_id>', methods=['GET'])
 @require_role()
 def get_assignment_route(assignment_id):
-    assignment = database.get_assignment(assignment_id)
+    assignment = database.get_assignment(assignment_id, account_id=current_account_id())
     if not assignment:
         return jsonify({"error": "Assignment not found"}), 404
     return jsonify(assignments_module.assignment_detail(assignment)), 200
@@ -1830,7 +1843,7 @@ def get_assignment_route(assignment_id):
 @require_role('analyst')
 def update_assignment_route(assignment_id):
     """Body: {"status": "assigned"|"in_review"|"resolved"}."""
-    if not database.get_assignment(assignment_id):
+    if not database.get_assignment(assignment_id, account_id=current_account_id()):
         return jsonify({"error": "Assignment not found"}), 404
 
     body = request.get_json(silent=True) or {}
@@ -1838,14 +1851,14 @@ def update_assignment_route(assignment_id):
     if status not in assignments_module.VALID_STATUSES:
         return jsonify({"error": f"status must be one of: {', '.join(sorted(assignments_module.VALID_STATUSES))}"}), 400
 
-    updated = database.update_assignment_status(assignment_id, status, current_user()["id"])
+    updated = database.update_assignment_status(assignment_id, status, current_user()["id"], account_id=current_account_id())
     return jsonify(assignments_module.assignment_detail(updated)), 200
 
 
 @app.route('/assignments/<int:assignment_id>', methods=['DELETE'])
 @require_role('analyst')
 def delete_assignment_route(assignment_id):
-    if not database.delete_assignment(assignment_id):
+    if not database.delete_assignment(assignment_id, account_id=current_account_id()):
         return jsonify({"error": "Assignment not found"}), 404
     return jsonify({"status": "deleted"}), 200
 
@@ -1910,7 +1923,7 @@ def create_task_route():
         property_address=(body.get('property_address') or '').strip() or None,
         priority=priority,
     )
-    database.insert_activity("task_created", f"Task created: {title}", lease_id=lease_id)
+    _log_activity("task_created", f"Task created: {title}", lease_id=lease_id)
     return jsonify(tasks_module.task_detail(database.get_task(task_id, account_id=current_account_id()))), 201
 
 
@@ -1930,7 +1943,7 @@ def create_task_from_discrepancy_route(discrepancy_id):
         )
     except ValueError as e:
         return jsonify({"error": str(e)}), 404
-    database.insert_activity("task_created", f"Task created from discrepancy: {detail['title']}", lease_id=detail.get('lease_id'))
+    _log_activity("task_created", f"Task created from discrepancy: {detail['title']}", lease_id=detail.get('lease_id'))
     return jsonify(detail), 201
 
 
@@ -1950,7 +1963,7 @@ def create_task_from_alert_route(alert_id):
         )
     except ValueError as e:
         return jsonify({"error": str(e)}), 404
-    database.insert_activity("task_created", f"Task created from alert: {detail['title']}", lease_id=detail.get('lease_id'))
+    _log_activity("task_created", f"Task created from alert: {detail['title']}", lease_id=detail.get('lease_id'))
     return jsonify(detail), 201
 
 
@@ -2056,7 +2069,7 @@ def update_task_status_route(task_id):
             database.resolve_discrepancy(discrepancy["id"], correct_source, note, user["name"], user["email"], account_id=current_account_id())
             _invalidate_discrepancy_derived_caches()
             resolved_discrepancy = database.get_discrepancy(discrepancy["id"], account_id=current_account_id())
-            database.insert_activity(
+            _log_activity(
                 "discrepancy_resolved",
                 f"Discrepancy #{discrepancy['id']} ({resolved_discrepancy['category']}) resolved by "
                 f"{user['name']} via completing task \"{task['title']}\": {note}",
@@ -2118,7 +2131,7 @@ def bulk_update_task_status():
         updated.append(task_id)
 
     if updated:
-        database.insert_activity(
+        _log_activity(
             "tasks_bulk_status_updated",
             f"{current_user()['name']} set {len(updated)} task(s) to '{status}' (bulk)",
         )
@@ -2149,7 +2162,7 @@ def bulk_reassign_tasks():
 
     if updated:
         assignee_name = database.get_user(assigned_to_user_id)["name"] if assigned_to_user_id is not None else "Unassigned"
-        database.insert_activity(
+        _log_activity(
             "tasks_bulk_reassigned",
             f"{current_user()['name']} reassigned {len(updated)} task(s) to {assignee_name} (bulk)",
         )
@@ -2187,8 +2200,8 @@ def add_task_comment(task_id):
     if error:
         return error
     user = current_user()
-    database.add_comment(user["name"], body, task_id=task_id, author_email=user["email"])
-    database.insert_activity(
+    database.add_comment(user["name"], body, current_account_id(), task_id=task_id, author_email=user["email"])
+    _log_activity(
         "task_commented",
         f"{user['name']} commented on task \"{task['title']}\": {body}",
         lease_id=_activity_lease_id(task.get("lease_id")),
@@ -2245,7 +2258,7 @@ def undo_lease_field_edit(lease_id, field_name, edit_id):
     if restored is None:
         return jsonify({"error": "Lease not found"}), 404
     _invalidate_lease_derived_caches()
-    database.insert_activity(
+    _log_activity(
         "lease_field_edit_undone",
         f"{user['name']} undid a correction to {field_name.replace('_', ' ')} on lease #{lease_id}",
         lease_id=lease_id,
@@ -2271,7 +2284,7 @@ def today_view():
     target_user = database.get_user(user_id)
     if not target_user or target_user.get("account_id") != current_account_id():
         return jsonify({"error": "User not found"}), 404
-    return jsonify(assignments_module.compute_today_view(user_id)), 200
+    return jsonify(assignments_module.compute_today_view(user_id, current_account_id())), 200
 
 
 # ----------------------------------------------------------------------
@@ -2385,7 +2398,7 @@ def create_thread_route():
         if existing is not None:
             return jsonify(messaging.thread_detail(database.get_thread(existing), caller_id)), 200
 
-    thread_id = database.create_thread(thread_type, all_ids, caller_id, name=name)
+    thread_id = database.create_thread(thread_type, all_ids, caller_id, current_account_id(), name=name)
     return jsonify(messaging.thread_detail(database.get_thread(thread_id), caller_id)), 201
 
 
@@ -2789,8 +2802,12 @@ def portfolio_health_score_route():
     else:
         threshold_months = DEFAULT_STALENESS_THRESHOLD_MONTHS
 
-    cache_key = f"health_score:{threshold_months}"
-    result = cache.get_or_compute(cache_key, lambda: compute_portfolio_health_score(staleness_threshold_months=threshold_months))
+    # account_id is part of the cache key -- without it, one account's
+    # cached score would be served to a different account requesting
+    # the same threshold (see DECISIONS.md's "Real multi-tenant data
+    # isolation" entry).
+    cache_key = f"health_score:{current_account_id()}:{threshold_months}"
+    result = cache.get_or_compute(cache_key, lambda: compute_portfolio_health_score(current_account_id(), staleness_threshold_months=threshold_months))
     return jsonify(result), 200
 
 
@@ -2856,7 +2873,10 @@ def portfolio_property_trends():
         leases = database.get_all_effective_leases(account_id=current_account_id())
         return compute_property_trends(leases, property_address)
 
-    trends = cache.get_or_compute(f"trends:property:{property_address}", _compute)
+    # account_id in the cache key -- without it, one account's cached
+    # trends for a given address could be served to a different
+    # account (see DECISIONS.md's "Real multi-tenant data isolation").
+    trends = cache.get_or_compute(f"trends:property:{current_account_id()}:{property_address}", _compute)
     if trends is None:
         return jsonify({"error": "property_address did not normalize to a usable address"}), 400
     return jsonify(trends), 200
@@ -2881,7 +2901,7 @@ def portfolio_trends_route():
     Cached (see app/cache.py) -- invalidated whenever a lease mutates,
     60s TTL as a safety net regardless.
     """
-    result = cache.get_or_compute("trends:portfolio", lambda: compute_portfolio_trends(database.get_all_effective_leases(account_id=current_account_id())))
+    result = cache.get_or_compute(f"trends:portfolio:{current_account_id()}", lambda: compute_portfolio_trends(database.get_all_effective_leases(account_id=current_account_id())))
     return jsonify(result), 200
 
 
@@ -2958,7 +2978,7 @@ def portfolio_t12_reconciliation():
 def recent_activity():
     """GET /activity?limit=10 — most recent account activity first."""
     limit = request.args.get('limit', default=10, type=int) or 10
-    return jsonify(database.get_recent_activity(limit)), 200
+    return jsonify(database.get_recent_activity(limit, account_id=current_account_id())), 200
 
 
 @app.route('/portfolio/risks', methods=['GET'])
@@ -3096,7 +3116,7 @@ def resolve_discrepancy(discrepancy_id):
     resolution = database.resolve_discrepancy(discrepancy_id, correct_source, note, resolved_by, resolved_by_email, account_id=current_account_id())
     _invalidate_discrepancy_derived_caches()
     discrepancy = database.get_discrepancy(discrepancy_id, account_id=current_account_id())
-    database.insert_activity(
+    _log_activity(
         "discrepancy_resolved",
         f"Discrepancy #{discrepancy_id} ({discrepancy['category']}) resolved by {resolved_by}: {note}",
         lease_id=_activity_lease_id(discrepancy.get("lease_id")),
@@ -3124,7 +3144,7 @@ def reopen_discrepancy(discrepancy_id):
     resolution = database.reopen_discrepancy(discrepancy_id, note, resolved_by, resolved_by_email, account_id=current_account_id())
     _invalidate_discrepancy_derived_caches()
     discrepancy = database.get_discrepancy(discrepancy_id, account_id=current_account_id())
-    database.insert_activity(
+    _log_activity(
         "discrepancy_reopened",
         f"Discrepancy #{discrepancy_id} ({discrepancy['category']}) reopened by {resolved_by}: {note}",
         lease_id=_activity_lease_id(discrepancy.get("lease_id")),
@@ -3165,7 +3185,7 @@ def bulk_resolve_discrepancies():
             continue
         database.resolve_discrepancy(discrepancy_id, correct_source, note, user["name"], user["email"], account_id=current_account_id())
         discrepancy = database.get_discrepancy(discrepancy_id, account_id=current_account_id())
-        database.insert_activity(
+        _log_activity(
             "discrepancy_resolved",
             f"Discrepancy #{discrepancy_id} ({discrepancy['category']}) resolved by {user['name']} (bulk): {note}",
             lease_id=_activity_lease_id(discrepancy.get("lease_id")),
@@ -3191,7 +3211,7 @@ def export_discrepancies_csv():
     writer.writerow(["id", "type", "category", "field", "severity", "status", "lease_id", "message", "first_detected_at", "last_seen_at"])
     for r in rows:
         writer.writerow([r["id"], r["discrepancy_type"], r["category"], r.get("field") or "", r.get("severity") or "", r["status"], r.get("lease_id") or "", r["message"], r["first_detected_at"], r["last_seen_at"]])
-    database.insert_activity("discrepancies_exported", f"Exported {len(rows)} discrepancy(ies) as CSV")
+    _log_activity("discrepancies_exported", f"Exported {len(rows)} discrepancy(ies) as CSV")
     return Response(buf.getvalue(), mimetype='text/csv', headers={"Content-Disposition": "attachment; filename=discrepancies.csv"})
 
 
@@ -3217,7 +3237,7 @@ def add_discrepancy_comment(discrepancy_id):
         return error
 
     user = current_user()
-    database.add_comment(user["name"], body, discrepancy_id=discrepancy_id, author_email=user["email"])
+    database.add_comment(user["name"], body, current_account_id(), discrepancy_id=discrepancy_id, author_email=user["email"])
     return jsonify(database.get_discrepancy_comments(discrepancy_id)), 201
 
 
@@ -3235,7 +3255,7 @@ def recent_comments():
     comment -- see database.get_recent_comments.
     """
     limit = request.args.get('limit', default=20, type=int) or 20
-    return jsonify(database.get_recent_comments(limit)), 200
+    return jsonify(database.get_recent_comments(limit, account_id=current_account_id())), 200
 
 
 @app.route('/alerts/generate', methods=['POST'])
@@ -3347,7 +3367,7 @@ def export_alerts_csv():
     writer.writerow(["id", "type", "severity", "status", "lease_id", "title", "message", "dismissed_by", "dismissed_at", "first_detected_at", "last_seen_at"])
     for r in rows:
         writer.writerow([r["id"], r["alert_type"], r["severity"], r["status"], r.get("lease_id") or "", r["title"], r["message"], r.get("dismissed_by") or "", r.get("dismissed_at") or "", r["first_detected_at"], r["last_seen_at"]])
-    database.insert_activity("alerts_exported", f"Exported {len(rows)} alert(s) as CSV")
+    _log_activity("alerts_exported", f"Exported {len(rows)} alert(s) as CSV")
     return Response(buf.getvalue(), mimetype='text/csv', headers={"Content-Disposition": "attachment; filename=alerts.csv"})
 
 
@@ -3398,7 +3418,7 @@ def leases_compare():
             return jsonify({"error": f"Lease {lease_id} not found"}), 404
         leases.append(lease)
 
-    database.insert_activity("comparison_run", f"Compared {len(leases)} leases")
+    _log_activity("comparison_run", f"Compared {len(leases)} leases")
     return jsonify(compare_leases(leases)), 200
 
 
@@ -3463,7 +3483,7 @@ def lease_benchmark(lease_id):
 def rent_roll_csv():
     leases = database.get_all_effective_leases(account_id=current_account_id())
     csv_text = generate_rent_roll_csv(leases)
-    database.insert_activity("rent_roll_exported", f"Exported rent roll as CSV ({len(leases)} leases)")
+    _log_activity("rent_roll_exported", f"Exported rent roll as CSV ({len(leases)} leases)")
     return Response(
         csv_text,
         mimetype='text/csv',
@@ -3476,7 +3496,7 @@ def rent_roll_csv():
 def rent_roll_excel():
     leases = database.get_all_effective_leases(account_id=current_account_id())
     excel_bytes = generate_rent_roll_excel(leases)
-    database.insert_activity("rent_roll_exported", f"Exported rent roll as Excel ({len(leases)} leases)")
+    _log_activity("rent_roll_exported", f"Exported rent roll as Excel ({len(leases)} leases)")
     return Response(
         excel_bytes,
         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -3501,7 +3521,7 @@ def portfolio_export_google_sheets():
     except SheetsExportError as e:
         return jsonify({"error": str(e)}), 502
 
-    database.insert_activity(
+    _log_activity(
         "google_sheets_exported",
         f"Exported {len(leases)} lease(s) to Google Sheets",
     )
@@ -3518,7 +3538,7 @@ def lease_export_excel(lease_id):
 
     excel_bytes = generate_rent_roll_excel([lease])
     display_name = lease.get("display_name") or lease.get("filename") or f"lease_{lease_id}"
-    database.insert_activity("rent_roll_exported", f"Exported {display_name} as Excel")
+    _log_activity("rent_roll_exported", f"Exported {display_name} as Excel")
     safe_name = re.sub(r'[^A-Za-z0-9_.-]', '_', display_name)
     return Response(
         excel_bytes,
@@ -3543,7 +3563,7 @@ def lease_summary_pdf(lease_id):
     flags = _lease_risks(lease)
     pdf_bytes = generate_lease_summary_pdf(lease, flags)
     display_name = lease.get("display_name") or lease.get("filename") or f"lease_{lease_id}"
-    database.insert_activity("summary_memo_exported", f"Exported {display_name} as a summary memo")
+    _log_activity("summary_memo_exported", f"Exported {display_name} as a summary memo")
     safe_name = re.sub(r'[^A-Za-z0-9_.-]', '_', display_name)
     return Response(
         pdf_bytes,
@@ -3607,7 +3627,7 @@ def investment_memo_pdf():
     pdf_bytes = generate_investment_memo_pdf(data)
 
     scope_label = property_address or "portfolio"
-    database.insert_activity("investment_memo_exported", f"Exported investment memo (PDF) for {scope_label}")
+    _log_activity("investment_memo_exported", f"Exported investment memo (PDF) for {scope_label}")
     safe_name = re.sub(r'[^A-Za-z0-9_.-]', '_', scope_label)
     return Response(
         pdf_bytes,
@@ -3628,7 +3648,7 @@ def investment_memo_excel():
     excel_bytes = generate_investment_memo_excel(data)
 
     scope_label = property_address or "portfolio"
-    database.insert_activity("investment_memo_exported", f"Exported investment memo (Excel) for {scope_label}")
+    _log_activity("investment_memo_exported", f"Exported investment memo (Excel) for {scope_label}")
     safe_name = re.sub(r'[^A-Za-z0-9_.-]', '_', scope_label)
     return Response(
         excel_bytes,
@@ -3651,7 +3671,7 @@ def lease_export_google_sheets(lease_id):
         return jsonify({"error": str(e)}), 502
 
     display_name = lease.get("display_name") or lease.get("filename") or f"lease_{lease_id}"
-    database.insert_activity(
+    _log_activity(
         "google_sheets_exported",
         f"Exported {display_name} to Google Sheets",
     )
@@ -3694,7 +3714,7 @@ def leases_bulk_export_excel():
         return error
 
     excel_bytes = generate_rent_roll_excel(leases)
-    database.insert_activity("rent_roll_exported", f"Exported {len(leases)} selected lease(s) as Excel")
+    _log_activity("rent_roll_exported", f"Exported {len(leases)} selected lease(s) as Excel")
     return Response(
         excel_bytes,
         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -3720,7 +3740,7 @@ def leases_bulk_export_google_sheets():
     except SheetsExportError as e:
         return jsonify({"error": str(e)}), 502
 
-    database.insert_activity(
+    _log_activity(
         "google_sheets_exported",
         f"Exported {len(leases)} selected lease(s) to Google Sheets",
     )
@@ -3788,7 +3808,7 @@ def portfolio_summary_pdf():
         )
 
     pdf_bytes = generate_portfolio_summary_pdf(leases, confidence_summary, risks_by_lease)
-    database.insert_activity("summary_memo_exported", f"Exported portfolio summary memo ({len(leases)} leases)")
+    _log_activity("summary_memo_exported", f"Exported portfolio summary memo ({len(leases)} leases)")
     return Response(
         pdf_bytes,
         mimetype='application/pdf',
@@ -3841,7 +3861,7 @@ def portfolio_monthly_report_pdf():
         leases, confidence_summary, risks_by_lease,
         extra_sections=extra_sections, title="Portfolio Monthly Report",
     )
-    database.insert_activity("monthly_report_exported", f"Generated monthly portfolio report ({len(leases)} leases)")
+    _log_activity("monthly_report_exported", f"Generated monthly portfolio report ({len(leases)} leases)")
     return Response(
         pdf_bytes,
         mimetype='application/pdf',

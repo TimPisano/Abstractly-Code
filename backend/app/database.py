@@ -1921,7 +1921,7 @@ def update_user_last_login(user_id: int) -> None:
 # ----------------------------------------------------------------------
 
 def upsert_assignment(
-    target_type: str, target_key: str, assigned_to_user_id: int, assigned_by_user_id: int,
+    target_type: str, target_key: str, assigned_to_user_id: int, assigned_by_user_id: int, account_id: int,
     lease_id: Optional[int] = None, discrepancy_id: Optional[int] = None,
     property_address: Optional[str] = None, note: Optional[str] = None,
 ) -> int:
@@ -1940,8 +1940,8 @@ def upsert_assignment(
         conn.execute(
             """
             INSERT INTO assignments (target_type, target_key, lease_id, discrepancy_id, property_address,
-                assigned_to_user_id, assigned_by_user_id, status, note, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 'assigned', ?, ?, ?)
+                assigned_to_user_id, assigned_by_user_id, status, note, created_at, updated_at, account_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'assigned', ?, ?, ?, ?)
             ON CONFLICT(target_type, target_key) DO UPDATE SET
                 assigned_to_user_id = excluded.assigned_to_user_id,
                 assigned_by_user_id = excluded.assigned_by_user_id,
@@ -1950,7 +1950,7 @@ def upsert_assignment(
                 updated_at = excluded.updated_at
             """,
             (target_type, target_key, lease_id, discrepancy_id, property_address,
-             assigned_to_user_id, assigned_by_user_id, note, now, now),
+             assigned_to_user_id, assigned_by_user_id, note, now, now, account_id),
         )
         conn.commit()
         row = conn.execute(
@@ -1961,14 +1961,20 @@ def upsert_assignment(
         conn.close()
 
 
-def update_assignment_status(assignment_id: int, status: str, updated_by_user_id: int) -> Optional[Dict[str, Any]]:
-    """Plain UPDATE by primary key -- SQLite already serializes this correctly on its own (last-write-wins, no exception), unlike the natural-key race upsert_assignment guards against. See DECISIONS.md for why these are deliberately different race shapes needing different treatment."""
+def update_assignment_status(assignment_id: int, status: str, updated_by_user_id: int, account_id: Optional[int] = None) -> Optional[Dict[str, Any]]:
+    """Plain UPDATE by primary key -- SQLite already serializes this correctly on its own (last-write-wins, no exception), unlike the natural-key race upsert_assignment guards against. See DECISIONS.md for why these are deliberately different race shapes needing different treatment. account_id: when given, only updates if the assignment belongs to that account."""
     conn = get_connection()
     try:
-        cur = conn.execute(
-            "UPDATE assignments SET status = ?, updated_at = ? WHERE id = ?",
-            (status, datetime.now(timezone.utc).isoformat(), assignment_id),
-        )
+        if account_id is not None:
+            cur = conn.execute(
+                "UPDATE assignments SET status = ?, updated_at = ? WHERE id = ? AND account_id = ?",
+                (status, datetime.now(timezone.utc).isoformat(), assignment_id, account_id),
+            )
+        else:
+            cur = conn.execute(
+                "UPDATE assignments SET status = ?, updated_at = ? WHERE id = ?",
+                (status, datetime.now(timezone.utc).isoformat(), assignment_id),
+            )
         conn.commit()
         if cur.rowcount == 0:
             return None
@@ -1980,10 +1986,13 @@ def update_assignment_status(assignment_id: int, status: str, updated_by_user_id
         conn.close()
 
 
-def get_assignment(assignment_id: int) -> Optional[Dict[str, Any]]:
+def get_assignment(assignment_id: int, account_id: Optional[int] = None) -> Optional[Dict[str, Any]]:
     conn = get_connection()
     try:
-        row = conn.execute("SELECT * FROM assignments WHERE id = ?", (assignment_id,)).fetchone()
+        if account_id is not None:
+            row = conn.execute("SELECT * FROM assignments WHERE id = ? AND account_id = ?", (assignment_id, account_id)).fetchone()
+        else:
+            row = conn.execute("SELECT * FROM assignments WHERE id = ?", (assignment_id,)).fetchone()
         return dict(row) if row else None
     except OverflowError:
         return None
@@ -2019,9 +2028,10 @@ def get_assignments_for_targets(target_type: str, target_keys: List[str]) -> Dic
 
 
 def list_assignments(
-    assigned_to_user_id: Optional[int] = None, status: Optional[str] = None, target_type: Optional[str] = None
+    assigned_to_user_id: Optional[int] = None, status: Optional[str] = None, target_type: Optional[str] = None,
+    account_id: Optional[int] = None,
 ) -> List[Dict[str, Any]]:
-    """Any combination of filters may be applied together. Most-recently-updated first."""
+    """Any combination of filters may be applied together. Most-recently-updated first. account_id: every regular route must pass the current session's account_id."""
     conn = get_connection()
     try:
         clauses, params = [], []
@@ -2034,6 +2044,9 @@ def list_assignments(
         if target_type:
             clauses.append("target_type = ?")
             params.append(target_type)
+        if account_id is not None:
+            clauses.append("account_id = ?")
+            params.append(account_id)
         where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
         rows = conn.execute(f"SELECT * FROM assignments {where} ORDER BY updated_at DESC, id DESC", params).fetchall()
         return [dict(r) for r in rows]
@@ -2041,9 +2054,13 @@ def list_assignments(
         conn.close()
 
 
-def delete_assignment(assignment_id: int) -> bool:
+def delete_assignment(assignment_id: int, account_id: Optional[int] = None) -> bool:
     conn = get_connection()
     try:
+        if account_id is not None:
+            owned = conn.execute("SELECT id FROM assignments WHERE id = ? AND account_id = ?", (assignment_id, account_id)).fetchone()
+            if not owned:
+                return False
         cur = conn.execute("DELETE FROM assignments WHERE id = ?", (assignment_id,))
         conn.commit()
         return cur.rowcount > 0
@@ -2136,7 +2153,7 @@ def find_direct_thread(user_id_a: int, user_id_b: int) -> Optional[int]:
         conn.close()
 
 
-def create_thread(thread_type: str, participant_user_ids: List[int], created_by_user_id: int, name: Optional[str] = None) -> int:
+def create_thread(thread_type: str, participant_user_ids: List[int], created_by_user_id: int, account_id: int, name: Optional[str] = None) -> int:
     """
     For thread_type='direct' with exactly 2 participants, reuses an
     existing thread between them if one exists (see find_direct_thread)
@@ -2144,6 +2161,12 @@ def create_thread(thread_type: str, participant_user_ids: List[int], created_by_
     this themselves first if they want to distinguish "reused" from
     "created" (see api.py's create_thread_route), but this function is
     safe to call either way.
+
+    account_id isn't itself the security boundary here (thread
+    PARTICIPANT membership is -- see api.py's create_thread_route/
+    add_thread_participant_route, which already only allow same-
+    account participants), it's recorded for consistency/future
+    querying, same as every other customer-data table.
     """
     if thread_type == "direct" and len(participant_user_ids) == 2:
         existing = find_direct_thread(participant_user_ids[0], participant_user_ids[1])
@@ -2154,8 +2177,8 @@ def create_thread(thread_type: str, participant_user_ids: List[int], created_by_
     conn = get_connection()
     try:
         cur = conn.execute(
-            "INSERT INTO message_threads (thread_type, name, created_by_user_id, created_at) VALUES (?, ?, ?, ?)",
-            (thread_type, name, created_by_user_id, now),
+            "INSERT INTO message_threads (thread_type, name, created_by_user_id, created_at, account_id) VALUES (?, ?, ?, ?, ?)",
+            (thread_type, name, created_by_user_id, now, account_id),
         )
         thread_id = cur.lastrowid
         for user_id in set(participant_user_ids):
@@ -2650,7 +2673,7 @@ def delete_task(task_id: int, account_id: Optional[int] = None) -> bool:
         conn.close()
 
 
-def insert_activity(action_type: str, description: str, lease_id: Optional[int] = None) -> int:
+def insert_activity(action_type: str, description: str, account_id: int, lease_id: Optional[int] = None) -> int:
     """
     Records one entry in the account-wide activity feed. Called
     directly from the API route handling an action (upload, delete,
@@ -2661,12 +2684,23 @@ def insert_activity(action_type: str, description: str, lease_id: Optional[int] 
     so the activity entry (whose `description` already has the filename
     baked in) survives as history rather than vanishing or blocking the
     delete.
+
+    account_id is required (not defaulted): the column has a NOT NULL
+    DEFAULT from the multi-tenant migration (see
+    _migrate_accounts_table_and_backfill_id), so an INSERT that
+    omitted it wouldn't error -- it would silently write every future
+    entry under the migration's backfill id forever, permanently
+    hiding it from every real account's activity feed. Requiring the
+    argument here forces every caller to be explicit instead. See
+    api.py's `_log_activity` wrapper -- the actual call site everywhere
+    in that file, so this signature only had to change here plus that
+    one wrapper, not at each of its ~39 call sites individually.
     """
     conn = get_connection()
     try:
         cur = conn.execute(
-            "INSERT INTO activity_log (action_type, description, lease_id, created_at) VALUES (?, ?, ?, ?)",
-            (action_type, description, lease_id, datetime.now(timezone.utc).isoformat()),
+            "INSERT INTO activity_log (action_type, description, lease_id, created_at, account_id) VALUES (?, ?, ?, ?, ?)",
+            (action_type, description, lease_id, datetime.now(timezone.utc).isoformat(), account_id),
         )
         conn.commit()
         return cur.lastrowid
@@ -2674,16 +2708,23 @@ def insert_activity(action_type: str, description: str, lease_id: Optional[int] 
         conn.close()
 
 
-def get_recent_activity(limit: int = 10) -> List[Dict[str, Any]]:
+def get_recent_activity(limit: int = 10, account_id: Optional[int] = None) -> List[Dict[str, Any]]:
     """Most recent activity first. `limit` is clamped to a sane range so an
-    unbounded/absurd query param can't force a full-table scan-and-return."""
+    unbounded/absurd query param can't force a full-table scan-and-return.
+    account_id: every regular route must pass the current session's account_id."""
     limit = max(1, min(limit, 200))
     conn = get_connection()
     try:
-        rows = conn.execute(
-            "SELECT * FROM activity_log ORDER BY created_at DESC, id DESC LIMIT ?",
-            (limit,),
-        ).fetchall()
+        if account_id is not None:
+            rows = conn.execute(
+                "SELECT * FROM activity_log WHERE account_id = ? ORDER BY created_at DESC, id DESC LIMIT ?",
+                (account_id, limit),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM activity_log ORDER BY created_at DESC, id DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
         return [dict(r) for r in rows]
     finally:
         conn.close()
@@ -3147,7 +3188,7 @@ def get_discrepancy_summary(account_id: Optional[int] = None) -> Dict[str, Any]:
 # ----------------------------------------------------------------------
 
 def add_comment(
-    author_name: str, body: str, lease_id: Optional[int] = None,
+    author_name: str, body: str, account_id: int, lease_id: Optional[int] = None,
     discrepancy_id: Optional[int] = None, author_email: Optional[str] = None,
     task_id: Optional[int] = None,
 ) -> int:
@@ -3155,9 +3196,9 @@ def add_comment(
     conn = get_connection()
     try:
         cur = conn.execute(
-            "INSERT INTO comments (lease_id, discrepancy_id, task_id, author_name, author_email, body, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (lease_id, discrepancy_id, task_id, author_name, author_email, body, datetime.now(timezone.utc).isoformat()),
+            "INSERT INTO comments (lease_id, discrepancy_id, task_id, author_name, author_email, body, created_at, account_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (lease_id, discrepancy_id, task_id, author_name, author_email, body, datetime.now(timezone.utc).isoformat(), account_id),
         )
         conn.commit()
         return cur.lastrowid
@@ -3206,7 +3247,7 @@ def get_task_comments(task_id: int) -> List[Dict[str, Any]]:
         conn.close()
 
 
-def get_recent_comments(limit: int = 20) -> List[Dict[str, Any]]:
+def get_recent_comments(limit: int = 20, account_id: Optional[int] = None) -> List[Dict[str, Any]]:
     """
     The most recent comments across BOTH leases and discrepancies, one
     portfolio-wide feed -- what a standalone "Team Notes" sidebar tab
@@ -3226,18 +3267,24 @@ def get_recent_comments(limit: int = 20) -> List[Dict[str, Any]]:
     limit = max(1, min(limit, 200))
     conn = get_connection()
     try:
+        clauses, params = [], []
+        if account_id is not None:
+            clauses.append("c.account_id = ?")
+            params.append(account_id)
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
         rows = conn.execute(
-            """
+            f"""
             SELECT c.*,
                    l.display_name AS lease_display_name, l.filename AS lease_filename,
                    d.category AS discrepancy_category, d.discrepancy_type AS discrepancy_type_name
             FROM comments c
             LEFT JOIN leases l ON c.lease_id = l.id
             LEFT JOIN discrepancies d ON c.discrepancy_id = d.id
+            {where}
             ORDER BY c.created_at DESC, c.id DESC
             LIMIT ?
             """,
-            (limit,),
+            params + [limit],
         ).fetchall()
         return [dict(r) for r in rows]
     finally:
