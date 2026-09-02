@@ -3838,6 +3838,11 @@ def portfolio_monthly_report_pdf():
 # and is not fabricated here.
 # ----------------------------------------------------------------------
 
+def _owner_account_public_shape(account):
+    """Strips password_hash before this row ever reaches a response -- an owner needing to reset a login's password uses /owner/accounts/<id>/reset-password (which writes a fresh hash), never has a reason to see the existing one, and putting a bcrypt hash in a JSON response/browser devtools/screen-share is needless exposure regardless of who's looking at it."""
+    return {k: v for k, v in account.items() if k != "password_hash"}
+
+
 @app.route('/owner/accounts', methods=['GET'])
 @require_owner()
 def owner_list_accounts():
@@ -3866,7 +3871,7 @@ def owner_list_accounts():
     result = []
     for account in accounts:
         usage = database.get_user_usage_stats(account["id"], account["email"])
-        result.append({**account, "usage": usage})
+        result.append({**_owner_account_public_shape(account), "usage": usage})
     return jsonify(result), 200
 
 
@@ -3877,7 +3882,7 @@ def owner_account_detail(user_id):
     if not account:
         return jsonify({"error": "Account not found"}), 404
     usage = database.get_user_usage_stats(account["id"], account["email"])
-    return jsonify({**account, "usage": usage}), 200
+    return jsonify({**_owner_account_public_shape(account), "usage": usage}), 200
 
 
 @app.route('/owner/accounts/<int:user_id>/suspend', methods=['POST'])

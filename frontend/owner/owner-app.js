@@ -24,6 +24,19 @@ function formatMoney(n) {
 
 function formatDate(iso) {
     if (!iso) return '—';
+    // A bare "YYYY-MM-DD" (revenue/expense entry_date) parses as UTC
+    // midnight in `new Date(...)` -- in any timezone behind UTC,
+    // toLocaleDateString then renders the PREVIOUS calendar day (an
+    // entry dated 2026-09-01 showed as "Aug 31, 2026"). Full
+    // timestamps (users.created_at etc.) already carry an explicit
+    // offset and don't have this problem, so only the bare-date case
+    // needs the manual, timezone-free parse below.
+    const dateOnlyMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+    if (dateOnlyMatch) {
+        const [, y, m, day] = dateOnlyMatch;
+        const d = new Date(Number(y), Number(m) - 1, Number(day));
+        return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+    }
     const d = new Date(iso);
     if (isNaN(d)) return iso;
     return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
