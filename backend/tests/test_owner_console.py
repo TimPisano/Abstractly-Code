@@ -25,11 +25,33 @@ from app.auth import hash_password
 
 
 def _fresh_temp_db():
-    tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
-    tmp.close()
-    database.configure(tmp.name)
-    database.init_db()
-    return tmp.name
+    """
+    Note: app.api's load_dotenv() (run at import time, above) puts
+    this developer's REAL ADMIN_EMAIL/ADMIN_PASSWORD_HASH into the
+    process-wide environment for the rest of this process's life. If
+    those are left set here, _seed_first_admin_user seeds that real
+    account into every "fresh" temp DB this helper creates -- harmless
+    for tests that don't care who the first user is, but it silently
+    defeats any test (like this file's own
+    test_seed_first_admin_user_sets_is_owner) that needs the table to
+    start genuinely empty so it can control the seed via its own env
+    vars. Popping them here, scoped to just this one init_db() call,
+    keeps every test in this file deterministic regardless of the
+    local .env's contents.
+    """
+    real_admin_email = os.environ.pop("ADMIN_EMAIL", None)
+    real_admin_hash = os.environ.pop("ADMIN_PASSWORD_HASH", None)
+    try:
+        tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        tmp.close()
+        database.configure(tmp.name)
+        database.init_db()
+        return tmp.name
+    finally:
+        if real_admin_email is not None:
+            os.environ["ADMIN_EMAIL"] = real_admin_email
+        if real_admin_hash is not None:
+            os.environ["ADMIN_PASSWORD_HASH"] = real_admin_hash
 
 
 def _client_as(user_id, email, role, is_owner):
