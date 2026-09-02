@@ -76,10 +76,16 @@ def verify_password(email: str, password: str):
 
 def current_user():
     """
-    The logged-in user's {"id", "email", "name", "role"}, or None if
-    there's no session. Reads straight from the signed session cookie
-    -- this is what resolved_by/author_name/dismissed_by/actor_user_id
-    are sourced from now, never a client-supplied request-body field.
+    The logged-in user's {"id", "email", "name", "role", "is_owner"},
+    or None if there's no session. Reads straight from the signed
+    session cookie -- this is what resolved_by/author_name/
+    dismissed_by/actor_user_id are sourced from now, never a
+    client-supplied request-body field.
+
+    is_owner defaults to False for any session predating this field
+    (an old cookie from before the owner console existed) -- correct,
+    since owner status is only ever granted explicitly (see
+    require_owner) and such a session was never granted it.
     """
     if not session.get("user_id"):
         return None
@@ -88,6 +94,7 @@ def current_user():
         "email": session.get("email"),
         "name": session.get("name"),
         "role": session.get("role"),
+        "is_owner": bool(session.get("is_owner", False)),
     }
 
 
@@ -115,6 +122,34 @@ def require_role(min_role: str = "viewer"):
                 return jsonify({"error": "Login required"}), 401
             if ROLE_RANK.get(user["role"], -1) < ROLE_RANK[min_role]:
                 return jsonify({"error": f"{min_role.capitalize()} role required"}), 403
+            return view_fn(*args, **kwargs)
+        return wrapped
+    return decorator
+
+
+def require_owner():
+    """
+    Route decorator for the owner console (business-management routes:
+    every login's usage, suspend/reactivate/reset-password on ANY
+    account, revenue/expenses). Deliberately independent of
+    require_role()/ROLE_RANK -- role='admin' never implies is_owner,
+    and this never checks role at all, only the is_owner flag.
+
+    401 if there's no session (same as require_role, reveals nothing).
+    404 -- not 403 -- if logged in but not owner. A 403 would confirm
+    to a curious admin that a hidden owner-only route exists at all;
+    404 makes an /owner/* route genuinely indistinguishable from a URL
+    that doesn't exist, matching the explicit requirement that this
+    console not be discoverable by regular users or regular admins.
+    """
+    def decorator(view_fn):
+        @wraps(view_fn)
+        def wrapped(*args, **kwargs):
+            user = current_user()
+            if user is None:
+                return jsonify({"error": "Login required"}), 401
+            if not user["is_owner"]:
+                return jsonify({"error": "Not found"}), 404
             return view_fn(*args, **kwargs)
         return wrapped
     return decorator

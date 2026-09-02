@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
+    <title>Owner Console — Abstractly</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap">
+    <link rel="stylesheet" href="../design-system.css">
+    <link rel="stylesheet" href="owner.css">
+</head>
+<body>
+
+    <div class="owner-gate">
+        <div class="owner-gate-card">
+            <div class="owner-brand">Abstractly</div>
+            <h1>Owner Console</h1>
+            <p class="owner-gate-subtitle">Not a team login. Sign in with the operator account.</p>
+            <form id="ownerLoginForm">
+                <input type="email" id="ownerEmail" class="text-input" placeholder="you@company.com" required autocomplete="username">
+                <input type="password" id="ownerPassword" class="text-input" placeholder="Password" required autocomplete="current-password">
+                <button type="submit" class="btn-primary btn-block" id="ownerLoginSubmitBtn">Sign In</button>
+            </form>
+            <p class="owner-gate-message" id="ownerLoginMessage"></p>
+        </div>
+    </div>
+
+    <script src="../config.js"></script>
+    <script src="login.js"></script>
+</body>
+</html>

@@ -88,7 +88,7 @@ from app.rent_roll_export import generate_rent_roll_csv, generate_rent_roll_exce
 from app.report import generate_portfolio_report_html
 from app.summary_memo import generate_lease_summary_pdf, generate_portfolio_summary_pdf, monthly_report_extra_sections
 from app.sheets_export import export_to_google_sheets, SheetsExportError
-from app.auth import verify_password, require_role, current_user, hash_password
+from app.auth import verify_password, require_role, require_owner, current_user, hash_password
 
 
 app = Flask(__name__)
@@ -1395,8 +1395,12 @@ def auth_login():
     session["email"] = user["email"]
     session["name"] = user["name"]
     session["role"] = user["role"]
+    session["is_owner"] = bool(user.get("is_owner"))
     database.update_user_last_login(user["id"])
-    return jsonify({"id": user["id"], "email": user["email"], "name": user["name"], "role": user["role"]}), 200
+    return jsonify({
+        "id": user["id"], "email": user["email"], "name": user["name"], "role": user["role"],
+        "is_owner": bool(user.get("is_owner")),
+    }), 200
 
 
 @app.route('/auth/logout', methods=['POST'])
@@ -1411,7 +1415,7 @@ def auth_session():
     user = current_user()
     if user:
         return jsonify({"authenticated": True, **user}), 200
-    return jsonify({"authenticated": False, "id": None, "email": None, "name": None, "role": None}), 200
+    return jsonify({"authenticated": False, "id": None, "email": None, "name": None, "role": None, "is_owner": False}), 200
 
 
 @app.route('/auth/change-password', methods=['POST'])
@@ -3812,6 +3816,207 @@ def portfolio_monthly_report_pdf():
         mimetype='application/pdf',
         headers={"Content-Disposition": "attachment; filename=portfolio_monthly_report.pdf"},
     )
+
+
+# ----------------------------------------------------------------------
+# Owner console -- business management, NOT team/app management.
+# Every route below is gated by @require_owner(), never
+# @require_role('admin') -- role='admin' does not imply owner access,
+# by deliberate design (see app/auth.py's require_owner docstring and
+# DECISIONS.md's "Owner console" entry). There is no route anywhere
+# that grants is_owner -- see backend/set_owner.py.
+#
+# "Accounts" here means logins in the `users` table, not isolated
+# per-customer tenants -- this app has no multi-tenant data separation
+# today (confirmed: no org_id/tenant_id/customer_id anywhere in the
+# schema). Every login currently shares the exact same pool of leases
+# and rent rolls. Usage stats are therefore per-login activity counts
+# (tasks, field edits, discrepancy resolutions, comments -- see
+# database.get_user_usage_stats), NOT "leases abstracted by this
+# customer" -- the `leases` table has no uploaded-by column at all, so
+# that specific number genuinely isn't tracked anywhere in this schema
+# and is not fabricated here.
+# ----------------------------------------------------------------------
+
+def _owner_account_public_shape(account):
+    """Strips password_hash before this row ever reaches a response -- an owner needing to reset a login's password uses /owner/accounts/<id>/reset-password (which writes a fresh hash), never has a reason to see the existing one, and putting a bcrypt hash in a JSON response/browser devtools/screen-share is needless exposure regardless of who's looking at it."""
+    return {k: v for k, v in account.items() if k != "password_hash"}
+
+
+@app.route('/owner/accounts', methods=['GET'])
+@require_owner()
+def owner_list_accounts():
+    """
+    ?email=<substring, case-insensitive>&status=active|deactivated&signup_after=YYYY-MM-DD&signup_before=YYYY-MM-DD
+    All filters optional and combinable. Each account includes usage
+    stats (see database.get_user_usage_stats) -- see this section's
+    module comment above for exactly what that does and doesn't cover.
+    """
+    email_filter = (request.args.get("email") or "").strip().lower()
+    status_filter = (request.args.get("status") or "").strip().lower()
+    signup_after = (request.args.get("signup_after") or "").strip()
+    signup_before = (request.args.get("signup_before") or "").strip()
+
+    accounts = database.list_users()
+
+    if email_filter:
+        accounts = [a for a in accounts if email_filter in a["email"].lower()]
+    if status_filter:
+        accounts = [a for a in accounts if a["status"] == status_filter]
+    if signup_after:
+        accounts = [a for a in accounts if a["created_at"] >= signup_after]
+    if signup_before:
+        accounts = [a for a in accounts if a["created_at"] <= signup_before]
+
+    result = []
+    for account in accounts:
+        usage = database.get_user_usage_stats(account["id"], account["email"])
+        result.append({**_owner_account_public_shape(account), "usage": usage})
+    return jsonify(result), 200
+
+
+@app.route('/owner/accounts/<int:user_id>', methods=['GET'])
+@require_owner()
+def owner_account_detail(user_id):
+    account = database.get_user(user_id)
+    if not account:
+        return jsonify({"error": "Account not found"}), 404
+    usage = database.get_user_usage_stats(account["id"], account["email"])
+    return jsonify({**_owner_account_public_shape(account), "usage": usage}), 200
+
+
+@app.route('/owner/accounts/<int:user_id>/suspend', methods=['POST'])
+@require_owner()
+def owner_suspend_account(user_id):
+    """Reuses database.update_user_status -- the same function the (much more limited) Team view's admin-facing deactivate action already uses; owner access just isn't restricted to team members."""
+    if not database.get_user(user_id):
+        return jsonify({"error": "Account not found"}), 404
+    database.update_user_status(user_id, "deactivated")
+    return jsonify({"status": "suspended"}), 200
+
+
+@app.route('/owner/accounts/<int:user_id>/reactivate', methods=['POST'])
+@require_owner()
+def owner_reactivate_account(user_id):
+    if not database.get_user(user_id):
+        return jsonify({"error": "Account not found"}), 404
+    database.update_user_status(user_id, "active")
+    return jsonify({"status": "activated"}), 200
+
+
+@app.route('/owner/accounts/<int:user_id>/reset-password', methods=['POST'])
+@require_owner()
+def owner_reset_account_password(user_id):
+    """
+    Body: {"new_password": str}. Distinct from the self-serve
+    /auth/forgot-password flow -- the owner needs unilateral power to
+    reset ANY login's password directly, without that login's
+    cooperation or a working email inbox. Same hashing
+    (app.auth.hash_password) as every other password write path.
+    """
+    if not database.get_user(user_id):
+        return jsonify({"error": "Account not found"}), 404
+    body = request.get_json(silent=True) or {}
+    new_password = body.get("new_password") or ""
+    if not new_password or len(new_password) < 8:
+        return jsonify({"error": "New password must be at least 8 characters"}), 400
+    database.update_user_password(user_id, hash_password(new_password))
+    return jsonify({"status": "password_updated"}), 200
+
+
+@app.route('/owner/revenue', methods=['GET', 'POST'])
+@require_owner()
+def owner_revenue():
+    if request.method == 'GET':
+        return jsonify(database.list_revenue_entries()), 200
+
+    body = request.get_json(silent=True) or {}
+    entry_date = (body.get("date") or "").strip()
+    amount = body.get("amount")
+    source = (body.get("source") or "").strip()
+    note = (body.get("note") or "").strip() or None
+
+    if not entry_date:
+        return jsonify({"error": "date is required (YYYY-MM-DD)"}), 400
+    if not isinstance(amount, (int, float)):
+        return jsonify({"error": "amount is required and must be a number"}), 400
+    if not source:
+        return jsonify({"error": "source is required"}), 400
+
+    entry = database.create_revenue_entry(entry_date, float(amount), source, note, current_user()["id"])
+    return jsonify(entry), 201
+
+
+@app.route('/owner/revenue/<int:entry_id>', methods=['DELETE'])
+@require_owner()
+def owner_delete_revenue(entry_id):
+    if not database.delete_revenue_entry(entry_id):
+        return jsonify({"error": "Revenue entry not found"}), 404
+    return jsonify({"status": "deleted"}), 200
+
+
+@app.route('/owner/expenses', methods=['GET', 'POST'])
+@require_owner()
+def owner_expenses():
+    if request.method == 'GET':
+        return jsonify(database.list_expense_entries()), 200
+
+    body = request.get_json(silent=True) or {}
+    entry_date = (body.get("date") or "").strip()
+    amount = body.get("amount")
+    category = (body.get("category") or "").strip()
+    note = (body.get("note") or "").strip() or None
+
+    if not entry_date:
+        return jsonify({"error": "date is required (YYYY-MM-DD)"}), 400
+    if not isinstance(amount, (int, float)):
+        return jsonify({"error": "amount is required and must be a number"}), 400
+    if not category:
+        return jsonify({"error": "category is required"}), 400
+
+    entry = database.create_expense_entry(entry_date, float(amount), category, note, current_user()["id"])
+    return jsonify(entry), 201
+
+
+@app.route('/owner/expenses/<int:entry_id>', methods=['DELETE'])
+@require_owner()
+def owner_delete_expense(entry_id):
+    if not database.delete_expense_entry(entry_id):
+        return jsonify({"error": "Expense entry not found"}), 404
+    return jsonify({"status": "deleted"}), 200
+
+
+@app.route('/owner/finance/summary', methods=['GET'])
+@require_owner()
+def owner_finance_summary():
+    """Totals + a monthly trend (YYYY-MM buckets) covering both revenue and expenses. Computed here from the same list functions the /owner/revenue and /owner/expenses GET routes use, rather than a separate SQL aggregate, so there's exactly one source of truth for what counts as a valid entry."""
+    revenue = database.list_revenue_entries()
+    expenses = database.list_expense_entries()
+
+    total_revenue = sum(r["amount"] for r in revenue)
+    total_expenses = sum(e["amount"] for e in expenses)
+
+    monthly = {}
+    for r in revenue:
+        month = r["entry_date"][:7]
+        monthly.setdefault(month, {"revenue": 0.0, "expenses": 0.0})
+        monthly[month]["revenue"] += r["amount"]
+    for e in expenses:
+        month = e["entry_date"][:7]
+        monthly.setdefault(month, {"revenue": 0.0, "expenses": 0.0})
+        monthly[month]["expenses"] += e["amount"]
+
+    trend = [
+        {"month": month, "revenue": vals["revenue"], "expenses": vals["expenses"], "profit": vals["revenue"] - vals["expenses"]}
+        for month, vals in sorted(monthly.items())
+    ]
+
+    return jsonify({
+        "total_revenue": total_revenue,
+        "total_expenses": total_expenses,
+        "profit": total_revenue - total_expenses,
+        "monthly_trend": trend,
+    }), 200
 
 
 @app.route('/health', methods=['GET'])
