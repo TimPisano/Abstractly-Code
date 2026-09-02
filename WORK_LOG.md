@@ -250,3 +250,65 @@ belongs in this section as a Phase 2 deliverable, not just Phase 1's.
 Status: **Phase 2 done, committing.**
 
 ---
+
+## Phase 3 — States (loading, empty, error, success)
+
+Audited rather than assumed a rebuild was needed, since Phase 1/2 had
+already shown this codebase carries real, deliberate prior polish
+passes. Findings:
+
+**Error state: already hardened, verified not just read.** Checked
+the backend first, since a leaked stack trace is the most damaging
+possible "error state" failure for a product handling real financial
+data. Found a real, deliberate prior "hardening pass": global
+`@app.errorhandler`s for 400/404/413/500/`Exception` that ALL return a
+clean, generic JSON message (the real exception is `logger.exception`'d
+server-side only), and Flask's debug mode defaults off (opt-in via
+`FLASK_DEBUG` env var, not on by default). Grepped the entire frontend
+for patterns that would leak a raw error object or `.stack` into the
+DOM -- none found. Spot-checked the newest code (owner console, built
+literally this session) against the same pattern used everywhere
+else (`apiRequest`'s clean network-error wrapper +
+`escapeHtml(err.message)`) -- consistent, not a special case. Live-
+tested a real error path (wrong-account owner login) and confirmed a
+clean, correctly-styled, plain-language message renders (see
+`p3_owner_login_error.png`).
+
+**Loading states: present everywhere checked**, mixing spinner
+(simpler lists/tables, e.g. Rent Roll's "⟳ Loading…" row that keeps
+the table headers visible immediately) and true skeleton (denser
+tiles, e.g. the Dashboard's stat cards) depending on content
+complexity -- this is a reasonable, deliberate split, not an
+inconsistency, and the brief's own wording ("skeleton OR spinner")
+allows either. Verified live with network throttled via CDP
+(`Network.emulateNetworkConditions`) rather than trusting a fast
+localhost response to hide a blank-page flash.
+
+**Empty states: present with real, helpful copy** everywhere audited
+-- the zero-lease dashboard (redone the commit immediately before this
+session), the owner console's Revenue & Expenses tab ("Manual entries
+— no billing integration is connected yet." / "No entries yet -- add a
+revenue or expense entry below to see a trend."), Rent Roll's empty
+portfolio state. None of these are a bare "No data."
+
+**Success confirmations: verified live**, not assumed from memory of
+earlier work. Ran the real one-click "Try a Sample Lease" flow end to
+end: lands directly on a fully-processed lease detail page (15/15
+fields high-confidence, a "Sample" tag applied automatically) rather
+than leaving the user on the upload screen wondering if anything
+happened -- arriving somewhere concrete with the real result IS the
+confirmation here, which reads as stronger than a toast that fades
+while you're still looking at an empty form. (Toast-style confirmations
+for other actions -- task creation, field-edit saves, password reset --
+were already built and verified live in earlier work this session; not
+re-verified here since nothing in Phases 1-2 touched that code.)
+
+**No changes made in this phase** -- audit did not surface a gap
+worth fixing that wasn't already caught by Phase 1/2's own findings
+(the alert-message path leak, fixed in Phase 2, was itself partly a
+"the copy shown after an error/discrepancy is confusing" issue that
+belongs conceptually to this phase too).
+
+Status: **Phase 3 done, committing.**
+
+---
