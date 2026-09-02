@@ -169,6 +169,48 @@ def test_total_row_skipped():
     print("✓ test_total_row_skipped: PASS")
 
 
+def test_subtotal_row_with_extra_text_is_skipped():
+    """
+    Real bug found via live stress-testing: a subtotal/total row's
+    tenant cell is often not the bare keyword alone (e.g. "Subtotal
+    Floor 1", "Total (12 units)") -- the old exact-match-only check let
+    these through as fake tenants. Also confirms a real tenant whose
+    name merely starts with a similar-looking word ("Totally Awesome
+    Tenant") is still correctly imported, not caught by the fix.
+    """
+    csv_bytes = _csv_bytes([
+        ["Tenant", "Rent"],
+        ["Real Tenant Co", "$1,000.00"],
+        ["Subtotal Floor 1", "$1,000.00"],
+        ["Total (2 units)", "$1,000.00"],
+        ["Totally Awesome Tenant", "$900.00"],
+    ])
+    result = parse_csv_rent_roll(csv_bytes, "rr.csv")
+    tenants = {l["extracted_fields"]["tenant"]["value"] for l in result["leases"]}
+    assert tenants == {"Real Tenant Co", "Totally Awesome Tenant"}
+    assert len(result["skipped_rows"]) == 2
+    print("✓ test_subtotal_row_with_extra_text_is_skipped: PASS")
+
+
+def test_tenant_literal_zero_is_skipped():
+    """
+    Real bug found via live stress-testing: some rent rolls mark a
+    vacant unit's tenant cell with a literal "0" instead of blank/
+    VACANT/Vacant -- this used to import a fake tenant literally named
+    "0" with $0.00 rent.
+    """
+    csv_bytes = _csv_bytes([
+        ["Tenant", "Rent"],
+        ["0", "$0.00"],
+        ["Real Tenant After Zero", "$1,800.00"],
+    ])
+    result = parse_csv_rent_roll(csv_bytes, "rr.csv")
+    assert len(result["leases"]) == 1
+    assert result["leases"][0]["extracted_fields"]["tenant"]["value"] == "Real Tenant After Zero"
+    assert len(result["skipped_rows"]) == 1
+    print("✓ test_tenant_literal_zero_is_skipped: PASS")
+
+
 def test_blank_tenant_row_skipped():
     csv_bytes = _csv_bytes([
         ["Tenant", "Rent"],
@@ -259,6 +301,31 @@ def test_empty_xlsx_raises():
     except RentRollImportError:
         pass
     print("✓ test_empty_xlsx_raises: PASS")
+
+
+def test_xlsx_checks_every_sheet_not_just_the_active_one():
+    """
+    Real bug found via live stress-testing: a workbook with a blank/
+    decorative "Summary" sheet first and the real per-unit data on a
+    second "Detail" sheet used to silently fail to import anything --
+    only workbook.active (whichever sheet was selected when the file
+    was last saved) was ever read. Now every sheet is checked, using
+    the first one with a recognizable tenant+rent header.
+    """
+    wb = Workbook()
+    summary = wb.active
+    summary.title = "Summary"
+    summary.append(["This tab is a portfolio summary, not per-unit data"])
+    detail = wb.create_sheet("Detail")
+    detail.append(["Tenant", "Unit", "Rent"])
+    detail.append(["Sheet2 Tenant A", "D1", "$1,500.00"])
+    buf = io.BytesIO()
+    wb.save(buf)
+
+    result = parse_xlsx_rent_roll(buf.getvalue(), "multi_sheet.xlsx")
+    assert len(result["leases"]) == 1
+    assert result["leases"][0]["extracted_fields"]["tenant"]["value"] == "Sheet2 Tenant A"
+    print("✓ test_xlsx_checks_every_sheet_not_just_the_active_one: PASS")
 
 
 def test_row_numbers_reflect_actual_file_position():
@@ -583,6 +650,8 @@ if __name__ == "__main__":
     test_bare_numeric_rent_with_no_dollar_sign()
     test_vacant_row_skipped()
     test_total_row_skipped()
+    test_subtotal_row_with_extra_text_is_skipped()
+    test_tenant_literal_zero_is_skipped()
     test_blank_tenant_row_skipped()
     test_missing_tenant_and_rent_columns_raises()
     test_missing_optional_column_does_not_block_import()
@@ -591,6 +660,7 @@ if __name__ == "__main__":
     test_no_base_address_and_no_unit_column_leaves_address_unset()
     test_empty_csv_raises()
     test_empty_xlsx_raises()
+    test_xlsx_checks_every_sheet_not_just_the_active_one()
     test_row_numbers_reflect_actual_file_position()
     test_specific_date_column_not_misattributed_to_rent_amount()
     test_header_row_auto_detection_skips_decorative_rows()

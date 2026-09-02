@@ -1,5 +1,78 @@
 # Implementation Decisions
 
+## Rent roll import: stress-tested against 22 messy synthetic files, 3 real bugs found and fixed
+
+Wrote a generator producing 22 synthetic rent-roll files (broker-style
+and canned-PMS-style) covering header-naming diversity, decorative/
+merged title rows, subtotal rows mixed mid-file, multi-sheet
+workbooks, missing/blank fields, vacant-unit markers, date/currency
+format variety, duplicate rows, out-of-order columns, and several
+genuinely malformed files (no recognizable header, empty file, corrupt
+non-xlsx bytes, a table-shaped PDF). Uploaded every one through the
+real running app -- logged in as a real user, POSTed through the actual
+`/leases/import-rent-roll` and `/leases` routes exactly as the
+frontend does, never a direct database write -- and checked the
+response against a ground-truth record of what each file actually
+contains. Ran against an isolated local database only, never
+production or the shared local dev database.
+
+**Bug 1 -- a subtotal/total row with extra text wasn't skipped.**
+`_is_real_tenant_name` only rejected a tenant cell that EXACTLY
+equalled a keyword like "subtotal" -- a real row like "Subtotal Floor
+1" or "Total (2 units)" sailed through as a fake tenant, since real
+subtotal rows are often not the bare keyword alone. Fixed by also
+checking a leading-word/phrase match (`normalized.startswith(keyword +
+" ")`), which still leaves an unrelated real tenant like "Totally
+Awesome Tenant" untouched -- confirmed by a dedicated test case, since
+"totally" doesn't start with "total " (the trailing space matters).
+
+**Bug 2 -- a vacant unit marked with a literal tenant cell of "0" was
+imported as a real tenant named "0".** `_NON_TENANT_KEYWORDS` had
+"vacant"/"total"/etc. but no "0" -- added it, same reasoning as the
+existing keywords (a rent roll routinely marks vacancy several
+different ways, and none of them should fabricate a fake lease
+record).
+
+**Bug 3 -- a multi-sheet workbook silently imported nothing if the
+real data wasn't on `workbook.active`'s sheet.** `parse_xlsx_rent_roll`
+only ever read openpyxl's `workbook.active` (whichever sheet happened
+to be selected when the file was last saved) -- a portfolio-wide PMS
+export with a "Summary" cover sheet before the real "Detail" data tab
+would fail with a confusing "couldn't find your columns" error even
+though the data was right there on another tab. Fixed by checking
+every sheet in the workbook (via the same `_find_header_row` +
+`_match_columns` logic already used per-sheet), using the first one
+with a real tenant+rent header; only fails if NO sheet has one.
+
+**Not fixed, flagged instead: a table-shaped PDF fed through the
+general lease-upload path produces a confidently WRONG extraction, not
+a graceful failure.** The dedicated rent-roll endpoint already rejects
+`.pdf` cleanly (400, clear message) -- this only reproduces via the
+general `/leases` upload, which routes any PDF through
+`field_extractor.py`'s prose/label-value regex engine regardless of
+whether the PDF's actual content is a table. On the synthetic
+rent-roll-shaped PDF, the tenant-name regex matched into the middle of
+the table's own header row, producing `tenant = "Unit Rent Lease Start
+Lease End"` at **high confidence** -- directly against this project's
+own stated quality bar ("flagged clearly as 'not found' rather than
+guessed at silently"). Deliberately not patched here: the responsible
+code is `field_extractor.py`'s general party-name extraction, shared
+by every PDF lease upload in the app (not rent-roll-specific), and a
+rushed regex change there risks regressing the app's core, working
+lease-extraction feature under time pressure for what is a narrow
+edge case (a rent roll saved as a PDF instead of a spreadsheet, fed
+through the wrong pipeline). Recommended as its own follow-up:
+either detect table-shaped PDF content and route it through OCR +
+`rent_roll_import.py`'s table parser instead, or add a
+denylist/sanity-check so a party-name match that's itself just more
+column-header text is discarded rather than trusted at high
+confidence.
+
+Regression tests added to `tests/test_rent_roll_import.py`:
+`test_subtotal_row_with_extra_text_is_skipped`,
+`test_tenant_literal_zero_is_skipped`,
+`test_xlsx_checks_every_sheet_not_just_the_active_one`.
+
 ## Production deployment groundwork (Render)
 
 Prepared the repo to deploy to Render (see DEPLOYMENT.md for the full
