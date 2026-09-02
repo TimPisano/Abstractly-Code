@@ -202,7 +202,7 @@ def test_session_check_reports_unauthenticated_before_login():
     try:
         resp = app.test_client().get("/auth/session")
         assert resp.status_code == 200
-        assert resp.get_json() == {"authenticated": False, "id": None, "email": None, "name": None, "role": None}
+        assert resp.get_json() == {"authenticated": False, "id": None, "email": None, "name": None, "role": None, "is_owner": False}
     finally:
         os.unlink(db_path)
     print("✓ test_session_check_reports_unauthenticated_before_login: PASS")
