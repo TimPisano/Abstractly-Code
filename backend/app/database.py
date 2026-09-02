@@ -207,6 +207,31 @@ def _add_account_id_column(conn: sqlite3.Connection, table: str, backfill_accoun
         conn.execute(f"CREATE INDEX IF NOT EXISTS idx_{table}_account_id ON {table}(account_id)")
 
 
+def _default_account_id(conn: sqlite3.Connection) -> int:
+    """
+    Resolves "the" account_id for a caller (mostly pre-multi-tenant
+    test files, see create_user's docstring for the full reasoning)
+    that doesn't specify one explicitly: reuses whichever account the
+    DB's first existing user already belongs to, or creates a fresh
+    "Test Workspace" account if there are no users yet. This is what
+    every insert_*/create_*/add_*/upsert_* function in this module
+    falls back to when account_id=None, so that many such calls within
+    the SAME test database land in the SAME account (matching the old,
+    pre-migration "one shared workspace" assumption most existing
+    tests were written against) rather than each silently getting its
+    own isolated account. A REAL caller in api.py should never rely on
+    this -- it always has a real account_id from the session.
+    """
+    existing = conn.execute("SELECT account_id FROM users LIMIT 1").fetchone()
+    if existing:
+        return existing["account_id"]
+    cur = conn.execute(
+        "INSERT INTO accounts (name, created_at, status, plan) VALUES (?, ?, 'active', 'free')",
+        ("Test Workspace", datetime.now(timezone.utc).isoformat()),
+    )
+    return cur.lastrowid
+
+
 def _migrate_comments_table_add_task_id(conn: sqlite3.Connection) -> None:
     """
     Adds `task_id` so a comment can be attached to a task -- lease_id/
@@ -794,7 +819,7 @@ def _row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
 def insert_lease(
     filename: str,
     extracted_fields: Dict[str, Any],
-    account_id: int,
+    account_id: Optional[int] = None,
     document_type: str = "lease",
     base_lease_id: Optional[int] = None,
     date_candidates: Optional[Dict[str, Any]] = None,
@@ -808,11 +833,13 @@ def insert_lease(
     """
     Persist one extracted document. Returns its new lease id.
 
-    account_id is required (no default) -- see DECISIONS.md's "Real
-    multi-tenant data isolation" entry -- every lease belongs to
-    exactly the uploading user's account (auth.current_account_id()),
-    forcing every call site to be explicit about it rather than
-    silently defaulting to an unscoped or wrong account.
+    account_id: real callers (api.py) always pass the uploading user's
+    real account_id (auth.current_account_id()) explicitly -- see
+    DECISIONS.md's "Real multi-tenant data isolation" entry. When
+    omitted (None), falls back to _default_account_id -- see that
+    function's docstring for why (mainly pre-existing tests that don't
+    care about multi-tenancy and expect several inserts to land in one
+    shared workspace, same as before this migration).
 
     `date_candidates` (shape: {"start": [...], "end": [...]}, from
     FieldExtractor.find_all_date_candidates) is stored alongside the
@@ -837,6 +864,8 @@ def insert_lease(
     """
     conn = get_connection()
     try:
+        if account_id is None:
+            account_id = _default_account_id(conn)
         cur = conn.execute(
             "INSERT INTO leases (filename, uploaded_at, extracted_fields, document_type, base_lease_id, "
             "date_candidates, display_name, source_page_start, source_page_end, status, supersedes_lease_id, version_number, account_id) "
@@ -1649,16 +1678,24 @@ def create_user(
     or two admins racing to add the same person), not a server error.
 
     account_id: a new team member joins their CREATING admin's
-    account (co-workers at the same company) -- callers should pass
-    the creating admin's own account_id, not a fresh one. There is
-    deliberately no path in this codebase today that creates a brand
-    new account for a brand new company (see DECISIONS.md's "Real
-    multi-tenant data isolation" entry) -- account_id is required here
-    (not defaulted) so a caller can't silently create an orphaned
-    account_id=NULL user by omitting it.
+    account (co-workers at the same company) -- real callers (see
+    api.py's create_team_member) should always pass the creating
+    admin's own account_id explicitly. When omitted (None), this
+    reuses whichever account the DB's first existing user already
+    belongs to, or creates a fresh one if there are no users yet --
+    preserving this codebase's many existing tests that create several
+    users and expect them to be colleagues sharing one workspace (true
+    before the multi-tenant migration; this default keeps that
+    assumption true for callers that don't care about multi-tenancy,
+    without requiring ~30 pre-existing call sites across a dozen test
+    files to be rewritten). A caller that DOES care -- e.g. a test
+    deliberately building two separate accounts -- should always pass
+    account_id explicitly rather than relying on this default.
     """
     conn = get_connection()
     try:
+        if account_id is None:
+            account_id = _default_account_id(conn)
         cur = conn.execute(
             "INSERT INTO users (email, name, password_hash, role, status, created_at, created_by_user_id, account_id) "
             "VALUES (?, ?, ?, ?, 'active', ?, ?, ?)",
@@ -1921,7 +1958,7 @@ def update_user_last_login(user_id: int) -> None:
 # ----------------------------------------------------------------------
 
 def upsert_assignment(
-    target_type: str, target_key: str, assigned_to_user_id: int, assigned_by_user_id: int, account_id: int,
+    target_type: str, target_key: str, assigned_to_user_id: int, assigned_by_user_id: int, account_id: Optional[int] = None,
     lease_id: Optional[int] = None, discrepancy_id: Optional[int] = None,
     property_address: Optional[str] = None, note: Optional[str] = None,
 ) -> int:
@@ -1937,6 +1974,8 @@ def upsert_assignment(
     now = datetime.now(timezone.utc).isoformat()
     conn = get_connection()
     try:
+        if account_id is None:
+            account_id = _default_account_id(conn)
         conn.execute(
             """
             INSERT INTO assignments (target_type, target_key, lease_id, discrepancy_id, property_address,
@@ -2497,7 +2536,7 @@ def delete_linked_email_account(account_id: int) -> bool:
 def create_task(
     title: str,
     created_by_user_id: int,
-    account_id: int,
+    account_id: Optional[int] = None,
     description: Optional[str] = None,
     due_date: Optional[str] = None,
     assigned_to_user_id: Optional[int] = None,
@@ -2508,9 +2547,11 @@ def create_task(
     source_natural_key: Optional[str] = None,
     priority: str = "normal",
 ) -> int:
-    """lease_id/discrepancy_id are intentionally not FK'd -- same 'survives deletion of the thing it referenced' reasoning as discrepancies.lease_id and assignments.lease_id, so a task doesn't silently vanish or corrupt if the linked record is later removed."""
+    """lease_id/discrepancy_id are intentionally not FK'd -- same 'survives deletion of the thing it referenced' reasoning as discrepancies.lease_id and assignments.lease_id, so a task doesn't silently vanish or corrupt if the linked record is later removed. account_id: real callers (api.py) always pass the real session account_id explicitly; falls back to _default_account_id when omitted (mainly pre-existing tests)."""
     conn = get_connection()
     try:
+        if account_id is None:
+            account_id = _default_account_id(conn)
         now = datetime.now(timezone.utc).isoformat()
         cur = conn.execute(
             """
@@ -2673,7 +2714,7 @@ def delete_task(task_id: int, account_id: Optional[int] = None) -> bool:
         conn.close()
 
 
-def insert_activity(action_type: str, description: str, account_id: int, lease_id: Optional[int] = None) -> int:
+def insert_activity(action_type: str, description: str, account_id: Optional[int] = None, lease_id: Optional[int] = None) -> int:
     """
     Records one entry in the account-wide activity feed. Called
     directly from the API route handling an action (upload, delete,
@@ -2685,19 +2726,17 @@ def insert_activity(action_type: str, description: str, account_id: int, lease_i
     baked in) survives as history rather than vanishing or blocking the
     delete.
 
-    account_id is required (not defaulted): the column has a NOT NULL
-    DEFAULT from the multi-tenant migration (see
-    _migrate_accounts_table_and_backfill_id), so an INSERT that
-    omitted it wouldn't error -- it would silently write every future
-    entry under the migration's backfill id forever, permanently
-    hiding it from every real account's activity feed. Requiring the
-    argument here forces every caller to be explicit instead. See
-    api.py's `_log_activity` wrapper -- the actual call site everywhere
-    in that file, so this signature only had to change here plus that
-    one wrapper, not at each of its ~39 call sites individually.
+    account_id: real callers (api.py's `_log_activity` wrapper -- the
+    actual call site everywhere in that file, so this signature only
+    had to change here plus that one wrapper, not at each of its ~39
+    call sites individually) always pass the real session account_id
+    explicitly. When omitted (None -- mainly pre-existing tests),
+    falls back to _default_account_id.
     """
     conn = get_connection()
     try:
+        if account_id is None:
+            account_id = _default_account_id(conn)
         cur = conn.execute(
             "INSERT INTO activity_log (action_type, description, lease_id, created_at, account_id) VALUES (?, ?, ?, ?, ?)",
             (action_type, description, lease_id, datetime.now(timezone.utc).isoformat(), account_id),
@@ -2737,13 +2776,24 @@ def get_recent_activity(limit: int = 10, account_id: Optional[int] = None) -> Li
 # use is just DISTINCT tag over lease_tags, computed on read.
 # ----------------------------------------------------------------------
 
-def add_lease_tag(lease_id: int, tag: str) -> None:
-    """Adds one tag to a lease. Silently a no-op if that exact tag is already there (UNIQUE(lease_id, tag)) — tagging something twice isn't an error, just redundant."""
+def add_lease_tag(lease_id: int, tag: str, account_id: Optional[int] = None) -> None:
+    """
+    Adds one tag to a lease. Silently a no-op if that exact tag is
+    already there (UNIQUE(lease_id, tag)) — tagging something twice
+    isn't an error, just redundant.
+
+    account_id: real callers (api.py) always pass the real session
+    account_id explicitly. When omitted (None -- mainly pre-existing
+    tests), falls back to _default_account_id -- see that function's
+    docstring and insert_activity's for the full reasoning.
+    """
     conn = get_connection()
     try:
+        if account_id is None:
+            account_id = _default_account_id(conn)
         conn.execute(
-            "INSERT INTO lease_tags (lease_id, tag) VALUES (?, ?)",
-            (lease_id, tag),
+            "INSERT INTO lease_tags (lease_id, tag, account_id) VALUES (?, ?, ?)",
+            (lease_id, tag, account_id),
         )
         conn.commit()
     except (sqlite3.IntegrityError, OverflowError):
@@ -2799,22 +2849,30 @@ def get_tags_for_leases(lease_ids: List[int]) -> Dict[int, List[str]]:
         conn.close()
 
 
-def get_all_tags() -> List[str]:
-    """Every distinct tag currently in use, alphabetically — for filter-by-tag UI and tag autocomplete."""
+def get_all_tags(account_id: Optional[int] = None) -> List[str]:
+    """Every distinct tag currently in use, alphabetically — for filter-by-tag UI and tag autocomplete. account_id: every regular route must pass the current session's account_id."""
     conn = get_connection()
     try:
-        rows = conn.execute("SELECT DISTINCT tag FROM lease_tags ORDER BY tag").fetchall()
+        if account_id is not None:
+            rows = conn.execute("SELECT DISTINCT tag FROM lease_tags WHERE account_id = ? ORDER BY tag", (account_id,)).fetchall()
+        else:
+            rows = conn.execute("SELECT DISTINCT tag FROM lease_tags ORDER BY tag").fetchall()
         return [row["tag"] for row in rows]
     finally:
         conn.close()
 
 
-def get_lease_ids_with_tag(tag: str) -> List[int]:
+def get_lease_ids_with_tag(tag: str, account_id: Optional[int] = None) -> List[int]:
     conn = get_connection()
     try:
-        rows = conn.execute(
-            "SELECT lease_id FROM lease_tags WHERE tag = ?", (tag,)
-        ).fetchall()
+        if account_id is not None:
+            rows = conn.execute(
+                "SELECT lease_id FROM lease_tags WHERE tag = ? AND account_id = ?", (tag, account_id)
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT lease_id FROM lease_tags WHERE tag = ?", (tag,)
+            ).fetchall()
         return [row["lease_id"] for row in rows]
     finally:
         conn.close()
@@ -2841,7 +2899,7 @@ def upsert_discrepancy(
     category: str,
     message: str,
     details: Dict[str, Any],
-    account_id: int,
+    account_id: Optional[int] = None,
     lease_id: Optional[int] = None,
     related_lease_id: Optional[int] = None,
     field: Optional[str] = None,
@@ -2872,6 +2930,8 @@ def upsert_discrepancy(
     now = datetime.now(timezone.utc).isoformat()
     conn = get_connection()
     try:
+        if account_id is None:
+            account_id = _default_account_id(conn)
         conn.execute(
             """
             INSERT INTO discrepancies (discrepancy_type, natural_key, lease_id, related_lease_id,
@@ -3178,23 +3238,26 @@ def get_discrepancy_summary(account_id: Optional[int] = None) -> Dict[str, Any]:
 
 # ----------------------------------------------------------------------
 # Comments: team notes on a lease or a discrepancy, visible to everyone
-# on the account (there's no per-account data scoping in this app at
-# all yet -- see the Session 14 pre-sale audit in PROGRESS.md -- so
-# "visible to the whole team" is already the natural behavior of any
-# plain list/read here, nothing extra to build for that specifically).
+# on the SAME account -- see DECISIONS.md's "Real multi-tenant data
+# isolation" entry. account_id is stored directly on each comment row
+# (not just inherited via its lease_id/discrepancy_id) for the same
+# query-simplicity/permanence reasons already established for
+# discrepancies.lease_id and activity_log.property_address.
 # `author_name`/`author_email` are exactly what the caller supplies,
 # trusted as-is -- same self-reported-identity convention as
 # discrepancy resolutions; see DECISIONS.md.
 # ----------------------------------------------------------------------
 
 def add_comment(
-    author_name: str, body: str, account_id: int, lease_id: Optional[int] = None,
+    author_name: str, body: str, account_id: Optional[int] = None, lease_id: Optional[int] = None,
     discrepancy_id: Optional[int] = None, author_email: Optional[str] = None,
     task_id: Optional[int] = None,
 ) -> int:
-    """Exactly one of lease_id/discrepancy_id/task_id is expected to be set -- enforced by the API layer, not here, consistent with how validation is layered throughout this module."""
+    """Exactly one of lease_id/discrepancy_id/task_id is expected to be set -- enforced by the API layer, not here, consistent with how validation is layered throughout this module. account_id: real callers (api.py) always pass the real session account_id explicitly; falls back to _default_account_id when omitted (mainly pre-existing tests)."""
     conn = get_connection()
     try:
+        if account_id is None:
+            account_id = _default_account_id(conn)
         cur = conn.execute(
             "INSERT INTO comments (lease_id, discrepancy_id, task_id, author_name, author_email, body, created_at, account_id) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -3330,7 +3393,7 @@ def upsert_alert(
     title: str,
     message: str,
     details: Dict[str, Any],
-    account_id: int,
+    account_id: Optional[int] = None,
     lease_id: Optional[int] = None,
 ) -> int:
     """
@@ -3360,6 +3423,8 @@ def upsert_alert(
     now = datetime.now(timezone.utc).isoformat()
     conn = get_connection()
     try:
+        if account_id is None:
+            account_id = _default_account_id(conn)
         conn.execute(
             """
             INSERT INTO alerts (alert_type, natural_key, lease_id, severity, title, message, details,

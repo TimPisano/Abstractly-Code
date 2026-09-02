@@ -684,7 +684,7 @@ def upload_sample_lease():
 
     created = _persist_split_leases('sample_lease.pdf', split_leases)
     for summary in created:
-        database.add_lease_tag(summary["id"], "Sample")
+        database.add_lease_tag(summary["id"], "Sample", current_account_id())
         summary["tags"] = ["Sample"]
 
     _log_activity("lease_uploaded", "Tried the sample lease", lease_id=created[0]["id"])
@@ -1282,7 +1282,7 @@ def add_lease_tag_route(lease_id):
     if len(tag) > 60:
         return jsonify({"error": "tag must be 60 characters or fewer"}), 400
 
-    database.add_lease_tag(lease_id, tag)
+    database.add_lease_tag(lease_id, tag, current_account_id())
     return jsonify(database.get_lease_tags(lease_id)), 200
 
 
@@ -1315,7 +1315,7 @@ def _validate_comment_payload(payload):
 @app.route('/leases/<int:lease_id>/comments', methods=['GET'])
 @require_role()
 def list_lease_comments(lease_id):
-    """Team notes on this lease, oldest first, visible to everyone -- this app has no per-account data scoping at all yet, so "the whole team" is just everyone who can reach this API."""
+    """Team notes on this lease, oldest first, visible to everyone on the SAME account -- the lease lookup above already scopes "the whole team" to just that account, per DECISIONS.md's "Real multi-tenant data isolation" entry."""
     if not database.get_lease(lease_id, account_id=current_account_id()):
         return jsonify({"error": "Lease not found"}), 404
     return jsonify(database.get_lease_comments(lease_id)), 200
@@ -1342,7 +1342,7 @@ def add_lease_comment(lease_id):
 @require_role()
 def list_all_tags():
     """Every distinct tag currently in use across the whole portfolio — for filter dropdowns and tag-input autocomplete."""
-    return jsonify(database.get_all_tags()), 200
+    return jsonify(database.get_all_tags(account_id=current_account_id())), 200
 
 
 @app.route('/leases/bulk-tag', methods=['POST'])
@@ -1367,7 +1367,7 @@ def bulk_tag_leases():
         if not lease:
             not_found.append(lease_id)
             continue
-        database.add_lease_tag(lease_id, tag)
+        database.add_lease_tag(lease_id, tag, current_account_id())
         tagged.append(lease_id)
 
     return jsonify({"tagged": tagged, "not_found": not_found}), 200
@@ -3877,12 +3877,15 @@ def portfolio_monthly_report_pdf():
 # DECISIONS.md's "Owner console" entry). There is no route anywhere
 # that grants is_owner -- see backend/set_owner.py.
 #
-# "Accounts" here means logins in the `users` table, not isolated
-# per-customer tenants -- this app has no multi-tenant data separation
-# today (confirmed: no org_id/tenant_id/customer_id anywhere in the
-# schema). Every login currently shares the exact same pool of leases
-# and rent rolls. Usage stats are therefore per-login activity counts
-# (tasks, field edits, discrepancy resolutions, comments -- see
+# "Accounts" here means logins in the `users` table, annotated with
+# which real tenant/`accounts` row each belongs to (see DECISIONS.md's
+# "Real multi-tenant data isolation" entry) -- several logins can share
+# one account (co-workers at the same company), and every customer-
+# data table is now scoped by account_id. This owner console is
+# deliberately the one place that reads/writes ACROSS every account at
+# once (@require_owner(), not @require_role()) -- that's the entire
+# point of it. Usage stats are per-login activity counts (tasks, field
+# edits, discrepancy resolutions, comments -- see
 # database.get_user_usage_stats), NOT "leases abstracted by this
 # customer" -- the `leases` table has no uploaded-by column at all, so
 # that specific number genuinely isn't tracked anywhere in this schema
