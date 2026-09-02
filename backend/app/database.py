@@ -117,6 +117,24 @@ def _migrate_users_table_add_previous_login_at(conn: sqlite3.Connection) -> None
         conn.execute("ALTER TABLE users ADD COLUMN previous_login_at TEXT")
 
 
+def _migrate_users_table_add_is_owner(conn: sqlite3.Connection) -> None:
+    """
+    `is_owner` is a completely separate flag from `role`/ROLE_RANK --
+    it does NOT sit in the viewer/analyst/admin hierarchy, and
+    `role='admin'` never implies it. It gates the owner console
+    (business-management routes: every login's usage, suspend/
+    reactivate/reset-password on any account, revenue/expenses) --
+    power an admin team member should never automatically have. See
+    auth.require_owner() and api.py's /owner/* routes. Every existing
+    row backfills to 0/false -- correct, since only the operator's own
+    account should ever hold this, set explicitly via
+    backend/set_owner.py, never through any API route or signup path.
+    """
+    existing_columns = {row["name"] for row in conn.execute("PRAGMA table_info(users)").fetchall()}
+    if "is_owner" not in existing_columns:
+        conn.execute("ALTER TABLE users ADD COLUMN is_owner INTEGER NOT NULL DEFAULT 0")
+
+
 def _migrate_comments_table_add_task_id(conn: sqlite3.Connection) -> None:
     """
     Adds `task_id` so a comment can be attached to a task -- lease_id/
@@ -243,6 +261,15 @@ def _seed_first_admin_user(conn: sqlite3.Connection) -> None:
     further effect -- the seeded row lives in the database like any
     other user from then on (role can be changed, password reset,
     etc. through the normal `users` functions below).
+
+    Also seeds is_owner=1 on this row. Whoever controls ADMIN_EMAIL/
+    ADMIN_PASSWORD_HASH is, by construction, whoever has access to this
+    deployment's env vars (e.g. Render's dashboard) -- i.e. the actual
+    operator/business owner, not just any team member. This is what
+    makes owner access survive a production redeploy on a non-
+    persistent-disk deployment (see DEPLOYMENT.md) without a manual
+    step: the users table gets wiped and this function re-seeds a
+    fresh admin+owner row from the same env vars every time.
     """
     existing = conn.execute("SELECT id FROM users LIMIT 1").fetchone()
     if existing:
@@ -254,8 +281,8 @@ def _seed_first_admin_user(conn: sqlite3.Connection) -> None:
         return
 
     conn.execute(
-        "INSERT INTO users (email, name, password_hash, role, status, created_at, created_by_user_id) "
-        "VALUES (?, 'Admin', ?, 'admin', 'active', ?, NULL)",
+        "INSERT INTO users (email, name, password_hash, role, status, created_at, created_by_user_id, is_owner) "
+        "VALUES (?, 'Admin', ?, 'admin', 'active', ?, NULL, 1)",
         (email, password_hash, datetime.now(timezone.utc).isoformat()),
     )
 
@@ -403,6 +430,7 @@ def init_db() -> None:
             )
         """)
         _migrate_users_table_add_previous_login_at(conn)
+        _migrate_users_table_add_is_owner(conn)
         _seed_first_admin_user(conn)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS password_reset_tokens (
@@ -414,6 +442,54 @@ def init_db() -> None:
             )
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user_id ON password_reset_tokens(user_id)")
+        # Owner-console finance tracking (see api.py's /owner/revenue,
+        # /owner/expenses). external_source/external_id are nullable and
+        # unused today (no billing integration exists yet -- every row
+        # right now is manually entered) but let a future integration
+        # (e.g. a Stripe webhook) insert rows idempotently later without
+        # a schema change: the partial UNIQUE index below only applies
+        # when both are non-null, so manual entries (which leave them
+        # NULL) are never blocked by it.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS revenue_entries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                entry_date TEXT NOT NULL,
+                amount REAL NOT NULL,
+                source TEXT NOT NULL,
+                note TEXT,
+                external_source TEXT,
+                external_id TEXT,
+                created_at TEXT NOT NULL,
+                created_by_user_id INTEGER,
+                FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+            )
+        """)
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_revenue_entries_external "
+            "ON revenue_entries(external_source, external_id) "
+            "WHERE external_source IS NOT NULL AND external_id IS NOT NULL"
+        )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_revenue_entries_date ON revenue_entries(entry_date)")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS expense_entries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                entry_date TEXT NOT NULL,
+                amount REAL NOT NULL,
+                category TEXT NOT NULL,
+                note TEXT,
+                external_source TEXT,
+                external_id TEXT,
+                created_at TEXT NOT NULL,
+                created_by_user_id INTEGER,
+                FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+            )
+        """)
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_expense_entries_external "
+            "ON expense_entries(external_source, external_id) "
+            "WHERE external_source IS NOT NULL AND external_id IS NOT NULL"
+        )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_expense_entries_date ON expense_entries(entry_date)")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS assignments (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -578,6 +654,8 @@ def reset_db() -> None:
         conn.execute("DROP TABLE IF EXISTS oauth_states")
         conn.execute("DROP TABLE IF EXISTS tasks")
         conn.execute("DROP TABLE IF EXISTS lease_field_edits")
+        conn.execute("DROP TABLE IF EXISTS revenue_entries")
+        conn.execute("DROP TABLE IF EXISTS expense_entries")
         conn.commit()
     finally:
         conn.close()
@@ -1478,6 +1556,72 @@ def update_user_password(user_id: int, password_hash: str) -> bool:
         return cur.rowcount > 0
     except OverflowError:
         return False
+    finally:
+        conn.close()
+
+
+def set_user_owner_flag(user_id: int, is_owner: bool) -> bool:
+    """
+    Sets/clears is_owner on an EXISTING user row. No API route ever
+    calls this -- the only callers are backend/set_owner.py (a local,
+    manually-run script, never exposed over HTTP) and
+    _seed_first_admin_user (production's env-var-driven reseed). This
+    is deliberate: there is no signup or self-service path to owner
+    access, by the operator's own explicit requirement.
+    """
+    conn = get_connection()
+    try:
+        cur = conn.execute("UPDATE users SET is_owner = ? WHERE id = ?", (1 if is_owner else 0, user_id))
+        conn.commit()
+        return cur.rowcount > 0
+    except OverflowError:
+        return False
+    finally:
+        conn.close()
+
+
+def get_user_usage_stats(user_id: int, email: str) -> Dict[str, int]:
+    """
+    Best-effort per-login activity counts for the owner console's
+    account list. Deliberately NOT "leases abstracted" or "rent rolls
+    validated" -- the `leases` table has no uploaded_by/
+    created_by_user_id column at all, so which login uploaded a given
+    lease or rent roll genuinely isn't tracked anywhere in this schema
+    today. What IS real and attributable: tasks (a true user_id FK),
+    and field edits/discrepancy resolutions/comments (matched by
+    edited_by_email/resolved_by_email/author_email -- these tables
+    store the acting person's email as text, not a user_id FK, so this
+    is an email match, not a foreign key join; still accurate as long
+    as the login's email hasn't changed).
+    """
+    conn = get_connection()
+    try:
+        tasks_created = conn.execute(
+            "SELECT COUNT(*) FROM tasks WHERE created_by_user_id = ?", (user_id,)
+        ).fetchone()[0]
+        tasks_assigned = conn.execute(
+            "SELECT COUNT(*) FROM tasks WHERE assigned_to_user_id = ?", (user_id,)
+        ).fetchone()[0]
+        tasks_completed = conn.execute(
+            "SELECT COUNT(*) FROM tasks WHERE assigned_to_user_id = ? AND status = 'completed'", (user_id,)
+        ).fetchone()[0]
+        field_edits = conn.execute(
+            "SELECT COUNT(*) FROM lease_field_edits WHERE lower(edited_by_email) = lower(?)", (email,)
+        ).fetchone()[0]
+        discrepancies_resolved = conn.execute(
+            "SELECT COUNT(*) FROM discrepancy_resolutions WHERE lower(resolved_by_email) = lower(?)", (email,)
+        ).fetchone()[0]
+        comments_posted = conn.execute(
+            "SELECT COUNT(*) FROM comments WHERE lower(author_email) = lower(?)", (email,)
+        ).fetchone()[0]
+        return {
+            "tasks_created": tasks_created,
+            "tasks_assigned": tasks_assigned,
+            "tasks_completed": tasks_completed,
+            "field_edits": field_edits,
+            "discrepancies_resolved": discrepancies_resolved,
+            "comments_posted": comments_posted,
+        }
     finally:
         conn.close()
 
@@ -3111,5 +3255,88 @@ def list_alerts(
             params,
         ).fetchall()
         return [_alert_row_to_dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+# ----------------------------------------------------------------------
+# Owner console: revenue/expense tracking (manual-entry today -- no
+# billing integration exists in this codebase; external_source/
+# external_id exist for a future one, see the CREATE TABLE comments in
+# init_db()). Every route that calls these is gated by
+# auth.require_owner(), never require_role() -- see api.py's /owner/*
+# section and DECISIONS.md's "Owner console" entry.
+# ----------------------------------------------------------------------
+
+def create_revenue_entry(
+    entry_date: str, amount: float, source: str, note: Optional[str],
+    created_by_user_id: Optional[int], external_source: Optional[str] = None, external_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    conn = get_connection()
+    try:
+        cur = conn.execute(
+            "INSERT INTO revenue_entries (entry_date, amount, source, note, external_source, external_id, created_at, created_by_user_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (entry_date, amount, source, note, external_source, external_id, datetime.now(timezone.utc).isoformat(), created_by_user_id),
+        )
+        conn.commit()
+        row = conn.execute("SELECT * FROM revenue_entries WHERE id = ?", (cur.lastrowid,)).fetchone()
+        return dict(row)
+    finally:
+        conn.close()
+
+
+def list_revenue_entries() -> List[Dict[str, Any]]:
+    conn = get_connection()
+    try:
+        rows = conn.execute("SELECT * FROM revenue_entries ORDER BY entry_date DESC, id DESC").fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def delete_revenue_entry(entry_id: int) -> bool:
+    conn = get_connection()
+    try:
+        cur = conn.execute("DELETE FROM revenue_entries WHERE id = ?", (entry_id,))
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def create_expense_entry(
+    entry_date: str, amount: float, category: str, note: Optional[str],
+    created_by_user_id: Optional[int], external_source: Optional[str] = None, external_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    conn = get_connection()
+    try:
+        cur = conn.execute(
+            "INSERT INTO expense_entries (entry_date, amount, category, note, external_source, external_id, created_at, created_by_user_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (entry_date, amount, category, note, external_source, external_id, datetime.now(timezone.utc).isoformat(), created_by_user_id),
+        )
+        conn.commit()
+        row = conn.execute("SELECT * FROM expense_entries WHERE id = ?", (cur.lastrowid,)).fetchone()
+        return dict(row)
+    finally:
+        conn.close()
+
+
+def list_expense_entries() -> List[Dict[str, Any]]:
+    conn = get_connection()
+    try:
+        rows = conn.execute("SELECT * FROM expense_entries ORDER BY entry_date DESC, id DESC").fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def delete_expense_entry(entry_id: int) -> bool:
+    conn = get_connection()
+    try:
+        cur = conn.execute("DELETE FROM expense_entries WHERE id = ?", (entry_id,))
+        conn.commit()
+        return cur.rowcount > 0
     finally:
         conn.close()
