@@ -2682,8 +2682,12 @@
    inline flow -- wrapping like text depending on exactly how much
    horizontal space was available, which is why the email/password/
    submit-button arrangement looked different (and "lopsided") at
-   different widths instead of a stable vertical stack at every width. */
-#accessGateForm, #accessGateRequestForm, #loginForm {
+   different widths instead of a stable vertical stack at every width.
+   #forgotForm and #resetForm are the same shape (stacked inputs + a
+   submit button in an .access-gate-card) and hit the same bug -- they
+   were added later, on their own pages, and likewise never listed
+   here. */
+#accessGateForm, #accessGateRequestForm, #loginForm, #forgotForm, #resetForm {
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
