@@ -75,16 +75,27 @@
 }
 
 .owner-brand {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
     font-weight: 800;
     font-size: 1.125rem;
     letter-spacing: -0.01em;
+}
+
+/* Same brass building glyph the app, admin, and marketing brand marks
+   use — the owner console was the one surface still wordmark-only. */
+.owner-brand-icon {
+    width: 1.25rem;
+    height: 1.25rem;
+    color: var(--lux-accent);
+    flex-shrink: 0;
 }
 
 .owner-brand-tag {
     font-weight: 500;
     color: var(--text-medium);
     font-size: 0.8125rem;
-    margin-left: 0.5rem;
 }
 
 /* ---- Shell ---- */

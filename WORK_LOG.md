@@ -716,3 +716,67 @@ gzips to a fraction of that.
 Phase 4 — DOM weight + render cost measured there.
 
 Status: **S2 Phase 2 done, committing.**
+
+---
+
+## S2 Phase 3 — Branding & identity details
+
+**Favicon — there was none.** No `<link rel="icon">`, no `.ico`, no
+manifest, on any page — every tab showed the browser's blank-doc
+default, and the browser's automatic `/favicon.ico` request was 404ing
+(showed up as a console error in the Lighthouse best-practices audit).
+Added:
+- `favicon.svg` — the brass building glyph on a rounded charcoal
+  square, reads on both light and dark browser chrome. Primary icon
+  for every modern browser.
+- `favicon.ico` — 16+32 px, rasterized from the SVG (via headless
+  Chrome, since there's no build step / SVG rasterizer). Fallback for
+  older browsers and the automatic root request.
+- `apple-touch-icon.png` — 180 px, full-bleed charcoal (iOS applies
+  its own rounded mask), for "Add to Home Screen".
+- Linked on all 10 HTML entry points with root-absolute paths.
+
+**Logo consistency — the brand mark was three different icons.** The
+app + its sign-in pages used a *building* glyph; the landing page
+(nav + footer), pricing, and both admin pages used a *document*
+glyph; the owner console was wordmark-only with no icon. The design
+pass had flagged this and left it for a decision — S2 Phase 3's brief
+("consistent logo usage across every page") is that decision.
+Standardized on the **building** glyph (real estate, and it's what the
+actual product already used): swapped it into the landing nav +
+footer, pricing, and both admin brand marks; added it to the owner
+console brand mark (login card + in-console header) with a small
+`.owner-brand` flex rule + `.owner-brand-icon` in `owner.css`. The
+*document* glyph still appears as a nav-item icon for "Reports &
+Exports" / "Portfolio Report" — that's semantically correct there and
+was left.
+
+**Social / SEO meta — none existed.** No `<meta name="description">`,
+no Open Graph, no Twitter Card, anywhere (Lighthouse SEO was 90 on
+every page for the missing description alone). Added to the two public
+marketing pages (`index.html`, `pricing.html`):
+- `meta name="description"` (real copy pulled from the hero / pricing
+  intro).
+- Full OG set (`og:type/site_name/title/description/url/image` +
+  `image:width/height`) and Twitter `summary_large_image`.
+- `og-image.png` — a 1200×630 card generated to match the landing
+  hero (charcoal, brass "Underwriting-Ready." accent, building glyph,
+  real tagline). `og:image`/`og:url` are absolute per spec and point
+  at the current `abstractly-n0id.onrender.com` host — commented as
+  another place to update on a custom-domain move (alongside
+  `config.js` and `render.yaml`).
+- The 8 app/admin/owner pages got `<meta name="robots" content="noindex">`
+  instead — they're behind auth, shouldn't be indexed, and don't need
+  social cards.
+
+**Custom 404 — `frontend/404.html`.** Render static sites serve
+`/404.html` from the publish root for any unmatched path. Built one on
+the same `.access-gate-card` treatment as the sign-in screens: brass
+building glyph, "404 / Page not found", "Go to homepage" +
+"Sign in to the app". Was a bare Render default 404 before.
+
+**Console 404 fixed as a side effect** — the missing `/favicon.ico`
+was the "browser errors were logged to the console" ding on the
+landing page's best-practices score.
+
+Status: **S2 Phase 3 done, committing.**
