@@ -82,13 +82,14 @@ services:
     # service is recreated with a new suffix, update the connect-src
     # host here to match (same as ADMIN_ALLOWED_ORIGINS above).
     #
-    # NOTE (S2 Phase 2, QA pass): also add Cache-Control entries to this
-    # same list once this block lands — CSS/JS `public, max-age=600,
-    # must-revalidate` (assets aren't content-hashed, no build step),
-    # `/*.html` `no-cache`, `/fonts/*` `public, max-age=2592000`. Not
-    # done in that pass because this `headers:` block was mid-edit in a
-    # concurrent session and a second `headers:` key is a YAML error —
-    # merge into one list.
+    # Cache-Control (added in the QA pass): assets aren't content-hashed
+    # (no build step), so CSS/JS get a short TTL — a deploy fix reaches
+    # recent visitors within ~10 min instead of being stuck behind a
+    # stale cache. HTML is never cached so a deploy shows immediately.
+    # The font is a fixed 48 KB file that never changes
+    # (frontend/fonts/README.md) — cache it hard. Render applies the
+    # first matching rule per header name, so the specific /*.html and
+    # /fonts/* Cache-Control rules must precede the /* fallback.
     headers:
       - path: /*
         name: X-Frame-Options
@@ -113,3 +114,12 @@ services:
           object-src 'none';
           base-uri 'self';
           frame-ancestors 'none'
+      - path: /*.html
+        name: Cache-Control
+        value: "no-cache"
+      - path: /fonts/*
+        name: Cache-Control
+        value: "public, max-age=2592000"
+      - path: /*
+        name: Cache-Control
+        value: "public, max-age=600, must-revalidate"
