@@ -473,3 +473,49 @@
         justify-content: space-between;
     }
 }
+
+/* ===================== Extraction Quality panel ===================== */
+
+.owner-total-sub {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--text-medium);
+    margin-top: 0.25rem;
+}
+
+.owner-callout {
+    background: var(--white);
+    border-left: 3px solid var(--accent-color, #4a6b8a);
+    border-radius: var(--radius-sm);
+    padding: 1rem 1.25rem;
+    font-size: 0.875rem;
+    line-height: 1.5;
+    box-shadow: var(--shadow-sm);
+    margin-bottom: 1.5rem;
+}
+
+.owner-callout code,
+.owner-panel-subtitle code {
+    background: var(--bg-subtle, #f1f1f0);
+    padding: 0.1rem 0.35rem;
+    border-radius: 4px;
+    font-size: 0.8125em;
+}
+
+.owner-error {
+    color: var(--error-color, #9a3b3b);
+    font-size: 0.875rem;
+}
+
+.quality-tier {
+    display: inline-block;
+    padding: 0.1rem 0.5rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+.quality-tier-strong { background: #e3f1e8; color: #2f6b4f; }
+.quality-tier-mixed  { background: #fdf0dc; color: #8a5a1c; }
+.quality-tier-weak   { background: #f7e0e0; color: #9a3b3b; }

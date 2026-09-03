@@ -141,6 +141,72 @@ The batch size for Phase 4 is a CLI arg; 60 leases + 8 rent rolls + 10 garbage i
 
 ---
 
+## PHASE 4 — Training loop  (⚠️ blocked on API credit — harness built & runnable)
+
+### 4.1 What was built
+
+**`backend/app/extraction_scoring.py`** — pure scoring (no API, no DB, unit-tested):
+- `values_match(field, extracted, expected)` — field-aware equality: money within $1, dates parsed-and-compared (string fallback for odd formats), sqft normalized, tenant/landlord entity-suffix tolerant, escalation by percent, renewal by option count, prose by token-substring.
+- `score_field` → one of `correct_found` / `correct_absent` / `wrong` / `missed` / `spurious`, with `asserted_wrong` = "the model returned a value and it's wrong" (the dangerous class; a *miss* is not asserted-wrong).
+- `aggregate(doc_scores)` → the round summary:
+  - **overall field accuracy**
+  - **danger signal 1** — `high_conf_wrong`: count, rate among high-confidence assertions, and the full `(doc, field, extracted, expected)` list so every one can be read.
+  - **danger signal 2** — `field_accuracy` and `format_accuracy` sorted worst-first; `worst_fields` = those under 80%.
+  - **calibration** — `P(correct | high/medium/low)` measured over *asserted* values only (a "not found" has no confidence to calibrate), plus `calibration_gap = P(correct|high) − P(correct|low)` (want clearly positive, want `P(correct|high)` near 1.0).
+
+**`backend/tools/training_harness.py`** — the measure→refine→re-measure loop, against the **real wired-up pipeline** (`document_extractor.extract_pages` → `ai_extraction.extract_lease_fields`, same front door an upload uses), not a re-implementation:
+1. generate a fresh synthetic corpus each round (seed offset per round → base corpus + fresh cases)
+2. run every lease doc through live AI extraction; score vs. `manifest.json` ground truth
+3. run every matched (rent-roll row, lease) pair through live AI validation; score **recall against the deliberately injected disagreements** + false-positive flags on clean rows
+4. persist the round (`database.record_training_round` → `training_rounds` table) so the owner console shows the trend
+5. write a markdown report (`backend/training_reports/round_NNN_<promptver>.md`)
+6. print the trend table across all rounds
+
+Between rounds: edit `SYSTEM_PROMPT` / `FIELD_GUIDANCE` / rubric in `ai_extraction.py`, bump `PROMPT_VERSION`, pass `--changed "what and why"`, re-run. Keep going until the trend flattens across ≥2 rounds.
+
+**`training_rounds` table** + `database.record_training_round` / `list_training_rounds`.
+
+### 4.2 Why it's blocked, and what "done" looks like when unblocked
+
+The key has **no credit balance** (see the blocker at the top of this file). I verified the harness handles it correctly — it prints the billing message and exits 2, no traceback, no partial round persisted. The credit-error path is also now special-cased in `ai_extraction.call_forced_tool` so operators can tell "can't pay" apart from "unprocessable document".
+
+**To run it for real** (after adding credit):
+```
+LEASE_AI_EXTRACTION=true venv/bin/python tools/training_harness.py --rounds 1 --leases 60 --seed 7 --label baseline --changed "initial reconstructed prompt v1"
+# read backend/training_reports/round_001_v1.md, especially the high-conf-wrong list and worst_fields
+# edit the prompt in app/ai_extraction.py, bump PROMPT_VERSION to v2
+LEASE_AI_EXTRACTION=true venv/bin/python tools/training_harness.py --rounds 1 --leases 60 --seed 8 --label "v2: <change>" --changed "<what/why>"
+# repeat; the trend table and the owner console both show the trajectory
+```
+
+**Tests** — `backend/tests/test_extraction_scoring.py` (6 cases, green): field-aware matching; the five outcome kinds; aggregate flags high-conf-wrong with the offending list; calibration gap; weak-field/format identification; calibration ignores not-found fields.
+
+---
+
+## PHASE 5 — Observability
+
+### 5.1 What was built
+
+**`backend/app/extraction_quality.py`** (pure, unit-tested):
+- `compute_quality_trend(training_rounds, ai_runs)` — the training-round trajectory (accuracy, high-conf-wrong count/rate, calibration, and *what changed each round*) + live production signal from `ai_extraction_runs` bucketed by day (volume, error rate, avg latency, confidence mix). `accuracy_delta_vs_previous_round` for an at-a-glance "is it improving".
+- `compute_field_reliability(latest_training_report, ai_extracted_leases, field_edits)` — per field type: `strong` / `mixed` / `weak` from (a) the latest training round's per-field accuracy and (b) the real production correction rate = (# AI-extracted leases where a human later edited this field) / (# where it had a value). `weak` = training accuracy < 0.80 **or** correction rate > 0.15 with ≥5 samples.
+
+**Routes**:
+- `GET /extraction-quality/trend` — **owner-gated** (404 to non-owners, matching the console's undiscoverable design). Feeds the new owner-console tab.
+- `GET /extraction-quality/field-reliability` — **any logged-in user** (analysts reviewing leases need it). Feeds the detail-view hint.
+
+**Owner console — new "Extraction Quality" tab** (`frontend/owner/index.html` + `owner-app.js` + `owner.css`): headline tiles (latest accuracy + Δ vs prev round, high-confidence-&-wrong count, calibration), the full training-rounds table with the "what changed" column, the daily production table, and the per-field reliability table (weak first). Shows a clear call-to-action with the exact harness command when no training data exists yet.
+
+**Lease detail view — weak-field hint** (`frontend/app/detail-view.js` + `api.js` + `styles.css`): for a found field whose *type* is historically `weak` (and which doesn't already carry a stronger per-extraction validation note), a soft "check this against the source quote" line under the value. Reliability is fetched once and cached across leases; never blocks the view.
+
+**Tests** — `backend/tests/test_extraction_quality.py` (6 cases, green): reliability combines training + production signal; falls back to production-only with no training data; ignores edits on non-AI leases; trend shows round progression + daily production; trend route owner-only (404); field-reliability route open to any logged-in user (401 when logged out).
+
+### 5.2 Notes
+- The production correction-rate signal can't recover a field's *original* confidence after a human edits it (the edit overwrites `confidence`), so it's a confidence-agnostic "humans keep fixing this" rate. The training loop's per-field number is the confidence-aware one. Both feed the tier.
+- **Backend verified** end-to-end via the Flask test client (real routes, real DB, real payloads — see tests + a manual `test_client` check of both endpoints with seeded data). **Frontend not browser-tested** this session (no browser automation available here; the owner console needs backend :5000 + static :8000 + an owner login). The JS is vanilla DOM rendering following the file's existing two-panel pattern exactly and passes `node --check`. Worth a 2-minute click-through when convenient: owner console → Extraction Quality tab (empty-state CTA until the harness runs), and a lease detail page (the weak-field hint only appears once a training round marks a field `weak` or production corrections pile up).
+
+---
+
 ## Cross-cutting follow-ups / open items
 - **Prompts**: replace the reconstructed prompts in `ai_extraction.py` / `ai_rent_roll_validation.py` with the originals ("Abstractly — Lease Abstraction Prompts") when available; re-run Phase 4 to confirm no regression.
 - **"Unusual/non-standard terms"** (a CLAUDE.md core requirement) is not yet its own field — regex never had it. Candidate to add in Phase 4/5 as an AI-only field once the 15 core fields are calibrated.

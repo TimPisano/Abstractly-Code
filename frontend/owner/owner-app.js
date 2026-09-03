@@ -333,6 +333,116 @@ const Finance = {
     },
 };
 
+/* ===================== Extraction Quality panel ===================== */
+
+const ExtractionQuality = {
+    async load() {
+        const el = document.getElementById('qualityContent');
+        el.innerHTML = `<p class="loading-inline"><span class="spinner-small"></span> Loading…</p>`;
+        try {
+            const [trend, reliability] = await Promise.all([
+                ownerFetch('/extraction-quality/trend'),
+                ownerFetch('/extraction-quality/field-reliability'),
+            ]);
+            el.innerHTML = this.render(trend, reliability);
+        } catch (err) {
+            el.innerHTML = `<p class="owner-error">${escapeHtml(err.message)}</p>`;
+        }
+    },
+
+    _pct(x) { return x == null ? '—' : `${(x * 100).toFixed(1)}%`; },
+
+    render(trend, reliability) {
+        let html = '';
+
+        if (!trend.has_training_data) {
+            html += `<div class="owner-callout">No training rounds recorded yet. Run
+                <code>LEASE_AI_EXTRACTION=true venv/bin/python tools/training_harness.py --rounds 1 --label baseline</code>
+                to populate this. (Requires a funded ANTHROPIC_API_KEY.)</div>`;
+        } else {
+            const rounds = trend.training_rounds;
+            const latest = trend.latest_round;
+            const delta = trend.accuracy_delta_vs_previous_round;
+            html += `<div class="owner-finance-totals">
+                <div class="owner-total-tile"><span class="owner-total-label">Latest accuracy</span>
+                    <span class="owner-total-value">${this._pct(latest.overall_accuracy)}</span>
+                    ${delta != null ? `<span class="owner-total-sub">${delta >= 0 ? '▲' : '▼'} ${this._pct(Math.abs(delta))} vs prev round</span>` : ''}</div>
+                <div class="owner-total-tile"><span class="owner-total-label">High-confidence &amp; wrong</span>
+                    <span class="owner-total-value">${latest.high_conf_wrong_count ?? '—'}</span>
+                    <span class="owner-total-sub">rate ${this._pct(latest.high_conf_wrong_rate)}</span></div>
+                <div class="owner-total-tile"><span class="owner-total-label">Calibration (P correct | high)</span>
+                    <span class="owner-total-value">${this._pct(latest.p_correct_given_high)}</span>
+                    <span class="owner-total-sub">gap high−low ${latest.calibration_gap ?? '—'}</span></div>
+            </div>`;
+
+            html += `<div class="owner-trend-wrap"><h2>Training rounds</h2>
+                <table class="owner-table"><thead><tr>
+                    <th>Round</th><th>When</th><th>Prompt</th><th>Accuracy</th><th>Hi-conf wrong</th>
+                    <th>P(correct|hi)</th><th>Calib gap</th><th>What changed</th>
+                </tr></thead><tbody>`;
+            rounds.forEach(r => {
+                html += `<tr>
+                    <td>${escapeHtml(r.label)}</td>
+                    <td>${formatDate(r.at)}</td>
+                    <td>${escapeHtml(r.prompt_version || '—')}</td>
+                    <td>${this._pct(r.overall_accuracy)}</td>
+                    <td>${r.high_conf_wrong_count ?? '—'}</td>
+                    <td>${this._pct(r.p_correct_given_high)}</td>
+                    <td>${r.calibration_gap ?? '—'}</td>
+                    <td>${escapeHtml(r.changed_this_round || '—')}</td>
+                </tr>`;
+            });
+            html += `</tbody></table></div>`;
+        }
+
+        // live production signal
+        if (trend.production_daily && trend.production_daily.length) {
+            html += `<div class="owner-trend-wrap"><h2>Production (live user documents) — ${trend.total_production_runs} run(s)</h2>
+                <table class="owner-table"><thead><tr>
+                    <th>Day</th><th>Runs</th><th>Error rate</th><th>Avg latency</th>
+                    <th>Confidence mix (hi / med / lo)</th><th>Fields found</th>
+                </tr></thead><tbody>`;
+            trend.production_daily.forEach(d => {
+                const m = d.confidence_mix;
+                html += `<tr>
+                    <td>${formatDate(d.day)}</td>
+                    <td>${d.runs}</td>
+                    <td>${this._pct(d.error_rate)}</td>
+                    <td>${d.avg_latency_ms != null ? Math.round(d.avg_latency_ms) + ' ms' : '—'}</td>
+                    <td>${this._pct(m.high)} / ${this._pct(m.medium)} / ${this._pct(m.low)}</td>
+                    <td>${d.fields_found}</td>
+                </tr>`;
+            });
+            html += `</tbody></table></div>`;
+        }
+
+        // per-field reliability
+        const fields = reliability.fields || {};
+        const order = Object.keys(fields).sort((a, b) =>
+            ({ weak: 0, mixed: 1, strong: 2 }[fields[a].reliability] - { weak: 0, mixed: 1, strong: 2 }[fields[b].reliability])
+            || fields[b].importance - fields[a].importance);
+        html += `<div class="owner-trend-wrap"><h2>Per-field reliability</h2>
+            <p class="owner-panel-subtitle">Fields marked <strong>weak</strong> are also flagged in the analyst-facing lease detail view with a "double-check by eye" hint.
+            ${reliability.based_on_training_round ? `Based on training round "${escapeHtml(reliability.based_on_training_round)}" + ${reliability.ai_extracted_lease_count} AI-extracted lease(s).` : `No training round yet — production corrections only.`}</p>
+            <table class="owner-table"><thead><tr>
+                <th>Field</th><th>Reliability</th><th>Training accuracy</th><th>Prod. samples</th><th>Prod. correction rate</th>
+            </tr></thead><tbody>`;
+        order.forEach(f => {
+            const r = fields[f];
+            html += `<tr>
+                <td>${escapeHtml(f)}</td>
+                <td><span class="quality-tier quality-tier-${r.reliability}">${r.reliability}</span></td>
+                <td>${this._pct(r.training_accuracy)}</td>
+                <td>${r.production_samples}</td>
+                <td>${this._pct(r.production_correction_rate)}</td>
+            </tr>`;
+        });
+        html += `</tbody></table></div>`;
+
+        return html;
+    },
+};
+
 /* ===================== Tabs ===================== */
 
 function switchTab(tab) {
@@ -340,6 +450,7 @@ function switchTab(tab) {
     document.querySelectorAll('.owner-panel').forEach(el => el.classList.toggle('active', el.id === `panel-${tab}`));
     if (tab === 'accounts') Accounts.load();
     if (tab === 'finance') Finance.load();
+    if (tab === 'quality') ExtractionQuality.load();
 }
 
 /* ===================== Bootstrap ===================== */

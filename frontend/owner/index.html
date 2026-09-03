@@ -25,6 +25,7 @@
         <nav class="owner-tabs">
             <button class="owner-tab active" data-tab="accounts">Accounts</button>
             <button class="owner-tab" data-tab="finance">Revenue &amp; Expenses</button>
+            <button class="owner-tab" data-tab="quality">Extraction Quality</button>
         </nav>
 
         <main class="owner-main">
@@ -94,6 +95,15 @@
                         <div id="expenseList"></div>
                     </div>
                 </div>
+            </section>
+
+            <!-- ===================== Extraction Quality ===================== -->
+            <section class="owner-panel" id="panel-quality">
+                <div class="owner-panel-header">
+                    <h1>Extraction Quality</h1>
+                    <p class="owner-panel-subtitle">AI lease-abstraction accuracy and confidence calibration over time, from the training loop (<code>tools/training_harness.py</code>), plus live production volume/errors. Use this to catch quality drift as new user documents come through.</p>
+                </div>
+                <div id="qualityContent"><p class="loading-inline"><span class="spinner-small"></span> Loading…</p></div>
             </section>
         </main>
     </div>

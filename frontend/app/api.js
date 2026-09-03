@@ -477,6 +477,10 @@ const Api = {
         return apiRequest(`/leases/${leaseId}/risks`);
     },
 
+    extractionFieldReliability() {
+        return apiRequest('/extraction-quality/field-reliability');
+    },
+
     askQuestion(question, leaseId) {
         const body = { question };
         if (leaseId !== undefined && leaseId !== null) body.lease_id = leaseId;

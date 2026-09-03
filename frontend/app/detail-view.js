@@ -6,11 +6,20 @@
 
 const LeaseDetail = {
     lease: null,
+    fieldReliability: null,
 
     async load({ leaseId } = {}) {
         if (!leaseId) return;
         try {
             this.lease = await Api.getLease(leaseId);
+            // Which field types the pipeline is historically weak at, so
+            // a reviewer knows what to eyeball. Cached across leases;
+            // never blocks the view if it fails.
+            if (this.fieldReliability === null) {
+                this.fieldReliability = await Api.extractionFieldReliability()
+                    .then(r => r.fields || {})
+                    .catch(() => ({}));
+            }
             document.getElementById('detailTitle').textContent = this.lease.display_name || lease_filename(this.lease);
             const versionBadge = document.getElementById('detailVersionBadge');
             const versionCount = (this.lease.amendment_count || 0) + 1;
@@ -185,6 +194,23 @@ const LeaseDetail = {
                 <span>${escapeHtml(fieldData.validation_note)}</span>
             `;
             body.appendChild(noteDiv);
+        }
+
+        // Historically-weak field type (from the extraction training
+        // loop + real correction rates) -- a standing "check this by
+        // eye" hint, independent of this particular extraction's own
+        // confidence. Only shown when there's no per-field validation
+        // note already saying something stronger, and only for found
+        // values.
+        const reliability = this.fieldReliability && this.fieldReliability[fieldKey];
+        if (found && !fieldData.validation_note && reliability && reliability.reliability === 'weak' && reliability.advice) {
+            const hint = document.createElement('div');
+            hint.className = 'field-reliability-hint';
+            hint.innerHTML = `
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                <span>${escapeHtml(reliability.advice)}</span>
+            `;
+            body.appendChild(hint);
         }
 
         card.appendChild(body);

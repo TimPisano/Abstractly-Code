@@ -45,6 +45,7 @@ load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 from app.field_extractor import FieldExtractor, looks_like_rent_roll_table
 from app import ai_extraction
 from app import ai_rent_roll_validation
+from app import extraction_quality
 from app import document_extractor
 from app.document_extractor import DocumentExtractionError
 from app import database
@@ -4178,6 +4179,52 @@ def owner_finance_summary():
         "total_expenses": total_expenses,
         "profit": total_revenue - total_expenses,
         "monthly_trend": trend,
+    }), 200
+
+
+@app.route('/extraction-quality/trend', methods=['GET'])
+@require_owner()
+def extraction_quality_trend():
+    """
+    Owner console: how AI extraction quality has moved over time. The
+    training-round trend (accuracy, high-confidence-wrong count,
+    confidence calibration, and what changed each round -- from
+    tools/training_harness.py) plus live production signal from
+    ai_extraction_runs (daily volume, error rate, latency, confidence
+    mix). Lets you tell if quality is drifting on real user documents,
+    not just read a one-time report.
+    """
+    return jsonify(extraction_quality.compute_quality_trend(
+        training_rounds=database.list_training_rounds(),
+        ai_runs=database.list_ai_extraction_runs(limit=10000, kind="lease_abstraction"),
+    )), 200
+
+
+@app.route('/extraction-quality/field-reliability', methods=['GET'])
+@require_role()
+def extraction_quality_field_reliability():
+    """
+    Per field type: how much to trust it, from the latest training
+    round's per-field accuracy and how often humans have corrected that
+    field on real AI-extracted leases. The lease detail view uses this
+    to tag historically-weak fields with a "double-check by eye" hint,
+    so a reviewer knows where to look even before opening the source.
+    """
+    rounds = database.list_training_rounds()
+    latest_report = rounds[-1]["report"] if rounds else None
+    runs = database.list_ai_extraction_runs(limit=10000, kind="lease_abstraction")
+    ai_lease_ids = {r["lease_id"] for r in runs if r.get("lease_id")}
+    ai_leases = [l for l in database.get_all_leases(include_superseded=True) if l["id"] in ai_lease_ids]
+
+    reliability = extraction_quality.compute_field_reliability(
+        latest_training_report=latest_report,
+        ai_extracted_leases=ai_leases,
+        field_edits=database.get_lease_field_edits(),
+    )
+    return jsonify({
+        "fields": reliability,
+        "based_on_training_round": rounds[-1]["round_label"] if rounds else None,
+        "ai_extracted_lease_count": len(ai_leases),
     }), 200
 
 

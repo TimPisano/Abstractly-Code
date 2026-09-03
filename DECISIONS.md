@@ -7399,3 +7399,39 @@ validation.py` add a model-backed complement to the arithmetic
   stable natural_key, so re-running the sweep updates rows instead of
   duplicating, and they resolve/reopen through the same UI as every
   other discrepancy.
+
+## Extraction training loop + observability (Phases 4-5, 2026-09-03)
+
+- **Score against the real pipeline, not a re-implementation.**
+  `tools/training_harness.py` runs the synthetic corpus through
+  `document_extractor.extract_pages` -> `ai_extraction.extract_lease_
+  fields`, the exact path an upload takes. The user's explicit ask:
+  confidence in the real thing, not a parallel harness.
+
+- **Two danger signals are first-class, not derived on demand.**
+  `extraction_scoring.aggregate` surfaces (1) every high-confidence +
+  wrong extraction as a readable list, and (2) per-field / per-format
+  accuracy worst-first. Calibration is measured over ASSERTED values
+  only -- a "not found" carries confidence None and isn't a claim you
+  can calibrate.
+
+- **Prompt revisions are versioned and round-attributed.**
+  `ai_extraction.PROMPT_VERSION` + a `--changed` note per run, stored
+  on the `training_rounds` row, so a trend line is always attributable
+  to a specific prompt edit. History of what each version changed lives
+  in AI_PIPELINE_LOG.md.
+
+- **Field reliability = training accuracy + production correction
+  rate.** The owner console and the analyst detail-view hint both read
+  `extraction_quality.compute_field_reliability`. Production signal is
+  "how often did a human edit this field on an AI-extracted lease" --
+  confidence-agnostic (an edit overwrites the original confidence), so
+  the training loop's per-field number is the confidence-aware half and
+  the two are combined into the strong/mixed/weak tier.
+
+- **Blocked on API credit; harness ships anyway.** The key here has no
+  balance. The harness detects the billing error specifically (vs. a
+  genuinely unprocessable document), prints the fix, and exits 2
+  without persisting a partial round. Everything else in Phases 1-3/5
+  is complete and tested; a real training run is one command once
+  credit exists.

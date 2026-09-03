@@ -652,6 +652,28 @@ def init_db() -> None:
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_ai_extraction_runs_created_at ON ai_extraction_runs(created_at)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_ai_extraction_runs_lease_id ON ai_extraction_runs(lease_id)")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS training_rounds (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TEXT NOT NULL,
+                round_label TEXT NOT NULL,
+                model TEXT,
+                prompt_version TEXT,
+                corpus_seed INTEGER,
+                corpus_size INTEGER,
+                documents INTEGER,
+                fields_evaluated INTEGER,
+                overall_accuracy REAL,
+                high_conf_wrong_count INTEGER,
+                high_conf_wrong_rate REAL,
+                calibration_gap REAL,
+                p_correct_given_high REAL,
+                p_correct_given_low REAL,
+                changed_this_round TEXT,
+                report TEXT NOT NULL
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_training_rounds_created_at ON training_rounds(created_at)")
         conn.commit()
     finally:
         conn.close()
@@ -682,6 +704,7 @@ def reset_db() -> None:
         conn.execute("DROP TABLE IF EXISTS revenue_entries")
         conn.execute("DROP TABLE IF EXISTS expense_entries")
         conn.execute("DROP TABLE IF EXISTS ai_extraction_runs")
+        conn.execute("DROP TABLE IF EXISTS training_rounds")
         conn.commit()
     finally:
         conn.close()
@@ -3422,6 +3445,48 @@ def link_ai_extraction_run_to_lease(run_id: int, lease_id: int) -> None:
     try:
         conn.execute("UPDATE ai_extraction_runs SET lease_id = ? WHERE id = ?", (lease_id, run_id))
         conn.commit()
+    finally:
+        conn.close()
+
+
+def record_training_round(*, round_label: str, report: Dict[str, Any], model: Optional[str] = None,
+                          prompt_version: Optional[str] = None, corpus_seed: Optional[int] = None,
+                          corpus_size: Optional[int] = None, changed_this_round: Optional[str] = None) -> int:
+    """One row per measure-refine-remeasure round. `report` is the full
+    extraction_scoring.aggregate() output (stored as JSON); the flat
+    columns are the headline numbers pulled out for cheap trend queries."""
+    cal = report.get("calibration") or {}
+    conn = get_connection()
+    try:
+        cur = conn.execute(
+            "INSERT INTO training_rounds (created_at, round_label, model, prompt_version, corpus_seed, corpus_size, "
+            "documents, fields_evaluated, overall_accuracy, high_conf_wrong_count, high_conf_wrong_rate, "
+            "calibration_gap, p_correct_given_high, p_correct_given_low, changed_this_round, report) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                datetime.now(timezone.utc).isoformat(), round_label, model, prompt_version, corpus_seed, corpus_size,
+                report.get("documents"), report.get("fields_evaluated"), report.get("overall_accuracy"),
+                report.get("high_conf_wrong_count"), report.get("high_conf_wrong_rate"),
+                cal.get("calibration_gap"), cal.get("p_correct_given_high"), cal.get("p_correct_given_low"),
+                changed_this_round, json.dumps(report),
+            ),
+        )
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def list_training_rounds(limit: int = 100) -> List[Dict[str, Any]]:
+    conn = get_connection()
+    try:
+        rows = conn.execute("SELECT * FROM training_rounds ORDER BY id ASC LIMIT ?", (limit,)).fetchall()
+        out = []
+        for r in rows:
+            d = dict(r)
+            d["report"] = json.loads(d["report"]) if d.get("report") else None
+            out.append(d)
+        return out
     finally:
         conn.close()
 

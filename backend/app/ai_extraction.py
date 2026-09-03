@@ -38,6 +38,12 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_MODEL = os.environ.get("LEASE_EXTRACTION_MODEL", "claude-sonnet-5")
 
+# Bump this whenever SYSTEM_PROMPT / FIELD_GUIDANCE / the confidence
+# rubric changes. The training harness records it per round so a trend
+# line can be attributed to a specific prompt revision. History of what
+# changed each version lives in AI_PIPELINE_LOG.md (Phase 4).
+PROMPT_VERSION = "v1"
+
 # Generous: a long lease produces a lot of output tokens (15 fields,
 # each with a value + a verbatim source quote that can be a full
 # sentence or two).
@@ -389,6 +395,16 @@ def call_forced_tool(
             logger.error("AI call auth/permission failure: %s", e)
             raise AIExtractionError("The AI service is not configured correctly.") from e
         except anthropic.BadRequestError as e:
+            text = str(e).lower()
+            if "credit balance" in text or "billing" in text or "quota" in text:
+                # Not a bad document -- the account can't pay. Surface it
+                # verbatim-ish so operators (and the training harness)
+                # can tell this apart from a genuinely unprocessable file.
+                logger.error("AI call blocked on billing: %s", e)
+                raise AIExtractionError(
+                    "AI processing is unavailable: the API credit balance is too low. "
+                    "Add credit (Plans & Billing) and try again."
+                ) from e
             logger.error("AI call rejected as a bad request: %s", e)
             raise AIExtractionError(bad_input_message) from e
         except anthropic.APIError as e:
@@ -466,6 +482,7 @@ def extract_lease_fields(
     usage = getattr(response, "usage", None)
     telemetry = {
         "model": DEFAULT_MODEL,
+        "prompt_version": PROMPT_VERSION,
         "latency_ms": int((time.monotonic() - started) * 1000),
         "input_tokens": getattr(usage, "input_tokens", None),
         "output_tokens": getattr(usage, "output_tokens", None),
