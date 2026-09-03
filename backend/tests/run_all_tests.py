@@ -21,6 +21,7 @@ TESTS_DIR = os.path.dirname(__file__)
 
 UNIT_TESTS = [
     "test_extraction.py",
+    "test_ai_extraction.py",
     "test_synthetic_accuracy.py",
     "test_confidence_validation.py",
     "test_summary_memo.py",
@@ -113,6 +114,12 @@ def run_test(filename):
     env = dict(os.environ)
     env.pop("EMAIL_USER", None)
     env.pop("EMAIL_APP_PASSWORD", None)
+    # The offline unit suite must never make a real model call: force
+    # the regex extraction engine regardless of what backend/.env sets
+    # for the running app. AI extraction has its own mocked-client
+    # tests (test_ai_extraction.py) and a live check in
+    # test_live_extraction_api.py.
+    env["LEASE_EXTRACTION_ENGINE"] = "regex"
 
     result = subprocess.run(
         [sys.executable, filename],

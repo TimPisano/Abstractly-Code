@@ -43,6 +43,7 @@ import time
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
 from app.field_extractor import FieldExtractor, looks_like_rent_roll_table
+from app import ai_extraction
 from app import document_extractor
 from app.document_extractor import DocumentExtractionError
 from app import database
@@ -313,6 +314,90 @@ def _try_table_extraction(file_bytes, filename, extension):
     return (leases, None) if leases else (None, None)
 
 
+def _confidence_counts(fields):
+    """Tally the 15 extracted-field entries by confidence tier -- shared by AI-run telemetry and nothing else."""
+    counts = {"high": 0, "medium": 0, "low": 0, "not_found": 0}
+    for name in FIELD_NAMES:
+        entry = fields.get(name) or {}
+        tier = entry.get("confidence")
+        counts[tier if tier in ("high", "medium", "low") else "not_found"] += 1
+    return counts
+
+
+def _record_ai_run(fields, status="ok", error_message=None):
+    """
+    Write one ai_extraction_runs telemetry row for a completed (or
+    failed) model extraction. Never raises -- telemetry must not be
+    able to fail an upload. Returns the run id, or None.
+    """
+    try:
+        meta = (fields or {}).get("_ai_meta") or {}
+        counts = _confidence_counts(fields or {})
+        return database.record_ai_extraction_run(
+            engine="ai",
+            status=status,
+            model=meta.get("model") or ai_extraction.DEFAULT_MODEL,
+            kind="lease_abstraction",
+            field_count=len(FIELD_NAMES),
+            found_count=meta.get("found_count"),
+            high_count=counts["high"],
+            medium_count=counts["medium"],
+            low_count=counts["low"],
+            not_found_count=counts["not_found"],
+            latency_ms=meta.get("latency_ms"),
+            input_tokens=meta.get("input_tokens"),
+            output_tokens=meta.get("output_tokens"),
+            error_message=error_message,
+        )
+    except Exception:
+        logger.exception("Failed to record AI extraction telemetry (non-fatal)")
+        return None
+
+
+def _split_and_extract(pages, field_extractor):
+    """
+    Detect lease boundaries (regex -- cheap, structural) then extract
+    each lease's fields with the configured engine
+    (ai_extraction.resolve_engine()): the model on a real upload, the
+    regex FieldExtractor under the offline test suite / when no API key
+    is set. Returns the same list-of-dicts shape
+    FieldExtractor.extract_multiple_leases produces -- {"fields",
+    "date_candidates", "source_page_start", "source_page_end"} -- plus
+    "ai_run_id" on the AI path.
+
+    date_candidates stays regex-derived regardless of engine: it's a
+    separate cross-section date-consistency signal risk_analysis
+    consumes, not a user-facing extracted value.
+
+    Raises ai_extraction.AIExtractionError straight through if a model
+    call fails -- the caller turns it into a 502.
+    """
+    engine = ai_extraction.resolve_engine()
+    boundaries = field_extractor.detect_lease_boundaries(pages)
+    results = []
+    for start_page, end_page in boundaries:
+        sub_pages = [p for p in pages if start_page <= p["page"] <= end_page]
+        date_candidates = {
+            "start": field_extractor.find_all_date_candidates(sub_pages, "start"),
+            "end": field_extractor.find_all_date_candidates(sub_pages, "end"),
+        }
+        ai_run_id = None
+        if engine == "ai":
+            fields = ai_extraction.extract_lease_fields(sub_pages)
+            ai_run_id = _record_ai_run(fields, status="ok")
+            fields.pop("_ai_meta", None)
+        else:
+            fields = field_extractor.extract_fields(sub_pages)
+        results.append({
+            "fields": fields,
+            "date_candidates": date_candidates,
+            "source_page_start": start_page,
+            "source_page_end": end_page,
+            "ai_run_id": ai_run_id,
+        })
+    return results
+
+
 def _extract_leases_from_file_storage(file_storage):
     """
     Shared pipeline: save an uploaded werkzeug FileStorage to a temp
@@ -381,7 +466,7 @@ def _extract_leases_from_file_storage(file_storage):
             )
 
         field_extractor = FieldExtractor()
-        split_results = field_extractor.extract_multiple_leases(pages)
+        split_results = _split_and_extract(pages, field_extractor)
 
         total = len(split_results)
         leases = []
@@ -391,10 +476,19 @@ def _extract_leases_from_file_storage(file_storage):
                 "date_candidates": result["date_candidates"],
                 "source_page_start": result["source_page_start"],
                 "source_page_end": result["source_page_end"],
+                "ai_run_id": result.get("ai_run_id"),
                 "display_name": _default_lease_name(result["fields"], file_storage.filename, index, total),
                 "looks_like_lease": _looks_like_lease(result["fields"]),
             })
         return leases, None
+
+    except ai_extraction.AIExtractionError as e:
+        # A model-backed extraction that failed or came back unusable.
+        # Surface the plain-language reason and a 502 -- never fall back
+        # to regex silently (a confident wrong answer is worse than an
+        # honest "couldn't process this"), and never a 500 traceback.
+        logger.warning("AI extraction failed for uploaded document: %s", e)
+        return None, (str(e), 502)
 
     except Exception:
         # The real exception (which can include the temp file's path,
@@ -555,6 +649,8 @@ def _persist_split_leases(filename, split_leases):
             source_page_start=lease_data["source_page_start"],
             source_page_end=lease_data["source_page_end"],
         )
+        if lease_data.get("ai_run_id"):
+            database.link_ai_extraction_run_to_lease(lease_data["ai_run_id"], lease_id)
         lease = database.get_effective_lease(lease_id)
         lease["tags"] = []
         created.append(_lease_summary(lease))
@@ -757,6 +853,9 @@ def resubmit_lease(lease_id):
         supersedes_lease_id=lease_id,
         version_number=new_version_number,
     )
+
+    if lease_data.get("ai_run_id"):
+        database.link_ai_extraction_run_to_lease(lease_data["ai_run_id"], new_lease_id)
 
     database.repoint_lease_references(lease_id, new_lease_id)
     database.supersede_lease(lease_id)
@@ -1196,10 +1295,12 @@ def upload_amendment(lease_id):
     # the rest are silently ignored rather than creating orphan
     # amendment records with no clear base lease of their own.
     amendment_data = split_leases[0]
-    database.insert_lease(
+    amendment_id = database.insert_lease(
         filename, amendment_data["fields"], document_type="amendment", base_lease_id=lease_id,
         date_candidates=amendment_data["date_candidates"],
     )
+    if amendment_data.get("ai_run_id"):
+        database.link_ai_extraction_run_to_lease(amendment_data["ai_run_id"], amendment_id)
     database.insert_activity("amendment_uploaded", f"Added amendment {filename} to {base_lease['filename']}", lease_id=lease_id)
     _invalidate_lease_derived_caches()
     lease = database.get_effective_lease(lease_id)

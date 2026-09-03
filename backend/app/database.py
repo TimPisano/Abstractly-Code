@@ -627,6 +627,31 @@ def init_db() -> None:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_lease_field_edits_task_id ON lease_field_edits(task_id)")
         _migrate_lease_field_edits_table_add_reverted_at(conn)
         _migrate_tasks_table_add_priority(conn)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS ai_extraction_runs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TEXT NOT NULL,
+                kind TEXT NOT NULL DEFAULT 'lease_abstraction',
+                engine TEXT NOT NULL,
+                model TEXT,
+                status TEXT NOT NULL,
+                lease_id INTEGER,
+                field_count INTEGER,
+                found_count INTEGER,
+                high_count INTEGER,
+                medium_count INTEGER,
+                low_count INTEGER,
+                not_found_count INTEGER,
+                latency_ms INTEGER,
+                input_tokens INTEGER,
+                output_tokens INTEGER,
+                error_message TEXT,
+                detail TEXT,
+                FOREIGN KEY (lease_id) REFERENCES leases(id) ON DELETE SET NULL
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_ai_extraction_runs_created_at ON ai_extraction_runs(created_at)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_ai_extraction_runs_lease_id ON ai_extraction_runs(lease_id)")
         conn.commit()
     finally:
         conn.close()
@@ -656,6 +681,7 @@ def reset_db() -> None:
         conn.execute("DROP TABLE IF EXISTS lease_field_edits")
         conn.execute("DROP TABLE IF EXISTS revenue_entries")
         conn.execute("DROP TABLE IF EXISTS expense_entries")
+        conn.execute("DROP TABLE IF EXISTS ai_extraction_runs")
         conn.commit()
     finally:
         conn.close()
@@ -3338,5 +3364,84 @@ def delete_expense_entry(entry_id: int) -> bool:
         cur = conn.execute("DELETE FROM expense_entries WHERE id = ?", (entry_id,))
         conn.commit()
         return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+# ----------------------------------------------------------------------
+# AI extraction telemetry: one row per model-backed extraction call
+# (lease abstraction, rent-roll validation, ...). This is the data
+# source for the owner console's "is extraction quality drifting"
+# view (see api.py's /owner/ai-quality) and the basis a future
+# per-account usage cap would count against. Deliberately append-only
+# and cheap -- never on the request's critical path in a way that can
+# fail the upload (callers swallow errors from here).
+# ----------------------------------------------------------------------
+
+def record_ai_extraction_run(
+    *,
+    engine: str,
+    status: str,
+    model: Optional[str] = None,
+    kind: str = "lease_abstraction",
+    lease_id: Optional[int] = None,
+    field_count: Optional[int] = None,
+    found_count: Optional[int] = None,
+    high_count: Optional[int] = None,
+    medium_count: Optional[int] = None,
+    low_count: Optional[int] = None,
+    not_found_count: Optional[int] = None,
+    latency_ms: Optional[int] = None,
+    input_tokens: Optional[int] = None,
+    output_tokens: Optional[int] = None,
+    error_message: Optional[str] = None,
+    detail: Optional[Dict[str, Any]] = None,
+) -> int:
+    conn = get_connection()
+    try:
+        cur = conn.execute(
+            "INSERT INTO ai_extraction_runs (created_at, kind, engine, model, status, lease_id, "
+            "field_count, found_count, high_count, medium_count, low_count, not_found_count, "
+            "latency_ms, input_tokens, output_tokens, error_message, detail) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                datetime.now(timezone.utc).isoformat(), kind, engine, model, status, lease_id,
+                field_count, found_count, high_count, medium_count, low_count, not_found_count,
+                latency_ms, input_tokens, output_tokens, error_message,
+                json.dumps(detail) if detail is not None else None,
+            ),
+        )
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def link_ai_extraction_run_to_lease(run_id: int, lease_id: int) -> None:
+    conn = get_connection()
+    try:
+        conn.execute("UPDATE ai_extraction_runs SET lease_id = ? WHERE id = ?", (lease_id, run_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def list_ai_extraction_runs(limit: int = 500, kind: Optional[str] = None) -> List[Dict[str, Any]]:
+    conn = get_connection()
+    try:
+        if kind:
+            rows = conn.execute(
+                "SELECT * FROM ai_extraction_runs WHERE kind = ? ORDER BY id DESC LIMIT ?", (kind, limit)
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM ai_extraction_runs ORDER BY id DESC LIMIT ?", (limit,)
+            ).fetchall()
+        out = []
+        for r in rows:
+            d = dict(r)
+            d["detail"] = json.loads(d["detail"]) if d.get("detail") else None
+            out.append(d)
+        return out
     finally:
         conn.close()

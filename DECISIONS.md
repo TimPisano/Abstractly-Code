@@ -7306,3 +7306,61 @@ in-process and per-worker (no shared store; same accepted ceiling as
 email_service's own send-side limit), and on a deployment with no
 persistent DB or no SMTP credentials a reset link may never arrive or
 may not outlive the process that issued it. See DEPLOYMENT.md.
+
+## AI lease extraction: real model call behind a default-off flag (2026-09-03)
+
+Until now every extracted lease field came from `app/field_extractor.py`
+-- pure regex/keyword matching with a hand-assigned high/medium/low per
+pattern. `app/ai_extraction.py` adds a real model-backed engine that
+returns the *same* `{field: {value, source, confidence}}` structure
+(plus `source_text` and `engine` keys), so nothing downstream changes.
+
+Decisions made:
+
+- **One forced-tool call**, exactly the pattern `app/assistant.py`
+  already established -- `tool_choice` pins `record_lease_abstraction`
+  so the output is always a strict object, never free text to reparse.
+
+- **No silent regex fallback on failure.** A model call that fails
+  (transient exhausted, auth, malformed payload, timeout) raises
+  `AIExtractionError` -> the upload route returns 502 with a
+  plain-language message and persists nothing. The user was explicit:
+  a confident wrong answer is worse than an honest "couldn't process
+  this". Regex is a *configuration* alternative, not an automatic
+  catch.
+
+- **Retry/timeout owned here, not by the SDK.** `max_retries=0` on the
+  client; our own 4-attempt exponential backoff+jitter loop that only
+  retries genuinely transient statuses (408/409/425/429/5xx/529,
+  connection, timeout) and logs each attempt. Hard per-request
+  `timeout` so a hung generation fails the upload instead of holding
+  the request open.
+
+- **Degrade, don't drop, a bad single field.** A returned value with
+  no verbatim `source_text` is kept but forced to `low` +
+  `validation_note`; an out-of-enum confidence becomes `low`. The
+  verbatim quote is located back to a page number so `source` still
+  has the `{page, quote}` shape every citation consumer expects.
+
+- **Default OFF.** `resolve_engine()` returns `regex` unless
+  `LEASE_EXTRACTION_ENGINE=ai` or `LEASE_AI_EXTRACTION` truthy (and a
+  key is present). Rationale: the ~90-file offline unit suite stays
+  hermetic with zero "am I in a test" heuristics, and enabling the
+  model is one visible line. `run_all_tests.py` also hard-sets
+  `LEASE_EXTRACTION_ENGINE=regex` per subprocess -- same defense the
+  email-storm incident established.
+
+- **Plan-based usage limits: skipped.** No accounts/plans/billing
+  exists on `main` (the multi-tenant branch is unmerged). Per the
+  user's own "if that's already built" conditional. The new
+  `ai_extraction_runs` telemetry table (one append-only row per model
+  call: latency, tokens, per-tier field counts, ok/error) is the count
+  source a future per-account cap reads from, and feeds the owner
+  console's extraction-quality view.
+
+- **Prompts reconstructed.** The original "Abstractly -- Lease
+  Abstraction Prompts" doc was never in the repo. The system prompt +
+  per-field guidance + confidence rubric in `ai_extraction.py` were
+  written from the field list and CLAUDE.md's quality bar, and are the
+  Phase 4 tuning surface. Swap in the originals when available and
+  re-run the training batch.
