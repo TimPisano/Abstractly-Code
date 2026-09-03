@@ -202,7 +202,7 @@ const Tasks = {
     },
 
     async deleteTask(taskId) {
-        if (!confirm('Delete this task?')) return;
+        if (!(await confirmDialog({ title: 'Delete this task?', confirmText: 'Delete', danger: true }))) return;
         try {
             await Api.deleteTask(taskId);
             showToast('Task deleted.', 'success');
@@ -261,7 +261,11 @@ const Tasks = {
     async bulkDismiss() {
         const ids = [...this.selected];
         if (ids.length === 0) return;
-        if (!confirm(`Dismiss ${ids.length} task${ids.length === 1 ? '' : 's'}? They'll be hidden from the active list (still visible under "Show completed/dismissed").`)) return;
+        if (!(await confirmDialog({
+            title: `Dismiss ${ids.length} task${ids.length === 1 ? '' : 's'}?`,
+            message: 'They’ll be hidden from the active list — still visible under "Show completed/dismissed".',
+            confirmText: 'Dismiss',
+        }))) return;
         try {
             const result = await Api.bulkUpdateTaskStatus(ids, 'dismissed');
             this._reportBulkResult(result, 'dismissed');

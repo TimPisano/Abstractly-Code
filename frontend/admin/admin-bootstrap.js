@@ -161,7 +161,12 @@ const AccessRequests = {
         // prospective user -- confirm it, same as every other
         // destructive action in this app (bulk delete, single lease
         // delete).
-        if (action === 'deny' && !confirm(`Deny access for ${who}? They won't be able to sign in.`)) {
+        if (action === 'deny' && !(await confirmDialog({
+            title: 'Deny access?',
+            message: `${who} won't be able to sign in. You can approve them later if this was a mistake.`,
+            confirmText: 'Deny access',
+            danger: true,
+        }))) {
             return;
         }
 

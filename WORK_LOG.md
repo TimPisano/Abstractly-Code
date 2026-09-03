@@ -832,3 +832,54 @@ the table into horizontal scroll on desktop where it currently fits.
 `.table-scroll` already handles the narrow-container case.
 
 Status: **S2 Phase 4 done, committing.**
+
+---
+
+## S2 Phase 5 — Interaction depth
+
+**Toast feedback: already thorough.** ~130 `showToast` call sites
+covering saved / deleted / renamed / uploaded / reassigned / resolved /
+password-reset across app, admin, and owner. Toasts already animate in
+and out (`.show` via rAF, 4s, fade out). No gaps worth filling — this
+was built well in earlier work.
+
+**Confirmation dialogs: existed, but were `window.confirm()`.** Every
+destructive action already gated on a confirm (delete lease(s), delete/
+dismiss task, deactivate member, deny access, suspend account, reset
+password, delete finance entry) — but via the browser's native OS
+dialog, which is jarring, unstyleable, and reads as unfinished in an
+otherwise-polished product.
+
+Replaced all 11 call sites with **`confirmDialog()`** — a real in-app
+dialog returning `Promise<boolean>`:
+- Shared `.confirm-backdrop` / `.confirm-dialog` CSS in
+  `design-system.css` (backdrop fades, card scales in;
+  `prefers-reduced-motion` respected).
+- JS helper in `app.js` (covers app + admin — admin/dashboard.html
+  loads app.js) and a synced copy in `owner-app.js` (separate bundle).
+- `role="alertdialog"`, `aria-modal`, `aria-labelledby` the title.
+- **Focus: starts on Cancel** (safe default for a destructive prompt),
+  Tab is trapped between the two buttons, Escape and backdrop-click
+  cancel, focus is **restored to the trigger** on close.
+- Destructive confirms use `btn-danger` for the confirm button,
+  non-destructive (dismiss tasks, reset password) use `btn-primary`.
+- Copy rewritten per dialog (title + explanatory line) instead of the
+  single cramped `confirm()` string.
+Verified live: open → focus on Cancel → Esc → backdrop removed → focus
+restored → promise resolves false.
+
+**State transitions: already smooth.** `.view.active` has a
+`viewFadeIn` (opacity + 4px slide, 0.2s, reduced-motion-aware); the
+verify popover and the three existing modals animate in via
+`verifyPopoverIn`. No jarring hard-swaps found on navigation.
+
+**Flagged, not changed:** the three existing modals
+(`discrepancy-modal`, `task-detail-modal`, `export-modal`) animate the
+card in but not the backdrop, and don't animate out at all. The design
+pass already flagged "3 separate modal implementations, no shared
+primitive" as tech debt; `confirmDialog` is the reference for how a
+shared one should behave (fade backdrop + scale card, both directions).
+Consolidating the existing three is a refactor for another pass, not
+this QA sweep.
+
+Status: **S2 Phase 5 done, committing.**

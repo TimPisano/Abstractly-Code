@@ -398,7 +398,12 @@ const LeaseDetail = {
 
     async deleteLease() {
         if (!this.lease) return;
-        if (!confirm(`Delete ${lease_filename(this.lease)}? This also removes any amendments linked to it.`)) return;
+        if (!(await confirmDialog({
+            title: 'Delete this lease?',
+            message: `${lease_filename(this.lease)} — this also removes any amendments linked to it. This can't be undone.`,
+            confirmText: 'Delete',
+            danger: true,
+        }))) return;
         try {
             await Api.deleteLease(this.lease.id);
             showToast('Lease deleted.', 'success');

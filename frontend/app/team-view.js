@@ -99,7 +99,12 @@ const TeamView = {
 
     async toggleStatus(memberId, currentStatus) {
         const newStatus = currentStatus === 'active' ? 'deactivated' : 'active';
-        if (newStatus === 'deactivated' && !confirm('Deactivate this team member? They will no longer be able to sign in.')) {
+        if (newStatus === 'deactivated' && !(await confirmDialog({
+            title: 'Deactivate team member?',
+            message: 'They will no longer be able to sign in. You can reactivate them later.',
+            confirmText: 'Deactivate',
+            danger: true,
+        }))) {
             return;
         }
         try {

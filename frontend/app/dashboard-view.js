@@ -1095,7 +1095,12 @@ const Dashboard = {
     async bulkDeleteSelected() {
         const ids = Array.from(AppState.compareSelection);
         if (ids.length === 0) return;
-        if (!confirm(`Delete ${ids.length} selected lease${ids.length === 1 ? '' : 's'}? This can't be undone.`)) return;
+        if (!(await confirmDialog({
+            title: `Delete ${ids.length} lease${ids.length === 1 ? '' : 's'}?`,
+            message: "This also removes any amendments linked to them. This can't be undone.",
+            confirmText: 'Delete',
+            danger: true,
+        }))) return;
 
         try {
             const result = await Api.bulkDeleteLeases(ids);

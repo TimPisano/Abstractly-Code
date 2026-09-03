@@ -329,6 +329,92 @@ function showError(message) {
 }
 
 /**
+ * Styled replacement for window.confirm() — a real in-app dialog instead
+ * of the browser's OS chrome. Returns a Promise<boolean>. Keyboard:
+ * Escape / backdrop click cancel, Tab is trapped inside, focus starts on
+ * the safe (Cancel) button and is restored to the trigger on close.
+ *
+ *   if (!(await confirmDialog({ message: 'Delete this?', danger: true }))) return;
+ */
+function confirmDialog({ title = 'Are you sure?', message = '', confirmText = 'Confirm', cancelText = 'Cancel', danger = false } = {}) {
+    return new Promise((resolve) => {
+        const lastFocused = document.activeElement;
+
+        const backdrop = document.createElement('div');
+        backdrop.className = 'confirm-backdrop';
+
+        const dialog = document.createElement('div');
+        dialog.className = 'confirm-dialog';
+        dialog.setAttribute('role', 'alertdialog');
+        dialog.setAttribute('aria-modal', 'true');
+
+        const titleId = 'confirmTitle_' + Math.random().toString(36).slice(2);
+        dialog.setAttribute('aria-labelledby', titleId);
+
+        const h = document.createElement('h2');
+        h.id = titleId;
+        h.textContent = title;
+        dialog.appendChild(h);
+
+        if (message) {
+            const p = document.createElement('p');
+            p.textContent = message;
+            dialog.appendChild(p);
+        }
+
+        const actions = document.createElement('div');
+        actions.className = 'confirm-dialog-actions';
+        const cancelBtn = document.createElement('button');
+        cancelBtn.type = 'button';
+        cancelBtn.className = 'btn-secondary';
+        cancelBtn.textContent = cancelText;
+        const confirmBtn = document.createElement('button');
+        confirmBtn.type = 'button';
+        confirmBtn.className = danger ? 'btn-danger' : 'btn-primary';
+        confirmBtn.textContent = confirmText;
+        actions.append(cancelBtn, confirmBtn);
+        dialog.appendChild(actions);
+        backdrop.appendChild(dialog);
+        document.body.appendChild(backdrop);
+
+        requestAnimationFrame(() => backdrop.classList.add('show'));
+
+        const focusable = [cancelBtn, confirmBtn];
+        function onKeydown(e) {
+            if (e.key === 'Escape') { e.preventDefault(); close(false); }
+            else if (e.key === 'Tab') {
+                // only two stops — keep focus bouncing between them
+                e.preventDefault();
+                const i = focusable.indexOf(document.activeElement);
+                const next = e.shiftKey ? (i <= 0 ? focusable.length - 1 : i - 1) : (i + 1) % focusable.length;
+                focusable[next].focus();
+            }
+        }
+
+        function close(result) {
+            document.removeEventListener('keydown', onKeydown, true);
+            backdrop.classList.remove('show');
+            const done = () => {
+                backdrop.remove();
+                if (lastFocused && typeof lastFocused.focus === 'function') lastFocused.focus();
+                resolve(result);
+            };
+            const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            if (reduced) done();
+            else backdrop.addEventListener('transitionend', function te(e) {
+                if (e.target === backdrop) { backdrop.removeEventListener('transitionend', te); done(); }
+            });
+        }
+
+        cancelBtn.addEventListener('click', () => close(false));
+        confirmBtn.addEventListener('click', () => close(true));
+        backdrop.addEventListener('mousedown', (e) => { if (e.target === backdrop) close(false); });
+        document.addEventListener('keydown', onKeydown, true);
+        cancelBtn.focus();
+    });
+}
+
+/**
  * Session Stats: a lightweight running tally (persisted in localStorage)
  * of extraction results across documents uploaded this browser session.
  */

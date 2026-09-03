@@ -311,3 +311,68 @@ a {
 @keyframes spin {
     to { transform: rotate(360deg); }
 }
+
+/* ===================== Shared confirm dialog =====================
+   One styled replacement for window.confirm() across the app, admin,
+   and owner surfaces (each has a thin JS wrapper — confirmDialog() —
+   that builds this markup and returns a Promise<boolean>). Backdrop
+   fades, card scales in; both respect prefers-reduced-motion. */
+
+.confirm-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+    background-color: rgba(10, 10, 11, 0.45);
+    opacity: 0;
+    transition: opacity 0.16s ease;
+}
+
+.confirm-backdrop.show {
+    opacity: 1;
+}
+
+.confirm-dialog {
+    width: 100%;
+    max-width: 26rem;
+    background-color: var(--white);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-xl);
+    padding: 1.5rem;
+    transform: scale(0.96);
+    transition: transform 0.16s ease;
+}
+
+.confirm-backdrop.show .confirm-dialog {
+    transform: scale(1);
+}
+
+.confirm-dialog h2 {
+    font-size: 1.0625rem;
+    font-weight: 700;
+    color: var(--text-dark);
+    margin-bottom: 0.5rem;
+}
+
+.confirm-dialog p {
+    font-size: 0.875rem;
+    line-height: 1.5;
+    color: var(--text-medium);
+    margin-bottom: 1.25rem;
+}
+
+.confirm-dialog-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.625rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .confirm-backdrop,
+    .confirm-dialog {
+        transition: none;
+    }
+}

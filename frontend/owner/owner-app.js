@@ -75,6 +75,74 @@ function showToast(message, kind = 'success') {
     setTimeout(() => el.remove(), 3500);
 }
 
+/* Styled confirm — uses the shared .confirm-* CSS from design-system.css.
+   Kept in sync with app.js's confirmDialog(); the owner console is a
+   separate bundle so it needs its own copy. Returns Promise<boolean>. */
+function confirmDialog({ title = 'Are you sure?', message = '', confirmText = 'Confirm', cancelText = 'Cancel', danger = false } = {}) {
+    return new Promise((resolve) => {
+        const lastFocused = document.activeElement;
+        const backdrop = document.createElement('div');
+        backdrop.className = 'confirm-backdrop';
+        const dialog = document.createElement('div');
+        dialog.className = 'confirm-dialog';
+        dialog.setAttribute('role', 'alertdialog');
+        dialog.setAttribute('aria-modal', 'true');
+        const h = document.createElement('h2');
+        h.textContent = title;
+        dialog.appendChild(h);
+        dialog.setAttribute('aria-label', title);
+        if (message) {
+            const p = document.createElement('p');
+            p.textContent = message;
+            dialog.appendChild(p);
+        }
+        const actions = document.createElement('div');
+        actions.className = 'confirm-dialog-actions';
+        const cancelBtn = document.createElement('button');
+        cancelBtn.type = 'button';
+        cancelBtn.className = 'btn-secondary';
+        cancelBtn.textContent = cancelText;
+        const confirmBtn = document.createElement('button');
+        confirmBtn.type = 'button';
+        confirmBtn.className = danger ? 'btn-danger' : 'btn-primary';
+        confirmBtn.textContent = confirmText;
+        actions.append(cancelBtn, confirmBtn);
+        dialog.appendChild(actions);
+        backdrop.appendChild(dialog);
+        document.body.appendChild(backdrop);
+        requestAnimationFrame(() => backdrop.classList.add('show'));
+
+        const focusable = [cancelBtn, confirmBtn];
+        function onKeydown(e) {
+            if (e.key === 'Escape') { e.preventDefault(); close(false); }
+            else if (e.key === 'Tab') {
+                e.preventDefault();
+                const i = focusable.indexOf(document.activeElement);
+                const next = e.shiftKey ? (i <= 0 ? focusable.length - 1 : i - 1) : (i + 1) % focusable.length;
+                focusable[next].focus();
+            }
+        }
+        function close(result) {
+            document.removeEventListener('keydown', onKeydown, true);
+            backdrop.classList.remove('show');
+            const done = () => {
+                backdrop.remove();
+                if (lastFocused && lastFocused.focus) lastFocused.focus();
+                resolve(result);
+            };
+            if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) done();
+            else backdrop.addEventListener('transitionend', function te(e) {
+                if (e.target === backdrop) { backdrop.removeEventListener('transitionend', te); done(); }
+            });
+        }
+        cancelBtn.addEventListener('click', () => close(false));
+        confirmBtn.addEventListener('click', () => close(true));
+        backdrop.addEventListener('mousedown', (e) => { if (e.target === backdrop) close(false); });
+        document.addEventListener('keydown', onKeydown, true);
+        cancelBtn.focus();
+    });
+}
+
 /* ===================== Accounts panel ===================== */
 
 const Accounts = {
@@ -174,7 +242,12 @@ const Accounts = {
         const suspendBtn = document.getElementById('suspendBtn');
         if (suspendBtn) {
             suspendBtn.addEventListener('click', async () => {
-                if (!confirm(`Suspend ${a.email}? They will not be able to log in until reactivated.`)) return;
+                if (!(await confirmDialog({
+                    title: 'Suspend this account?',
+                    message: `${a.email} will not be able to log in until you reactivate them.`,
+                    confirmText: 'Suspend',
+                    danger: true,
+                }))) return;
                 try {
                     await ownerFetch(`/owner/accounts/${a.id}/suspend`, { method: 'POST' });
                     showToast(`${a.email} suspended.`);
@@ -204,7 +277,11 @@ const Accounts = {
                 showToast('New password must be at least 8 characters.', 'error');
                 return;
             }
-            if (!confirm(`Reset the password for ${a.email}?`)) return;
+            if (!(await confirmDialog({
+                title: 'Reset this password?',
+                message: `${a.email}'s current password stops working immediately. You'll need to share the new one with them directly.`,
+                confirmText: 'Reset password',
+            }))) return;
             try {
                 await ownerFetch(`/owner/accounts/${a.id}/reset-password`, {
                     method: 'POST',
@@ -321,7 +398,7 @@ const Finance = {
             btn.addEventListener('click', async () => {
                 const kind = btn.dataset.kind;
                 const id = btn.dataset.id;
-                if (!confirm('Delete this entry?')) return;
+                if (!(await confirmDialog({ title: 'Delete this entry?', confirmText: 'Delete', danger: true }))) return;
                 try {
                     await ownerFetch(`/owner/${kind === 'revenue' ? 'revenue' : 'expenses'}/${id}`, { method: 'DELETE' });
                     this.load();
