@@ -150,3 +150,41 @@ Full suite **61/62** (same pre-existing `tesseract` OCR failure). New `test_logg
 ### 3.3 Follow-ups
 - The frontend `X-Request-Id` isn't surfaced to the user anywhere (e.g. in an error toast) — could help support. Small nicety, not done.
 - Error-alert emails need a browser/live check on the next deploy (needs `ERROR_ALERT_EMAILS=true` + a real ERROR to fire).
+
+---
+
+## PHASE 4 — Test coverage
+
+### 4.1 What was added
+
+**`backend/tests/test_route_authorization.py`** (5 cases):
+- **`test_every_mutating_route_rejects_an_anonymous_caller`** — introspects `app.url_map`, hits **every** `POST/PUT/PATCH/DELETE` route (≈65) with no session, asserts each returns 401/403/404/405 (never 200/201/500). An explicit `_PUBLIC_MUTATING` allowlist names the 6 intentionally-public ones. A route added later without `@require_role` is now caught automatically. **This test immediately found a gap:** `POST /extract` was unauthenticated — it runs the full (potentially model-backed, billable) extraction pipeline. **Fixed** (`@require_role()` added) with its own test.
+- viewer → 403 on analyst actions; analyst → 403 on admin actions; non-owner → 404 on every `/owner/*` and `/extraction-quality/trend`, real owner → 200.
+
+**`backend/tests/test_upload_validation.py`** (6 cases): missing file → 400 on every upload route; disallowed extension (`.exe`/`.zip`/`.sh`/no-ext) rejected server-side on `/extract`, `/leases`, `/leases/<id>/amendments`, `/leases/import-rent-roll`, `/portfolio/t12-reconciliation`; crafted traversal/null-byte filenames → 400/422 (never 500) and no file escapes the temp slot; >16 MB → 413; empty file → 422 "empty"; corrupt PDF → 422 with no traceback / no leaked path.
+
+### 4.2 Extraction / validation pipeline error handling
+
+Already substantially covered by tests added earlier this session: `test_ai_extraction.py` (retry/timeout/auth/bad-JSON → clean error), `test_async_extraction.py` (background failure → `failed` row kept, resubmit 502s cleanly), `test_ai_rent_roll_validation.py` (per-pair failure isolation, abstracted-or-skip), `test_extraction_scoring.py`, plus `test_upload_validation.py` above for the document layer. No new gaps found.
+
+### 4.3 Multi-tenant isolation — NOT on `main`, cannot test
+
+The "earlier session" multi-tenant isolation work lives **only in the unmerged branch `worktree-agent-ade7619750bfa9a9f`** (3 commits: `accounts` table, `account_id` on core tables, per-account scoping of leases/discrepancies/alerts/tasks/comments/etc., plus an *untracked* `backend/tests/test_multi_tenant_isolation.py`). `git grep account_id|tenant_id|org_id` over `backend/app/` on `main` returns **nothing** — there is no isolation to test here.
+
+**Action for the user:** merge `worktree-agent-ade7619750bfa9a9f` into `main` (and commit its test file) before this can be verified. I did not merge it or create a competing test file — that's the other session's work and merging it is a judgment call about whether it's finished. Once merged, its own `test_multi_tenant_isolation.py` plus the anonymous-route sweep in `test_route_authorization.py` (which would then also need per-account assertions) are the coverage.
+
+### 4.4 Verification
+
+Full suite **63/64** (same pre-existing `tesseract` OCR failure). New `test_route_authorization.py` (5) + `test_upload_validation.py` (6) green. The auth sweep found and the `/extract` fix closed a real gap.
+
+---
+
+## PHASE 5 — Documentation for future-me
+
+**`OPERATIONS.md`** (new, repo root) — the single "how does this fit together and how do I run it" reference:
+1. **The shape** — one Flask process + one SQLite file, dumb static frontend, the backend request lifecycle (what `api.py` wires up on import).
+2. **Every environment variable** — a table per group (core / AI / email / integrations / logging): what it does, default, and the honest notes (`FLASK_SECRET_KEY` unset → sessions drop on restart; `LEASE_AI_EXTRACTION` on without a key → regex fallback; etc.).
+3. **How the subsystems fit** — auth (roles, owner, session cookie, CSRF, rate limits); **plans/limits: there are none** (stated plainly); **multi-tenant isolation: not on `main`**; AI extraction (engine selection, sync-201 vs async-202, telemetry); rent-roll AI validation; observability (logs → stdout, `/health` DB probe, error alerts).
+4. **Deploy and roll back on Render** — auto-deploy on push; manual deploy; **Render's built-in "Rollback to this deploy"** (fastest, no git) vs `git revert` + push; the additive-only migration guarantee that makes a code rollback safe; the "site is down" checklist keyed off `/health`.
+
+`DEPLOYMENT.md` keeps the first-time-setup walkthrough (+ the new Logging / Alerts / Backups sections from Phase 3); `DECISIONS.md` keeps the rationale; `OPERATIONS.md` is the day-to-day reference.

@@ -607,9 +607,12 @@ def _validate_upload():
 # ----------------------------------------------------------------------
 
 @app.route('/extract', methods=['POST'])
+@require_role()
 def extract_lease_data():
     """
     Extract lease data from an uploaded document without persisting it.
+    Login required -- this runs the full (potentially model-backed,
+    billable) extraction pipeline, so it must not be anonymous.
 
     Expects: multipart form data with a 'file' field containing a
     lease document in any supported format -- PDF, Excel (.xlsx/.xls/

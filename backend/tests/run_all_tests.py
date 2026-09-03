@@ -45,6 +45,8 @@ UNIT_TESTS = [
     "test_admin_auth.py",
     "test_security_middleware.py",
     "test_logging_and_health.py",
+    "test_route_authorization.py",
+    "test_upload_validation.py",
     "test_password_reset.py",
     "test_multi_lease_detection.py",
     "test_multi_lease_structural_variation.py",
