@@ -140,6 +140,49 @@ on an already-running service immediately). If the *backend's* name is
 taken instead, update `frontend/config.js`'s production
 `API_BASE_URL` to match its real URL.
 
+## Known issue: sign-in on Safari (and, eventually, Chrome)
+
+**On the default `*.onrender.com` URLs, signing in does not work in
+Safari.** You log in, land back on the login page, and nothing seems to
+happen. This is not a bug in the app's code — it's a browser cookie
+policy interacting with the split-domain setup:
+
+- The frontend is served from `abstractly-n0id.onrender.com` and the
+  API from `abstractly-api.onrender.com`. Render puts `onrender.com` on
+  the Public Suffix List, so browsers treat those two subdomains as
+  **different sites**, not just different URLs.
+- The session cookie the API sets after login is therefore a
+  "third-party cookie" from the frontend's point of view. Safari blocks
+  those outright (has since 2020). Firefox keeps it (partitioned per
+  site). Chrome allows it *today* but that's on a deprecation timeline
+  and an enterprise policy or a user setting can already break it.
+- **Local development is unaffected** — `localhost:8000` and
+  `localhost:5000` count as the same site, so the cookie is
+  first-party there. That's why this isn't visible until it's deployed.
+
+**The fix is to make the two services same-site.** In order of
+preference:
+
+1. **Custom domain with matching subdomains** (recommended — you were
+   already planning to buy a domain). Put the frontend on
+   `app.yourdomain.com` and the backend on `api.yourdomain.com`. Both
+   are subdomains of one registrable domain, so `SameSite=Lax` cookies
+   flow between them and every browser is happy. Follow "Adding a
+   custom domain later" below, doing step 4 (backend subdomain) as well
+   as the frontend, then change `SESSION_COOKIE_SAMESITE` from `'None'`
+   to `'Lax'` in `backend/app/api.py`.
+2. **Reverse-proxy the API under the frontend's origin** so the browser
+   only ever sees one origin (`/api/...` on the frontend domain). This
+   needs a Render `routes` rewrite or a small proxy and is more
+   fiddly — ask me to set it up if you don't want to buy a domain yet.
+3. **Token auth instead of a cookie** (`Authorization: Bearer`, token
+   in `localStorage`). Larger code change; avoids the cookie problem
+   entirely but has its own security tradeoffs.
+
+Until one of those is done, **demo on Chrome or Firefox, not Safari**,
+and don't send a prospect the link expecting them to open it on an
+iPhone.
+
 ## Free-tier behavior you should know about
 
 You chose the free tier for now, which means two things worth knowing

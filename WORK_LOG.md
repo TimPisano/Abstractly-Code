@@ -552,3 +552,85 @@ session.
 | Shared loading affordances (`.spinner-small`, `.loading-inline`) | `design-system.css` | Prior (Phase 3). |
 | `overflow-x: hidden` safety net | `design-system.css` | Prior (Phase 4). |
 | `.text-input` / `.btn-text` / `.view-header` / `.panel` / `.empty-state` / `.skeleton` / `.nav-item` / `.toast` | `app/styles.css` | Prior. P5: `.btn-text`, `.empty-state-icon svg` -> accent-text; `.text-input:focus` ring propagated to owner.css. |
+
+---
+---
+
+# ═══ SESSION 2 — QA / Hardening Pass ═══
+
+Started 2026-09-03. Separate 6-phase brief from the design pass above:
+(1) cross-browser + real-device, (2) performance, (3) branding/identity
+details, (4) data-heavy screens, (5) interaction depth, (6) a11y
+(dynamic content + keyboard). Same rules: commit per phase, running log.
+
+## S2 Phase 1 — Cross-browser & real-device
+
+**Live testing on Safari, Firefox, and a real device is BLOCKED in this
+environment — flagged, not silently skipped:**
+- Firefox is not installed (no `brew` install done — heavy, and the
+  user is away).
+- Safari automation needs `Allow Remote Automation` + a screen-
+  recording permission grant, both of which require the user present.
+  `safaridriver` session creation and `screencapture` both fail.
+- No real device access.
+- What I *could* run live: Chrome (Chromium engine) via CDP, which the
+  design pass already used. So "tested in Chrome + static analysis for
+  the other two engines" is the honest summary.
+
+**Static cross-engine audit (CSS + JS) — result: clean.** This
+codebase is unusually conservative and already well-prefixed:
+- No `backdrop-filter`, `:has()`, `@container`, CSS nesting,
+  `aspect-ratio`, `-webkit-line-clamp`, scrollbar styling, `<dialog>`/
+  `showModal`, `inert`, `text-wrap`, `navigator.share/clipboard`,
+  `showPicker`, `structuredClone`, `randomUUID`. Nothing that splits
+  across Chromium/WebKit/Gecko.
+- `-webkit-mask-image` (landing hero grid fade) already has the
+  unprefixed `mask-image` right beside it.
+- `<summary>` marker: `.faq-item summary` already sets `list-style:
+  none` (the Firefox-correct way) *and* `::-webkit-details-marker`.
+- Date parsing: `owner-app.js` constructs dates with numeric args and
+  carries a comment about the `new Date("YYYY-MM-DD")` UTC-midnight
+  footgun — already handled.
+- `100vh` on `.sidebar` (`height: 100vh; position: sticky`) is
+  desktop/tablet only — the sidebar goes `position: static` below
+  768px, so the mobile-Safari "100vh includes the URL bar" bug doesn't
+  bite here.
+- `input[type=date]` is styled only with `padding` + `width` (no
+  attempt to override the native control internals), so Safari's
+  differently-shaped date field degrades cleanly rather than breaking.
+
+**THE cross-browser bug — architectural, production-only, flagged for a
+human decision (see DEPLOYMENT.md, new section added this pass):**
+Session auth is a cookie (`SameSite=None; Secure; HttpOnly`). In prod
+the frontend (`abstractly-n0id.onrender.com`) and backend
+(`abstractly-api.onrender.com`) are **cross-site** — `onrender.com` is
+on the Public Suffix List, so those two subdomains are separate sites,
+not just separate origins. Consequences:
+- **Safari: login is broken.** ITP blocks `SameSite=None` third-party
+  cookies outright since 2020. `POST /auth/login` returns 200 + the
+  cookie, Safari drops it, the next `/auth/session` is
+  unauthenticated → the app bounces straight back to the login page.
+  Classic "login loops in Safari."
+- **Chrome: works today, fragile.** Third-party-cookie deprecation is
+  paused, not cancelled; enterprise policy or the user toggling the
+  setting breaks it.
+- **Firefox: works.** Total Cookie Protection *partitions* rather than
+  blocks, so the cookie persists keyed to the top-level site.
+- **Dev is unaffected** — `localhost:8000` ↔ `localhost:5000` is
+  same-site (ports don't factor into "site"), so the cookie is
+  first-party locally. This is exactly why it hasn't been caught.
+- **Not fixed here** — every fix is a deployment/architecture change
+  that can't be verified while the user is away: (a) a custom domain
+  with `app.` + `api.` subdomains of one registrable domain makes them
+  same-site and `SameSite=Lax` starts working; (b) reverse-proxy the
+  API under the frontend's own origin (`/api/*`) so the cookie is
+  first-party; (c) switch to `Authorization: Bearer` tokens in
+  `localStorage`. (a) is the cleanest and the custom-domain step is
+  already half-documented. Wrote all of this into DEPLOYMENT.md under
+  a new "Known issue: sign-in on Safari" section so it can't get lost.
+
+**Fixes committed this phase:** none to code — the static audit found
+nothing engine-specific to fix, and the one real bug is architectural.
+DEPLOYMENT.md gains the Safari section.
+
+Status: **S2 Phase 1 done (audit + DEPLOYMENT.md warning), committing.**
