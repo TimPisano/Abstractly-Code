@@ -23,7 +23,7 @@ import sys
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-import PyPDF2
+import pypdf
 
 from app.portfolio import FIELD_NAMES, compute_lease_confidence_summary, compute_portfolio_confidence_summary
 from app.summary_memo import (
@@ -52,7 +52,7 @@ def _lease(lease_id, filename, **field_values):
 
 
 def _pdf_text(pdf_bytes: bytes) -> str:
-    reader = PyPDF2.PdfReader(io.BytesIO(pdf_bytes))
+    reader = pypdf.PdfReader(io.BytesIO(pdf_bytes))
     return "\n".join(page.extract_text() for page in reader.pages)
 
 
@@ -83,7 +83,7 @@ RISK_FLAGS = [
 def test_lease_memo_is_a_real_single_page_pdf():
     pdf_bytes = generate_lease_summary_pdf(FULL_LEASE, RISK_FLAGS)
     assert pdf_bytes[:4] == b"%PDF", "must be a real PDF, not just bytes"
-    reader = PyPDF2.PdfReader(io.BytesIO(pdf_bytes))
+    reader = pypdf.PdfReader(io.BytesIO(pdf_bytes))
     assert len(reader.pages) == 1, f"a normal lease's memo should fit on one page, got {len(reader.pages)}"
     print("✓ test_lease_memo_is_a_real_single_page_pdf: PASS")
 

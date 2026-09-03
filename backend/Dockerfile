@@ -27,7 +27,10 @@ WORKDIR /app
 # cache only re-runs `pip install` when requirements.txt itself
 # changes, not on every code edit -- meaningfully faster rebuilds.
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Upgrade pip/setuptools first -- the base image's bundled versions lag
+# and have had their own CVEs (setuptools CVE-2024-6345 / CVE-2022-40897).
+RUN pip install --no-cache-dir --upgrade pip setuptools \
+    && pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 

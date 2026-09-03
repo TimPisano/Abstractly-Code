@@ -24,7 +24,7 @@ import urllib.error
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-import PyPDF2
+import pypdf
 from openpyxl import load_workbook
 
 API_BASE_URL = "http://localhost:5000"
@@ -97,7 +97,7 @@ def _read_fixture(filename):
 
 def _pdf_text(pdf_bytes):
     """Whitespace-normalized (single spaces, no newlines) -- reportlab wraps long lines at arbitrary points, and PyPDF2 renders each wrapped line as a real newline, so a substring check against the raw text would be fragile against wrapping that has nothing to do with correctness."""
-    reader = PyPDF2.PdfReader(io.BytesIO(pdf_bytes))
+    reader = pypdf.PdfReader(io.BytesIO(pdf_bytes))
     raw = "\n".join(page.extract_text() for page in reader.pages)
     return " ".join(raw.split())
 

@@ -14,7 +14,7 @@ import tempfile
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-import PyPDF2
+import pypdf
 from openpyxl import load_workbook
 
 from app.api import app
@@ -67,7 +67,7 @@ def _insert(filename="lease.pdf", **overrides):
 
 
 def _pdf_text(pdf_bytes):
-    reader = PyPDF2.PdfReader(io.BytesIO(pdf_bytes))
+    reader = pypdf.PdfReader(io.BytesIO(pdf_bytes))
     return "\n".join(page.extract_text() for page in reader.pages)
 
 

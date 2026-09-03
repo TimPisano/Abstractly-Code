@@ -15,7 +15,7 @@ import json
 import urllib.request
 import urllib.error
 
-import PyPDF2
+import pypdf
 
 API_BASE_URL = "http://localhost:5000"
 FIXTURES_DIR = os.path.dirname(__file__)
@@ -249,8 +249,8 @@ def _build_password_protected_pdf() -> bytes:
     c.drawString(72, 700, 'This Lease is between Example Landlord LLC ("Landlord") and Example Tenant Inc. ("Tenant").')
     c.save()
 
-    reader = PyPDF2.PdfReader(io.BytesIO(buf.getvalue()))
-    writer = PyPDF2.PdfWriter()
+    reader = pypdf.PdfReader(io.BytesIO(buf.getvalue()))
+    writer = pypdf.PdfWriter()
     for page in reader.pages:
         writer.add_page(page)
     writer.encrypt(user_password="hunter2")
@@ -262,7 +262,7 @@ def _build_password_protected_pdf() -> bytes:
 
 def _build_owner_password_only_pdf() -> bytes:
     """Encrypted, but with only an owner password set and no user
-    password -- PyPDF2.is_encrypted is still true, but decrypt("")
+    password -- pypdf.is_encrypted is still true, but decrypt("")
     fully opens it since no password is actually required to read the
     content, only to edit/print it. Must NOT be misclassified as
     "password-protected" the way a real user-password file is."""
@@ -281,8 +281,8 @@ def _build_owner_password_only_pdf() -> bytes:
     c.drawString(72, 680, "TERM: Lease Start Date: January 1, 2026. Lease End Date: December 31, 2030.")
     c.save()
 
-    reader = PyPDF2.PdfReader(io.BytesIO(buf.getvalue()))
-    writer = PyPDF2.PdfWriter()
+    reader = pypdf.PdfReader(io.BytesIO(buf.getvalue()))
+    writer = pypdf.PdfWriter()
     for page in reader.pages:
         writer.add_page(page)
     writer.encrypt(user_password="", owner_password="ownerhunter2")

@@ -18,7 +18,7 @@ import urllib.error
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from PyPDF2 import PdfReader, PdfWriter
+from pypdf import PdfReader, PdfWriter
 
 API_BASE_URL = "http://localhost:5000"
 FIXTURES_DIR = os.path.dirname(__file__)

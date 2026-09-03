@@ -1,10 +1,21 @@
+# Pins reflect what the test suite actually runs against. Security-
+# relevant upgrades made during the 2026 hardening pass:
+#   flask-cors 4.0.0 -> 6.x   (CVE-2024-6839/6844/6866/1681: CORS
+#                              matching + log-injection bugs)
+#   Pillow    10.1.0 -> 11.x  (CVE-2023-50447 RCE via ImageMath,
+#                              CVE-2024-28219 buffer overflow -- Pillow
+#                              parses uploaded images for OCR)
+#   PyPDF2 3.0.1 -> pypdf 6.x (PyPDF2 is abandoned/deprecated and had
+#                              DoS behavior on crafted PDFs, which it
+#                              parses on every upload)
 Flask==3.0.0
-flask-cors==4.0.0
+Werkzeug==3.1.8
+flask-cors==6.0.5
 bcrypt==5.0.0
-PyPDF2==3.0.1
+pypdf==6.16.2
 pdf2image==1.16.3
 pytesseract==0.3.10
-Pillow==10.1.0
+Pillow==11.3.0
 reportlab==4.0.7
 openpyxl==3.1.5
 xlrd==2.0.2
@@ -15,6 +26,6 @@ google-api-python-client==2.198.0
 google-auth==2.50.0
 google-auth-httplib2==0.3.1
 anthropic==0.125.0
-cryptography==43.0.1
+cryptography==50.0.0
 requests==2.32.5
 gunicorn==23.0.0

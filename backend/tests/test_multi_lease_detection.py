@@ -33,7 +33,7 @@ import sys
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from PyPDF2 import PdfReader, PdfWriter
+from pypdf import PdfReader, PdfWriter
 
 from app.pdf_extractor import PDFExtractor
 from app.field_extractor import FieldExtractor

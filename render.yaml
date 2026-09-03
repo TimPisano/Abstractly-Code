@@ -73,3 +73,43 @@ services:
     runtime: static
     staticPublishPath: ./frontend
     envVars: []
+    # Security response headers for the static site. The API sets its
+    # own equivalents in app/security.py; these cover the HTML/JS/CSS
+    # Render serves directly. The CSP was derived from a full audit of
+    # the frontend (all scripts/styles/fonts are same-origin, no inline
+    # <script>, no inline event handlers, no eval, no CDN); connect-src
+    # must list the backend API origin for fetch() to work. If either
+    # service is recreated with a new suffix, update the connect-src
+    # host here to match (same as ADMIN_ALLOWED_ORIGINS above).
+    #
+    # NOTE (S2 Phase 2, QA pass): also add Cache-Control entries to this
+    # same list once this block lands — CSS/JS `public, max-age=600,
+    # must-revalidate` (assets aren't content-hashed, no build step),
+    # `/*.html` `no-cache`, `/fonts/*` `public, max-age=2592000`. Not
+    # done in that pass because this `headers:` block was mid-edit in a
+    # concurrent session and a second `headers:` key is a YAML error —
+    # merge into one list.
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
+      - path: /*
+        name: Strict-Transport-Security
+        value: max-age=31536000; includeSubDomains
+      - path: /*
+        name: Content-Security-Policy
+        value: >-
+          default-src 'self';
+          connect-src 'self' https://abstractly-api.onrender.com;
+          style-src 'self' 'unsafe-inline';
+          img-src 'self' data:;
+          font-src 'self';
+          object-src 'none';
+          base-uri 'self';
+          frame-ancestors 'none'

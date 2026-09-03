@@ -1,14 +1,14 @@
 """
 PDF text extraction module with fallback to OCR.
 
-This module handles extracting text from lease PDFs using PyPDF2 for digital PDFs
+This module handles extracting text from lease PDFs using pypdf for digital PDFs
 and falling back to OCR (pytesseract + pdf2image) for scanned PDFs.
 """
 
 import logging
 import re
 from typing import Optional, Dict, Any, List
-import PyPDF2
+import pypdf
 from pdf2image import convert_from_path
 import pytesseract
 from io import BytesIO
@@ -20,7 +20,7 @@ class PDFExtractor:
     """Handles PDF text extraction with OCR fallback."""
 
     def __init__(self):
-        # Minimum text length to consider PyPDF2 extraction successful
+        # Minimum text length to consider pypdf extraction successful
         # If extracted text is shorter, we assume it's a scanned PDF
         self.min_text_length = 100
 
@@ -36,7 +36,7 @@ class PDFExtractor:
             List of dicts with page numbers and text content:
             [{"page": 1, "text": "..."}, {"page": 2, "text": "..."}, ...]
         """
-        # First try PyPDF2 for digital PDF extraction
+        # First try pypdf for digital PDF extraction
         pages = self._extract_with_pypdf2(pdf_file)
 
         # Calculate total text length across all pages
@@ -44,7 +44,7 @@ class PDFExtractor:
 
         # If extraction yielded poor results, fall back to OCR
         if len(total_text.strip()) < self.min_text_length:
-            logger.info("PyPDF2 extraction yielded poor results, falling back to OCR...")
+            logger.info("pypdf extraction yielded poor results, falling back to OCR...")
             if pdf_path:
                 pages = self._extract_with_ocr(pdf_path)
             else:
@@ -54,7 +54,7 @@ class PDFExtractor:
 
     def _extract_with_pypdf2(self, pdf_file) -> List[Dict[str, Any]]:
         """
-        Extract text using PyPDF2 (for digital PDFs).
+        Extract text using pypdf (for digital PDFs).
 
         Args:
             pdf_file: File-like object containing PDF data
@@ -69,11 +69,11 @@ class PDFExtractor:
             pdf_file.seek(0)
 
             # Read PDF
-            pdf_reader = PyPDF2.PdfReader(pdf_file)
+            pdf_reader = pypdf.PdfReader(pdf_file)
 
             # An owner-password-only PDF (no password needed to read
             # it, just to edit/print) still reports is_encrypted, and
-            # PyPDF2 refuses to read .pages on it until decrypt() has
+            # pypdf refuses to read .pages on it until decrypt() has
             # been called -- even with the correct effective (empty)
             # password. A real user-password PDF also reaches this
             # point (the caller's own upfront check only short-circuits
@@ -93,7 +93,7 @@ class PDFExtractor:
                 })
 
         except Exception:
-            logger.exception("Error during PyPDF2 extraction")
+            logger.exception("Error during pypdf extraction")
             # Return empty list on error, will trigger OCR fallback
             return []
 
@@ -109,7 +109,7 @@ class PDFExtractor:
         legible the scan actually was, not a guess. field_extractor.py's
         confidence-validation step uses this to downgrade a field whose
         source page came back barely legible, even if the field's own
-        pattern match looked clean. Digitally-extracted pages (PyPDF2,
+        pattern match looked clean. Digitally-extracted pages (pypdf,
         no OCR involved) never carry this key at all, which is the
         signal field_extractor.py uses to know OCR wasn't involved for
         that page's fields.

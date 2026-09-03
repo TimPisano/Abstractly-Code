@@ -31,7 +31,7 @@ import openpyxl
 import xlrd
 from docx import Document as DocxDocument
 from PIL import Image, UnidentifiedImageError
-import PyPDF2
+import pypdf
 
 from .pdf_extractor import PDFExtractor
 
@@ -116,12 +116,12 @@ def _extract_pdf(file_bytes: bytes, temp_path: str) -> List[Dict[str, Any]]:
     # "corrupted or unsupported" failure: a password-protected PDF is
     # structurally fine and has a specific, actionable fix (open it,
     # remove the password, re-upload) that a vague corruption message
-    # would hide. PyPDF2.is_encrypted is true even for a PDF with only
+    # would hide. pypdf.is_encrypted is true even for a PDF with only
     # an OWNER password (no password needed to open/read it) --
     # decrypt("") succeeds for those; only genuinely
     # unreadable-without-a-real-password files fail here.
     try:
-        reader = PyPDF2.PdfReader(io.BytesIO(file_bytes))
+        reader = pypdf.PdfReader(io.BytesIO(file_bytes))
         if reader.is_encrypted and reader.decrypt("") == 0:
             raise DocumentExtractionError(
                 "This PDF is password-protected. Remove the password (or save an "

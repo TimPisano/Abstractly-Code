@@ -113,6 +113,12 @@ ALLOWED_ORIGINS = [
 ]
 CORS(app, supports_credentials=True, origins=ALLOWED_ORIGINS)
 
+# CSRF (origin check on state-changing requests), HSTS + optional
+# HTTPS enforcement, and standard response security headers. See
+# app/security.py -- installed here so it wraps every route below.
+from app.security import install_security, RateLimiter
+install_security(app, ALLOWED_ORIGINS)
+
 # Signs the admin session cookie -- if FLASK_SECRET_KEY isn't set, a
 # random key is generated for this process only, logged as a warning
 # (every admin session is invalidated on the next restart, but nothing
@@ -430,8 +436,14 @@ def _extract_leases_from_file_storage(file_storage):
     """
     temp_path = None
     try:
-        extension = file_storage.filename.rsplit('.', 1)[1].lower() if '.' in file_storage.filename else ''
-        with tempfile.NamedTemporaryFile(delete=False, suffix=f'.{extension}') as temp_file:
+        raw_extension = file_storage.filename.rsplit('.', 1)[1].lower() if '.' in (file_storage.filename or '') else ''
+        # The filename comes from the upload's Content-Disposition and is
+        # fully attacker-controlled. Every caller runs allowed_file()
+        # first (which only permits a known short extension), but sanitize
+        # here too so a temp-file suffix can never carry a path separator
+        # or other junk regardless of how this is reached.
+        extension = re.sub(r'[^a-z0-9]', '', raw_extension)[:10]
+        with tempfile.NamedTemporaryFile(delete=False, suffix=f'.{extension}' if extension else '') as temp_file:
             temp_path = temp_file.name
             file_storage.save(temp_path)
 
@@ -1475,6 +1487,23 @@ def bulk_tag_leases():
 # app/auth.py's module docstring.
 # ----------------------------------------------------------------------
 
+# Online password-guessing / credential-stuffing defense for /auth/login.
+# Two windows, both required: a wider per-IP cap stops one host hammering
+# many accounts; a tighter per-email cap stops a distributed attempt
+# against one specific account. Successful logins don't reset the
+# counter (a real user logs in once and is done; an attacker who found
+# the password shouldn't get a fresh budget), but the window is short
+# enough that a locked-out real user just waits a few minutes. Same
+# per-worker, in-memory caveat as every other limiter in this app.
+_login_rate_limiter = RateLimiter(max_hits=20, window_seconds=300)          # per IP: 20 / 5 min
+_login_email_rate_limiter = RateLimiter(max_hits=7, window_seconds=900)     # per email: 7 / 15 min
+
+
+def _reset_login_rate_limit_for_tests():
+    _login_rate_limiter.reset()
+    _login_email_rate_limiter.reset()
+
+
 @app.route('/auth/login', methods=['POST'])
 def auth_login():
     """
@@ -1484,10 +1513,22 @@ def auth_login():
     generic error regardless of whether the email, password, or
     account status was wrong -- see auth.verify_password for why the
     check itself is also timing-safe about that, not just the message.
+
+    Rate-limited per IP and per submitted email (429 on either) to blunt
+    online brute-force and credential stuffing.
     """
     body = request.get_json(silent=True) or {}
     email = (body.get("email") or "").strip()
     password = body.get("password") or ""
+
+    ip = request.remote_addr or "unknown"
+    limited = _login_rate_limiter.check([f"ip:{ip}"])
+    if email:
+        # Count the email key even for a nonexistent account -- otherwise
+        # a 429-vs-401 difference would leak which emails are registered.
+        limited = _login_email_rate_limiter.check([f"email:{email.lower()}"]) or limited
+    if limited:
+        return jsonify({"error": "Too many sign-in attempts. Please wait a few minutes and try again."}), 429
 
     user = verify_password(email, password)
     if not user:
@@ -1701,6 +1742,17 @@ def auth_forgot_password():
     return generic, 200
 
 
+# The reset token is a 256-bit secrets.token_urlsafe(32), so brute
+# force is infeasible regardless -- this limiter is defense-in-depth
+# against a bug that ever weakened the token, and against sheer request
+# volume against this public endpoint.
+_reset_password_rate_limiter = RateLimiter(max_hits=15, window_seconds=900)  # per IP: 15 / 15 min
+
+
+def _reset_reset_password_rate_limit_for_tests():
+    _reset_password_rate_limiter.reset()
+
+
 @app.route('/auth/reset-password', methods=['POST'])
 def auth_reset_password():
     """
@@ -1709,6 +1761,9 @@ def auth_reset_password():
     sets the new password. Any logged-in role's password can be reset
     this way; the token itself is the proof of identity.
     """
+    if _reset_password_rate_limiter.check([f"ip:{request.remote_addr or 'unknown'}"]):
+        return jsonify({"error": "Too many attempts. Please wait a few minutes and try again."}), 429
+
     body = request.get_json(silent=True) or {}
     token = (body.get("token") or "").strip()
     new_password = body.get("new_password") or ""
