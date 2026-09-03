@@ -387,3 +387,168 @@ to the repo (temp verification artifacts, not project files).
 Status: **Phase 4 done, committing.**
 
 ---
+
+## Phase 5 — Accessibility
+
+Two gaps, both fixed and committed together (`260ecd1`):
+
+**Every placeholder-only input had no accessible name.** A screen
+reader on the login form, the dashboard filter row, the tag/QA inputs,
+the team-add form, messaging, the owner console filters/entry forms,
+and the admin login all announced "edit text, blank" -- the visible
+label was a `placeholder`, which assistive tech does not treat as a
+name. Added `aria-label` to all of them (13 files). No visual change.
+
+**The accent brass failed WCAG AA as text.** `--lux-accent` (#b68a4e)
+is 3.1:1 on white -- fine for a button fill or an icon (non-text UI
+only needs 3:1), but below the 4.5:1 bar for actual text: "Go to
+Alerts ->", "See what's driving this score ->", the `.btn-text` links,
+accent-colored table/version/tag labels, `.source-page`, etc. Added
+`--lux-accent-text` (= `--primary-dark`, #8f6c3a, the same brass one
+step darker -- already in the palette) and swapped it in for the ~40
+places the accent renders AS text. Button fills, borders, and
+`accent-color` on native controls deliberately keep the lighter
+`--lux-accent`. Verified live: login/forgot/reset pages, dashboard,
+owner console -- accent text renders as legible brass, no regression.
+
+**Also fixed here:** `owner.css`'s `.text-input:focus` had only a
+border-color change, no focus ring -- every other `.text-input` in the
+product pairs it with a 3px brass ring. Added it for parity.
+
+Status: **Phase 5 done, committed (`260ecd1`).**
+
+---
+
+## Phase 6 — Final consistency sweep
+
+Re-walked the full page inventory (see checklist at the bottom of this
+file) against the now-touched codebase. Most screens are consistent --
+the palette, card treatment, type scale, stat tiles, sidebar, and
+health/confidence components all read as one system across the app,
+admin, and owner surfaces. One real fix, three flags.
+
+**Fixed (`de40025`): stacked-form layout on the forgot/reset-password
+pages.** `styles.css` has a flex-column rule that forces the
+access-gate forms into a stable vertical stack
+(`#accessGateForm, #accessGateRequestForm, #loginForm`). `#forgotForm`
+and `#resetForm` -- same shape, same card, added later on their own
+pages -- were never added to it, so their input + submit button fell
+back to inline flow: the button rendered narrower-than-full-width and
+flush against the input with no gap, unlike every other login card.
+The rule's own comment already describes this exact bug for the old
+login page. Added both ids. Verified live (forgot + reset pages now
+match login's stacked layout).
+
+**Flagged, not changed -- judgment calls that affect how the product
+looks:**
+
+1. **Three login screens, three brand treatments.** App login
+   (`app/login.html`) and forgot/reset use a brass building-glyph icon
+   + centered wordmark on the ivory background. Admin login
+   (`admin/index.html`) uses a document-glyph icon (different icon,
+   same everything else). Owner login (`owner/login.html`) has no icon
+   at all, left-aligned text, on a near-black background. The dark
+   owner background reads as deliberate (WORK_LOG Phase 2 covers it --
+   "not a team login" signalling) and the copy reinforces it. The
+   **icon mismatch** (building vs. document vs. none) does not read as
+   deliberate -- it looks like three people built three login pages.
+   First flagged in Phase 2; still open. Unifying on the building glyph
+   is the obvious call but it changes the admin + owner login visuals,
+   so leaving it for a human decision.
+
+2. **Mobile sidebar has no scroll affordance.** Below 768px the
+   sidebar is a horizontally-scrollable tab strip with 11+ items and
+   no fade edge / chevron hinting there's more to the right. Carried
+   over from Phase 4. Reasonable pattern, discoverability is the only
+   question -- a ~24px fade on the right edge would resolve it.
+
+3. **Three separate modal implementations** in the app
+   (`discrepancy-modal.js`, `task-detail-modal.js`, `export-modal.js`)
+   each with their own `-backdrop`/`-overlay`/`-close` classes and
+   their own focus handling, plus a fourth in the owner console
+   (`.owner-modal-overlay`). They look close enough that this isn't
+   visible to a user today, but there's no shared modal primitive, so
+   they can drift. Not a redesign-pass fix -- noting it as tech debt
+   the next structural pass should consolidate.
+
+**Not re-audited (out of scope for this session -- "gaps only"):** the
+deep responsive re-check of the authenticated SPA at every breakpoint
+(Phase 4 did this with working CDP tooling and documented it); the
+states audit (Phase 3). This session's headless screenshot harness hit
+the same emulation-vs-`captureBeyondViewport` gotcha Phase 4 recorded
+-- worked around it (tall fixed viewport, no beyond-viewport capture)
+but only after it produced several misleading "squished" SPA captures.
+If re-runing visual checks, set the device-metrics height large and
+screenshot normally rather than relying on `captureBeyondViewport`.
+
+Status: **Phase 6 done, committed (`de40025`).**
+
+---
+
+## Page & component inventory (Phase 1 checklist)
+
+The checklist the session was run against. "Prior" = done by the
+earlier design pass (commits `c63f138`..`03662cd`); "P5"/"P6" = this
+session.
+
+### Standalone pages
+
+| Page | File | Status this session |
+|---|---|---|
+| Landing / marketing | `index.html` + `landing.css` | Prior (Phase 1-2). P5: eyebrows/links/accents -> `--lux-accent-text`. Verified clean. |
+| Pricing | `pricing.html` | Prior (Phase 2: brass checkmarks, scroll-reveal false-alarm documented). P5: `.pricing-tier-price-custom` -> accent-text. Verified clean. |
+| App login | `app/login.html` | Prior. P5: aria-labels. Verified clean. **Flag: brand icon differs from admin/owner.** |
+| Forgot password | `app/forgot-password.html` | P5: aria-label. **P6: fixed form not stacking (`de40025`).** Verified. |
+| Reset password | `app/reset-password.html` | P5: aria-labels. **P6: fixed form not stacking.** Error state (dead/absent token) verified clean. |
+| Admin login gate | `admin/index.html` | P5: aria-labels. Verified clean. **Flag: document-glyph brand icon vs app's building glyph.** |
+| Owner login | `owner/login.html` | Prior (Phase 2: h1 sizing, grid). P5: aria-labels, focus ring. Verified clean. **Flag: no brand icon, dark bg (bg is deliberate).** |
+
+### App SPA (`app/index.html`) — views via `registerView()`
+
+| View | Module | Status |
+|---|---|---|
+| Dashboard (+ zero-lease onboarding state) | `dashboard-view.js` | Prior (Phase 2-3). P5: ~15 accent-text swaps, filter aria-labels. Verified clean at desktop. |
+| Alerts | `alerts-view.js` | Prior. P5: severity/type filter aria-labels. Backend alert-copy path-leak fixed in Phase 2. |
+| Discrepancies | `discrepancies-view.js` | Prior. P5: filter aria-labels. **Note: concurrent session has uncommitted edits here — not touched.** |
+| Portfolio Trends | `trends-view.js` | Prior (Phase 1: px->rem on chart labels). Not re-audited. |
+| Tasks | `tasks-view.js` | Prior. Not re-audited. |
+| Upload Leases | `upload-view.js` | Prior (Phase 2: "already clean"). Verified clean at desktop. |
+| Expirations / Timeline | `timeline-view.js` | Prior. Not re-audited. |
+| Rent Roll | `rentroll-view.js` | Prior (Phase 2 + Phase 4 `.main-content` width fix). Not re-verified (harness limit). |
+| Compare | `comparison-view.js` | Prior. Not re-audited. |
+| Ask a Question (portfolio) | `qa-view.js` | Prior. P5: `#qaInput` aria-label, `.qa-example-chip` accent-text. |
+| Portfolio Report | `report-view.js` | Prior. Not re-audited. |
+| Team Notes | `team-notes-view.js` | Prior. Not re-audited. |
+| Team | `team-view.js` | Prior. P5: team-add-form aria-labels (name/email/role/password). |
+| Lease Detail ("abstraction results") | `detail-view.js` | Prior (Phase 2: flagged 6 equal-weight toolbar buttons — still open, needs a real Export dropdown). P5: tag/QA input aria-labels, `.source-page`/`.version-chip` accent-text. |
+| Comments / verify popover / discrepancy modal / export modal / task modal | `comments.js`, `verify-popover.js`, `discrepancy-modal.js`, `export-modal.js`, `task-detail-modal.js` | Prior. **P6 flag: 3+ separate modal implementations, no shared primitive.** |
+
+### Admin SPA (`admin/dashboard.html`)
+
+| View | Module | Status |
+|---|---|---|
+| Overview / "Today's Priorities" | `admin-dashboard-view.js` (`overview`) | Prior (Phase 2: fixed raw route paths + punctuation in digest copy). Verified clean. |
+| Leases & Rent Rolls | `admin-dashboard-view.js` (`dashboard`) | Prior. Not re-audited. |
+| Upload | `admin-upload-view.js` | Prior. Not re-audited. |
+| Access Requests | `admin-bootstrap.js` (`access`) | Prior. Not re-audited. |
+| Alerts / Discrepancies / Trends / Reports / Team / Activity | shared with app modules | Prior. Not re-audited. |
+| Settings | `admin-bootstrap.js` (`settings`) | Prior. Not re-audited. |
+| Lease Detail (admin) | `admin-detail-view.js` | Prior. Not re-audited. |
+| Assistant | `assistant.js` | Prior (Phase 1: dead error-color fallback removed). P5: `.today-quick-action svg` accent-text. |
+
+### Owner console (`owner/index.html`)
+
+| Tab | Module | Status |
+|---|---|---|
+| Accounts | `owner-app.js` | Prior (Phase 2: grid values, h1 sizing; is_owner login bug). P5: filter aria-labels, `.owner-row-link` accent-text, focus ring. Verified clean. |
+| Revenue & Expenses | `owner-app.js` | Prior (Phase 3: empty-state copy verified). P5: revenue/expense form aria-labels. |
+
+### Shared design system
+
+| Artifact | File | Status |
+|---|---|---|
+| Tokens (color, type scale, spacing scale, shadow, radius) | `design-system.css` | Prior (Phase 1 formalized type/spacing scales, semantic palette). P5: added `--lux-accent-text`. This file **is** the enforceable design system — no separate DESIGN_SYSTEM.md needed. |
+| Shared buttons (`.btn-primary/secondary/danger/block`) | `design-system.css` | Prior. Consistent across all surfaces. |
+| Shared loading affordances (`.spinner-small`, `.loading-inline`) | `design-system.css` | Prior (Phase 3). |
+| `overflow-x: hidden` safety net | `design-system.css` | Prior (Phase 4). |
+| `.text-input` / `.btn-text` / `.view-header` / `.panel` / `.empty-state` / `.skeleton` / `.nav-item` / `.toast` | `app/styles.css` | Prior. P5: `.btn-text`, `.empty-state-icon svg` -> accent-text; `.text-input:focus` ring propagated to owner.css. |
