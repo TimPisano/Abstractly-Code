@@ -30,6 +30,9 @@ def test_values_match_field_aware():
     assert sc.values_match("tenant", "Blue Sky Coffee Roasters", "Blue Sky Coffee Roasters, Inc.") is True
     assert sc.values_match("tenant", "Acme Corp", "Beta LLC") is False
     assert sc.values_match("rent_escalation", "3% annually", "3.0% each year") is True
+    # a year-by-year dollar schedule is an accepted alternative to a "X% annually" rule
+    assert sc.values_match("rent_escalation", "Year 1: $6,250.00; Year 2: $6,375.00; Year 3: $6,502.50", "2% annually") is True
+    assert sc.values_match("rent_escalation", "Year 1: $6,250.00; Year 2: $9,999.00", "2% annually") is False
     assert sc.values_match("renewal_options", "2 option(s) of 5 year(s)", "2 options / 5 yrs") is True
     assert sc.values_match("permitted_use", "a retail coffee shop and roastery", "retail coffee shop") is True
     assert sc.values_match("cam_charges", None, None) is True

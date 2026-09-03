@@ -50,7 +50,16 @@ from app import ai_extraction
 from app import ai_rent_roll_validation as rrv
 from app import document_extractor
 from app import extraction_scoring
+from app.field_extractor import FieldExtractor
 from generate_synthetic_corpus import generate_corpus
+
+# Set by main() from --engine. "ai" = the real model pipeline (needs
+# credit). "regex" = the FieldExtractor baseline -- lets the whole
+# harness (corpus -> extract -> score -> aggregate -> persist -> report
+# -> trend) be exercised offline, and gives the AI rounds a concrete
+# baseline number to beat.
+ENGINE = "ai"
+_FE = FieldExtractor()
 
 
 def _die_if_blocked(exc: Exception):
@@ -78,13 +87,16 @@ def extract_corpus(corpus_dir, manifest):
             print(f"  ! {entry['file']}: {e}")
             continue
 
-        try:
-            fields = ai_extraction.extract_lease_fields(pages)
-        except ai_extraction.AIExtractionError as e:
-            _die_if_blocked(e)
-            print(f"  ! {entry['file']}: AI extraction failed: {e}")
-            continue
-        fields.pop("_ai_meta", None)
+        if ENGINE == "regex":
+            fields = _FE.extract_fields(pages)
+        else:
+            try:
+                fields = ai_extraction.extract_lease_fields(pages)
+            except ai_extraction.AIExtractionError as e:
+                _die_if_blocked(e)
+                print(f"  ! {entry['file']}: AI extraction failed: {e}")
+                continue
+            fields.pop("_ai_meta", None)
 
         doc_scores.append(extraction_scoring.score_document(
             fields, entry["ground_truth"],
@@ -103,6 +115,9 @@ def score_rent_roll_validation(corpus_dir, manifest):
     recorded. Returns a summary dict, or None if AI is blocked.
     """
     from app.rent_roll_import import parse_csv_rent_roll, parse_xlsx_rent_roll
+
+    if ENGINE == "regex":
+        return None  # no regex equivalent of the AI rent-roll validator
 
     lease_fields_by_id = {}
     for entry in manifest["leases"]:
@@ -157,7 +172,8 @@ def render_report_md(round_label, report, rr_summary, changed):
     cal = report["calibration"]
     lines = [
         f"# Training round: {round_label}",
-        f"_generated {datetime.now(timezone.utc).isoformat()} · model {ai_extraction.DEFAULT_MODEL} · prompt {ai_extraction.PROMPT_VERSION}_",
+        f"_generated {datetime.now(timezone.utc).isoformat()} · engine {ENGINE} · "
+        f"{'model ' + ai_extraction.DEFAULT_MODEL + ' · prompt ' + ai_extraction.PROMPT_VERSION if ENGINE == 'ai' else 'regex FieldExtractor (offline baseline)'}_",
         "",
         f"**Changed this round:** {changed or '(nothing noted)'}",
         "",
@@ -221,12 +237,13 @@ def run_round(args, round_idx):
     label = f"{args.label} (round {round_idx + 1})" if args.rounds > 1 else args.label
     corpus_dir = os.path.join(args.corpus_dir, f"round_{round_idx + 1}_seed_{seed}")
 
-    print(f"\n{'#' * 72}\n# {label}  ·  seed {seed}  ·  prompt {ai_extraction.PROMPT_VERSION}\n{'#' * 72}")
+    tag = f"prompt {ai_extraction.PROMPT_VERSION}" if ENGINE == "ai" else "regex baseline"
+    print(f"\n{'#' * 72}\n# {label}  ·  engine {ENGINE}  ·  seed {seed}  ·  {tag}\n{'#' * 72}")
     print("Generating corpus...")
     manifest = generate_corpus(corpus_dir, n_leases=args.leases, n_garbage=args.garbage,
                                n_rent_rolls=args.rent_rolls, seed=seed)
 
-    print("Extracting (live AI)...")
+    print(f"Extracting ({ENGINE})...")
     doc_scores = extract_corpus(corpus_dir, manifest)
     if not doc_scores:
         print("No documents scored -- aborting round.")
@@ -235,18 +252,20 @@ def run_round(args, round_idx):
 
     rr_summary = None
     if args.rent_rolls:
-        print("Validating rent rolls (live AI)...")
+        print(f"Validating rent rolls ({ENGINE})...")
         rr_summary = score_rent_roll_validation(corpus_dir, manifest)
 
+    prompt_version = ai_extraction.PROMPT_VERSION if ENGINE == "ai" else "regex-baseline"
     round_id = database.record_training_round(
-        round_label=label, report=report, model=ai_extraction.DEFAULT_MODEL,
-        prompt_version=ai_extraction.PROMPT_VERSION, corpus_seed=seed, corpus_size=args.leases,
+        round_label=label, report=report,
+        model=(ai_extraction.DEFAULT_MODEL if ENGINE == "ai" else "regex-FieldExtractor"),
+        prompt_version=prompt_version, corpus_seed=seed, corpus_size=args.leases,
         changed_this_round=args.changed,
     )
 
     md = render_report_md(label, report, rr_summary, args.changed)
     os.makedirs(args.out, exist_ok=True)
-    out_path = os.path.join(args.out, f"round_{round_id:03d}_{ai_extraction.PROMPT_VERSION}.md")
+    out_path = os.path.join(args.out, f"round_{round_id:03d}_{prompt_version}.md")
     with open(out_path, "w") as f:
         f.write(md)
 
@@ -265,15 +284,22 @@ def main():
     ap.add_argument("--changed", default="", help="what you changed in the prompt since the last round")
     ap.add_argument("--out", default=os.path.join(os.path.dirname(__file__), "..", "training_reports"))
     ap.add_argument("--corpus-dir", default=os.path.join(os.path.dirname(__file__), "..", "tests", "synthetic_corpus_training"))
+    ap.add_argument("--engine", choices=["ai", "regex"], default="ai",
+                    help="'ai' = the real model pipeline (needs credit); 'regex' = the FieldExtractor "
+                         "baseline, for exercising the whole harness offline and getting a number the AI must beat")
     args = ap.parse_args()
+
+    global ENGINE
+    ENGINE = args.engine
 
     db_override = os.environ.get("DB_PATH", "").strip()
     if db_override:
         database.configure(db_override)
     database.init_db()
 
-    if ai_extraction.resolve_engine() != "ai":
-        print("AI engine is not enabled. Set LEASE_AI_EXTRACTION=true and a funded ANTHROPIC_API_KEY, then re-run.")
+    if ENGINE == "ai" and ai_extraction.resolve_engine() != "ai":
+        print("AI engine is not enabled. Set LEASE_AI_EXTRACTION=true and a funded ANTHROPIC_API_KEY, "
+              "or run with --engine regex for an offline baseline.")
         sys.exit(2)
 
     try:

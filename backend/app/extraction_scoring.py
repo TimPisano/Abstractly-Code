@@ -55,6 +55,12 @@ def _first_int(s: str) -> Optional[int]:
     return int(m.group(0)) if m else None
 
 
+def _year_schedule_amounts(s: str) -> list:
+    """Pull the dollar amounts out of a 'Year 1: $6,250; Year 2: $6,438; ...' style escalation string, in order."""
+    import re
+    return [parse_currency(m) for m in re.findall(r"Year\s+\d+:\s*(\$?[\d,]+(?:\.\d{2})?)", s, re.IGNORECASE) if parse_currency(m)]
+
+
 def values_match(field: str, extracted: Optional[str], expected: Optional[str]) -> bool:
     """
     Field-aware equality between an extracted display string and the
@@ -87,6 +93,15 @@ def values_match(field: str, extracted: Optional[str], expected: Optional[str]) 
         ea, eb = _first_percent(extracted), _first_percent(expected)
         if ea is not None and eb is not None:
             return abs(ea - eb) < 0.01
+        # A year-by-year dollar schedule ("Year 1: $6,250; Year 2: $6,438; ...")
+        # is a valid alternative to a "X% annually" rule -- accept it if
+        # the implied year-over-year growth matches the expected percent.
+        if eb is not None and ea is None:
+            schedule = _year_schedule_amounts(extracted)
+            if len(schedule) >= 2:
+                ratios = [schedule[i + 1] / schedule[i] for i in range(len(schedule) - 1) if schedule[i]]
+                if ratios and all(abs((r - 1) * 100 - eb) < 0.4 for r in ratios):
+                    return True
         return _norm(expected) in _norm(extracted) or _norm(extracted) in _norm(expected)
 
     if field == "renewal_options":

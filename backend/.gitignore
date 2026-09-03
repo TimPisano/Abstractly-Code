@@ -31,6 +31,11 @@ tests/sample_lease.pdf
 tests/synthetic_corpus/
 tests/synthetic_corpus_*/
 
+# Training-loop output (tools/training_harness.py). The trend lives in
+# the training_rounds DB table / owner console; these markdown reports
+# are per-run artifacts.
+training_reports/
+
 # Temp files
 *.tmp
 *.log

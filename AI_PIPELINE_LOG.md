@@ -179,7 +179,15 @@ LEASE_AI_EXTRACTION=true venv/bin/python tools/training_harness.py --rounds 1 --
 # repeat; the trend table and the owner console both show the trajectory
 ```
 
-**Tests** — `backend/tests/test_extraction_scoring.py` (6 cases, green): field-aware matching; the five outcome kinds; aggregate flags high-conf-wrong with the offending list; calibration gap; weak-field/format identification; calibration ignores not-found fields.
+**Tests** — `backend/tests/test_extraction_scoring.py` (6 cases, green): field-aware matching (incl. a year-by-year dollar schedule accepted as equivalent to an "X% annually" rule); the five outcome kinds; aggregate flags high-conf-wrong with the offending list; calibration gap; weak-field/format identification; calibration ignores not-found fields.
+
+### 4.3 The harness is proven end-to-end — offline — via a regex baseline
+
+`--engine regex` runs the whole harness (corpus → extract → score → aggregate → persist → markdown report → cross-round trend) against the regex `FieldExtractor` instead of the model. This (a) de-risks the harness so that when credit arrives the *only* new variable is the model, and (b) gives the AI rounds a concrete number to beat.
+
+Ran it: **40 leases, seed 7 → regex baseline = 78.3% overall field accuracy**, 8 high-confidence-wrong, P(correct|high) = 0.98. Weakest fields: `permitted_use` 0%, `lease_end_date` 17.5%, `renewal_options` 35%, `exclusivity_clause` 60% — all real regex-pattern gaps against the corpus's phrasing (e.g. the corpus writes "use the Premises solely for the operation of…", the regex pattern anchors on "used solely for"). That the corpus phrasing diverges from the regex's own assumptions is a good sign — it's a fair test, not one that just echoes the extractor being tested. This baseline row is in the dev `lease_portfolio.db` `training_rounds` table, so the owner console's Extraction Quality tab has real content to show now.
+
+**`--engine regex` is offline and free; `--engine ai` (default) is what Phase 4 proper needs.** The AI pipeline should clear ~78% comfortably and, more importantly, be *better calibrated* on the fields regex can't touch (escalation rules, renewal terms, exclusivity).
 
 ---
 
