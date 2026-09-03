@@ -40,7 +40,7 @@ body {
 .today-quick-action svg {
     width: 1.125rem;
     height: 1.125rem;
-    color: var(--lux-accent);
+    color: var(--lux-accent-text);
     flex-shrink: 0;
 }
 

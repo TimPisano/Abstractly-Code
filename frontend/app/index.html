@@ -268,7 +268,7 @@
                     <div class="panel-header">
                         <h2>Lease Library</h2>
                         <div class="table-controls">
-                            <input type="text" id="dashboardFilter" class="text-input" placeholder="Filter by name, tenant, landlord, address, or tag...">
+                            <input type="text" id="dashboardFilter" class="text-input" placeholder="Filter by name, tenant, landlord, address, or tag..." aria-label="Filter leases by name, tenant, landlord, address, or tag">
                             <select id="dashboardStatusFilter" class="text-input select-input" title="Filter by lease status">
                                 <option value="">All statuses</option>
                                 <option value="active">Active</option>
@@ -277,9 +277,9 @@
                             </select>
                             <label class="dashboard-date-filter-label" title="Filter by lease end date">
                                 Expires
-                                <input type="date" id="dashboardDateFrom" class="text-input date-input">
+                                <input type="date" id="dashboardDateFrom" class="text-input date-input" aria-label="Expires from date">
                                 <span>&ndash;</span>
-                                <input type="date" id="dashboardDateTo" class="text-input date-input">
+                                <input type="date" id="dashboardDateTo" class="text-input date-input" aria-label="Expires to date">
                             </label>
                             <label class="checkbox-label">
                                 <input type="checkbox" id="compareModeToggle"> Select multiple
@@ -363,13 +363,13 @@
                     <label class="checkbox-label">
                         <input type="checkbox" id="alertsShowDismissed"> Show dismissed
                     </label>
-                    <select id="alertsSeverityFilter" class="text-input select-input">
+                    <select id="alertsSeverityFilter" class="text-input select-input" aria-label="Filter alerts by severity">
                         <option value="">All severities</option>
                         <option value="high">High</option>
                         <option value="medium">Medium</option>
                         <option value="low">Low</option>
                     </select>
-                    <select id="alertsTypeFilter" class="text-input select-input">
+                    <select id="alertsTypeFilter" class="text-input select-input" aria-label="Filter alerts by type">
                         <option value="">All types</option>
                         <option value="lease_expiration">Lease Expirations</option>
                         <option value="new_discrepancy">New Discrepancies</option>
@@ -399,13 +399,13 @@
                     <label class="checkbox-label">
                         <input type="checkbox" id="discrepanciesShowResolved"> Show resolved
                     </label>
-                    <select id="discrepanciesSeverityFilter" class="text-input select-input">
+                    <select id="discrepanciesSeverityFilter" class="text-input select-input" aria-label="Filter discrepancies by severity">
                         <option value="">All severities</option>
                         <option value="high">High</option>
                         <option value="medium">Medium</option>
                         <option value="low">Low</option>
                     </select>
-                    <select id="discrepanciesTypeFilter" class="text-input select-input">
+                    <select id="discrepanciesTypeFilter" class="text-input select-input" aria-label="Filter discrepancies by type">
                         <option value="">All types</option>
                         <option value="lease_risk_flag">Lease Risk Flag</option>
                         <option value="cross_lease_mismatch">Cross-Lease Mismatch</option>
@@ -679,7 +679,7 @@
                             <h3>Tags</h3>
                             <div id="detailTagsList" class="detail-tags-list"></div>
                             <div class="detail-tags-add-row">
-                                <input type="text" id="detailTagInput" class="text-input" placeholder="e.g. Downtown Portfolio" list="allTagsList">
+                                <input type="text" id="detailTagInput" class="text-input" placeholder="e.g. Downtown Portfolio" list="allTagsList" aria-label="Add a tag">
                                 <button class="btn-secondary" id="detailAddTagBtn" type="button">Add</button>
                             </div>
                             <datalist id="allTagsList"></datalist>
@@ -728,7 +728,7 @@
                             <h3>Ask About This Lease</h3>
                             <div id="detailQaHistory" class="qa-history"></div>
                             <div class="qa-input-row">
-                                <input type="text" id="detailQaInput" class="text-input" placeholder="e.g. does this lease have an exclusivity clause?">
+                                <input type="text" id="detailQaInput" class="text-input" placeholder="e.g. does this lease have an exclusivity clause?" aria-label="Ask a question about this lease">
                                 <button class="btn-primary" id="detailQaBtn" type="button">Ask</button>
                             </div>
                         </div>
@@ -826,7 +826,7 @@
                         <button class="qa-example-chip" type="button">What's the average rent?</button>
                     </div>
                     <div class="qa-input-row">
-                        <input type="text" id="qaInput" class="text-input" placeholder="Ask about your portfolio...">
+                        <input type="text" id="qaInput" class="text-input" placeholder="Ask about your portfolio..." aria-label="Ask a question about your portfolio">
                         <button class="btn-primary" id="qaBtn" type="button">Ask</button>
                     </div>
                 </div>
@@ -897,14 +897,14 @@
                             <h2>Add Team Member</h2>
                         </div>
                         <form id="teamAddMemberForm" class="team-add-form">
-                            <input type="text" id="teamAddName" class="text-input" placeholder="Full name" required>
-                            <input type="email" id="teamAddEmail" class="text-input" placeholder="email@company.com" required>
-                            <select id="teamAddRole" class="text-input">
+                            <input type="text" id="teamAddName" class="text-input" placeholder="Full name" required aria-label="Full name">
+                            <input type="email" id="teamAddEmail" class="text-input" placeholder="email@company.com" required aria-label="Email address">
+                            <select id="teamAddRole" class="text-input" aria-label="Role">
                                 <option value="viewer">Viewer</option>
                                 <option value="analyst" selected>Analyst</option>
                                 <option value="admin">Admin</option>
                             </select>
-                            <input type="password" id="teamAddPassword" class="text-input" placeholder="Initial password (min. 8 characters)" required minlength="8" autocomplete="new-password">
+                            <input type="password" id="teamAddPassword" class="text-input" placeholder="Initial password (min. 8 characters)" required minlength="8" autocomplete="new-password" aria-label="Initial password">
                             <button type="submit" class="btn-primary" id="teamAddSubmitBtn">Add Member</button>
                         </form>
                         <p id="teamAddMessage" class="access-gate-message"></p>
@@ -970,7 +970,7 @@
                 </div>
                 <div class="messaging-thread-messages" id="messagingThreadMessages"></div>
                 <form class="messaging-thread-input-row" id="messagingThreadForm">
-                    <input type="text" id="messagingThreadInput" class="text-input" placeholder="Type a message..." autocomplete="off">
+                    <input type="text" id="messagingThreadInput" class="text-input" placeholder="Type a message..." autocomplete="off" aria-label="Type a message">
                     <button class="btn-primary" type="submit">Send</button>
                 </form>
             </div>

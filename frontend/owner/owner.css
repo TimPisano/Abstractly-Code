@@ -16,8 +16,13 @@
 }
 
 .text-input:focus {
+    /* Matches .text-input:focus in app/styles.css and admin/admin.css --
+       border-color alone was a subtle change to miss on a quick tab-
+       through; every other .text-input in the product pairs it with
+       this ring. */
     outline: none;
     border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(182, 138, 78, 0.18);
 }
 
 /* ---- Login gate ---- */
@@ -208,7 +213,7 @@
 }
 
 .owner-row-link {
-    color: var(--primary-color);
+    color: var(--lux-accent-text);
     cursor: pointer;
     font-weight: 600;
 }

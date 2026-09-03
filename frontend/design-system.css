@@ -41,6 +41,14 @@
     --primary-dark: #8f6c3a;
     --accent-color: var(--lux-accent);
     --gradient-brand: var(--lux-accent);
+    /* --lux-accent itself is 3.1:1 against white -- fine for a button
+       background or an icon (non-text UI only needs 3:1), but fails
+       WCAG AA (4.5:1) for actual text: links, "Go to Alerts ->",
+       accent-colored labels, etc. This is the same brass, one step
+       darker (reuses --primary-dark's value), for every place the
+       accent color renders AS text rather than as a fill. See Phase 5
+       (WORK_LOG.md) for the audit and the buttons this doesn't cover. */
+    --lux-accent-text: var(--primary-dark);
     /* A hand-picked darker step of --lux-accent-tint, for hovering an
        element whose resting state IS the tint (e.g. a filled chip) --
        named here instead of being a bare hex the one place it was

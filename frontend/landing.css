@@ -51,7 +51,7 @@ html {
     font-weight: 600;
     letter-spacing: 0.22em;
     text-transform: uppercase;
-    color: var(--lux-accent);
+    color: var(--lux-accent-text);
     margin-bottom: 1.25rem;
 }
 
@@ -117,7 +117,7 @@ html {
     border: 1px solid var(--lux-accent);
     border-radius: var(--radius-sm);
     padding: 0.3125rem;
-    color: var(--lux-accent);
+    color: var(--lux-accent-text);
     flex-shrink: 0;
 }
 
@@ -140,7 +140,7 @@ html {
 }
 
 .landing-nav-links a:hover {
-    color: var(--lux-accent);
+    color: var(--lux-accent-text);
 }
 
 .nav-client-login {
@@ -209,7 +209,7 @@ html {
 }
 
 .hero .eyebrow {
-    color: var(--lux-accent);
+    color: var(--lux-accent-text);
 }
 
 .hero h1 {
@@ -223,7 +223,7 @@ html {
 }
 
 .hero h1 .accent {
-    color: var(--lux-accent);
+    color: var(--lux-accent-text);
 }
 
 .hero-subhead {
@@ -320,7 +320,7 @@ html {
     width: 1.25rem;
     height: 1.25rem;
     flex-shrink: 0;
-    color: var(--lux-accent);
+    color: var(--lux-accent-text);
 }
 
 .hero-form-wrap.submitted .waitlist-form {
@@ -560,7 +560,7 @@ html {
     flex-shrink: 0;
     font-size: 1.25rem;
     font-weight: 400;
-    color: var(--lux-accent);
+    color: var(--lux-accent-text);
     transition: transform 0.2s ease;
 }
 
@@ -589,7 +589,7 @@ html {
 }
 
 .statement .eyebrow {
-    color: var(--lux-accent);
+    color: var(--lux-accent-text);
 }
 
 .statement h2 {
@@ -787,7 +787,7 @@ html {
 }
 
 .pricing-tier-price-custom {
-    color: var(--lux-accent);
+    color: var(--lux-accent-text);
 }
 
 .pricing-card-concierge .pricing-tier-price {
