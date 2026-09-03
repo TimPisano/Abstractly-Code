@@ -51,7 +51,11 @@ html {
     font-weight: 600;
     letter-spacing: 0.22em;
     text-transform: uppercase;
-    color: var(--lux-accent-text);
+    /* One step darker than --lux-accent-text: at 12px on the ivory
+       background that token is 4.33:1, just under AA. .hero .eyebrow
+       overrides this for the dark hero, where the lighter brass is
+       correct. */
+    color: #82612e;
     margin-bottom: 1.25rem;
 }
 
@@ -660,7 +664,9 @@ html {
 
 .footer-copy {
     font-size: 0.8125rem;
-    color: var(--text-light);
+    /* --text-light (#8b8779) is 3.2:1 on the ivory footer — under AA.
+       --text-medium clears it. */
+    color: var(--text-medium);
     margin-top: 0.75rem;
 }
 
@@ -695,7 +701,10 @@ html {
     margin: 0 auto 3rem;
     padding: 0.875rem 1.125rem;
     background-color: var(--warning-light);
-    color: var(--warning-color);
+    /* --warning-color on --warning-light is 3.3:1 — under AA for this
+       body-size note. A darker amber on the same tint clears 4.5:1
+       while staying in the warning family. */
+    color: #7c561a;
     border-radius: var(--radius-md);
     font-size: 0.875rem;
     line-height: 1.55;

@@ -52,7 +52,7 @@ const Comparison = {
         }
 
         const resultsEl = document.getElementById('comparisonResults');
-        resultsEl.innerHTML = '<p class="loading-inline"><span class="spinner-small"></span> Comparing...</p>';
+        resultsEl.innerHTML = '<p class="loading-inline" role="status"><span class="spinner-small"></span> Comparing...</p>';
 
         try {
             const [comparison, benchmarks] = await Promise.all([

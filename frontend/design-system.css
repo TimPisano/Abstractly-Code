@@ -247,7 +247,12 @@ a {
 }
 
 .btn-primary {
-    background: var(--gradient-brand);
+    /* --lux-accent (#b68a4e) behind white text is only 3.1:1 — fails
+       WCAG AA (4.5) for the button label. --lux-accent-text (the
+       one-step-darker brass, #8f6c3a) clears it at 4.8:1 and is already
+       the palette's "brass as text" value. The accent stays #b68a4e
+       everywhere it's a fill/border/icon, where 3:1 is enough. */
+    background: var(--lux-accent-text);
     color: var(--white);
     border: 1px solid transparent;
     box-shadow: var(--shadow-sm);
@@ -310,6 +315,50 @@ a {
 
 @keyframes spin {
     to { transform: rotate(360deg); }
+}
+
+/* ===================== Accessibility utilities ===================== */
+
+/* Visible only to screen readers — used to give icon-only / spinner-only
+   UI a spoken label without changing the visual. */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* Keyboard skip link — off-screen until focused, then pinned top-left
+   so a keyboard user can jump past the sidebar nav to the main content. */
+.skip-link {
+    position: fixed;
+    top: 0.5rem;
+    left: 0.5rem;
+    z-index: 2000;
+    padding: 0.5rem 0.875rem;
+    background-color: var(--white);
+    color: var(--text-dark);
+    font-size: 0.875rem;
+    font-weight: 600;
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-lg);
+    transform: translateY(-150%);
+    transition: transform 0.15s ease;
+}
+
+.skip-link:focus {
+    transform: translateY(0);
+    outline: 2px solid var(--lux-accent-text);
+    outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .skip-link { transition: none; }
 }
 
 /* ===================== Shared confirm dialog =====================

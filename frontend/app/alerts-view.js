@@ -35,7 +35,7 @@ const Alerts = {
     filters: { showDismissed: false, severity: '', type: '' },
 
     async load() {
-        document.getElementById('alertsFeedContent').innerHTML = '<p class="loading-inline"><span class="spinner-small"></span> Checking for new alerts...</p>';
+        document.getElementById('alertsFeedContent').innerHTML = '<p class="loading-inline" role="status"><span class="spinner-small"></span> Checking for new alerts...</p>';
         document.getElementById('alertsSummaryStrip').innerHTML = `
             <div class="health-metric"><div class="skeleton skeleton-text"></div><div class="health-metric-label">High</div></div>
             <div class="health-metric"><div class="skeleton skeleton-text"></div><div class="health-metric-label">Medium</div></div>

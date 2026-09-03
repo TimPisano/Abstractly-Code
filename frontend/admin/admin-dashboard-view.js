@@ -366,7 +366,7 @@ const Dashboard = {
     },
 
     renderActivitySkeleton(containerId = 'activityFeed') {
-        document.getElementById(containerId).innerHTML = '<p class="loading-inline"><span class="spinner-small"></span> Loading...</p>';
+        document.getElementById(containerId).innerHTML = '<p class="loading-inline" role="status"><span class="spinner-small"></span> Loading...</p>';
     },
 
     renderActivity(activity, containerId = 'activityFeed') {
@@ -948,8 +948,8 @@ const Overview = {
         Dashboard.renderExpirationAlertsSkeleton();
         Dashboard.renderHealthSkeleton();
         Dashboard.renderMetricsSkeleton();
-        document.getElementById('portfolioConfidenceSummaryPanel').innerHTML = '<p class="loading-inline"><span class="spinner-small"></span> Loading...</p>';
-        document.getElementById('todayPrioritiesContent').innerHTML = '<p class="loading-inline"><span class="spinner-small"></span> Loading...</p>';
+        document.getElementById('portfolioConfidenceSummaryPanel').innerHTML = '<p class="loading-inline" role="status"><span class="spinner-small"></span> Loading...</p>';
+        document.getElementById('todayPrioritiesContent').innerHTML = '<p class="loading-inline" role="status"><span class="spinner-small"></span> Loading...</p>';
 
         Api.portfolioHealthScore()
             .then(h => Dashboard.renderHealthScore(h))

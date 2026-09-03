@@ -158,7 +158,16 @@ const LeaseDetail = {
         valueDiv.className = found ? 'field-value editable' : 'field-value editable not-found-value';
         valueDiv.textContent = found ? fieldData.value : 'Not Found — click to enter a value';
         valueDiv.title = 'Click to edit';
-        valueDiv.addEventListener('click', () => this.startInlineEdit(valueDiv, fieldKey, card));
+        // Keyboard-operable: it's a button in behaviour (opens an inline
+        // editor), so it needs the role, a tab stop, and Enter/Space.
+        valueDiv.setAttribute('role', 'button');
+        valueDiv.setAttribute('tabindex', '0');
+        valueDiv.setAttribute('aria-label', `Edit ${FIELD_LABELS[fieldKey] || fieldKey}`);
+        const openEdit = () => this.startInlineEdit(valueDiv, fieldKey, card);
+        valueDiv.addEventListener('click', openEdit);
+        valueDiv.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openEdit(); }
+        });
         body.appendChild(valueDiv);
 
         if (fieldData.manually_verified) {
@@ -236,13 +245,22 @@ const LeaseDetail = {
         input.select();
 
         let handled = false;
+        // Rebuild the card and return keyboard focus to the (new) value
+        // element, so tabbing through the review grid isn't broken every
+        // time a field is edited.
+        const swapCard = (fd) => {
+            const fresh = this.createResultCard(fieldKey, fd);
+            card.replaceWith(fresh);
+            const target = fresh.querySelector('.field-value.editable');
+            if (target) target.focus();
+        };
         const commit = async () => {
             if (handled) return;
             handled = true;
             const newValue = input.value.trim();
 
             if (newValue === currentValue) {
-                card.replaceWith(this.createResultCard(fieldKey, fieldData));
+                swapCard(fieldData);
                 return;
             }
 
@@ -250,7 +268,7 @@ const LeaseDetail = {
             try {
                 const saved = await saveLeaseFieldEdit(this.lease.id, fieldKey, newValue === '' ? null : newValue);
                 this.lease.extracted_fields[fieldKey] = saved;
-                card.replaceWith(this.createResultCard(fieldKey, saved));
+                swapCard(saved);
                 showToast('Field saved.', 'success');
             } catch (err) {
                 showError(`Failed to save: ${err.message}`);
@@ -288,7 +306,7 @@ const LeaseDetail = {
     // been happening at this property."
     async loadActivity(lease) {
         const el = document.getElementById('detailActivityContent');
-        el.innerHTML = '<p class="loading-inline"><span class="spinner-small"></span> Loading...</p>';
+        el.innerHTML = '<p class="loading-inline" role="status"><span class="spinner-small"></span> Loading...</p>';
         try {
             const [activity, leases] = await Promise.all([Api.recentActivity(50), Api.listLeases()]);
             if (!this.lease || this.lease.id !== lease.id) return;
@@ -361,7 +379,7 @@ const LeaseDetail = {
     async resubmit(file) {
         if (!this.lease) return;
         const status = document.getElementById('resubmitStatus');
-        status.innerHTML = '<p class="loading-inline"><span class="spinner-small"></span> Processing new version…</p>';
+        status.innerHTML = '<p class="loading-inline" role="status"><span class="spinner-small"></span> Processing new version…</p>';
         document.getElementById('resubmitResolutionsPanel').style.display = 'none';
 
         // Captured BEFORE the upload -- this is the actual "before" side
@@ -658,7 +676,13 @@ function _initDetailViewBindings() {
     // hidden input), scoped to this one lease.
     const amendmentInput = document.getElementById('amendmentFileInput');
     const dropzone = document.getElementById('resubmitDropzone');
+    dropzone.setAttribute('role', 'button');
+    dropzone.setAttribute('tabindex', '0');
+    dropzone.setAttribute('aria-label', 'Browse for a corrected or updated version of this lease');
     dropzone.addEventListener('click', () => amendmentInput.click());
+    dropzone.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); amendmentInput.click(); }
+    });
     dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('dragover'); });
     dropzone.addEventListener('dragleave', (e) => { e.preventDefault(); dropzone.classList.remove('dragover'); });
     dropzone.addEventListener('drop', (e) => {

@@ -60,7 +60,7 @@ const Messaging = {
     async showNewPane() {
         this._showPane('New');
         const list = document.getElementById('messagingTeammateList');
-        list.innerHTML = '<p class="loading-inline"><span class="spinner-small"></span> Loading...</p>';
+        list.innerHTML = '<p class="loading-inline" role="status"><span class="spinner-small"></span> Loading...</p>';
         try {
             const members = await Api.listTeamMembers();
             const others = members.filter(m => !window.CURRENT_USER || m.id !== window.CURRENT_USER.id);
@@ -93,7 +93,7 @@ const Messaging = {
 
     async loadConversationList() {
         const el = document.getElementById('messagingConversationList');
-        el.innerHTML = '<p class="loading-inline"><span class="spinner-small"></span> Loading...</p>';
+        el.innerHTML = '<p class="loading-inline" role="status"><span class="spinner-small"></span> Loading...</p>';
         try {
             this.threads = await Api.listThreads();
             if (this.threads.length === 0) {
@@ -136,7 +136,7 @@ const Messaging = {
         const thread = this.threads.find(t => t.id === threadId);
         document.getElementById('messagingThreadTitle').textContent = thread ? this._conversationTitle(thread) : 'Conversation';
         const container = document.getElementById('messagingThreadMessages');
-        container.innerHTML = '<p class="loading-inline"><span class="spinner-small"></span> Loading...</p>';
+        container.innerHTML = '<p class="loading-inline" role="status"><span class="spinner-small"></span> Loading...</p>';
         try {
             const messages = await Api.getThreadMessages(threadId);
             this._renderMessages(messages, true);

@@ -21,7 +21,7 @@ const Dashboard = {
         this.renderExpirationAlertsSkeleton();
         this.renderHealthSkeleton();
         this.renderActivitySkeleton();
-        document.getElementById('portfolioConfidenceSummaryPanel').innerHTML = '<p class="loading-inline"><span class="spinner-small"></span> Loading...</p>';
+        document.getElementById('portfolioConfidenceSummaryPanel').innerHTML = '<p class="loading-inline" role="status"><span class="spinner-small"></span> Loading...</p>';
         document.getElementById('dashboardExportExcelBtn').href = Api.rentRollExcelUrl();
         document.getElementById('dashboardSummaryMemoBtn').href = Api.portfolioSummaryPdfUrl();
         document.getElementById('dashboardExportStatus').innerHTML = '';
@@ -753,7 +753,7 @@ const Dashboard = {
     },
 
     renderActivitySkeleton() {
-        document.getElementById('activityFeed').innerHTML = '<p class="loading-inline"><span class="spinner-small"></span> Loading...</p>';
+        document.getElementById('activityFeed').innerHTML = '<p class="loading-inline" role="status"><span class="spinner-small"></span> Loading...</p>';
     },
 
     renderActivity(activity) {

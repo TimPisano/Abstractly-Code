@@ -883,3 +883,84 @@ Consolidating the existing three is a refactor for another pass, not
 this QA sweep.
 
 Status: **S2 Phase 5 done, committing.**
+
+---
+
+## S2 Phase 6 — Accessibility, properly
+
+**Keyboard: the "upload and review a lease" path now works end to end
+without a mouse.** The two things that broke it:
+
+1. **Every extracted field was a `<div>` with only a click handler** —
+   `role="button"` + `tabindex="0"` + Enter/Space now open the inline
+   editor, and after a save the rebuilt card **returns focus to the
+   value element** instead of dropping it on `<body>` (tabbing through
+   the review grid was otherwise broken by every edit).
+2. **The upload dropzones were `<div>`s with only a click handler** —
+   a keyboard user literally could not start an upload. `uploadBox`,
+   `rentRollUploadBox`, `t12UploadBox`, and the lease-detail
+   `resubmitDropzone` are now `role="button"` + tab stop + Enter/Space,
+   with `:focus-visible` rings.
+
+Verified live under CDP: Tab from `<body>` → skip link → Enter →
+focus on `<main>`; Tab to a field → Enter → editor opens, focus in
+input → Escape → focus back on the field. Upload boxes take focus and
+fire on Enter.
+
+**Screen-reader announcements for dynamic content:**
+- `#toastContainer` is `aria-live="polite"` (app + admin); each toast
+  carries `role="status"`, or `role="alert"` for errors so they
+  interrupt. Owner console toasts got the same `role`.
+- `#appBootLoading` is `role="status"` with an `.sr-only` "Loading the
+  app…" (a bare spinner announces nothing).
+- All 24 `<p class="loading-inline">` view-loaders across app / admin /
+  owner got `role="status"`.
+- The `confirmDialog` from Phase 5 is `role="alertdialog"` +
+  `aria-modal` + labelled by its title, focus-trapped, focus-restoring.
+
+**Landmarks & skip link:**
+- `.skip-link` ("Skip to content") + `.sr-only` utility added to
+  `design-system.css`. Skip link on app, admin, landing, pricing;
+  target `<main id="mainContent" tabindex="-1">`.
+- `landmark-one-main` was failing on every non-app page. The sign-in /
+  404 / owner-login gate wrappers are now `<main>`; landing & pricing
+  wrap their content between `<nav>` and `<footer>` in `<main>`.
+- pricing `heading-order`: the tier cards jumped h1→h3. Tier names are
+  now `<h2>` (`.pricing-tier-name` unchanged visually).
+
+**Contrast (WCAG AA, the "go beyond contrast" ask still starts with
+getting contrast right):** several failures the design pass's
+`--lux-accent-text` didn't reach —
+- **`.btn-primary`** was white on `--lux-accent` = **3.1:1**. The
+  design pass deferred this citing "non-text UI needs only 3:1" — but a
+  button *label* is text and needs 4.5. Now `--lux-accent-text`
+  (#8f6c3a) = 4.8:1. Same fix on **`.nav-item.active`** (identical
+  white-on-brass). The accent stays #b68a4e for fills/borders/icons.
+- `.footer-copy` #8b8779 → `--text-medium`.
+- `.pricing-placeholder-note` amber-on-tint 3.3:1 → darker amber.
+- `.eyebrow` at 12px was 4.33:1 on ivory → one step darker (#82612e).
+
+**Lighthouse, before → after (public pages):**
+
+| Page | Perf | A11y | Best-pr | SEO |
+|---|---|---|---|---|
+| Landing | 94→**99** | 94→**100** | 96→**100** | 90→**100** |
+| Pricing | 97→**100** | 84→**100** | 100→**100** | 90→**100** |
+| App login | 98→**99** | 92→**100** | 100→**100** | 90→**50*** |
+
+\* login SEO drops because Phase 3 correctly added `noindex` to the
+auth pages — Lighthouse counts `noindex` + no-meta-description against
+the SEO score, but for a sign-in page both are the right call.
+
+**Flagged, not done:** full keyboard navigation of the **rent-roll and
+dashboard tables** — the rows are click-to-open `<tr>`s (open the lease
+detail) with no keyboard equivalent, and the rent-roll cells are the
+same click-to-edit `<span>` pattern the detail fields had. Making the
+whole table grid keyboard-navigable (roving tabindex, or turning the
+first cell into a link) is a bigger structural change than this pass;
+the *review* path (detail view) is fully covered, the *rent-roll edit*
+path is not. Also not done: focus-trapping the three pre-existing
+modals (`discrepancy` / `task` / `export`) — same "no shared modal
+primitive" tech debt noted in Phase 5.
+
+Status: **S2 Phase 6 done, committing.**

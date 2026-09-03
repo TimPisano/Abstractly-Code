@@ -18,7 +18,7 @@
  */
 const TeamNotes = {
     async load() {
-        document.getElementById('teamNotesFeedContent').innerHTML = '<p class="loading-inline"><span class="spinner-small"></span> Loading notes...</p>';
+        document.getElementById('teamNotesFeedContent').innerHTML = '<p class="loading-inline" role="status"><span class="spinner-small"></span> Loading notes...</p>';
         document.getElementById('teamNotesRoster').innerHTML = '';
         try {
             const comments = await Api.recentComments(50);

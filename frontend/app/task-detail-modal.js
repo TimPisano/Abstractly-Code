@@ -46,7 +46,7 @@ const TaskDetailModal = {
         container.innerHTML = `
             <div class="task-modal-backdrop" id="taskModalBackdrop">
                 <div class="task-modal" role="dialog" aria-modal="true" aria-label="Task detail">
-                    <p class="loading-inline"><span class="spinner-small"></span> Loading task...</p>
+                    <p class="loading-inline" role="status"><span class="spinner-small"></span> Loading task...</p>
                 </div>
             </div>
         `;

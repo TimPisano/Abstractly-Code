@@ -28,7 +28,7 @@ const TeamView = {
 
     async refresh() {
         const container = document.getElementById('teamMembersTableContainer');
-        container.innerHTML = '<p class="loading-inline"><span class="spinner-small"></span> Loading team members...</p>';
+        container.innerHTML = '<p class="loading-inline" role="status"><span class="spinner-small"></span> Loading team members...</p>';
         try {
             this.members = await Api.listTeamMembers();
             this.render();

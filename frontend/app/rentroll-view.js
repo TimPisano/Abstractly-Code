@@ -214,7 +214,7 @@ const RentRoll = {
         this._replaceTargetLeaseId = null;
 
         const status = document.getElementById('rentRollReplaceStatus');
-        status.innerHTML = `<p class="loading-inline"><span class="spinner-small"></span> Uploading and processing new version…</p>`;
+        status.innerHTML = `<p class="loading-inline" role="status"><span class="spinner-small"></span> Uploading and processing new version…</p>`;
 
         try {
             const result = await Api.resubmitLease(leaseId, file);

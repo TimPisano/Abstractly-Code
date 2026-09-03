@@ -20,6 +20,7 @@
     <link rel="preload" href="dashboard-view.js" as="script">
 </head>
 <body>
+    <a class="skip-link" href="#mainContent">Skip to content</a>
     <!--
       Shown by default (no inline display:none) so there's never a
       blank-page moment between HTML paint and access-gate.js deciding
@@ -30,8 +31,9 @@
       access-gate.js the instant it knows which of the other two to
       show instead.
     -->
-    <div class="app-boot-loading" id="appBootLoading">
+    <div class="app-boot-loading" id="appBootLoading" role="status">
         <span class="spinner-small"></span>
+        <span class="sr-only">Loading the app&hellip;</span>
     </div>
 
     <div class="app-shell" id="appShell" style="display:none;">
@@ -139,9 +141,12 @@
         </nav>
 
         <!-- Main content -->
-        <main class="main-content">
-            <!-- Global toast/error banner -->
-            <div class="toast-container" id="toastContainer"></div>
+        <main class="main-content" id="mainContent" tabindex="-1">
+            <!-- Global toast/error banner. aria-live so a screen reader
+                 announces "Field saved." / "Lease deleted." etc. as they
+                 appear; individual error toasts upgrade themselves to
+                 role="alert" (see showToast). -->
+            <div class="toast-container" id="toastContainer" aria-live="polite" aria-atomic="false"></div>
 
             <!-- Live-update banner: polls for account activity from anyone
                  else using this account and surfaces it here instead of

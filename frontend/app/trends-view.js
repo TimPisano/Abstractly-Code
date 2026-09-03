@@ -33,7 +33,7 @@ const Trends = {
     selectedProperty: '', // '' = all properties
 
     async load() {
-        document.getElementById('trendsRolloverChart').innerHTML = '<p class="loading-inline"><span class="spinner-small"></span> Loading...</p>';
+        document.getElementById('trendsRolloverChart').innerHTML = '<p class="loading-inline" role="status"><span class="spinner-small"></span> Loading...</p>';
         document.getElementById('trendsTurnoverChart').innerHTML = '';
         document.getElementById('trendsRentGrowthContent').innerHTML = '';
         try {

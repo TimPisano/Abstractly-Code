@@ -102,7 +102,7 @@ const DiscrepancyModal = {
                     ${spec.discrepancyId != null ? `
                         <div class="discrepancy-discussion">
                             <h3>Discussion</h3>
-                            <div id="discrepancyComments"><p class="loading-inline"><span class="spinner-small"></span> Loading notes...</p></div>
+                            <div id="discrepancyComments"><p class="loading-inline" role="status"><span class="spinner-small"></span> Loading notes...</p></div>
                         </div>
                     ` : ''}
                 </div>

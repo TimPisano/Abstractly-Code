@@ -23,7 +23,7 @@ const Discrepancies = {
     expandedId: null,
 
     async load() {
-        document.getElementById('discrepanciesFeedContent').innerHTML = '<p class="loading-inline"><span class="spinner-small"></span> Loading discrepancies...</p>';
+        document.getElementById('discrepanciesFeedContent').innerHTML = '<p class="loading-inline" role="status"><span class="spinner-small"></span> Loading discrepancies...</p>';
         document.getElementById('discrepanciesSummaryStrip').innerHTML = `
             <div class="health-metric"><div class="skeleton skeleton-text"></div><div class="health-metric-label">Open</div></div>
             <div class="health-metric"><div class="skeleton skeleton-text"></div><div class="health-metric-label">Resolved</div></div>

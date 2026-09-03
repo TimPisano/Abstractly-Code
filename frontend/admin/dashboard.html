@@ -24,6 +24,7 @@
     <link rel="stylesheet" href="admin.css">
 </head>
 <body>
+    <a class="skip-link" href="#mainContent">Skip to content</a>
 
     <div class="app-shell" id="adminShell" style="display:none;">
         <!-- Sidebar Navigation -- same structure/classes as frontend/app/index.html's
@@ -134,7 +135,7 @@
         </nav>
 
         <!-- Main content -->
-        <main class="main-content">
+        <main class="main-content" id="mainContent" tabindex="-1">
             <div class="admin-topbar">
                 <p class="admin-topbar-signedin">Signed in as <strong id="adminEmailLabel"></strong></p>
                 <div class="admin-shell-actions">
@@ -144,7 +145,7 @@
             </div>
 
             <!-- Toasts (success/error banners) shared by every view below -->
-            <div class="toast-container" id="toastContainer"></div>
+            <div class="toast-container" id="toastContainer" aria-live="polite" aria-atomic="false"></div>
 
             <!-- Session Stats Panel (overlay) -- wired unconditionally by
                  app.js's init(); kept so init() doesn't throw looking up

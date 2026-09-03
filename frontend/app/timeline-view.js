@@ -6,7 +6,7 @@
 const Timeline = {
     async load() {
         const container = document.getElementById('timelineContent');
-        container.innerHTML = '<p class="loading-inline"><span class="spinner-small"></span> Loading...</p>';
+        container.innerHTML = '<p class="loading-inline" role="status"><span class="spinner-small"></span> Loading...</p>';
         try {
             const timeline = await Api.portfolioTimeline();
             this.render(timeline);

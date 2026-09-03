@@ -551,9 +551,23 @@ function _initUploadViewBindings() {
         Dashboard.trySampleLease();
     });
 
+    // A <div> dropzone with only a click handler is invisible to the
+    // keyboard — this makes it a real button stop (Enter/Space opens the
+    // file picker), which the upload flow otherwise can't be started
+    // without a mouse.
+    function makeDropzoneAccessible(box, input, label) {
+        box.setAttribute('role', 'button');
+        box.setAttribute('tabindex', '0');
+        box.setAttribute('aria-label', label);
+        box.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); input.click(); }
+        });
+    }
+
     const uploadBox = document.getElementById('uploadBox');
     const fileInput = document.getElementById('fileInput');
 
+    makeDropzoneAccessible(uploadBox, fileInput, 'Browse for lease files to upload');
     uploadBox.addEventListener('click', () => fileInput.click());
     fileInput.addEventListener('change', (e) => {
         if (e.target.files.length > 0) Upload.handleFiles(e.target.files);
@@ -576,6 +590,7 @@ function _initUploadViewBindings() {
     const rentRollBox = document.getElementById('rentRollUploadBox');
     const rentRollInput = document.getElementById('rentRollFileInput');
 
+    makeDropzoneAccessible(rentRollBox, rentRollInput, 'Browse for a rent roll file to import');
     rentRollBox.addEventListener('click', () => rentRollInput.click());
     rentRollInput.addEventListener('change', (e) => {
         if (e.target.files.length > 0) RentRollImport.handleFile(e.target.files[0]);
@@ -598,6 +613,7 @@ function _initUploadViewBindings() {
     const t12Box = document.getElementById('t12UploadBox');
     const t12Input = document.getElementById('t12FileInput');
 
+    makeDropzoneAccessible(t12Box, t12Input, 'Browse for a T12 operating statement to cross-check');
     t12Box.addEventListener('click', () => t12Input.click());
     t12Input.addEventListener('change', (e) => {
         if (e.target.files.length > 0) T12CrossCheck.handleFile(e.target.files[0]);
