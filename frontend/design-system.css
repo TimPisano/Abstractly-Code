@@ -8,15 +8,28 @@
  * there is exactly one palette to change if it ever needs to shift.
  */
 
-/* Inter is loaded via a real <link rel="stylesheet"> (with
-   preconnect) in each page's <head> — see index.html — not a CSS
-   @import here. @import forces the browser to fetch and parse this
-   stylesheet first before it even discovers the font request, which
-   measurably delays when Inter becomes available and risks a visible
-   reflow on large text (the landing hero's h1 in particular) once the
-   fallback font swaps to Inter. A <link> in the HTML source is
-   discovered by the preload scanner immediately, in parallel with
-   everything else. */
+/* Inter is self-hosted (fonts/inter-latin-var.woff2 — one 48 KB
+   variable file, Latin subset, covers weights 100–900) rather than
+   linked from fonts.googleapis.com. The Google Fonts <link> cost two
+   render-blocking cross-origin round trips per page: the CSS request,
+   then the woff2 request on a second domain (fonts.gstatic.com). Now
+   there's one same-origin request, declared here.
+
+   Because this stylesheet reaches the app pages through an @import in
+   app/styles.css, the font request would otherwise sit at the end of a
+   styles.css → design-system.css → woff2 chain. Every HTML entry point
+   carries a <link rel="preload" as="font" crossorigin> for the woff2
+   so it downloads in parallel from the first byte instead — that's the
+   piece that keeps the fallback-to-Inter swap from flashing on large
+   text (the landing hero h1). font-display: swap keeps text visible
+   the whole time regardless. */
+@font-face {
+    font-family: 'Inter';
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
+    src: url(fonts/inter-latin-var.woff2) format('woff2');
+}
 
 :root {
     /* ---- Brand / accent: the same deep-charcoal-and-brass palette the

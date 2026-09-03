@@ -634,3 +634,85 @@ nothing engine-specific to fix, and the one real bug is architectural.
 DEPLOYMENT.md gains the Safari section.
 
 Status: **S2 Phase 1 done (audit + DEPLOYMENT.md warning), committing.**
+
+---
+
+## S2 Phase 2 — Performance
+
+**Baseline (Lighthouse 13.4, simulated mobile throttling, local
+server) → after:**
+
+| Page | Perf | FCP | LCP |
+|---|---|---|---|
+| Landing | 94 → **100** | 1.75s → **1.26s** | 2.89s → **1.65s** |
+| Pricing | 97 → **100** | 1.41s → **1.20s** | 2.51s → **1.50s** |
+| App login | 98 → **99** | 1.98s → **1.5s** | 1.98s → **1.8s** |
+
+TBT was already 0 ms everywhere; CLS 0 (0.017 on pricing) — unchanged,
+still well under budget. Numbers are local-server + simulated
+throttling, so treat them as relative (the deltas are real, the
+absolute values will differ on Render).
+
+**What changed:**
+
+1. **Self-hosted Inter** (the big one — most of that LCP drop). Was
+   `<link>`d from `fonts.googleapis.com`, which is two render-blocking
+   cross-origin round trips: the CSS from `googleapis.com`, then the
+   woff2 from `gstatic.com`. Replaced with one 48 KB same-origin file
+   (`frontend/fonts/inter-latin-var.woff2` — Inter's Latin subset,
+   which is a single variable file covering weights 100–900), declared
+   via `@font-face` in `design-system.css`, `font-display: swap`. OFL
+   license bundled alongside (`frontend/fonts/OFL.txt`). Removed the
+   two `fonts.*` preconnects from all 10 HTML entry points.
+2. **Font preload** on every entry point (`<link rel="preload"
+   as="font" crossorigin>`) so the woff2 starts downloading with the
+   first bytes of HTML rather than after the CSS parses — kills the
+   fallback→Inter flash on the landing hero h1.
+3. **Killed the `@import`** at the top of `app/styles.css`
+   (`@import '../design-system.css'`). That forced the browser to
+   download + parse styles.css before it could even discover
+   design-system.css (and the font it declares) — a serial chain.
+   design-system.css is now a direct second `<link>` before styles.css
+   in the 5 HTML files that reach it that way (the 4 app/* pages +
+   admin/dashboard.html). Parallel download now.
+4. **App-script preload** in `app/index.html`: `api.js`, `app.js`,
+   `dashboard-view.js` are warmed via `<link rel="preload"
+   as="script">`. `access-gate.js` only injects the ~20 view scripts
+   *after* the `/auth/session` round trip; preloading the 3 on the
+   first-paint path means they're cached the instant the gate passes
+   instead of starting a fresh waterfall.
+5. **Cache-Control headers** for the static site — *recommended, NOT
+   committed*. `render.yaml`'s frontend `headers:` block was being
+   actively edited by a concurrent session (adding a security-header /
+   CSP block) and YAML rejects a duplicate `headers:` key, so I left a
+   `NOTE` comment in that block instead of a conflicting second list.
+   The entries to merge in: `/*` CSS/JS `public, max-age=600,
+   must-revalidate` (not content-hashed — no build step — so a short
+   TTL keeps deploys from being stuck behind stale caches), `/*.html`
+   `no-cache` (deploys visible immediately), `/fonts/*`
+   `max-age=2592000`. **Whoever lands that security block: add these.**
+   (Also — that session's CSP is `font-src 'self'`, which would have
+   blocked the *old* Google Fonts `<link>`. This pass's self-hosting
+   change is what makes their CSP correct; the two changes depend on
+   each other.)
+
+**Images: none exist.** The entire frontend has zero raster images —
+every icon is inline SVG, no `<img>` tags, no `url()` bitmaps, no
+background images. "Optimize images / add lazy-loading" has nothing to
+act on. Total frontend payload is 944 KB uncommitted, ~1 MB, and
+gzips to a fraction of that.
+
+**Not done, deliberately:**
+- **CSS/JS minification** (Lighthouse flags ~16 KB of unminified CSS).
+  This needs a build step, which the project has explicitly chosen not
+  to have (`render.yaml`: "static site, no build step"). Render gzips
+  on the wire so the real cost is ~3 KB. Flagging as a future call: if
+  a build step is ever added for another reason, minify then.
+- **Combining design-system.css + the per-surface CSS** into one file
+  per page — would save one request but duplicates the token file 4×
+  and breaks the single-source-of-truth. Not worth it over HTTP/2.
+
+**Data-heavy screens** (lease detail / rent roll) are addressed in S2
+Phase 4 — DOM weight + render cost measured there.
+
+Status: **S2 Phase 2 done, committing.**

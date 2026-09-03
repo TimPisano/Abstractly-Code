@@ -8,7 +8,11 @@
  * this file only holds app-specific component styles.
  */
 
-@import url('../design-system.css');
+/* design-system.css is now a separate <link> in each HTML entry
+   point (was @import'd here — that forced styles.css to download and
+   parse before the browser could even discover the tokens file, and
+   the self-hosted font it declares). Keep the two <link>s together and
+   design-system.css first. */
 
 /* ===================== App Shell ===================== */
 
