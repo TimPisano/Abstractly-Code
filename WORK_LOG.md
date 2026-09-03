@@ -780,3 +780,55 @@ was the "browser errors were logged to the console" ding on the
 landing page's best-practices score.
 
 Status: **S2 Phase 3 done, committing.**
+
+---
+
+## S2 Phase 4 — Data-heavy screens
+
+Targets: the abstraction-results screen (lease detail, `detail-view.js`
+— a card grid, not a table) and the rent-roll table (`rentroll-view.js`
+`#rentRollTable`), plus the dashboard lease library and comparison
+table, which share `.data-table` / `.table-scroll`.
+
+**Sticky table headers — there were none** (`position: sticky`
+appeared exactly once in the whole app: the sidebar). `.table-scroll`
+was `overflow-x: auto` with no height cap, so a 60-row rent roll just
+grew the page and the header scrolled away.
+- `.table-scroll` now `overflow: auto; max-height: calc(100vh - 12rem)`
+  — a scroll frame tall tables need and short ones never reach.
+- `.data-table th` → `position: sticky; top: 0` + opaque background +
+  a `box-shadow` restating the bottom border (a sticky cell's own
+  border detaches mid-scroll in some engines).
+- `.rent-roll-totals-row td` → `position: sticky; bottom: 0` so the
+  portfolio TOTAL stays visible while rows scroll.
+- Verified with a scrolled+cloned rent roll under CDP: header pins,
+  body scrolls under it. **Needs a real 50+ lease portfolio to
+  confirm at production scale** — the test DB only has 5.
+
+**Confidence: low-confidence fields now actually stand out.** The
+result card's left border was green for *anything* found, regardless
+of tier — a low-confidence value looked as trustworthy as a verified
+one. Now:
+- `.result-card.found.conf-high` → green border (unchanged look)
+- `.result-card.found.conf-medium` → amber border **+ amber-tinted
+  card header**
+- `.result-card.found.conf-low` → red border **+ red-tinted header**
+- `.found` with no tier keeps green (confidence unknown).
+`detail-view.js` emits `conf-<tier>` from `fieldData.confidence`.
+Confirmed live: on a 13-high / 1-medium lease, the single "Lease End
+Date" card reads as the obvious thing to check in a grid of 15.
+
+**Not color alone — confidence badges get a glyph.** `confidenceBadgeHtml`
+now prefixes a small `aria-hidden` SVG: ✓ high, ⚠ medium, ! low, –
+not-found. Green-high vs red-low is the exact pair deuteranopia
+collapses; the badge already had the words ("High Confidence"), the
+icon + the lightness-based header tint add two more non-hue channels.
+`.confidence-badge` became `inline-flex` with a gap to seat the icon.
+
+**Column widths:** left as auto-layout. The verbose extracted date
+strings ("1st day of January, 2026") wrap a little, but that's the
+*value* being verbose, not a width bug — forcing `nowrap` would push
+the table into horizontal scroll on desktop where it currently fits.
+`.table-scroll` already handles the narrow-container case.
+
+Status: **S2 Phase 4 done, committing.**

@@ -135,7 +135,10 @@ const LeaseDetail = {
         const found = fieldData.value !== null && fieldData.value !== undefined;
 
         const card = document.createElement('div');
-        card.className = `result-card ${found ? 'found' : 'not-found'}`;
+        // conf-<tier> drives the card's border/header emphasis (styles.css)
+        // so low/medium-confidence found fields stand out in the grid.
+        const confClass = found && fieldData.confidence ? ` conf-${fieldData.confidence}` : '';
+        card.className = `result-card ${found ? 'found' : 'not-found'}${confClass}`;
         card.dataset.field = fieldKey;
 
         const header = document.createElement('div');

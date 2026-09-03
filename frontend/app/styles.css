@@ -1096,7 +1096,11 @@
 }
 
 .table-scroll {
-    overflow-x: auto;
+    overflow: auto;
+    /* Cap tall tables (lease library, rent roll, comparison) so the
+       sticky header below actually has a scroll container to stick to.
+       Short tables never reach this height and don't scroll at all. */
+    max-height: calc(100vh - 12rem);
 }
 
 .data-table {
@@ -1117,6 +1121,14 @@
     white-space: nowrap;
     cursor: pointer;
     user-select: none;
+    /* Pinned to the top of .table-scroll while the body scrolls. The
+       box-shadow doubles the bottom border because a sticky cell's own
+       border can detach from the cell as it scrolls in some engines. */
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background-color: var(--white);
+    box-shadow: 0 2px 0 var(--border-color);
 }
 
 .data-table th:hover {
@@ -1155,6 +1167,12 @@
     border-top: 2px solid var(--border-color);
     border-bottom: none;
     background-color: var(--primary-light);
+    /* Keep the portfolio total on screen while the rows scroll inside
+       the capped .table-scroll frame. */
+    position: sticky;
+    bottom: 0;
+    z-index: 1;
+    box-shadow: 0 -2px 0 var(--border-color);
 }
 
 .rent-roll-cell-editable {
@@ -1777,8 +1795,36 @@
     box-shadow: var(--shadow-md);
 }
 
+/* The found/not-found left border used to be green for anything that
+   was found, regardless of how sure the extractor was — a low-
+   confidence value looked as trustworthy as a high one. The border now
+   tracks the confidence tier so a reviewer scanning the grid lands on
+   the amber/red cards. .found alone (no tier class) keeps the green
+   default for the case where confidence is unknown. */
 .result-card.found {
     border-left: 4px solid var(--success-color);
+}
+
+.result-card.found.conf-high {
+    border-left-color: var(--confidence-high);
+}
+
+.result-card.found.conf-medium {
+    border-left-color: var(--confidence-medium);
+    box-shadow: inset 3px 0 0 var(--confidence-medium-bg);
+}
+
+.result-card.found.conf-medium .card-header {
+    background-color: var(--confidence-medium-bg);
+}
+
+.result-card.found.conf-low {
+    border-left-color: var(--confidence-low);
+    box-shadow: inset 3px 0 0 var(--confidence-low-bg);
+}
+
+.result-card.found.conf-low .card-header {
+    background-color: var(--confidence-low-bg);
 }
 
 .result-card.not-found {
@@ -1803,6 +1849,9 @@
 }
 
 .confidence-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
     padding: 0.1875rem 0.625rem;
     border-radius: 9999px;
     font-size: 0.6875rem;
@@ -1810,6 +1859,10 @@
     text-transform: uppercase;
     letter-spacing: 0.02em;
     white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.confidence-badge svg {
     flex-shrink: 0;
 }
 

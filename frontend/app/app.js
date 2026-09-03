@@ -576,11 +576,24 @@ async function saveLeaseFieldEdit(baseLeaseId, fieldName, value, { taskId } = {}
     return result.field; // {value, source, confidence, manually_verified}
 }
 
+// Confidence glyphs — a redundant, non-color cue so the tier is
+// readable in grayscale / for colorblind reviewers (green-high vs
+// red-low is the exact pair that fails deuteranopia). aria-hidden
+// because the badge's own text ("High Confidence" etc.) already
+// carries the meaning for assistive tech.
+const CONFIDENCE_ICON = {
+    high: '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" focusable="false"><path fill="currentColor" d="M6.4 11.2 3.2 8l1.1-1.1 2.1 2.1 5.3-5.3L12.8 4.8z"/></svg>',
+    medium: '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" focusable="false"><path fill="currentColor" d="M8 1.5 15 14H1zM7.1 6v3.6h1.8V6zm0 4.8v1.8h1.8v-1.8z"/></svg>',
+    low: '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" focusable="false"><path fill="currentColor" d="M7.1 2h1.8v7H7.1zm0 9h1.8v1.8H7.1z"/></svg>',
+    none: '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" focusable="false"><path fill="currentColor" d="M3 7.1h10v1.8H3z"/></svg>',
+};
+
 function confidenceBadgeHtml(confidence, found) {
-    if (!found) return `<span class="confidence-badge confidence-none">Not Found</span>`;
+    if (!found) return `<span class="confidence-badge confidence-none">${CONFIDENCE_ICON.none}Not Found</span>`;
     const level = confidence || 'unknown';
     const label = level.charAt(0).toUpperCase() + level.slice(1);
-    return `<span class="confidence-badge confidence-${level}">${label} Confidence</span>`;
+    const icon = CONFIDENCE_ICON[level] || '';
+    return `<span class="confidence-badge confidence-${level}">${icon}${label} Confidence</span>`;
 }
 
 /**
