@@ -7364,3 +7364,38 @@ Decisions made:
   written from the field list and CLAUDE.md's quality bar, and are the
   Phase 4 tuning surface. Swap in the originals when available and
   re-run the training batch.
+
+## AI rent-roll validation: model severity, not a hardcoded tier (2026-09-03)
+
+`POST /portfolio/rent-roll-ai-validation` + `app/ai_rent_roll_
+validation.py` add a model-backed complement to the arithmetic
+`compute_rent_roll_reconciliation`. Decisions:
+
+- **Complement, not replace.** The arithmetic check stays -- it's fast,
+  free, deterministic, and catches the bulk of real drift. The model
+  runs on the same address-matched pairs and catches what a tolerance
+  can't: gross-vs-base rent, DBA-vs-legal-entity, a rent-roll
+  expiration that predates a renewal the lease grants.
+
+- **Severity comes from the model.** The arithmetic path hardcodes
+  every rent-roll mismatch as `medium`. The AI path stores the model's
+  own high/medium/low, with a prompt rubric tied to economic impact
+  (`high` = misleads an underwriter). An un-graded disagreement is
+  kept at `low`, never dropped.
+
+- **Abstracted-or-skip guardrail.** Validation only runs when the
+  lease document on file actually has extracted identity fields. A
+  unit whose lease PDF hasn't been abstracted yet returns
+  `not_abstracted` with no model call -- never a comparison against
+  empty data, never an error. (Phase 2's explicit ask.)
+
+- **Manually triggered, not on-upload.** A portfolio sweep is a
+  deliberate action (it costs N model calls for N matched units), so
+  it's a POST the user runs, not a side effect of importing a rent
+  roll. One pair's API failure is collected in `failures` and doesn't
+  abort the sweep.
+
+- Discrepancies persist as type `rent_roll_ai_validation` with a
+  stable natural_key, so re-running the sweep updates rows instead of
+  duplicating, and they resolve/reopen through the same UI as every
+  other discrepancy.

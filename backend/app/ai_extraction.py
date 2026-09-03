@@ -352,62 +352,87 @@ def _make_client(client: Optional[anthropic.Anthropic]) -> anthropic.Anthropic:
     return anthropic.Anthropic(timeout=REQUEST_TIMEOUT_SECONDS, max_retries=0)
 
 
-def _call_model(pages: List[Dict[str, Any]], client: Optional[anthropic.Anthropic]) -> Any:
+def call_forced_tool(
+    *,
+    system: str,
+    user_content: str,
+    tool: Dict[str, Any],
+    client: Optional[anthropic.Anthropic] = None,
+    model: Optional[str] = None,
+    max_tokens: int = MAX_TOKENS,
+    unavailable_message: str = "The document-extraction service is temporarily unavailable. Please try again in a moment.",
+    bad_input_message: str = "This document couldn't be processed automatically.",
+) -> Any:
+    """
+    One `messages.create` forced through exactly `tool`, wrapped in this
+    module's retry/backoff/timeout policy. Shared by lease abstraction
+    and rent-roll validation so both get identical failure handling.
+
+    Returns the raw SDK response. Raises AIExtractionError on every
+    failure path -- transient-exhausted, auth, bad request, hang. Never
+    lets a raw SDK exception escape.
+    """
     anthropic_client = _make_client(client)
-    tool = _build_tool()
     last_exc: Optional[Exception] = None
 
     for attempt in range(1, MAX_ATTEMPTS + 1):
         try:
             return anthropic_client.messages.create(
-                model=DEFAULT_MODEL,
-                max_tokens=MAX_TOKENS,
-                system=SYSTEM_PROMPT,
-                messages=[{"role": "user", "content": _user_message(pages)}],
+                model=model or DEFAULT_MODEL,
+                max_tokens=max_tokens,
+                system=system,
+                messages=[{"role": "user", "content": user_content}],
                 tools=[tool],
-                tool_choice={"type": "tool", "name": "record_lease_abstraction"},
+                tool_choice={"type": "tool", "name": tool["name"]},
             )
         except (anthropic.AuthenticationError, anthropic.PermissionDeniedError) as e:
-            logger.error("AI extraction auth/permission failure: %s", e)
-            raise AIExtractionError("The document-extraction service is not configured correctly.") from e
+            logger.error("AI call auth/permission failure: %s", e)
+            raise AIExtractionError("The AI service is not configured correctly.") from e
         except anthropic.BadRequestError as e:
-            logger.error("AI extraction rejected as a bad request: %s", e)
-            raise AIExtractionError("This document couldn't be processed automatically.") from e
+            logger.error("AI call rejected as a bad request: %s", e)
+            raise AIExtractionError(bad_input_message) from e
         except anthropic.APIError as e:
             last_exc = e
             if not _is_retryable(e) or attempt == MAX_ATTEMPTS:
-                logger.warning("AI extraction call failed on attempt %d/%d (giving up): %s", attempt, MAX_ATTEMPTS, e)
-                raise AIExtractionError("The document-extraction service is temporarily unavailable. Please try again in a moment.") from e
+                logger.warning("AI call failed on attempt %d/%d (giving up): %s", attempt, MAX_ATTEMPTS, e)
+                raise AIExtractionError(unavailable_message) from e
             sleep_s = _BACKOFF_BASE_SECONDS * (2 ** (attempt - 1)) + random.uniform(0, 0.75)
-            logger.warning("AI extraction transient failure on attempt %d/%d, retrying in %.1fs: %s", attempt, MAX_ATTEMPTS, sleep_s, e)
+            logger.warning("AI call transient failure on attempt %d/%d, retrying in %.1fs: %s", attempt, MAX_ATTEMPTS, sleep_s, e)
             time.sleep(sleep_s)
 
-    # Unreachable (loop either returns or raises), but keeps type
-    # checkers and future edits honest.
-    raise AIExtractionError("The document-extraction service is temporarily unavailable.") from last_exc
+    raise AIExtractionError(unavailable_message) from last_exc
 
 
-def _extract_tool_input(response: Any) -> Dict[str, Any]:
+def tool_payload(response: Any, *, bad_input_message: str = "This document couldn't be processed automatically.") -> Dict[str, Any]:
+    """Pull the single forced tool_use block's input out of a response as a dict, or raise AIExtractionError if it isn't there / isn't an object."""
     tool_use = next((b for b in getattr(response, "content", []) if getattr(b, "type", None) == "tool_use"), None)
     if tool_use is None:
-        # With tool_choice forcing this exact tool this should never
-        # happen; if the API ever returns something else, that's an
-        # unusable response, not a valid "nothing found" -- fail clean.
-        logger.error("AI extraction response had no tool_use block; stop_reason=%s", getattr(response, "stop_reason", None))
-        raise AIExtractionError("This document couldn't be processed automatically.")
+        logger.error("AI response had no tool_use block; stop_reason=%s", getattr(response, "stop_reason", None))
+        raise AIExtractionError(bad_input_message)
     payload = tool_use.input
     if isinstance(payload, str):
-        # Defensive: some SDK/model edge cases hand back a JSON string
-        # rather than a parsed object. Try once, then give up cleanly.
         try:
             payload = json.loads(payload)
         except (ValueError, TypeError) as e:
-            logger.error("AI extraction tool payload was an unparseable string")
-            raise AIExtractionError("This document couldn't be processed automatically.") from e
+            logger.error("AI tool payload was an unparseable string")
+            raise AIExtractionError(bad_input_message) from e
     if not isinstance(payload, dict):
-        logger.error("AI extraction tool payload was not an object: %r", type(payload))
-        raise AIExtractionError("This document couldn't be processed automatically.")
+        logger.error("AI tool payload was not an object: %r", type(payload))
+        raise AIExtractionError(bad_input_message)
     return payload
+
+
+def _call_model(pages: List[Dict[str, Any]], client: Optional[anthropic.Anthropic]) -> Any:
+    return call_forced_tool(
+        system=SYSTEM_PROMPT,
+        user_content=_user_message(pages),
+        tool=_build_tool(),
+        client=client,
+    )
+
+
+def _extract_tool_input(response: Any) -> Dict[str, Any]:
+    return tool_payload(response)
 
 
 def extract_lease_fields(

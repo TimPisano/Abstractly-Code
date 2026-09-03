@@ -6,6 +6,38 @@ cold on return.
 
 ---
 
+## ⚠️ BLOCKER — no API credit in this environment (found 2026-09-03)
+
+The `ANTHROPIC_API_KEY` available here has **no credit balance**. Every
+live model call returns:
+
+> `400 invalid_request_error — Your credit balance is too low to access
+> the Anthropic API. Please go to Plans & Billing to upgrade or purchase
+> credits.`
+
+**What this does NOT block** (built and committed this session):
+- Phase 1 — AI extraction engine, fully wired into every upload path,
+  13 mocked tests green. The credit error itself confirmed the failure
+  path works: it surfaces as a clean `AIExtractionError` → 502, no
+  crash, no retry storm, nothing persisted.
+- Phase 2 — rent-roll validation via the model, same pattern, mocked tests.
+- Phase 3 — synthetic messy test-data generator (no model needed).
+- Phase 5 — observability: owner-console extraction-quality view over
+  the telemetry tables, low-confidence field flagging in the UI.
+
+**What this DOES block:**
+- Phase 4 — the measure-refine-remeasure training loop. It needs real
+  model calls over the whole batch, repeatedly. The harness is built
+  and runnable (`backend/tools/training_harness.py`); it exits with a
+  clear message on the credit error. **Run it once credit is added:**
+  `LEASE_AI_EXTRACTION=true venv/bin/python tools/training_harness.py --rounds 1`
+  then iterate. Nothing else in Phases 1–3/5 needs to change for it to work.
+
+To unblock: add credit to the key (Plans & Billing), or set a funded
+`ANTHROPIC_API_KEY` in `backend/.env`.
+
+---
+
 ## PHASE 1 — Wire up real AI extraction
 
 ### 1.0 Honest audit: what was wired vs. stubbed BEFORE this work
@@ -58,7 +90,34 @@ payload→shape mapping + page-locating; degrade-don't-drop rules; retry-then-ra
 
 No `accounts`/plans/billing exists on `main` (the multi-tenant branch is unmerged, in another worktree). Per the user's own conditional ("*if that's already built*"), skipped. Substitute in place: the `ai_extraction_runs` table is the count source a per-account monthly cap would read from once accounts land — the hook is `_record_ai_run` in `api.py`.
 
-### 1.3 Follow-ups / open items
-- **Prompts**: replace the reconstructed prompts in `ai_extraction.py` with the original "Abstractly — Lease Abstraction Prompts" when available; re-run Phase 4 to confirm no regression.
+---
+
+## PHASE 2 — AI rent-roll validation
+
+### 2.1 What was built
+
+**`backend/app/ai_rent_roll_validation.py`** — model-backed cross-check of one imported rent-roll row against the abstracted lease document for the same unit. Complements (doesn't replace) the existing arithmetic `compute_rent_roll_reconciliation`: the model catches gross-vs-base rent, DBA-vs-legal-entity names, a rent-roll expiration that predates a renewal the lease grants, a silently-drifted deposit — disagreements arithmetic tolerance can't reason about.
+- Reuses `ai_extraction.call_forced_tool` / `tool_payload` (refactored out of Phase 1) → identical retry/backoff/timeout/`AIExtractionError` discipline. `RentRollValidationError` subclasses `AIExtractionError` so the upload-path 502 handling catches it too.
+- **Guardrail** (`is_abstracted`): validation only runs when the lease document actually has extracted identity fields (tenant/rent/start/end). If not — still processing, or extraction failed — returns `status: "not_abstracted"`, **no model call**, caller skips it. Never compares against empty data, never errors.
+- Model returns `discrepancies: [{field, severity: high|medium|low, rent_roll_value, lease_value, explanation, recommendation}]` + `overall_assessment`. Severity rubric in the prompt is explicitly economic: `high` = changes the underwriting/legal picture; `medium` = real but reconcilable; `low` = cosmetic/benign. Bad severity → coerced to `low` (kept, not dropped); empty explanation → dropped.
+- `find_unit_pairs(leases)` — same exact-normalized-address unit matching the arithmetic reconciliation uses.
+- `sync_validation_result` — persists each disagreement to the `discrepancies` table as type `rent_roll_ai_validation`, category same, **using the model's severity** (the arithmetic path hardcodes `medium`). Stable `natural_key` `rent_roll_ai:{rr_id}:{doc_id}:{field}` → re-running updates, never duplicates.
+
+**Route** — `POST /portfolio/rent-roll-ai-validation` (analyst):
+- `503` if the AI engine isn't enabled.
+- Sweeps every unit pair, validates, tallies `validated` / `skipped_not_abstracted` / `failures` (a single pair's API failure doesn't abort the sweep), persists discrepancies, writes `ai_extraction_runs` rows with `kind="rent_roll_validation"`.
+
+**Frontend** — one line in `discrepancies-view.js` `_typeLabel` so the new type renders as "Rent Roll AI Validation"; severity styling/badges already key off `severity` (high/medium/low) so no other UI change needed.
+
+**Tests** — `backend/tests/test_ai_rent_roll_validation.py` (9 cases, green, mocked client): guardrail skip (no call), payload→shape + model severity, agree→empty, severity/field coercion, address pairing, stable re-run persistence, route 503, route skip-not-abstracted + persist.
+
+### 2.2 Blocked bit
+Live end-to-end (a real model call over a real pair) — same credit blocker as Phase 1. Runnable via the route or the Phase 4 harness once credit exists.
+
+---
+
+## Cross-cutting follow-ups / open items
+- **Prompts**: replace the reconstructed prompts in `ai_extraction.py` / `ai_rent_roll_validation.py` with the originals ("Abstractly — Lease Abstraction Prompts") when available; re-run Phase 4 to confirm no regression.
 - **"Unusual/non-standard terms"** (a CLAUDE.md core requirement) is not yet its own field — regex never had it. Candidate to add in Phase 4/5 as an AI-only field once the 15 core fields are calibrated.
 - `requirements.txt` pins `anthropic==0.125.0`; installed is `0.69.0`. Not touched here (out of scope), but the pin should be reconciled.
+- Rent-roll AI validation currently has no auto-resolve of a discrepancy that stops being detected on a later run (unlike the resubmit flow). Fine for a manually-triggered sweep; revisit if it becomes scheduled.

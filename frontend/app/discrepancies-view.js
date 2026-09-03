@@ -140,6 +140,7 @@ const Discrepancies = {
         return {
             lease_risk_flag: 'Lease Risk Flag', cross_lease_mismatch: 'Cross-Lease Mismatch',
             rent_roll_reconciliation: 'Rent Roll Reconciliation', t12_reconciliation: 'T12 Reconciliation',
+            rent_roll_ai_validation: 'Rent Roll AI Validation',
         }[type] || type;
     },
 

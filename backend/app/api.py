@@ -44,6 +44,7 @@ load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
 from app.field_extractor import FieldExtractor, looks_like_rent_roll_table
 from app import ai_extraction
+from app import ai_rent_roll_validation
 from app import document_extractor
 from app.document_extractor import DocumentExtractionError
 from app import database
@@ -2963,6 +2964,66 @@ def portfolio_rent_roll_reconciliation():
     result = compute_rent_roll_reconciliation(leases)
     result["mismatches"] = sync_rent_roll_reconciliation(result["mismatches"])
     return jsonify(result), 200
+
+
+@app.route('/portfolio/rent-roll-ai-validation', methods=['POST'])
+@require_role('analyst')
+def portfolio_rent_roll_ai_validation():
+    """
+    Model-backed rent-roll validation: for every unit where an imported
+    rent-roll row and an abstracted lease document both exist, ask the
+    model to cross-check the two and flag disagreements with a severity
+    (high/medium/low) and a plain explanation -- catching what the
+    arithmetic /portfolio/rent-roll-reconciliation can't (gross-vs-base
+    rent, DBA-vs-legal-entity, a rent roll expiration that predates a
+    renewal, ...).
+
+    Only runs against lease documents that have actually been
+    abstracted -- a unit whose lease PDF hasn't been (still processing,
+    or extraction failed) is reported as skipped, not compared against
+    empty data, and never errors.
+
+    Persists each flagged disagreement to the discrepancies list
+    (type "rent_roll_ai_validation") using the model's severity, so it
+    shows up in the Discrepancies view alongside every other check.
+    """
+    if ai_extraction.resolve_engine() != "ai":
+        return jsonify({"error": "AI validation is not enabled. Set LEASE_AI_EXTRACTION=true and configure an API key."}), 503
+
+    leases = database.get_all_effective_leases()
+    pairs = ai_rent_roll_validation.find_unit_pairs(leases)
+
+    validated, skipped, all_discrepancies, failures = 0, 0, [], []
+    for rent_roll_lease, lease_document, _address in pairs:
+        try:
+            result = ai_rent_roll_validation.validate_rent_roll_against_lease(rent_roll_lease, lease_document)
+        except ai_extraction.AIExtractionError as e:
+            failures.append({"rent_roll_lease_id": rent_roll_lease.get("id"),
+                             "lease_document_id": lease_document.get("id"), "error": str(e)})
+            continue
+        if result["status"] == "not_abstracted":
+            skipped += 1
+            continue
+        validated += 1
+        all_discrepancies.extend(ai_rent_roll_validation.sync_validation_result(result))
+        meta = result.get("_ai_meta") or {}
+        database.record_ai_extraction_run(
+            engine="ai", status="ok", model=meta.get("model"), kind="rent_roll_validation",
+            lease_id=rent_roll_lease.get("id"), found_count=meta.get("discrepancy_count"),
+            latency_ms=meta.get("latency_ms"), input_tokens=meta.get("input_tokens"),
+            output_tokens=meta.get("output_tokens"),
+        )
+
+    if validated:
+        _invalidate_discrepancy_derived_caches()
+
+    return jsonify({
+        "pairs_found": len(pairs),
+        "validated": validated,
+        "skipped_not_abstracted": skipped,
+        "discrepancies": all_discrepancies,
+        "failures": failures,
+    }), 200
 
 
 @app.route('/portfolio/t12-reconciliation', methods=['POST'])

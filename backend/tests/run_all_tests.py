@@ -22,6 +22,7 @@ TESTS_DIR = os.path.dirname(__file__)
 UNIT_TESTS = [
     "test_extraction.py",
     "test_ai_extraction.py",
+    "test_ai_rent_roll_validation.py",
     "test_synthetic_accuracy.py",
     "test_confidence_validation.py",
     "test_summary_memo.py",
