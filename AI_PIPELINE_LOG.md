@@ -38,6 +38,39 @@ To unblock: add credit to the key (Plans & Billing), or set a funded
 
 ---
 
+## SUMMARY FOR REVIEW
+
+### 1. What was actually wired up vs. stubbed BEFORE this session
+
+| | Before |
+|---|---|
+| Lease field extraction | **100% regex** (`field_extractor.py`, 1109 lines). No model call. Sophisticated for regex, but not AI. |
+| Rent-roll validation | **Arithmetic only** — number-matches-within-tolerance. No model. |
+| AI infra | One real integration existed: the portfolio Q&A assistant (`assistant.py`). Nothing for extraction. |
+| API key | Present but **no credit balance**. |
+| Plan/usage limits | **Do not exist on `main`** (accounts/billing unbuilt). |
+| The "Abstractly" prompts | **Not in the repo.** Reconstructed from scratch. |
+
+### 2. Accuracy / confidence trend
+
+Only the **regex baseline** has a real measured number — the AI training rounds are blocked on credit:
+
+| Round | Engine | Overall accuracy | High-conf & wrong | P(correct \| high) | Weakest fields |
+|---|---|---|---|---|---|
+| baseline | regex FieldExtractor | **78.3%** | 8 / 390 asserted | 0.98 | permitted_use 0%, lease_end_date 17.5%, renewal_options 35%, exclusivity 60% |
+
+"What moved the needle" across AI rounds will fill in here once the loop runs — the harness logs accuracy %, calibration, and the exact prompt change every round, and the trend table + owner console show the trajectory. §4.4 has the specific first refinements to test.
+
+### 3. What's now visible to you going forward
+
+- **Owner console → "Extraction Quality" tab**: training-round accuracy/calibration trend with a "what changed each round" column; live daily production volume / error rate / latency / confidence mix from `ai_extraction_runs`; per-field reliability table. (`GET /extraction-quality/trend`, owner-gated.)
+- **Lease detail view**: any field type the pipeline is historically weak at gets a standing "check this against the source quote" hint, independent of that extraction's own confidence. (`GET /extraction-quality/field-reliability`.)
+- **`ai_extraction_runs` table**: one append-only row per model call (lease abstraction + rent-roll validation) — latency, tokens, per-confidence-tier field counts, ok/error, linked to the lease. Also the count source for a future per-account usage cap.
+- **`training_rounds` table**: one row per training round, full report JSON + headline columns.
+- **`tools/training_harness.py`**: re-runnable any time to re-measure against a fresh batch.
+
+---
+
 ## PHASE 1 — Wire up real AI extraction
 
 ### 1.0 Honest audit: what was wired vs. stubbed BEFORE this work
@@ -188,6 +221,19 @@ LEASE_AI_EXTRACTION=true venv/bin/python tools/training_harness.py --rounds 1 --
 Ran it: **40 leases, seed 7 → regex baseline = 78.3% overall field accuracy**, 8 high-confidence-wrong, P(correct|high) = 0.98. Weakest fields: `permitted_use` 0%, `lease_end_date` 17.5%, `renewal_options` 35%, `exclusivity_clause` 60% — all real regex-pattern gaps against the corpus's phrasing (e.g. the corpus writes "use the Premises solely for the operation of…", the regex pattern anchors on "used solely for"). That the corpus phrasing diverges from the regex's own assumptions is a good sign — it's a fair test, not one that just echoes the extractor being tested. This baseline row is in the dev `lease_portfolio.db` `training_rounds` table, so the owner console's Extraction Quality tab has real content to show now.
 
 **`--engine regex` is offline and free; `--engine ai` (default) is what Phase 4 proper needs.** The AI pipeline should clear ~78% comfortably and, more importantly, be *better calibrated* on the fields regex can't touch (escalation rules, renewal terms, exclusivity).
+
+### 4.4 Prompt v2 candidates — a hypothesis to test in round 2, NOT applied blind
+
+The methodology is measure-driven, so these are written down for the first real round to validate/reject, not baked in. Derived from the regex baseline's weak fields + the corpus's known messy patterns + general abstraction failure modes:
+
+1. **`permitted_use` / `exclusivity_clause` — quote the operative restriction, don't summarize.** The v1 guidance says "quote the operative restriction" but the field examples lean summary. Add a few-shot: input clause → exact `value` = the permitted business (e.g. "retail coffee shop and roastery"), `source_text` = the full sentence. Exclusivity: `value` = protected category + carve-outs, explicitly "not found" if absent (don't strain to find one).
+2. **`rent_escalation` — prefer the *rule* over the schedule when the lease states a percent.** Corpus (and real leases) often give both "3% annually" and a Year 1/2/3 table. v1 lets the model pick; nudge it to lead with the rule ("3% annually on each anniversary") and only fall back to a schedule when no rule is stated. Reduces representation variance.
+3. **`lease_end_date` — the initial-term expiration, before renewals, stated explicitly.** Regex scored 17.5% here; a lot of that is picking up a renewal-term date or a notice date. Few-shot a lease with a renewal option and show the end date = end of the *initial* term.
+4. **`rent_amount` — always monthly, always note if converted.** Corpus has annual-with-monthly-parenthetical. v1 handles it; reinforce with a few-shot showing "$72,000 per annum ($6,000/month)" → `value` "$6,000.00", `source_text` includes the annual figure for the reviewer.
+5. **Confidence rubric — add a worked example of a `low`.** v1 describes the tiers well but gives no example. Add: "the lease says 'rent shall be as set forth in Exhibit B' and Exhibit B is not in the provided pages → if you name a number at all, it's `low` with a note that it wasn't in the body."
+6. **Scanned/OCR docs (`scanned: true` in the corpus) — instruct explicitly**: "If a value sits in visibly garbled text, extract your best reading but mark it `low` and say the source was hard to read." Check the format-accuracy breakdown after round 1 — if `scanned` PDFs underperform, this is the lever.
+
+Each of these is a `PROMPT_VERSION` bump + a `--changed` note. Re-run the same seed + a fresh seed each round; keep the ones the numbers reward.
 
 ---
 
