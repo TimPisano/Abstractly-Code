@@ -185,6 +185,14 @@ if _db_path_override:
 
 database.init_db()
 
+# Any lease left mid-extraction by a previous process (a background
+# thread doesn't survive a restart) gets marked 'failed' with a clear
+# reason, so it doesn't sit "processing" forever. See the async upload
+# path (_start_deferred_extraction).
+_orphaned = database.fail_orphaned_processing_leases()
+if _orphaned:
+    logger.warning("Marked %d lease(s) left mid-extraction by a previous process as failed", _orphaned)
+
 
 # ----------------------------------------------------------------------
 # Global error handlers
@@ -362,43 +370,68 @@ def _record_ai_run(fields, status="ok", error_message=None):
         return None
 
 
+def _placeholder_fields():
+    """A full not-found field set for a lease whose real extraction is still running in the background."""
+    return {name: {"value": None, "source": None, "confidence": None} for name in FIELD_NAMES}
+
+
+def _regex_date_candidates(field_extractor, sub_pages):
+    return {
+        "start": field_extractor.find_all_date_candidates(sub_pages, "start"),
+        "end": field_extractor.find_all_date_candidates(sub_pages, "end"),
+    }
+
+
+def _extract_one_range(sub_pages, field_extractor, engine):
+    """
+    Extract one lease's fields from its own page range with `engine`
+    ('ai' or 'regex'). Returns (fields, ai_run_id). On the AI path,
+    `fields` still carries its private `_ai_meta` key (the caller pops
+    it) and a telemetry row has been written. Raises
+    ai_extraction.AIExtractionError straight through on an AI failure.
+    """
+    if engine == "ai":
+        fields = ai_extraction.extract_lease_fields(sub_pages)
+        ai_run_id = _record_ai_run(fields, status="ok")
+        return fields, ai_run_id
+    return field_extractor.extract_fields(sub_pages), None
+
+
+def _async_extraction_enabled():
+    """
+    Whether an AI-engine upload should return immediately and finish
+    extraction on a background thread. Default on (a 5-15s-per-lease
+    model call otherwise blocks the request and risks a gunicorn
+    worker timeout + partial write on a large multi-lease document).
+    LEASE_ASYNC_EXTRACTION=false forces the old synchronous behavior --
+    used by the test suite and available as an operator escape hatch.
+    """
+    return (os.environ.get("LEASE_ASYNC_EXTRACTION", "true").strip().lower() not in ("0", "false", "no", "off"))
+
+
 def _split_and_extract(pages, field_extractor):
     """
-    Detect lease boundaries (regex -- cheap, structural) then extract
-    each lease's fields with the configured engine
-    (ai_extraction.resolve_engine()): the model on a real upload, the
-    regex FieldExtractor under the offline test suite / when no API key
-    is set. Returns the same list-of-dicts shape
-    FieldExtractor.extract_multiple_leases produces -- {"fields",
-    "date_candidates", "source_page_start", "source_page_end"} -- plus
-    "ai_run_id" on the AI path.
+    Synchronous split + extract: boundary-detect (regex, cheap) then
+    extract each lease's fields with the configured engine. Returns a
+    list of {"fields", "date_candidates", "source_page_start",
+    "source_page_end", "ai_run_id"}. Used by the regex path and by any
+    caller that opts out of async (resubmit, amendment, /extract).
 
-    date_candidates stays regex-derived regardless of engine: it's a
-    separate cross-section date-consistency signal risk_analysis
-    consumes, not a user-facing extracted value.
-
-    Raises ai_extraction.AIExtractionError straight through if a model
-    call fails -- the caller turns it into a 502.
+    date_candidates stays regex-derived regardless of engine -- it's a
+    cross-section date-consistency signal risk_analysis consumes, not a
+    user-facing value. Raises ai_extraction.AIExtractionError straight
+    through if a model call fails.
     """
     engine = ai_extraction.resolve_engine()
     boundaries = field_extractor.detect_lease_boundaries(pages)
     results = []
     for start_page, end_page in boundaries:
         sub_pages = [p for p in pages if start_page <= p["page"] <= end_page]
-        date_candidates = {
-            "start": field_extractor.find_all_date_candidates(sub_pages, "start"),
-            "end": field_extractor.find_all_date_candidates(sub_pages, "end"),
-        }
-        ai_run_id = None
-        if engine == "ai":
-            fields = ai_extraction.extract_lease_fields(sub_pages)
-            ai_run_id = _record_ai_run(fields, status="ok")
-            fields.pop("_ai_meta", None)
-        else:
-            fields = field_extractor.extract_fields(sub_pages)
+        fields, ai_run_id = _extract_one_range(sub_pages, field_extractor, engine)
+        fields.pop("_ai_meta", None)
         results.append({
             "fields": fields,
-            "date_candidates": date_candidates,
+            "date_candidates": _regex_date_candidates(field_extractor, sub_pages),
             "source_page_start": start_page,
             "source_page_end": end_page,
             "ai_run_id": ai_run_id,
@@ -406,7 +439,7 @@ def _split_and_extract(pages, field_extractor):
     return results
 
 
-def _extract_leases_from_file_storage(file_storage):
+def _extract_leases_from_file_storage(file_storage, defer_ai=False):
     """
     Shared pipeline: save an uploaded werkzeug FileStorage to a temp
     path, then either parse it as a table (.csv/.xlsx -- see
@@ -480,6 +513,33 @@ def _extract_leases_from_file_storage(file_storage):
             )
 
         field_extractor = FieldExtractor()
+
+        # Async path: the model engine is active, the caller allows
+        # deferral, and async is enabled. Do only the cheap synchronous
+        # work here (boundary detection) and hand each lease's page
+        # range back as "pending" -- the caller persists placeholder
+        # rows and a background thread fills in the fields. Keeps the
+        # upload request fast and off gunicorn's worker timeout.
+        if defer_ai and _async_extraction_enabled() and ai_extraction.resolve_engine() == "ai":
+            boundaries = field_extractor.detect_lease_boundaries(pages)
+            total = len(boundaries)
+            leases = []
+            for index, (start_page, end_page) in enumerate(boundaries):
+                sub_pages = [p for p in pages if start_page <= p["page"] <= end_page]
+                leases.append({
+                    "pending": True,
+                    "sub_pages": sub_pages,
+                    "fields": _placeholder_fields(),
+                    "date_candidates": _regex_date_candidates(field_extractor, sub_pages),
+                    "source_page_start": start_page,
+                    "source_page_end": end_page,
+                    "display_name": _default_lease_name(_placeholder_fields(), file_storage.filename, index, total),
+                    "looks_like_lease": True,  # unknown until extraction finishes; don't pre-flag as non-lease
+                    "index": index,
+                    "total": total,
+                })
+            return leases, None
+
         split_results = _split_and_extract(pages, field_extractor)
 
         total = len(split_results)
@@ -595,6 +655,7 @@ def _looks_like_lease(extracted_fields) -> bool:
 
 def _lease_summary(lease):
     """Trim a DB lease record down to what list views need, keeping full extracted_fields (the dashboard needs most columns anyway)."""
+    processing_status = lease.get("processing_status") or "complete"
     return {
         "id": lease["id"],
         "filename": lease["filename"],
@@ -604,7 +665,9 @@ def _lease_summary(lease):
         "base_lease_id": lease["base_lease_id"],
         "amendment_count": lease.get("amendment_count", 0),
         "extracted_fields": lease["extracted_fields"],
-        "looks_like_lease": _looks_like_lease(lease["extracted_fields"]),
+        # A lease still being extracted has all-null fields -- don't
+        # pre-flag it as "doesn't look like a lease" until it's done.
+        "looks_like_lease": True if processing_status == "processing" else _looks_like_lease(lease["extracted_fields"]),
         "confidence_summary": compute_lease_confidence_summary(lease),
         "source_page_start": lease.get("source_page_start"),
         "source_page_end": lease.get("source_page_end"),
@@ -612,6 +675,8 @@ def _lease_summary(lease):
         "status": lease.get("status") or "active",
         "version_number": lease.get("version_number") or 1,
         "supersedes_lease_id": lease.get("supersedes_lease_id"),
+        "processing_status": processing_status,
+        "processing_error": lease.get("processing_error"),
     }
 
 
@@ -662,15 +727,89 @@ def _persist_split_leases(filename, split_leases):
             display_name=lease_data["display_name"],
             source_page_start=lease_data["source_page_start"],
             source_page_end=lease_data["source_page_end"],
+            processing_status="processing" if lease_data.get("pending") else "complete",
         )
         if lease_data.get("ai_run_id"):
             database.link_ai_extraction_run_to_lease(lease_data["ai_run_id"], lease_id)
+        lease_data["lease_id"] = lease_id  # so a deferred-extraction caller can find its rows
         lease = database.get_effective_lease(lease_id)
         lease["tags"] = []
         created.append(_lease_summary(lease))
     if created:
         _invalidate_lease_derived_caches()
     return created
+
+
+def _start_deferred_extraction(filename, split_leases):
+    """
+    Kick off the background thread that runs AI extraction for every
+    'pending' lease `_persist_split_leases` just inserted. Returns True
+    if a thread was started. The thread: extracts each range, writes the
+    real fields (or marks the row 'failed' with a plain reason on an AI
+    error), links telemetry, invalidates caches, logs one activity
+    entry. It touches only `database` and pure helpers -- never `request`
+    or `session` -- so it's safe off the request context.
+    """
+    pending = [ld for ld in split_leases if ld.get("pending") and ld.get("lease_id")]
+    if not pending:
+        return False
+
+    items = [{
+        "lease_id": ld["lease_id"],
+        "sub_pages": ld["sub_pages"],
+        "date_candidates": ld["date_candidates"],
+        "index": ld.get("index", i),
+        "total": ld.get("total", len(pending)),
+    } for i, ld in enumerate(pending)]
+
+    def _run():
+        field_extractor = FieldExtractor()
+        completed = failed = 0
+        for item in items:
+            try:
+                fields, run_id = _extract_one_range(item["sub_pages"], field_extractor, engine="ai")
+            except ai_extraction.AIExtractionError as e:
+                _record_ai_run(None, status="error", error_message=str(e))
+                database.finalize_lease_processing(item["lease_id"], status="failed", error=str(e))
+                failed += 1
+                continue
+            except Exception:
+                # An unexpected bug must not leave the lease stuck
+                # 'processing' forever -- mark it failed with a generic
+                # message (details are logged), same as any other
+                # failure path.
+                logger.exception("Unexpected error extracting lease %s in background", item["lease_id"])
+                database.finalize_lease_processing(
+                    item["lease_id"], status="failed",
+                    error="Something went wrong while extracting this document. Delete it and try again.",
+                )
+                failed += 1
+                continue
+            fields.pop("_ai_meta", None)
+            display_name = _default_lease_name(fields, filename, item["index"], item["total"])
+            database.finalize_lease_processing(
+                item["lease_id"], status="complete", extracted_fields=fields,
+                date_candidates=item["date_candidates"], display_name=display_name,
+            )
+            if run_id:
+                database.link_ai_extraction_run_to_lease(run_id, item["lease_id"])
+            completed += 1
+
+        _invalidate_lease_derived_caches()
+        try:
+            if completed:
+                database.insert_activity(
+                    "lease_uploaded",
+                    f"Finished processing {filename}" + (f" ({completed} lease(s))" if completed > 1 else ""),
+                    lease_id=items[0]["lease_id"],
+                )
+            if failed:
+                database.insert_activity("lease_processing_failed", f"Extraction failed for {failed} lease(s) from {filename}")
+        except Exception:
+            logger.exception("Post-extraction activity log failed (non-fatal)")
+
+    threading.Thread(target=_run, name=f"extract:{filename}", daemon=True).start()
+    return True
 
 
 def _find_possible_resubmission_target(fields, exclude_lease_id=None):
@@ -737,12 +876,24 @@ def upload_lease():
         return error
 
     filename = file.filename
-    split_leases, error = _extract_leases_from_file_storage(file)
+    split_leases, error = _extract_leases_from_file_storage(file, defer_ai=True)
     if error:
         message, status = error
         return jsonify({"error": message}), status
 
     created = _persist_split_leases(filename, split_leases)
+
+    if _start_deferred_extraction(filename, split_leases):
+        # Model-backed extraction is running in the background. The
+        # leases exist now, in 'processing' state; the client polls
+        # GET /leases/<id> until processing_status is 'complete' or
+        # 'failed'. 202 = accepted, not yet done.
+        return jsonify({
+            "leases": created,
+            "split_count": len(created),
+            "processing": True,
+        }), 202
+
     for lease_data, summary in zip(split_leases, created):
         summary["possible_resubmission_of"] = _find_possible_resubmission_target(
             lease_data["fields"], exclude_lease_id=summary["id"]
@@ -974,14 +1125,16 @@ def upload_leases_batch():
                              "error": f"Unsupported file type. Please upload one of: {supported}."})
             continue
 
-        split_leases, error = _extract_leases_from_file_storage(file_storage)
+        split_leases, error = _extract_leases_from_file_storage(file_storage, defer_ai=True)
         if error:
             message, _status = error
             results.append({"filename": filename, "success": False, "error": message})
             continue
 
         created = _persist_split_leases(filename, split_leases)
-        results.append({"filename": filename, "success": True, "leases": created, "split_count": len(created)})
+        processing = _start_deferred_extraction(filename, split_leases)
+        results.append({"filename": filename, "success": True, "leases": created,
+                        "split_count": len(created), "processing": processing})
 
     succeeded_files = sum(1 for r in results if r["success"])
     total_leases_created = sum(r["split_count"] for r in results if r["success"])
@@ -997,13 +1150,15 @@ def upload_leases_batch():
             f"Uploaded a batch of {total_leases_created} leases from {succeeded_files} file(s)",
         )
 
+    any_processing = any(r.get("processing") for r in results if r["success"])
     return jsonify({
         "total": len(results),
         "succeeded": succeeded_files,
         "failed": len(results) - succeeded_files,
         "total_leases_created": total_leases_created,
+        "processing": any_processing,
         "results": results,
-    }), 200
+    }), (202 if any_processing else 200)
 
 
 @app.route('/leases/import-rent-roll', methods=['POST'])
@@ -4086,10 +4241,11 @@ def owner_list_accounts():
     if signup_before:
         accounts = [a for a in accounts if a["created_at"] <= signup_before]
 
-    result = []
-    for account in accounts:
-        usage = database.get_user_usage_stats(account["id"], account["email"])
-        result.append({**_owner_account_public_shape(account), "usage": usage})
+    usage_by_user = database.get_usage_stats_for_users(accounts)
+    result = [
+        {**_owner_account_public_shape(account), "usage": usage_by_user.get(account["id"], {})}
+        for account in accounts
+    ]
     return jsonify(result), 200
 
 

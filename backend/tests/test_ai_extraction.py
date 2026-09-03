@@ -270,6 +270,24 @@ def _pdf_bytes():
     return buf.getvalue()
 
 
+import contextlib
+
+
+@contextlib.contextmanager
+def _sync_ai_engine():
+    """Force the AI engine AND the synchronous (non-deferred) extraction path -- the async path has its own coverage in test_async_extraction.py."""
+    prev = os.environ.get("LEASE_ASYNC_EXTRACTION")
+    os.environ["LEASE_ASYNC_EXTRACTION"] = "false"
+    try:
+        with mock.patch.object(ai_extraction, "resolve_engine", return_value="ai"):
+            yield
+    finally:
+        if prev is None:
+            os.environ.pop("LEASE_ASYNC_EXTRACTION", None)
+        else:
+            os.environ["LEASE_ASYNC_EXTRACTION"] = prev
+
+
 def test_upload_route_uses_ai_engine_and_records_linked_telemetry():
     db_path = _fresh_temp_db()
     try:
@@ -277,7 +295,7 @@ def test_upload_route_uses_ai_engine_and_records_linked_telemetry():
             tenant=("Acme Corp", "high", 'Acme Corp ("Tenant")'),
             rent_amount=("$6,250.00", "medium", "Base Rent: $6,250.00 per month"),
         )
-        with mock.patch.object(ai_extraction, "resolve_engine", return_value="ai"), \
+        with _sync_ai_engine(), \
              mock.patch.object(ai_extraction, "extract_lease_fields",
                                side_effect=lambda pages, **kw: ai_extraction._parse_tool_payload(payload, pages) | {
                                    "_ai_meta": {"model": "claude-sonnet-5", "latency_ms": 42,
@@ -307,7 +325,7 @@ def test_upload_route_uses_ai_engine_and_records_linked_telemetry():
 def test_upload_route_502s_cleanly_when_ai_extraction_fails_no_regex_fallback():
     db_path = _fresh_temp_db()
     try:
-        with mock.patch.object(ai_extraction, "resolve_engine", return_value="ai"), \
+        with _sync_ai_engine(), \
              mock.patch.object(ai_extraction, "extract_lease_fields",
                                side_effect=ai_extraction.AIExtractionError("The document-extraction service is temporarily unavailable. Please try again in a moment.")):
             resp = _analyst_client().post(
@@ -319,7 +337,7 @@ def test_upload_route_502s_cleanly_when_ai_extraction_fails_no_regex_fallback():
         body = resp.get_json()
         assert "temporarily unavailable" in body["error"]
         assert "Traceback" not in str(body)
-        assert database.get_all_effective_leases() == [], "nothing persisted on a failed extraction"
+        assert database.get_all_effective_leases() == [], "nothing persisted on a failed synchronous extraction"
     finally:
         os.unlink(db_path)
     print("✓ test_upload_route_502s_cleanly_when_ai_extraction_fails_no_regex_fallback: PASS")

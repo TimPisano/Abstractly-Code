@@ -137,7 +137,13 @@ const Upload = {
 
             let result;
             try {
-                const response = await Api.uploadLease(file);
+                let response = await Api.uploadLease(file);
+                if (response.processing) {
+                    // The leases exist but are still being extracted by
+                    // the model on the server -- poll each one until it's
+                    // done (or failed), then continue as normal.
+                    response = { ...response, leases: await this.waitForProcessing(response.leases, itemEl) };
+                }
                 response.leases.forEach(lease => recordStats(file.name, lease.extracted_fields));
                 result = { filename: file.name, success: true, leases: response.leases, split_count: response.split_count };
             } catch (err) {
@@ -171,6 +177,34 @@ const Upload = {
         textEl.textContent = messages[0][1];
         const timers = messages.slice(1).map(([delay, text]) => setTimeout(() => { textEl.textContent = text; }, delay));
         return () => timers.forEach(clearTimeout);
+    },
+
+    // Poll GET /leases/<id> for each still-'processing' lease from an
+    // async (202) upload until every one is 'complete' or 'failed'.
+    // Returns the refreshed lease objects. A lease that comes back
+    // 'failed' surfaces its processing_error as the file's error.
+    async waitForProcessing(leases, itemEl) {
+        const textEl = itemEl && itemEl.querySelector('.upload-progress-status-text');
+        if (textEl) textEl.textContent = 'Processing on the server (extracting fields with AI)…';
+
+        const POLL_MS = 2000;
+        const MAX_WAIT_MS = 5 * 60 * 1000;
+        const started = Date.now();
+        let current = leases.map(l => ({ ...l }));
+
+        while (current.some(l => l.processing_status === 'processing')) {
+            if (Date.now() - started > MAX_WAIT_MS) {
+                throw new Error('Still processing after several minutes — check the lease list shortly; it may finish on its own.');
+            }
+            await new Promise(r => setTimeout(r, POLL_MS));
+            current = await Promise.all(current.map(l =>
+                l.processing_status === 'processing' ? Api.getLease(l.id).catch(() => l) : Promise.resolve(l)
+            ));
+        }
+
+        const failed = current.find(l => l.processing_status === 'failed');
+        if (failed) throw new Error(failed.processing_error || 'Extraction failed for this document.');
+        return current;
     },
 
     setProgressItemDone(itemEl, result) {

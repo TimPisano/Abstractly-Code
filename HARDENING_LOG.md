@@ -74,3 +74,44 @@ Render terminates TLS at its edge and 301-redirects HTTP→HTTPS automatically f
 ### 1.7 Verification
 
 Full unit suite **59/60** after all Phase 1 changes (the 1 failure is the pre-existing `tesseract`-not-installed OCR test — unrelated, fails identically on the baseline). New `test_security_middleware.py` (14 cases) green. `pip check` clean. `pypdf` migration verified against every PDF-touching test.
+
+---
+
+## PHASE 2 — Performance
+
+### 2.0 Findings
+
+| Area | Finding |
+|---|---|
+| **Owner account list** | Real N+1: `get_user_usage_stats` opened a **new DB connection + 6 `COUNT` queries per user**. N users → N connections + 6N queries. |
+| **`get_user_by_email`** (every login) | `WHERE lower(email) = lower(?)` → full scan; can't use the `UNIQUE` index. |
+| **Missing indexes** | `tasks(created_by_user_id)`, `lease_field_edits(edited_by_email)`, `discrepancy_resolutions(discrepancy_id)` and `(resolved_by_email)`, `comments(author_email)` and `(lease_id)`, `discrepancies(lease_id/related_lease_id/status)`, `alerts(lease_id/status)`, `activity_log(created_at/lease_id)`, `lease_tags(tag)` — all full-scanning. |
+| **AI extraction blocks the request** | `POST /leases` runs `ai_extraction.extract_lease_fields` **synchronously** — 5–15s per lease. A multi-lease PDF (N×15s) hangs the UI and can blow gunicorn's 120s `--timeout` → worker killed mid-run → **partial writes** (some leases persisted, some not). |
+| **`get_all_effective_leases`, `GET /leases`, risk/alert sync** | Already optimized in a prior pass (single query + in-memory merge; `upsert_*_bulk`). No change needed. |
+| **Caching for "account/plan lookups"** | **N/A** — there is no plan/usage-limit system, and account status is read from the signed session cookie (no per-request DB hit). The expensive *derived* computations (portfolio trends, health score) are already cached in `cache.py` with proper invalidation. Adding raw-list caching would risk exactly the staleness bugs the ask warns against, for negligible benefit at this app's scale — deliberately not done. |
+
+### 2.1 Fixes applied
+
+**Indexes** (`database.py` `init_db`, `CREATE INDEX IF NOT EXISTS` — safe on existing DBs): the 15 indexes above. The email-keyed ones are `COLLATE NOCASE` and the matching queries were changed from `lower(col) = lower(?)` to `col = ? COLLATE NOCASE` / `GROUP BY col COLLATE NOCASE` so the index is actually used.
+
+**`get_user_by_email`**: `users.email` is always stored lower-cased, so this now normalizes the input and matches with a plain `=` → uses the `UNIQUE` index. Runs on every login.
+
+**Owner account list — N+1 removed**: new `database.get_usage_stats_for_users(users)` — **6 grouped aggregate queries on one connection**, total, regardless of user count. `owner_list_accounts` calls it once instead of per-user. `get_user_usage_stats` kept as a thin single-user wrapper.
+
+**AI extraction moved off the request path** (`api.py` + `database.py`):
+- New `leases.processing_status` (`processing`/`complete`/`failed`) + `processing_error` columns. Default `'complete'` → every existing row and every fast regex-path insert is born done, zero behavior change.
+- `POST /leases` and `/leases/batch` with the AI engine: do only the **cheap synchronous work** (validate, extract page text, rent-roll-shape check, regex boundary detection), insert placeholder lease rows in `processing` state, spawn a **daemon thread** for the model calls, and return **`202` with `processing: true`** immediately. The thread writes the real fields (or marks the row `failed` with a plain reason — never a half-written field set), links telemetry, invalidates caches, logs one activity entry. It touches only `database` + pure helpers, never `request`/`session`.
+- `GET /leases` / `GET /leases/<id>` expose `processing_status` / `processing_error`. A still-processing lease isn't pre-flagged "doesn't look like a lease".
+- Startup: `database.fail_orphaned_processing_leases()` marks any lease left mid-extraction by a dead process as `failed` with "interrupted by a server restart" (a thread doesn't survive a redeploy).
+- `LEASE_ASYNC_EXTRACTION=false` forces the old synchronous behavior (operator escape hatch + used by the sync-contract tests). The regex path is always synchronous (it's fast). `resubmit`/`amendment`/`sample` stay synchronous (single-doc, infrequent, heavy post-processing) — flagged as a possible follow-up.
+- **Frontend** (`upload-view.js`): a `202` response triggers `waitForProcessing()` — polls `GET /leases/<id>` every 2s (5-min cap) until every lease is `complete`/`failed`, surfacing a `failed` lease's `processing_error` as the file's error. The upload UI already shows a spinner + escalating "still working" copy, so this slots in cleanly.
+
+**Tests**: `test_async_extraction.py` (6 cases): 202 + processing state; background thread fills fields + links telemetry; AI failure → row marked `failed` and **kept** (so the user sees why); multi-lease document processes every split; orphan recovery; `LEASE_ASYNC_EXTRACTION=false` → sync 201. `test_ai_extraction.py`'s two upload tests updated to pin the sync path.
+
+### 2.2 Verification
+
+Full unit suite **60/61** (the 1 failure is the same pre-existing `tesseract` OCR test). New `test_async_extraction.py` (6 cases) green; `test_ai_extraction.py` updated and green.
+
+### 2.3 Follow-ups
+- `resubmit` / `amendment` / `sample` uploads still extract synchronously (single-doc, infrequent, heavy post-processing that's awkward to defer). If AI resubmit of a very large lease becomes a real problem, the same `_start_deferred_extraction` machinery can be extended to them.
+- The frontend `waitForProcessing` polling needs a browser check on the next deploy (can't exercise the deployed frontend from here). Contract: 202 response has `processing: true`; poll `GET /leases/<id>` until `processing_status` is `complete`/`failed`.

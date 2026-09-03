@@ -94,6 +94,18 @@ def _migrate_schema(conn: sqlite3.Connection) -> None:
         "status": "TEXT NOT NULL DEFAULT 'active'",
         "supersedes_lease_id": "INTEGER",
         "version_number": "INTEGER NOT NULL DEFAULT 1",
+        # Async extraction (see api.py's background-processing path): a
+        # lease uploaded through the model-backed engine is inserted
+        # immediately in 'processing' state and its fields are filled in
+        # by a background thread, so the upload request returns right
+        # away instead of blocking on a 5-15s-per-lease model call (and
+        # instead of risking a gunicorn worker timeout + partial write
+        # on a large multi-lease document). Default 'complete' so every
+        # existing row, and every fast regex-path insert, is born done
+        # with no behavior change. processing_error holds the
+        # user-facing reason when status is 'failed'.
+        "processing_status": "TEXT NOT NULL DEFAULT 'complete'",
+        "processing_error": "TEXT",
     }
     for column, sql_type in new_columns.items():
         if column not in existing_columns:
@@ -674,6 +686,27 @@ def init_db() -> None:
             )
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_training_rounds_created_at ON training_rounds(created_at)")
+
+        # ---- Hardening pass (perf): indexes for lookups that were
+        # full-table-scanning. SQLite does NOT auto-index a plain
+        # FOREIGN KEY column, and a `WHERE lower(col) = ?` predicate
+        # can't use a plain index -- the matching queries were changed
+        # to `col = ? COLLATE NOCASE` so these NOCASE indexes apply.
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_created_by_user_id ON tasks(created_by_user_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_lease_field_edits_edited_by_email ON lease_field_edits(edited_by_email COLLATE NOCASE)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_discrepancy_resolutions_discrepancy_id ON discrepancy_resolutions(discrepancy_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_discrepancy_resolutions_resolved_by_email ON discrepancy_resolutions(resolved_by_email COLLATE NOCASE)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_comments_author_email ON comments(author_email COLLATE NOCASE)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_comments_lease_id ON comments(lease_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_discrepancies_lease_id ON discrepancies(lease_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_discrepancies_related_lease_id ON discrepancies(related_lease_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_discrepancies_status ON discrepancies(status)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_alerts_lease_id ON alerts(lease_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_alerts_status ON alerts(status)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_activity_log_created_at ON activity_log(created_at)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_activity_log_lease_id ON activity_log(lease_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_lease_tags_tag ON lease_tags(tag)")
+
         conn.commit()
     finally:
         conn.close()
@@ -730,6 +763,7 @@ def insert_lease(
     status: str = "active",
     supersedes_lease_id: Optional[int] = None,
     version_number: int = 1,
+    processing_status: str = "complete",
 ) -> int:
     """
     Persist one extracted document. Returns its new lease id.
@@ -759,8 +793,8 @@ def insert_lease(
     try:
         cur = conn.execute(
             "INSERT INTO leases (filename, uploaded_at, extracted_fields, document_type, base_lease_id, "
-            "date_candidates, display_name, source_page_start, source_page_end, status, supersedes_lease_id, version_number) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "date_candidates, display_name, source_page_start, source_page_end, status, supersedes_lease_id, version_number, processing_status) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 filename,
                 datetime.now(timezone.utc).isoformat(),
@@ -774,10 +808,77 @@ def insert_lease(
                 status,
                 supersedes_lease_id,
                 version_number,
+                processing_status,
             ),
         )
         conn.commit()
         return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def finalize_lease_processing(
+    lease_id: int,
+    *,
+    status: str,
+    extracted_fields: Optional[Dict[str, Any]] = None,
+    date_candidates: Optional[Dict[str, Any]] = None,
+    display_name: Optional[str] = None,
+    error: Optional[str] = None,
+) -> bool:
+    """
+    Called by the background extraction thread (see api.py) to fill in a
+    lease that was inserted in 'processing' state.
+
+      status='complete' -> writes extracted_fields / date_candidates /
+        display_name and clears any error.
+      status='failed'   -> leaves the placeholder fields as-is and
+        records `error` (a plain, user-facing message) so the detail
+        view can show why, and the row can be deleted or the upload
+        retried. Never leaves a half-written field set.
+
+    Returns False if the lease id no longer exists (e.g. deleted while
+    processing).
+    """
+    sets = ["processing_status = ?", "processing_error = ?"]
+    params: List[Any] = [status, error]
+    if extracted_fields is not None:
+        sets.append("extracted_fields = ?")
+        params.append(json.dumps(extracted_fields))
+    if date_candidates is not None:
+        sets.append("date_candidates = ?")
+        params.append(json.dumps(date_candidates))
+    if display_name is not None:
+        sets.append("display_name = ?")
+        params.append(display_name)
+    params.append(lease_id)
+
+    conn = get_connection()
+    try:
+        cur = conn.execute(f"UPDATE leases SET {', '.join(sets)} WHERE id = ?", params)
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def fail_orphaned_processing_leases() -> int:
+    """
+    Mark every lease still in 'processing' state as 'failed' -- called
+    once at process startup. A background extraction thread doesn't
+    survive a restart/redeploy, so any lease that was mid-extraction
+    would otherwise sit 'processing' forever. Returns how many were
+    reset. Safe/cheap to run on every boot (usually 0 rows).
+    """
+    conn = get_connection()
+    try:
+        cur = conn.execute(
+            "UPDATE leases SET processing_status = 'failed', "
+            "processing_error = 'Processing was interrupted by a server restart. Delete this and upload again.' "
+            "WHERE processing_status = 'processing'"
+        )
+        conn.commit()
+        return cur.rowcount
     finally:
         conn.close()
 
@@ -1541,10 +1642,17 @@ def get_user(user_id: int) -> Optional[Dict[str, Any]]:
 
 
 def get_user_by_email(email: str) -> Optional[Dict[str, Any]]:
-    """Case-insensitive lookup, same convention as get_waitlist_signup_by_email -- login shouldn't be case-sensitive on the email a person types."""
+    """
+    Case-insensitive lookup -- login shouldn't be case-sensitive on the
+    email a person types. `users.email` is always stored already
+    lower-cased (create_user / the env seed both do `.strip().lower()`),
+    so normalizing the input here and matching with a plain `=` lets
+    this use the UNIQUE index directly instead of a full scan with
+    `lower()` on every row -- and this runs on every login.
+    """
     conn = get_connection()
     try:
-        row = conn.execute("SELECT * FROM users WHERE lower(email) = lower(?)", (email,)).fetchone()
+        row = conn.execute("SELECT * FROM users WHERE email = ?", ((email or "").strip().lower(),)).fetchone()
         return dict(row) if row else None
     finally:
         conn.close()
@@ -1643,34 +1751,63 @@ def get_user_usage_stats(user_id: int, email: str) -> Dict[str, int]:
     is an email match, not a foreign key join; still accurate as long
     as the login's email hasn't changed).
     """
+    return get_usage_stats_for_users([{"id": user_id, "email": email}])[user_id]
+
+
+_ZERO_USAGE = {
+    "tasks_created": 0, "tasks_assigned": 0, "tasks_completed": 0,
+    "field_edits": 0, "discrepancies_resolved": 0, "comments_posted": 0,
+}
+
+
+def get_usage_stats_for_users(users: List[Dict[str, Any]]) -> Dict[int, Dict[str, int]]:
+    """
+    Batched version of get_user_usage_stats for the owner console's
+    account list: 6 grouped aggregate queries total on ONE connection,
+    instead of (new connection + 6 COUNTs) per user. `users` is a list
+    of dicts with at least "id" and "email". Returns {user_id: stats}.
+
+    The email-keyed tables (lease_field_edits, discrepancy_resolutions,
+    comments) store the acting person's email as free text, so this is
+    a case-insensitive email match, not an FK join -- accurate as long
+    as a login's email hasn't changed since they acted.
+    """
+    if not users:
+        return {}
+    result = {u["id"]: dict(_ZERO_USAGE) for u in users}
+    id_by_lower_email = {(u.get("email") or "").strip().lower(): u["id"] for u in users if u.get("email")}
+    user_ids = list(result)
+
     conn = get_connection()
     try:
-        tasks_created = conn.execute(
-            "SELECT COUNT(*) FROM tasks WHERE created_by_user_id = ?", (user_id,)
-        ).fetchone()[0]
-        tasks_assigned = conn.execute(
-            "SELECT COUNT(*) FROM tasks WHERE assigned_to_user_id = ?", (user_id,)
-        ).fetchone()[0]
-        tasks_completed = conn.execute(
-            "SELECT COUNT(*) FROM tasks WHERE assigned_to_user_id = ? AND status = 'completed'", (user_id,)
-        ).fetchone()[0]
-        field_edits = conn.execute(
-            "SELECT COUNT(*) FROM lease_field_edits WHERE lower(edited_by_email) = lower(?)", (email,)
-        ).fetchone()[0]
-        discrepancies_resolved = conn.execute(
-            "SELECT COUNT(*) FROM discrepancy_resolutions WHERE lower(resolved_by_email) = lower(?)", (email,)
-        ).fetchone()[0]
-        comments_posted = conn.execute(
-            "SELECT COUNT(*) FROM comments WHERE lower(author_email) = lower(?)", (email,)
-        ).fetchone()[0]
-        return {
-            "tasks_created": tasks_created,
-            "tasks_assigned": tasks_assigned,
-            "tasks_completed": tasks_completed,
-            "field_edits": field_edits,
-            "discrepancies_resolved": discrepancies_resolved,
-            "comments_posted": comments_posted,
-        }
+        for uid, cnt in conn.execute(
+            "SELECT created_by_user_id, COUNT(*) FROM tasks WHERE created_by_user_id IS NOT NULL GROUP BY created_by_user_id"
+        ):
+            if uid in result:
+                result[uid]["tasks_created"] = cnt
+        for uid, cnt in conn.execute(
+            "SELECT assigned_to_user_id, COUNT(*) FROM tasks WHERE assigned_to_user_id IS NOT NULL GROUP BY assigned_to_user_id"
+        ):
+            if uid in result:
+                result[uid]["tasks_assigned"] = cnt
+        for uid, cnt in conn.execute(
+            "SELECT assigned_to_user_id, COUNT(*) FROM tasks WHERE assigned_to_user_id IS NOT NULL AND status = 'completed' GROUP BY assigned_to_user_id"
+        ):
+            if uid in result:
+                result[uid]["tasks_completed"] = cnt
+
+        for table, col, key in (
+            ("lease_field_edits", "edited_by_email", "field_edits"),
+            ("discrepancy_resolutions", "resolved_by_email", "discrepancies_resolved"),
+            ("comments", "author_email", "comments_posted"),
+        ):
+            for raw_email, cnt in conn.execute(
+                f"SELECT {col}, COUNT(*) FROM {table} WHERE {col} IS NOT NULL GROUP BY {col} COLLATE NOCASE"
+            ):
+                uid = id_by_lower_email.get((raw_email or "").strip().lower())
+                if uid is not None:
+                    result[uid][key] = result[uid][key] + cnt
+        return result
     finally:
         conn.close()
 
