@@ -25,6 +25,12 @@ Thumbs.db
 # Test files
 tests/sample_lease.pdf
 
+# Generated synthetic test corpus (tests/generate_synthetic_corpus.py) —
+# a generator, not a committed fixture set. Re-run with the same --seed
+# for the same files.
+tests/synthetic_corpus/
+tests/synthetic_corpus_*/
+
 # Temp files
 *.tmp
 *.log

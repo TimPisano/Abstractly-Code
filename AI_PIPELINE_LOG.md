@@ -116,6 +116,31 @@ Live end-to-end (a real model call over a real pair) — same credit blocker as 
 
 ---
 
+## PHASE 3 — Synthetic messy test corpus
+
+### 3.0 What existed
+Static hand-built fixtures only: `create_synthetic_leases.py` (3 PDFs), `create_red_flag_leases.py` (5), a handful of `synthetic_*_rent_roll.csv` PMS fixtures. No *generator* producing a large batch with programmatic ground truth. Built one.
+
+### 3.1 What was built
+
+**`backend/tests/generate_synthetic_corpus.py`** — seeded, reproducible generator. `venv/bin/python tests/generate_synthetic_corpus.py --leases 60 --seed 7` writes a directory of files + `manifest.json` (the ground truth).
+
+- **Leases** (PDF / DOCX / TXT): randomized tenant/landlord/address/rent/dates/clauses; each field independently present-or-absent so "not found" is exercised; label-style vs defined-term parties; 6 date formats incl. legal "1st day of…"; annual-with-monthly-parenthetical vs plain monthly rent; year-by-year escalation table vs anniversary rule; 1–3 pages; ~25% of PDFs get light OCR-style character noise (`l`↔`1`, `O`↔`0`, dropped chars) to stand in for scans.
+- **Rent rolls** (CSV / XLSX): 5 vendor header vocabularies; decorative title/as-of rows before the header; Market-Rent column beside the real rent; merged-cell-style property grouping (only first row carries the property); VACANT rows; trailing TOTAL row; mixed date formats and currency (with/without `$`, with/without cents); stray whitespace. **~35% of real rows get a deliberate injected disagreement** vs. their source lease — `rent_low`, `rent_high`, `stale_end` (expiration backdated years, the classic post-renewal stale-roll case), or `tenant_typo` — recorded in the manifest so Phase 4 can score rent-roll validation precision/recall, not just extraction.
+- **Garbage**: interoffice memo PDF, invoice PDF, truncated/corrupt PDF, empty file, gibberish-image PNG — for the "not a lease" / "can't process this" paths.
+- Every rent-roll row links back to its `lease_id`, so a lease's abstracted fields and the rent roll's claim about the same unit can be compared.
+
+**Manifest** per lease: `{id, file, format, scanned, pages, style, ground_truth:{all 15 fields, null = "should be not found"}}`.
+
+**Tests** — `backend/tests/test_synthetic_corpus_generator.py` (5 cases, green): manifest well-formed + every file exists; deterministic per seed; generated leases flow through the real `document_extractor` + `FieldExtractor`; rent rolls import via the real `parse_csv/xlsx_rent_roll` and carry valid ground-truth links; garbage files are rejected or read as non-leases.
+
+Default output dir `tests/synthetic_corpus/` is gitignored (it's a generator, not a fixture set).
+
+### 3.2 Note
+The batch size for Phase 4 is a CLI arg; 60 leases + 8 rent rolls + 10 garbage is the default. Phase 4's harness calls `generate_corpus()` directly.
+
+---
+
 ## Cross-cutting follow-ups / open items
 - **Prompts**: replace the reconstructed prompts in `ai_extraction.py` / `ai_rent_roll_validation.py` with the originals ("Abstractly — Lease Abstraction Prompts") when available; re-run Phase 4 to confirm no regression.
 - **"Unusual/non-standard terms"** (a CLAUDE.md core requirement) is not yet its own field — regex never had it. Candidate to add in Phase 4/5 as an AI-only field once the 15 core fields are calibrated.
