@@ -42,13 +42,22 @@ services:
         value: https://abstractly-n0id.onrender.com
       - key: LOCAL_DEV_MODE
         value: "false"
+      - key: LOG_LEVEL
+        value: INFO
+      # Emails ADMIN_EMAIL on any ERROR/CRITICAL log line (rate-limited).
+      # Needs EMAIL_USER/EMAIL_APP_PASSWORD/ADMIN_EMAIL set too. See
+      # DEPLOYMENT.md "Getting alerted when something breaks".
+      - key: ERROR_ALERT_EMAILS
+        value: "true"
       # Optional -- the app degrades gracefully (clear error/skip,
       # never a crash) if any of these are left unset. Uncomment and
       # fill in via the dashboard only for the features you want live
       # on day one; see DEPLOYMENT.md for what each one unlocks.
-      # - key: ANTHROPIC_API_KEY        # AI portfolio assistant
+      # - key: ANTHROPIC_API_KEY        # AI lease extraction + portfolio assistant
       #   sync: false
-      # - key: EMAIL_USER               # waitlist confirmation/notification emails
+      # - key: LEASE_AI_EXTRACTION      # "true" -> uploads abstracted by the model
+      #   value: "true"
+      # - key: EMAIL_USER               # waitlist emails + error alerts
       #   sync: false
       # - key: EMAIL_APP_PASSWORD
       #   sync: false

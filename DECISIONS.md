@@ -7435,3 +7435,42 @@ validation.py` add a model-backed complement to the arithmetic
   without persisting a partial round. Everything else in Phases 1-3/5
   is complete and tested; a real training run is one command once
   credit exists.
+
+## Hardening pass: observability + reliability (2026-09-03)
+
+**Logging.** There was no logging *configuration* anywhere -- loggers
+existed but had no handler, so `logger.info(...)` calls were silently
+dropped and there was no consistent format. Added
+`app/logging_config.py`: one stdout handler, `TIMESTAMP LEVEL logger
+[request_id] METHOD path :: message` (or JSON via `LOG_FORMAT=json`),
+level from `LOG_LEVEL`. A Flask `before/after_request` pair logs one
+line per request with a per-request id echoed on `X-Request-Id`.
+Chose stdout + host log capture (Render) over a file or a log
+service -- zero infra, and it's what every modern platform expects.
+
+**Error alerting: opt-in email, not a new dependency.** A custom
+`SMTPErrorAlertHandler` emails `ADMIN_EMAIL` on `ERROR`/`CRITICAL`,
+rate-limited per call-site (5 min) and re-entrancy-guarded (the send
+path itself logs on failure). **Opt-in via `ERROR_ALERT_EMAILS=true`**,
+not "on whenever email is configured" -- this app has a documented
+accidental-email-storm incident, and local dev hits errors constantly.
+Sentry etc. deliberately not added; noted in DEPLOYMENT.md as the
+upgrade if grouped traces/trends are wanted.
+
+**Health check now proves the DB.** `GET /health` runs `SELECT 1`;
+a broken/locked/misconfigured database returns 503 so Render's health
+check actually catches a dyno that can't serve requests, instead of a
+process-is-up check that passes while every real request 500s.
+
+**Graceful AI degradation** was already handled by the Phase 1/2 work
+(clean 502 on the synchronous paths, `processing_status='failed'` +
+kept row on the async path, per-pair failure isolation on the
+rent-roll sweep, retry-then-fail on a hung/timed-out call). Added a
+regression test for the resubmit path specifically (AI failure must
+502 and leave the old lease active/unchanged).
+
+**Backups.** Documented honestly: free tier has no persistent disk so
+there's nothing to back up; after adding a disk, Render gives daily
+disk snapshots (coarse), and the real answer is a scheduled
+`sqlite3 .backup` copy to external storage (or migrating to Render
+Postgres). Restore steps written out. See DEPLOYMENT.md.

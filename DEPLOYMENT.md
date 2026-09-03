@@ -216,6 +216,86 @@ using this with a real prospect's real data, not just a demo):
    no code change is needed (the app already reads `DB_PATH` at
    startup — see `app/api.py`).
 
+## Logging and monitoring
+
+The backend logs to **stdout** in a consistent format
+(`app/logging_config.py`). Render captures stdout — see it under the
+`abstractly-api` service → **"Logs"** tab (live tail), or via
+`render logs` in Render's CLI.
+
+- Every request logs one line: `GET /leases -> 200 34ms`, prefixed with
+  a short **request id** that's also on the `X-Request-Id` response
+  header — so if a user reports an error at a certain time, you can
+  find every log line for that exact request.
+- 5xx responses log at `ERROR`; 4xx at `WARNING`.
+- `/health` hits are not logged (Render probes it constantly).
+- Env knobs (set on the `abstractly-api` service's Environment tab):
+  `LOG_LEVEL` (default `INFO`), `LOG_FORMAT=json` for machine parsing.
+
+**Health check.** `GET /health` (Render's configured health check path)
+now runs a `SELECT 1` against the database — a broken/locked/misconfigured
+DB returns `503 {"status":"degraded"}` so Render stops routing to a dyno
+that can't actually serve requests. `curl https://abstractly-api.onrender.com/health`
+should return `{"status":"healthy"}`.
+
+### Getting alerted when something breaks
+
+Two independent options — use either or both:
+
+1. **Email on error (built in).** Set `ERROR_ALERT_EMAILS=true` on the
+   `abstractly-api` service (needs `EMAIL_USER` / `EMAIL_APP_PASSWORD` /
+   `ADMIN_EMAIL` also set — the same Gmail App Password the waitlist
+   emails use). Any `ERROR`/`CRITICAL` log line then emails `ADMIN_EMAIL`,
+   rate-limited to one per unique error site per 5 minutes so a loop
+   can't mailbomb you. Off by default (opt-in — this app has a past
+   accidental-email-storm incident; see `DECISIONS.md`).
+2. **Render's own alerts.** `abstractly-api` → "Settings" → "Notifications"
+   — Render can email/Slack you on deploy failure and on the service
+   going unhealthy (which the new `/health` DB check now makes
+   meaningful). Free, no code.
+3. *(Optional, not wired up)* A hosted error tracker like **Sentry** —
+   `pip install sentry-sdk[flask]` + `sentry_sdk.init(dsn=...)` early in
+   `app/api.py`, DSN via a `SENTRY_DSN` env var. Gives grouped stack
+   traces and trends. Left out to keep the dependency list minimal;
+   the email handler covers "tell me when it breaks".
+
+## Database backups and restore
+
+**Free tier (current):** there is **no persistent disk**, so the SQLite
+database is wiped on every restart/redeploy. There is nothing to back
+up because there is no durable data — this is fine for a demo, not for
+real prospect data. (This is the same tradeoff described under
+"Free-tier behavior" above.)
+
+**After you add persistent storage** (the section above):
+
+- **Render disk snapshots.** A Starter+ service with an attached disk
+  gets **automatic daily snapshots**, retained ~7 days, at
+  `abstractly-api` → "Disks" → your disk → "Snapshots". To restore:
+  create a new disk *from* a snapshot and re-point the service at it
+  (Render support can also roll a disk back). This recovers the whole
+  disk to a point in time — good enough for "the file got corrupted"
+  or "a bad deploy trashed data", not for "undo one accidental delete
+  from 20 minutes ago".
+
+- **Better: your own SQLite copy.** SQLite is a single file, so a real
+  backup is just copying `${DB_PATH}` somewhere safe on a schedule.
+  Simplest options:
+  - A **Render Cron Job** service (separate, ~$1/mo) running, daily:
+    `sqlite3 /app/data/lease_portfolio.db ".backup /tmp/backup.db" && <upload /tmp/backup.db to S3/Backblaze/Dropbox>`.
+    `.backup` is safe to run against a live database (it's a proper
+    online backup, not a raw `cp`).
+  - Or, once volume justifies it, migrate off SQLite to **Render
+    Postgres**, which has managed daily backups + point-in-time
+    recovery built in. The app's data layer is small and centralized
+    (`app/database.py`); this is a real but bounded change.
+
+**To restore a `.backup` copy** onto a running service: put the file at
+`${DB_PATH}` (stop the service or do it during a maintenance window so
+nothing is mid-write), then restart. On next boot the app runs its
+idempotent schema migration (`init_db`) over whatever schema the backup
+had, so a slightly older backup still comes up cleanly.
+
 ## Adding a custom domain later
 
 Whenever you buy a domain (Namecheap, Google Domains, etc. all work

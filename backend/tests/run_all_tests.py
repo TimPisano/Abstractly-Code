@@ -44,6 +44,7 @@ UNIT_TESTS = [
     "test_access_gate.py",
     "test_admin_auth.py",
     "test_security_middleware.py",
+    "test_logging_and_health.py",
     "test_password_reset.py",
     "test_multi_lease_detection.py",
     "test_multi_lease_structural_variation.py",
@@ -126,6 +127,10 @@ def run_test(filename):
     # tests (test_ai_extraction.py) and a live check in
     # test_live_extraction_api.py.
     env["LEASE_EXTRACTION_ENGINE"] = "regex"
+    # Quiet the per-request INFO log lines (app/logging_config.py) so
+    # suite output stays readable -- test_logging_and_health.py attaches
+    # its own capturing handler and doesn't depend on the level.
+    env.setdefault("LOG_LEVEL", "WARNING")
 
     result = subprocess.run(
         [sys.executable, filename],

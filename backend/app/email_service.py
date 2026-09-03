@@ -145,6 +145,18 @@ def _send(to_email: str, subject: str, text_body: str, html_body: str) -> bool:
         return False
 
 
+def send_operational_alert(to_email: str, subject: str, body: str) -> bool:
+    """
+    Operator-facing alert (not customer-facing): used by the
+    email-on-error logging handler (app/logging_config.py). Plain text
+    only, wrapped in the same minimal HTML shell as the other emails so
+    it renders fine in any client. Fail-open like every send here.
+    """
+    import html as _html
+    lines = [_html.escape(line) for line in body.splitlines() if line.strip()] or [_html.escape(body)]
+    return _send(to_email, subject, body, _email_html("System alert", lines))
+
+
 def send_waitlist_confirmation_email(to_email: str) -> bool:
     """Sent immediately when someone first joins the waitlist (not on a duplicate resubmission — see api.py)."""
     subject = "We've received your request"

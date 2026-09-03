@@ -223,6 +223,37 @@ def test_async_disabled_falls_back_to_synchronous_201():
     print("✓ test_async_disabled_falls_back_to_synchronous_201: PASS")
 
 
+def test_resubmit_degrades_cleanly_on_ai_failure_and_leaves_the_old_lease_intact():
+    """resubmit/amendment stay synchronous -- an AI failure there must 502 and change nothing."""
+    db = _fresh_temp_db()
+    prev = os.environ.get("LEASE_ASYNC_EXTRACTION")
+    os.environ["LEASE_ASYNC_EXTRACTION"] = "false"
+    try:
+        original = database.insert_lease("lease.pdf", _fields(tenant="Original Tenant", rent_amount="$5,000.00"))
+        assert database.get_lease(original)["status"] == "active"
+
+        with mock.patch.object(ai_extraction, "resolve_engine", return_value="ai"), \
+             mock.patch.object(ai_extraction, "extract_lease_fields",
+                               side_effect=ai_extraction.AIExtractionError("AI processing is unavailable: the API credit balance is too low.")):
+            resp = _analyst_client().post(
+                f"/leases/{original}/resubmit",
+                data={"file": (io.BytesIO(_pdf_bytes()), "corrected.pdf")},
+                content_type="multipart/form-data",
+            )
+        assert resp.status_code == 502
+        assert "credit balance" in resp.get_json()["error"]
+        after = database.get_lease(original)
+        assert after["status"] == "active", "the old lease must not be superseded by a failed resubmit"
+        assert after["extracted_fields"]["tenant"]["value"] == "Original Tenant"
+    finally:
+        if prev is None:
+            os.environ.pop("LEASE_ASYNC_EXTRACTION", None)
+        else:
+            os.environ["LEASE_ASYNC_EXTRACTION"] = prev
+        os.unlink(db)
+    print("✓ test_resubmit_degrades_cleanly_on_ai_failure_and_leaves_the_old_lease_intact: PASS")
+
+
 if __name__ == "__main__":
     test_ai_upload_returns_202_and_leases_start_in_processing_state()
     test_background_thread_fills_in_fields_and_links_telemetry()
@@ -230,4 +261,5 @@ if __name__ == "__main__":
     test_multi_lease_document_processes_every_split_lease()
     test_fail_orphaned_processing_leases_recovers_stuck_rows()
     test_async_disabled_falls_back_to_synchronous_201()
+    test_resubmit_degrades_cleanly_on_ai_failure_and_leaves_the_old_lease_intact()
     print("\nAll async extraction tests passed.")

@@ -42,6 +42,11 @@ import time
 # happens before that import.
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
+# Configure logging for the whole process before anything else logs --
+# a single stdout handler + consistent format + optional email-on-error.
+from app.logging_config import configure_logging, new_request_id
+configure_logging()
+
 from app.field_extractor import FieldExtractor, looks_like_rent_roll_table
 from app import ai_extraction
 from app import ai_rent_roll_validation
@@ -118,6 +123,10 @@ CORS(app, supports_credentials=True, origins=ALLOWED_ORIGINS)
 # app/security.py -- installed here so it wraps every route below.
 from app.security import install_security, RateLimiter
 install_security(app, ALLOWED_ORIGINS)
+
+# One structured log line per request + a per-request id (X-Request-Id).
+from app.logging_config import install_request_logging
+install_request_logging(app)
 
 # Signs the admin session cookie -- if FLASK_SECRET_KEY isn't set, a
 # random key is generated for this process only, logged as a warning
@@ -4441,7 +4450,25 @@ def extraction_quality_field_reliability():
 
 @app.route('/health', methods=['GET'])
 def health_check():
-    """Simple health check endpoint."""
+    """
+    Health check for Render (render.yaml healthCheckPath). Verifies the
+    process is up AND that the database is actually reachable and
+    writable-path-openable with a trivial query -- a broken disk / locked
+    DB / bad DB_PATH should fail the health check so Render doesn't route
+    traffic to (or keep) a dyno that can't serve real requests. Returns
+    503 with {"status": "degraded", "database": "unavailable"} on a DB
+    error, 200 {"status": "healthy"} otherwise. Never touches auth,
+    never logs (it's hit constantly).
+    """
+    try:
+        conn = database.get_connection()
+        try:
+            conn.execute("SELECT 1").fetchone()
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.error("Health check DB probe failed: %s", e)
+        return jsonify({"status": "degraded", "database": "unavailable"}), 503
     return jsonify({"status": "healthy"}), 200
 
 

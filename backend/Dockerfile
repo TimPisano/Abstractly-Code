@@ -42,4 +42,8 @@ COPY . .
 # kept modest since Render's cheaper tiers have limited RAM. --timeout
 # 120: OCR fallback on a large scanned PDF can genuinely take a while;
 # gunicorn's default 30s would kill that request mid-extraction.
-CMD gunicorn app.api:app --bind 0.0.0.0:${PORT:-5000} --workers 2 --timeout 120
+# --access-logfile/--error-logfile - : gunicorn's own request/worker
+# logs go to stdout too, alongside the app's structured logs (see
+# app/logging_config.py), so Render's log stream has the whole picture.
+CMD gunicorn app.api:app --bind 0.0.0.0:${PORT:-5000} --workers 2 --timeout 120 \
+    --access-logfile - --error-logfile -

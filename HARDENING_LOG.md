@@ -115,3 +115,38 @@ Full unit suite **60/61** (the 1 failure is the same pre-existing `tesseract` OC
 ### 2.3 Follow-ups
 - `resubmit` / `amendment` / `sample` uploads still extract synchronously (single-doc, infrequent, heavy post-processing that's awkward to defer). If AI resubmit of a very large lease becomes a real problem, the same `_start_deferred_extraction` machinery can be extended to them.
 - The frontend `waitForProcessing` polling needs a browser check on the next deploy (can't exercise the deployed frontend from here). Contract: 202 response has `processing: true`; poll `GET /leases/<id>` until `processing_status` is `complete`/`failed`.
+
+---
+
+## PHASE 3 — Reliability & observability
+
+### 3.0 Findings
+- **No logging configuration at all.** Loggers were used throughout but nothing set up a handler/format/level → every `logger.info(...)` was silently dropped; WARNING+ fell through to Python's bare last-resort stderr handler with no timestamp/context.
+- **No stray `print()`** in app code (only `run.py`'s dev-server banner — converted to logging anyway).
+- **No error alerting** — a production break would be discovered by a customer, not the operator.
+- **`/health` didn't touch the DB** — a process-is-up check that would pass while every real request 500s on a broken/locked database.
+- **Graceful AI degradation** — already solid from Phases 1–2 (clean 502 sync / `failed` row async / per-pair isolation / retry-then-fail on timeout). Verified, plus one new regression test.
+
+### 3.1 Fixes applied
+
+**`app/logging_config.py`** (new), wired into `api.py` at import (covers gunicorn workers + `run.py`):
+- One stdout `StreamHandler`, format `TS LEVEL logger [request_id] METHOD path :: msg` (or one JSON object/line via `LOG_FORMAT=json`), level from `LOG_LEVEL` (default INFO). Quiets werkzeug/httpx/httpcore noise.
+- `RequestContextFilter` — every line emitted during a request carries its `request_id` + `METHOD path`.
+- `install_request_logging(app)` — one line per request (`GET /leases -> 200 34ms`), 5xx at ERROR / 4xx at WARNING, `/health` skipped, `X-Request-Id` on every response.
+- `SMTPErrorAlertHandler` — emails `ADMIN_EMAIL` on ERROR/CRITICAL, rate-limited per call-site (5 min), re-entrancy-guarded. **Opt-in** via `ERROR_ALERT_EMAILS=true` (+ SMTP configured) — deliberately not "on whenever email is set", given the app's past email-storm incident. `email_service.send_operational_alert()` added (HTML-escapes the body).
+
+**`GET /health`** now runs `SELECT 1` → `503 {"status":"degraded","database":"unavailable"}` on any DB error; `200 {"status":"healthy"}` otherwise. Render's configured health check finally means something.
+
+**`Dockerfile`**: gunicorn `--access-logfile - --error-logfile -` so its own logs join the app's on stdout.
+
+**Docs**: `DEPLOYMENT.md` gains "Logging and monitoring" (where the logs are, the request-id trick, `LOG_LEVEL`), "Getting alerted when something breaks" (the built-in email handler + Render's own notifications + Sentry as an optional upgrade), and "Database backups and restore" (free tier = nothing to back up; Starter+ = Render daily disk snapshots, but the real answer is a scheduled `sqlite3 .backup` to external storage, or Render Postgres — with restore steps). `render.yaml` gets `LOG_LEVEL` + `ERROR_ALERT_EMAILS`. `.env.example` documents all the new knobs.
+
+**Tests**: `test_logging_and_health.py` (8 cases) — handler setup + level; request-context filter; per-request log line + `X-Request-Id`; `/health` skipped + 5xx→ERROR; email alerts opt-in; SMTP handler rate-limit + re-entrancy guard; `/health` 200 vs 503. `test_async_extraction.py` gains a resubmit-degrades-cleanly case.
+
+### 3.2 Verification
+
+Full suite **61/62** (same pre-existing `tesseract` OCR failure). New `test_logging_and_health.py` (8 cases) green. `run_all_tests.py` sets `LOG_LEVEL=WARNING` for subprocesses so the new per-request lines don't flood suite output.
+
+### 3.3 Follow-ups
+- The frontend `X-Request-Id` isn't surfaced to the user anywhere (e.g. in an error toast) — could help support. Small nicety, not done.
+- Error-alert emails need a browser/live check on the next deploy (needs `ERROR_ALERT_EMAILS=true` + a real ERROR to fire).
