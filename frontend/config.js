@@ -26,6 +26,15 @@ const API_BASE_URL = (() => {
     if (host === 'localhost' || host === '127.0.0.1') {
         return 'http://localhost:5000';
     }
+    // The demo deployment's static site talks to its own separate
+    // backend/database (see app/demo_seed.py and DEPLOYMENT.md's
+    // "Demo deployment" section for why it's a separate service
+    // rather than a user inside the production database). Update
+    // both hostnames here if either demo service is ever recreated
+    // and gets a different Render-assigned suffix.
+    if (host === 'abstractly-demo.onrender.com') {
+        return 'https://abstractly-demo-api.onrender.com';
+    }
     // The real deployed backend -- see render.yaml and DEPLOYMENT.md
     // for exactly how this URL is provisioned and why it's this
     // specific name.

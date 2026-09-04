@@ -132,3 +132,97 @@ services:
       - path: /*
         name: Cache-Control
         value: "public, max-age=600, must-revalidate"
+
+  # ---- Demo backend: same image as abstractly-api, own database ----
+  # Seeded automatically on boot with 2 sample leases + a matching
+  # sample rent roll (see app/demo_seed.py) and reset on demand via
+  # POST /demo/reset or backend/reset_demo_data.py -- see
+  # DEPLOYMENT.md's "Demo deployment" section. Deliberately its own
+  # service/database rather than a user inside abstractly-api's
+  # database: this app has no per-account data isolation, so a demo
+  # login in the production database would see every real customer's
+  # leases, not a walled-off sandbox.
+  - type: web
+    name: abstractly-demo-api
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: DEMO_MODE
+        value: "true"
+      # Long random value you generate yourself, entered in the Render
+      # dashboard (Environment tab) -- never committed. Required in
+      # the X-Demo-Reset-Token header of any POST /demo/reset call.
+      - key: DEMO_RESET_TOKEN
+        sync: false
+      # Optional: set these too (can reuse your real admin's values or
+      # pick dedicated demo-admin ones) to also get an owner/admin
+      # login on this deployment -- see database._seed_first_admin_user.
+      # Skip both to leave this deployment with only the seeded demo
+      # account.
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD_HASH
+        sync: false
+      - key: FLASK_SECRET_KEY
+        sync: false
+      - key: TOKEN_ENCRYPTION_KEY
+        sync: false
+      # Update to the real assigned URL of abstractly-demo below if
+      # Render auto-suffixes either name (see the top-of-file note for
+      # why that can happen).
+      - key: ADMIN_ALLOWED_ORIGINS
+        value: https://abstractly-demo.onrender.com
+      - key: LOCAL_DEV_MODE
+        value: "false"
+      - key: LOG_LEVEL
+        value: INFO
+      # No persistent disk (see the free-tier note on abstractly-api
+      # above) -- here that's a feature, not a caveat: a cold restart
+      # after Render's free-tier idle spindown wipes the demo database,
+      # and DEMO_MODE's startup seed immediately repopulates it, so a
+      # demo instance that's been idle resets itself for free between
+      # uses. The explicit POST /demo/reset / reset_demo_data.py path
+      # exists for resetting on demand without waiting for that.
+
+  # ---- Demo frontend: same static files as abstractly, points at the demo backend ----
+  - type: web
+    name: abstractly-demo
+    runtime: static
+    staticPublishPath: ./frontend
+    envVars: []
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
+      - path: /*
+        name: Strict-Transport-Security
+        value: max-age=31536000; includeSubDomains
+      - path: /*
+        name: Content-Security-Policy
+        value: >-
+          default-src 'self';
+          connect-src 'self' https://abstractly-demo-api.onrender.com;
+          style-src 'self' 'unsafe-inline';
+          img-src 'self' data:;
+          font-src 'self';
+          object-src 'none';
+          base-uri 'self';
+          frame-ancestors 'none'
+      - path: /*.html
+        name: Cache-Control
+        value: "no-cache"
+      - path: /fonts/*
+        name: Cache-Control
+        value: "public, max-age=2592000"
+      - path: /*
+        name: Cache-Control
+        value: "public, max-age=600, must-revalidate"

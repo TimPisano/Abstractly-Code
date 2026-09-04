@@ -319,3 +319,71 @@ the same way here):
 
 I can walk through any of this with you live once you've made the
 purchase — just point me at the domain and registrar.
+
+## Demo deployment
+
+`render.yaml` also defines a second, completely separate pair of
+services — `abstractly-demo-api` and `abstractly-demo` — for showing
+the app to people without exposing any real customer data. This is a
+genuinely separate deployment with its own database, not a demo user
+inside the production one: this app has no per-account data
+isolation (every user reads the same shared `leases` table), so a
+demo login in the production database would see every real customer's
+leases. See `backend/app/demo_seed.py` for the full reasoning.
+
+**Deploying it:** push `render.yaml` to GitHub, then Render dashboard →
+your Blueprint → "Sync" (or it picks up the two new services
+automatically on the next auto-sync, depending on your Blueprint
+settings). Then, same as the first deploy, go to **`abstractly-demo-api`**
+→ Environment and set:
+
+- `DEMO_RESET_TOKEN` — any long random string you generate yourself
+  (needed to trigger a reset — see below).
+- `FLASK_SECRET_KEY`, `TOKEN_ENCRYPTION_KEY` — generate fresh values
+  the same way you did for `abstractly-api` (step 5 above); don't
+  reuse the production ones.
+- `ADMIN_EMAIL` / `ADMIN_PASSWORD_HASH` — optional. Set these if you
+  also want an owner/admin login on the demo deployment; skip both to
+  leave it with only the seeded demo account.
+
+If Render auto-suffixes either service name (the way it did for
+`abstractly` → `abstractly-n0id.onrender.com` originally — see the top
+of this file's render.yaml), update to match in three places:
+`render.yaml`'s `ADMIN_ALLOWED_ORIGINS` and CSP `connect-src` for the
+demo pair, and the `abstractly-demo.onrender.com` hostname check in
+`frontend/config.js`.
+
+**What a visitor sees:** going to the demo frontend's URL and logging
+in with any account from `app/demo_seed.py`'s `DEMO_ACCOUNTS` list
+(currently `demo@abstractly.app` / `Demo2026!` and
+`holden@abstractly.demo` / `Holden12!`) lands on a normal
+"analyst"-role dashboard (not admin, not owner) already populated with
+2 sample leases (a retail and an office lease) and a matching sample
+rent roll import, including one deliberate rent mismatch so the
+rent-roll reconciliation feature has something real to flag on first
+load — no empty-dashboard first impression. All seeded accounts share
+this same sample data (there's no isolation between logins within one
+deployment, only between this deployment and production) — add more
+entries to `DEMO_ACCOUNTS` for more named visitor logins.
+
+**Resetting it between visitors:** either works, both do the same
+thing (wipe every lease/discrepancy/task/etc. table, keep the demo
+login, reseed the 2 sample leases + rent roll):
+
+```bash
+curl -X POST https://abstractly-demo-api.onrender.com/demo/reset \
+  -H "X-Demo-Reset-Token: <the value you set above>"
+```
+
+or, via Render's shell on `abstractly-demo-api`:
+
+```bash
+DEMO_MODE=true venv/bin/python3 reset_demo_data.py
+```
+
+Both refuse to run anywhere `DEMO_MODE` isn't set to `true`, so
+neither can be pointed at production by accident. Free-tier services
+also spin down after 15 minutes idle and wipe their (non-persistent)
+database on the next cold start, which re-seeds automatically — so a
+demo instance that's sat idle between visitors often resets itself for
+free even before you trigger it manually.

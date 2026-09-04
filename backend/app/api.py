@@ -194,6 +194,13 @@ if _db_path_override:
 
 database.init_db()
 
+# Demo deployment only (see demo_seed.py for why this is a separate
+# database rather than a user inside the production one). Idempotent --
+# no-op once the demo database already has leases.
+if os.environ.get('DEMO_MODE', '').strip().lower() == 'true':
+    from app.demo_seed import seed_demo_data
+    seed_demo_data()
+
 # Any lease left mid-extraction by a previous process (a background
 # thread doesn't survive a restart) gets marked 'failed' with a clear
 # reason, so it doesn't sit "processing" forever. See the async upload
@@ -4493,6 +4500,28 @@ def get_config():
     this endpoint to flags that are safe for anyone to read; never put a
     secret or anything env-specific-but-sensitive here."""
     return jsonify({"local_dev_mode": LOCAL_DEV_MODE}), 200
+
+
+@app.route('/demo/reset', methods=['POST'])
+def demo_reset():
+    """
+    Wipes the demo database back to its clean seeded state. Demo-
+    deployment only (404s everywhere else) and requires the
+    X-Demo-Reset-Token header to match DEMO_RESET_TOKEN -- deliberately
+    not session/role-gated, since the point is to be triggerable with a
+    single curl command with no login step. See DEPLOYMENT.md.
+    """
+    if os.environ.get('DEMO_MODE', '').strip().lower() != 'true':
+        return jsonify({"error": "not found"}), 404
+
+    expected_token = os.environ.get('DEMO_RESET_TOKEN', '')
+    provided_token = request.headers.get('X-Demo-Reset-Token', '')
+    if not expected_token or not secrets.compare_digest(provided_token, expected_token):
+        return jsonify({"error": "unauthorized"}), 401
+
+    from app.demo_seed import reset_demo_data
+    reset_demo_data()
+    return jsonify({"status": "reset"}), 200
 
 
 if __name__ == '__main__':
