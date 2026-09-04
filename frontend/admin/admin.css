@@ -451,6 +451,57 @@ body {
     color: var(--error-color);
 }
 
+.admin-gate-message.is-success {
+    color: var(--success-color);
+}
+
+/* "Forgot password?" -- a flex item inside #adminLoginForm's column
+   stack, sat hard against the right edge directly under the password
+   field it relates to. Negative top margin pulls it out of the form's
+   own 0.75rem gap so it reads as attached to the password field rather
+   than as a third, equally-weighted row between the field and the Sign
+   In button. Mirrors frontend/app/styles.css's .access-gate-forgot-link
+   under this file's own `.admin-gate*` namespace (see this file's
+   module comment). */
+.admin-gate-forgot-link {
+    align-self: flex-end;
+    margin-top: -0.25rem;
+    font-size: 0.8125rem;
+    color: var(--text-medium);
+    text-decoration: none;
+}
+
+.admin-gate-forgot-link:hover {
+    color: var(--lux-accent-text, var(--primary-color));
+    text-decoration: underline;
+}
+
+/* Shared "back to sign in" / "request a new link" style for the
+   forgot/reset pages. [hidden] override needed for the same reason as
+   frontend/app/styles.css's .access-gate-link[hidden]: this class also
+   sets `display:inline-block`, an author rule that would otherwise beat
+   the UA stylesheet's `[hidden] { display:none }`. */
+.admin-gate-link[hidden] {
+    display: none;
+}
+
+.admin-gate-link {
+    display: inline-block;
+    margin-top: 1.25rem;
+    font-size: 0.875rem;
+    color: var(--lux-accent-text, var(--primary-color));
+    text-decoration: none;
+}
+
+.admin-gate-link:hover {
+    text-decoration: underline;
+}
+
+#adminResetRequestNewLink:not([hidden]) {
+    display: block;
+    margin-bottom: -0.5rem;
+}
+
 /* ---- Dashboard shell ----
    The sidebar itself (.sidebar/.nav-item/.nav-group/...) is entirely
    frontend/app/styles.css's -- admin/dashboard.html reuses that markup

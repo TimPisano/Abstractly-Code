@@ -1868,13 +1868,23 @@ def _send_email_off_request_path(send_fn, *args):
 @app.route('/auth/forgot-password', methods=['POST'])
 def auth_forgot_password():
     """
-    Body: {"email": str}. Always returns the same generic 200 -- never
-    reveals whether the address has an account. For a real, active
-    user, generates a single-use 1-hour reset token and emails the
-    link (best-effort -- a mail failure still returns 200).
+    Body: {"email": str, "surface": "app"|"admin" (optional, default
+    "app")}. Always returns the same generic 200 -- never reveals
+    whether the address has an account. For a real, active user,
+    generates a single-use 1-hour reset token and emails the link
+    (best-effort -- a mail failure still returns 200).
+
+    `surface` only selects which frontend page the emailed link points
+    to (frontend/app/reset-password.html vs frontend/admin/
+    reset-password.html -- both post to this same /auth/reset-password
+    either way, so which one someone lands on is a UX nicety, not a
+    security boundary). Restricted to this fixed two-value set rather
+    than accepting a caller-supplied path, so this can never become an
+    open redirect.
     """
     body = request.get_json(silent=True) or {}
     email = (body.get("email") or "").strip()
+    surface = body.get("surface") if body.get("surface") in ("app", "admin") else "app"
     generic = jsonify({"message": "If an account exists for that email, a reset link is on its way."})
 
     # Rate-limited on BOTH the caller's IP and the submitted address,
@@ -1899,7 +1909,7 @@ def auth_forgot_password():
         database.create_password_reset_token(user["id"], token_hash)
 
         base = _reset_link_base()
-        reset_url = f"{base}/app/reset-password.html?token={raw_token}"
+        reset_url = f"{base}/{surface}/reset-password.html?token={raw_token}"
         # Off the request path on purpose -- an inline SMTP round trip
         # only happens for real accounts, which made response time a
         # loud account-existence oracle. See
