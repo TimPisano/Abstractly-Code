@@ -300,3 +300,51 @@ least existing safety net and the most user-facing blast radius if it
 breaks.
 
 ---
+
+## Task 6 — Deployment parity check
+
+**Local `main` is 6 commits ahead of `origin/main`** (i.e., ahead of
+what's actually deployed) — every commit from today's task list, none
+pushed, per your instruction not to deploy without flagging it first:
+
+```
+932e013 Task 5: test coverage inventory
+ed40a00 Task 4: confidence transparency (recap only -- code already lived here)
+9e0c02c Task 3: OCR diagnostics -- document-quality check + demo data diagnosis
+e22c826 Task 2: error handling audit -- session-expiry redirect + script-load banner
+e89396d Task 1: security audit -- gitignore hardening
+8c53518 Fix demo data duplication: atomic lock around first-boot seeding
+```
+
+**What IS live** (`origin/main` HEAD is `3b10c82`, confirmed by
+re-checking both services just now — `abstractly-api` and
+`abstractly-demo-api` both healthy, demo login still working):
+- **The login bug fix is live** (`12b0bf8`, "Fix intermittent 'Login
+  required' on multi-worker deployments") — this was pushed and
+  verified live earlier today, before this task list started.
+- **The landlord/date extraction accuracy fix is live** (`3b10c82`) —
+  also pushed and verified live earlier today (a real upload with
+  `(hereinafter "Landlord")` phrasing correctly extracted at high
+  confidence against the live demo API).
+- The demo deployment itself, the attention-panel feature from the
+  other concurrent session, and the "Forgot password" flow are all
+  live too (all predate this task list).
+
+**What is NOT live yet** — everything from today's 6 tasks:
+- The demo-seeding race fix (code is local-only; I cleaned up the
+  *data* symptom live via the demo's own API, which didn't need a
+  deploy, but the underlying fix itself isn't deployed, so the bug
+  could recur on the next cold restart until it is)
+- The `.gitignore` hardening (Task 1)
+- The session-expiry redirect and script-load-failure banner (Task 2)
+- The OCR document-quality check / `ocr_needed` status (Task 3)
+- (Task 4's actual code was already live before this session; only the
+  recap note is new)
+
+**Your call:** whenever you're ready, these are all committed locally
+and tested (63/64, same baseline throughout) — `git push origin main`
+would deploy all 6 commits at once to both `abstractly-api` and
+`abstractly-demo-api`. I did not push. Let me know if you want me to,
+want to review the diff first, or want it split into smaller pushes.
+
+---
