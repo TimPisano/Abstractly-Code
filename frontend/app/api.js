@@ -38,6 +38,22 @@ async function apiRequest(path, options = {}) {
         throw new Error("Couldn't reach the server. Check your connection and try again.");
     }
 
+    // A 401 here always means the session ended (this app has no route
+    // that overloads 401 for something else, unlike admin's change-
+    // password) -- same "go back to the login page" handling
+    // admin-bootstrap.js's adminFetch already does. Without this, an
+    // expired session used to surface as a scattered wall of "Login
+    // required"/"Failed to load" errors across every dashboard widget
+    // at once, indistinguishable from a real server-side bug, with
+    // nothing telling the user the actual fix is just signing in again.
+    if (response.status === 401) {
+        window.location.href = 'login.html';
+        // Never resolves -- the redirect is already underway, and
+        // nothing calling this should keep running against a session
+        // that just turned out to be invalid.
+        return new Promise(() => {});
+    }
+
     const contentType = response.headers.get('content-type') || '';
     if (!response.ok) {
         let message = response.statusText;

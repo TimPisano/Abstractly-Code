@@ -56,7 +56,28 @@
         loadAppScripts();
     }
 
+    // Shown if any of APP_SCRIPTS fails to load (a flaky connection mid
+    // page-load, a bad deploy, a static-host hiccup) -- without this, a
+    // missing script silently leaves the shell partially wired (already
+    // visible, since grant() reveals it before this function even runs)
+    // with no visible sign anything's wrong, same failure shape as the
+    // "dashboard renders permanently blank" case the comment below
+    // documents, just triggered by the network instead of call ordering.
+    function showScriptLoadError(failedSrc) {
+        bootLoadingEl.innerHTML = `
+            <div class="upload-result-warning" style="margin: 2rem auto; max-width: 32rem;">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/></svg>
+                <span>Part of the app failed to load. Check your connection and reload the page. If this keeps happening, contact support.</span>
+            </div>
+        `;
+        bootLoadingEl.style.display = '';
+        shellEl.style.display = 'none';
+        console.error(`access-gate.js: failed to load ${failedSrc} -- app cannot start.`);
+    }
+
     function loadAppScripts() {
+        let failed = false;
+
         // Dynamically-created classic <script src> elements run async by
         // default; async = false preserves the listed load/execution
         // order without blocking anything -- there's nothing left to
@@ -65,6 +86,10 @@
             const script = document.createElement('script');
             script.src = src;
             script.async = false;
+            script.addEventListener('error', () => {
+                failed = true;
+                showScriptLoadError(src);
+            });
             return script;
         });
 
@@ -80,13 +105,17 @@
         // guarantees every earlier script already executed by then too
         // -- so this is the correct, not approximate, signal to use.
         scripts[scripts.length - 1].addEventListener('load', () => {
+            // An earlier script's own 'error' listener already showed
+            // the failure banner -- don't also run init() against a
+            // shell that's missing pieces it depends on.
+            if (failed) return;
             if (typeof window.init === 'function') {
                 window.init();
             } else {
                 // Would mean app.js itself failed to load/execute --
                 // nothing left to do but make the failure visible rather
                 // than leaving a silently blank page.
-                console.error('access-gate.js: app.js did not define window.init -- app cannot start.');
+                showScriptLoadError('app.js (loaded, but did not define window.init)');
             }
         });
 

@@ -79,3 +79,63 @@ this repo is ever made public. Say the word if you'd rather it were a
 placeholder.
 
 ---
+
+## Task 2 — Error handling audit
+
+**Checked:** login (`app/login.js`), the shared fetch wrappers each
+bundle uses (`app/api.js`'s `apiRequest`, `admin-bootstrap.js`'s
+`adminFetch`, `owner-app.js`'s `ownerFetch`), the app boot sequence
+(`access-gate.js`), lease upload (`document_extractor.py` +
+`upload-view.js`), lease detail view (`detail-view.js`), and dashboard
+empty-state handling (`dashboard-view.js`).
+
+**Fixed:**
+1. **Expired session on the main app (`app/api.js`) showed a wall of
+   confusing errors instead of sending the user back to log in.** Every
+   dashboard widget fetches independently and each has its own
+   `.catch()` → "Failed to load X" — so a 401 (session expired) used to
+   render as 8+ simultaneous, unexplained failures across the whole
+   page, indistinguishable from a real outage, with nothing telling the
+   user the fix is just signing in again. `admin-bootstrap.js` and
+   `owner-app.js` already treat a 401 as "redirect to login" — `api.js`
+   was the one bundle missing this. Added the same handling: a 401 now
+   redirects straight to `login.html` instead of surfacing as a
+   generic error.
+2. **A script failing to load during app boot left a blank, silently
+   broken shell.** `access-gate.js` reveals the app shell *before*
+   loading its ~24 view scripts; if one fails over a flaky connection,
+   a bad deploy, or a static-host hiccup, the shell was already visible
+   with missing functionality and no visible error — just a
+   `console.error` no real user would ever see. Now shows a clear
+   "part of the app failed to load, reload the page" banner instead.
+
+**Already solid, no change needed:**
+- Login (`app/login.js`): network failures, bad credentials, and
+  server errors all already produce a clear inline message with the
+  form re-enabled and the password field cleared — no gaps.
+- Malformed/unreadable upload (`document_extractor.py`): every format
+  (PDF, Excel, Word, image, etc.) already raises a specific, actionable
+  `DocumentExtractionError` message (corrupted file, wrong format,
+  password-protected PDF, no readable text) rather than a generic
+  crash; `upload-view.js` renders each file's success/failure inline
+  per-file in a batch upload.
+- Empty datasets: the dashboard already has empty-state messaging
+  throughout (`isNewAccount` flag, "Nothing due," "No unread messages,"
+  "Nothing active," "No activity yet") rather than blank sections.
+- `access-gate.js`'s own session check already fails closed to the
+  login page on a network error, rather than guessing.
+
+**Found, not fixed (judgment call / lower priority):**
+- **Lease detail view (`detail-view.js`) load failure**: if
+  `Api.getLease()` throws (network blip, deleted-lease race), the page
+  shows a transient toast (`showError`, auto-dismisses after ~3.5s) and
+  otherwise leaves the page in whatever partial state it was in — no
+  retry button, no persistent message once the toast fades. Not a
+  crash or blank screen, but weaker than the other flows above. Left
+  as-is because a proper fix (a persistent inline error state with a
+  retry action, matching the quality bar of the other fixes here) is
+  more than a small patch, and I wasn't sure whether you'd want the
+  view to stay on a partial render or actively block on a "retry"
+  screen — that's a product call, not something to guess at.
+
+---
