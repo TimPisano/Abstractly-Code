@@ -239,3 +239,64 @@ when its value came from a different document than the one being
 viewed.
 
 ---
+
+## Task 5 — Test coverage check
+
+**Pass rate:** 63/64 test files passing (backend, non-live suite —
+`tests/run_all_tests.py`). The one failure (`test_document_extractor.py`)
+is environment-only, not a real bug: `tesseract` isn't installed on
+this dev machine, so its one OCR-image test fails on `TesseractNotFoundError`
+before it ever reaches the code under test (confirmed by reading the
+actual traceback, not assumed) — this would pass on the real deployed
+container, which does have tesseract installed per the Dockerfile.
+There's also a separate `--live` suite (18 more files) that requires an
+actual running server on localhost and is skipped by default — not run
+here since nothing was standing up a live local server during this
+session.
+
+**82 test files total** is a genuinely large backend suite covering
+auth (`test_admin_auth`, `test_password_reset`, `test_route_authorization`,
+`test_security_hardening`/`_middleware`), upload (`test_upload_validation`,
+`test_document_extractor`, `test_multi_lease_detection`, `test_table_upload_extraction`),
+extraction (`test_extraction`, `test_extraction_quality/scoring`,
+`test_confidence_validation`, `test_ocr_fallback`, `test_synthetic_accuracy`,
+`test_ai_extraction`), and dashboard-adjacent backend logic
+(`test_dashboard_features`, `test_portfolio*`, `test_alerts`,
+`test_discrepancies`). This part of the app is well tested.
+
+**The gap — and it's a big one:** there is **zero automated test
+coverage for any frontend JavaScript**, in any of the three bundles
+(`app/`, `admin/`, `owner/`). No `package.json`, no test runner (Jest/
+Vitest/anything), no `*.test.js`/`*.spec.js` files anywhere in the repo.
+`test_access_gate.py` sounds like it covers `access-gate.js` but
+actually only tests the *backend* endpoints that file happens to call
+(`/config`, `/waitlist/check`) via Flask's test client — none of the
+actual JavaScript (rendering logic, the session-redirect and
+script-load-error handling I added in Task 2, the OCR-needed banner
+from Task 3, any dashboard widget) is exercised by anything automated.
+Every frontend fix in this session's work was verified by hand (live
+API calls, a real uploaded PDF, manual DOM/logic reasoning) — real
+verification, but not a regression test that protects it going
+forward.
+
+**Other specific gaps found:**
+- `demo_seed.py` (seeding, the reset lock fix, `/demo/reset`) has zero
+  test coverage — everything I verified there this session was a
+  manual/live check, not an automated test. Given it only runs on the
+  demo deployment, lower stakes than a production-path gap, but worth
+  knowing.
+- The two brand-new pieces from today — `find_low_text_pages()`
+  (Task 3) and the `document`/`validation_note` field attribution
+  (Task 4) — aren't in the automated suite yet either; both were
+  verified live/manually in this session, same caveat as above.
+
+**Not done (per your instructions — inventory only, not new tests):**
+I didn't write any new tests. If you want to close the biggest gap
+first, standing up even a minimal frontend test runner (Vitest is the
+lowest-friction choice for plain `<script>`-tag JS like this) and
+covering just the session-redirect/error-banner logic from Task 2 would
+be the highest-leverage starting point, since that's the code with the
+least existing safety net and the most user-facing blast radius if it
+breaks.
+
+---
