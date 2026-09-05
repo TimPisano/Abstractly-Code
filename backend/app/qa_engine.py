@@ -32,6 +32,8 @@ from datetime import date
 from typing import Optional, Dict, Any, List, Tuple
 
 from app.normalize import (
+    format_currency as _format_currency,
+    format_sqft as _format_sqft,
     parse_currency,
     parse_square_footage,
     parse_date,
@@ -582,14 +584,6 @@ def _add_months(start: date, months: int) -> date:
 def _article(label: str) -> str:
     """"an exclusivity clause" vs "a monthly rent" — keeps answers readable."""
     return "an" if label[:1].lower() in "aeiou" else "a"
-
-
-def _format_currency(value: float) -> str:
-    return f"${value:,.2f}"
-
-
-def _format_sqft(value: float) -> str:
-    return f"{value:,.0f} sq ft"
 
 
 def _format_date(value: date) -> str:

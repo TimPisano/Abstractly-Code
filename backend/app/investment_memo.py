@@ -35,12 +35,11 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 from reportlab.lib import colors
-from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import inch
-from reportlab.platypus import HRFlowable, Paragraph, Spacer, Table, TableStyle
+from reportlab.platypus import Paragraph, Spacer, Table, TableStyle
 
 from . import database
-from .normalize import parse_currency
+from .normalize import format_currency
 from .portfolio_health_score import _LEASE_SCOPED_DISCREPANCY_TYPES
 from .portfolio import (
     FIELD_NAMES,
@@ -327,12 +326,9 @@ def _overview_flowables(data: Dict[str, Any]) -> List[Any]:
     metrics = data["portfolio_metrics"]
     scope_label = data["property_address"] if data["scope"] == "property" else "Full Portfolio"
 
-    def _money(v):
-        return f"${v:,.2f}" if v is not None else "Not available"
-
     lines = [
         f"<b>{data['lease_count']}</b> lease{'s' if data['lease_count'] != 1 else ''} covered in this memo",
-        f"Total monthly rent: <b>{_money(metrics.get('total_monthly_rent'))}</b>",
+        f"Total monthly rent: <b>{format_currency(metrics.get('total_monthly_rent'))}</b>",
     ]
     if metrics.get("avg_rent_per_sqft") is not None:
         lines.append(f"Average rent per square foot: <b>${metrics['avg_rent_per_sqft']:.2f}</b>")

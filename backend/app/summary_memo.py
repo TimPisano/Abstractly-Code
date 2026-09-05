@@ -35,6 +35,7 @@ from reportlab.platypus import (
     HRFlowable, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle,
 )
 
+from .normalize import extracted_field_value as _field_value
 from .portfolio import compute_lease_confidence_summary
 
 # Same labels the frontend's FIELD_LABELS (app.js) uses, so a field is
@@ -106,15 +107,6 @@ _styles = {
 
 def _lease_label(lease: Dict[str, Any]) -> str:
     return lease.get("display_name") or lease.get("filename") or f"Lease #{lease.get('id')}"
-
-
-def _field_value(lease: Dict[str, Any], field_name: str) -> Optional[str]:
-    fields = lease.get("extracted_fields") or {}
-    entry = fields.get(field_name)
-    if not isinstance(entry, dict):
-        return None
-    value = entry.get("value")
-    return value if value not in (None, "") else None
 
 
 def _footer(canvas_obj, doc) -> None:

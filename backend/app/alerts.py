@@ -27,7 +27,7 @@ key (see database.upsert_alert), so re-running with unchanged data
 produces zero new rows, and a condition that's cleared since the last
 run gets its alert auto-resolved rather than left stale forever.
 """
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from . import database
 from .portfolio import (
@@ -35,7 +35,6 @@ from .portfolio import (
     compute_expiration_alerts,
     compute_loss_to_lease,
     compute_tenant_concentration,
-    field_value,
 )
 
 # ----------------------------------------------------------------------

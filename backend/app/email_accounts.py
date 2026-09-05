@@ -21,7 +21,7 @@ import os
 import secrets
 from datetime import datetime, timedelta, timezone
 from email.mime.text import MIMEText
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 from urllib.parse import urlencode
 
 import requests

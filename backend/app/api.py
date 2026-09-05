@@ -44,7 +44,7 @@ load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
 # Configure logging for the whole process before anything else logs --
 # a single stdout handler + consistent format + optional email-on-error.
-from app.logging_config import configure_logging, new_request_id
+from app.logging_config import configure_logging
 configure_logging()
 
 from app.field_extractor import FieldExtractor, looks_like_rent_roll_table
@@ -129,19 +129,43 @@ from app.logging_config import install_request_logging
 install_request_logging(app)
 
 # Signs the admin session cookie -- if FLASK_SECRET_KEY isn't set, a
-# random key is generated for this process only, logged as a warning
-# (every admin session is invalidated on the next restart, but nothing
-# about this is silently insecure; a fresh random key each start is
-# strictly safer than any hardcoded fallback would be). Set a real,
-# stable FLASK_SECRET_KEY in backend/.env to keep admin sessions alive
-# across restarts -- see .env.example for how to generate one.
+# random key is generated, logged as a warning (every admin session is
+# invalidated on the next restart, but nothing about this is silently
+# insecure; a fresh random key each start is strictly safer than any
+# hardcoded fallback would be). Set a real, stable FLASK_SECRET_KEY in
+# backend/.env to keep admin sessions alive across restarts -- see
+# .env.example for how to generate one.
+#
+# The generated fallback is written to a file under the OS temp dir
+# (shared by every process in the same container) and re-read by any
+# process that finds it already there, rather than each process just
+# calling secrets.token_hex() independently -- gunicorn runs multiple
+# WORKER PROCESSES for one deployment (see Dockerfile's --workers),
+# each importing this module separately, so independent per-process
+# secrets would sign a login's session cookie with one worker's key
+# and then fail to verify it on a later request load-balanced to a
+# different worker -- an intermittent, worker-dependent "Login
+# required" on otherwise-valid sessions, not just a restart-boundary
+# issue. Exclusive-create (O_CREAT|O_EXCL) makes whichever process
+# gets there first the one whose value every other process converges
+# on, even if several start at nearly the same moment.
 _flask_secret_key = os.environ.get("FLASK_SECRET_KEY", "").strip()
 if not _flask_secret_key:
-    _flask_secret_key = secrets.token_hex(32)
+    _fallback_secret_path = os.path.join(tempfile.gettempdir(), "abstractly_flask_secret_key")
+    try:
+        fd = os.open(_fallback_secret_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        _flask_secret_key = secrets.token_hex(32)
+        os.write(fd, _flask_secret_key.encode())
+        os.close(fd)
+    except FileExistsError:
+        with open(_fallback_secret_path, "r") as f:
+            _flask_secret_key = f.read().strip()
     logging.getLogger(__name__).warning(
-        "FLASK_SECRET_KEY is not set -- generated a random one for this process only. "
-        "Admin login sessions will not survive a backend restart until you set a real, "
-        "stable value in backend/.env (see .env.example)."
+        "FLASK_SECRET_KEY is not set -- generated a random one, shared across this "
+        "deployment's worker processes via %s. Admin login sessions will not survive "
+        "a backend restart until you set a real, stable value in backend/.env (see "
+        ".env.example).",
+        _fallback_secret_path,
     )
 app.secret_key = _flask_secret_key
 
@@ -709,9 +733,15 @@ def _invalidate_lease_derived_caches():
     score, both of which walk the full lease list and would otherwise
     keep returning a now-stale answer for up to the cache's TTL. See
     app/cache.py's module docstring for the full invalidation strategy.
+
+    Also clears "effective_leases" -- the raw get_all_effective_leases()
+    result itself is cached (see the portfolio-wide GET routes below),
+    since several of them were independently re-running that same
+    full-portfolio scan on every dashboard load.
     """
     cache.invalidate("trends")
     cache.invalidate("health_score")
+    cache.invalidate("effective_leases")
 
 
 def _invalidate_discrepancy_derived_caches():
@@ -751,7 +781,12 @@ def _persist_split_leases(filename, split_leases):
         if lease_data.get("ai_run_id"):
             database.link_ai_extraction_run_to_lease(lease_data["ai_run_id"], lease_id)
         lease_data["lease_id"] = lease_id  # so a deferred-extraction caller can find its rows
-        lease = database.get_effective_lease(lease_id)
+        # get_lease(), not get_effective_lease(): this lease was just
+        # inserted with no amendments yet, so the amendment-merged
+        # fields are identical to its own raw fields -- get_effective_lease
+        # would spend 2 extra DB round-trips per lease confirming that.
+        lease = dict(database.get_lease(lease_id))
+        lease["amendment_count"] = 0
         lease["tags"] = []
         created.append(_lease_summary(lease))
     if created:
@@ -831,7 +866,7 @@ def _start_deferred_extraction(filename, split_leases):
     return True
 
 
-def _find_possible_resubmission_target(fields, exclude_lease_id=None):
+def _find_possible_resubmission_target(fields, all_leases, exclude_lease_id=None):
     """
     Requirement-1's "detect" half: a soft, advisory match against
     currently-active leases by (normalized property address, exact
@@ -844,6 +879,10 @@ def _find_possible_resubmission_target(fields, exclude_lease_id=None):
     match on). This never blocks or alters what gets created; it's
     surfaced to the caller as a hint the frontend can turn into a
     "did you mean to replace an existing lease?" prompt.
+
+    `all_leases` is fetched once by the caller and reused across every
+    lease in a multi-lease upload, rather than this function re-running
+    a full get_all_effective_leases() scan per lease.
     """
     tenant = (field_value({"extracted_fields": fields}, "tenant") or "").strip().lower()
     address = _normalize_building_address(field_value({"extracted_fields": fields}, "property_address"))
@@ -851,7 +890,7 @@ def _find_possible_resubmission_target(fields, exclude_lease_id=None):
         return None
 
     matches = []
-    for lease in database.get_all_effective_leases():
+    for lease in all_leases:
         if lease["id"] == exclude_lease_id:
             continue
         other_tenant = (field_value(lease, "tenant") or "").strip().lower()
@@ -913,9 +952,10 @@ def upload_lease():
             "processing": True,
         }), 202
 
+    all_leases = database.get_all_effective_leases()
     for lease_data, summary in zip(split_leases, created):
         summary["possible_resubmission_of"] = _find_possible_resubmission_target(
-            lease_data["fields"], exclude_lease_id=summary["id"]
+            lease_data["fields"], all_leases, exclude_lease_id=summary["id"]
         )
     if len(created) == 1:
         database.insert_activity("lease_uploaded", f"Uploaded {filename}", lease_id=created[0]["id"])
@@ -1440,10 +1480,11 @@ def bulk_delete_leases():
     if not isinstance(ids, list) or not ids or not all(isinstance(i, int) for i in ids):
         return jsonify({"error": "Provide a non-empty 'ids' list of integers"}), 400
 
+    leases_by_id = database.get_leases_by_ids(ids)
     deleted = []
     not_found = []
     for lease_id in ids:
-        lease = database.get_lease(lease_id)
+        lease = leases_by_id.get(lease_id)
         if not lease:
             not_found.append(lease_id)
             continue
@@ -1632,11 +1673,11 @@ def bulk_tag_leases():
     if len(tag) > 60:
         return jsonify({"error": "tag must be 60 characters or fewer"}), 400
 
+    leases_by_id = database.get_leases_by_ids(ids)
     tagged = []
     not_found = []
     for lease_id in ids:
-        lease = database.get_lease(lease_id)
-        if not lease:
+        if lease_id not in leases_by_id:
             not_found.append(lease_id)
             continue
         database.add_lease_tag(lease_id, tag)
@@ -2420,14 +2461,21 @@ def bulk_update_task_status():
     if status not in tasks_module.VALID_STATUSES:
         return jsonify({"error": f"status must be one of: {', '.join(sorted(tasks_module.VALID_STATUSES))}"}), 400
 
+    tasks_by_id = database.get_tasks_by_ids(ids)
+    discrepancy_ids_to_check = [
+        t["discrepancy_id"] for t in tasks_by_id.values()
+        if status == "done" and t.get("discrepancy_id")
+    ]
+    discrepancies_by_id = database.get_discrepancies_by_ids(discrepancy_ids_to_check)
+
     updated, skipped_needs_discrepancy, not_found = [], [], []
     for task_id in ids:
-        task = database.get_task(task_id)
+        task = tasks_by_id.get(task_id)
         if not task:
             not_found.append(task_id)
             continue
         if status == "done" and task.get("discrepancy_id"):
-            discrepancy = database.get_discrepancy(task["discrepancy_id"])
+            discrepancy = discrepancies_by_id.get(task["discrepancy_id"])
             if discrepancy and discrepancy["status"] == "open":
                 skipped_needs_discrepancy.append(task_id)
                 continue
@@ -3028,14 +3076,14 @@ def _lease_risks(lease):
 @app.route('/portfolio/summary', methods=['GET'])
 @require_role()
 def portfolio_summary():
-    leases = database.get_all_effective_leases()
+    leases = cache.get_or_compute("effective_leases", database.get_all_effective_leases)
     return jsonify(compute_portfolio_metrics(leases)), 200
 
 
 @app.route('/portfolio/timeline', methods=['GET'])
 @require_role()
 def portfolio_timeline():
-    leases = database.get_all_effective_leases()
+    leases = cache.get_or_compute("effective_leases", database.get_all_effective_leases)
     return jsonify(compute_expiration_timeline(leases)), 200
 
 
@@ -3043,7 +3091,7 @@ def portfolio_timeline():
 @require_role()
 def portfolio_attention():
     """'What needs attention today' — expiring soon, missing data, unusual terms. See compute_attention_items for the exact definitions."""
-    leases = database.get_all_effective_leases()
+    leases = cache.get_or_compute("effective_leases", database.get_all_effective_leases)
     return jsonify(compute_attention_items(leases)), 200
 
 
@@ -3051,7 +3099,7 @@ def portfolio_attention():
 @require_role()
 def portfolio_expiration_alerts():
     """Dashboard widget data: leases expiring within 90/60/30 days, plus renewal-notice deadlines closing soon -- see compute_expiration_alerts for the exact windows and why the two lists are kept separate."""
-    leases = database.get_all_effective_leases()
+    leases = cache.get_or_compute("effective_leases", database.get_all_effective_leases)
     return jsonify(compute_expiration_alerts(leases)), 200
 
 
@@ -3059,7 +3107,7 @@ def portfolio_expiration_alerts():
 @require_role()
 def portfolio_health():
     """Morning-glance health strip: % verified, avg days to expiration, rent exposure expiring in 6/12 months."""
-    leases = database.get_all_effective_leases()
+    leases = cache.get_or_compute("effective_leases", database.get_all_effective_leases)
     return jsonify(compute_portfolio_health(leases)), 200
 
 
@@ -3067,7 +3115,7 @@ def portfolio_health():
 @require_role()
 def portfolio_confidence_summary():
     """The trust-mechanism number: field counts by confidence tier across the whole portfolio, plus how many were flagged for review during validation. See compute_portfolio_confidence_summary."""
-    leases = database.get_all_effective_leases()
+    leases = cache.get_or_compute("effective_leases", database.get_all_effective_leases)
     return jsonify(compute_portfolio_confidence_summary(leases)), 200
 
 
@@ -3109,7 +3157,7 @@ def portfolio_health_score_route():
 @require_role()
 def portfolio_tenant_concentration():
     """How much of total rent depends on a small number of tenants -- top-1/3/5 cumulative share, Herfindahl-Hirschman Index, and a high/moderate/low read. See compute_tenant_concentration."""
-    leases = database.get_all_effective_leases()
+    leases = cache.get_or_compute("effective_leases", database.get_all_effective_leases)
     return jsonify(compute_tenant_concentration(leases)), 200
 
 
@@ -3124,7 +3172,7 @@ def portfolio_rollover():
     about what "today" means if a request happened to straddle
     midnight. See compute_walt and compute_rollover_schedule.
     """
-    leases = database.get_all_effective_leases()
+    leases = cache.get_or_compute("effective_leases", database.get_all_effective_leases)
     reference_date = date.today()
     return jsonify({
         "walt": compute_walt(leases, reference_date=reference_date),
@@ -3136,7 +3184,7 @@ def portfolio_rollover():
 @require_role()
 def portfolio_loss_to_lease():
     """Upside vs. this portfolio's own best-achieved rent/sqft per building (no external market-rent data source exists -- see compute_loss_to_lease's docstring for why this is an internal proxy, not true market rent)."""
-    leases = database.get_all_effective_leases()
+    leases = cache.get_or_compute("effective_leases", database.get_all_effective_leases)
     return jsonify(compute_loss_to_lease(leases)), 200
 
 
@@ -3200,7 +3248,7 @@ def portfolio_trends_route():
 @require_role()
 def portfolio_rent_roll_reconciliation():
     """Cross-checks an imported rent roll (see /leases/import-rent-roll) against the actual lease PDFs on file for the same units, flagging tenant/rent/end-date disagreements. See compute_rent_roll_reconciliation."""
-    leases = database.get_all_effective_leases()
+    leases = cache.get_or_compute("effective_leases", database.get_all_effective_leases)
     result = compute_rent_roll_reconciliation(leases)
     result["mismatches"] = sync_rent_roll_reconciliation(result["mismatches"])
     return jsonify(result), 200
@@ -3336,7 +3384,7 @@ def recent_activity():
 @require_role()
 def portfolio_risks():
     """Risk flags for every lease in the portfolio, most-flagged-first isn't imposed here — callers sort/filter as needed."""
-    leases = database.get_all_effective_leases()
+    leases = cache.get_or_compute("effective_leases", database.get_all_effective_leases)
     context = portfolio_context_for_risk_analysis(leases)
     cross_lease_mismatches = compute_cross_lease_mismatches(leases)
 

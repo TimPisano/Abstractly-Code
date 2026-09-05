@@ -28,7 +28,6 @@ import os
 import threading
 import time
 import uuid
-from typing import Optional
 
 try:
     from flask import has_request_context, request, g

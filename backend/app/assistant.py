@@ -29,12 +29,10 @@ window. A real embedding-based retrieval layer would be the natural
 next step if portfolios grow past what fits in-context.
 """
 
-import json
 import logging
 import os
-import re
 import time
-from datetime import date, datetime, timezone
+from datetime import date
 from typing import Any, Dict, List, Optional
 
 import anthropic
@@ -136,7 +134,6 @@ def build_portfolio_context(leases: List[Dict[str, Any]], discrepancies: List[Di
     lines.append("")
     lines.append("LEASES (id | tenant | address | monthly rent | sq ft | start | end):")
     for lease in leases[:MAX_LEASES_IN_CONTEXT]:
-        fields = lease.get("extracted_fields", lease)
         tenant = field_value(lease, "tenant") or "not found"
         address = field_value(lease, "property_address") or "not found"
         rent = _fmt_money(field_value(lease, "rent_amount"))

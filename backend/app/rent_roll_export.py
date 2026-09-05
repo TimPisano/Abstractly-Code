@@ -32,7 +32,13 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font
 from openpyxl.utils import get_column_letter
 
-from app.normalize import parse_currency, parse_date, parse_square_footage, rent_per_sqft
+from app.normalize import (
+    extracted_field_value as _field_value,
+    parse_currency,
+    parse_date,
+    parse_square_footage,
+    rent_per_sqft,
+)
 
 
 COLUMNS = [
@@ -260,19 +266,6 @@ def _cell_value(lease: Dict[str, Any], column: str, today: date):
         return _months_until(_field_value(lease, "lease_end_date"), today)
     return _field_value(lease, _FIELD_FOR_COLUMN[column])
 
-
-def _field_value(lease: Dict[str, Any], field_name: str) -> Optional[str]:
-    """
-    Reads one extracted field's value, tolerating every shape a partially
-    populated or amendment-merged record can take (missing extracted_fields,
-    missing field, field present but null).
-    """
-    fields = lease.get("extracted_fields") or {}
-    entry = fields.get(field_name)
-    if not isinstance(entry, dict):
-        return None
-    value = entry.get("value")
-    return value if value not in (None, "") else None
 
 
 def _numeric_or_text(value: str, column: str):

@@ -31,7 +31,7 @@ from typing import Any, Dict, List, Optional
 
 from openpyxl import load_workbook
 
-from app.normalize import parse_currency, parse_date, parse_square_footage
+from app.normalize import normalize_header as _normalize_header, parse_currency, parse_date, parse_square_footage
 from app.portfolio import FIELD_NAMES
 
 
@@ -207,10 +207,6 @@ _NON_TENANT_KEYWORDS = {"vacant", "vacancy", "total", "totals", "subtotal", "sub
 # a bare identifier (e.g. "101", "A") that still needs "Suite " prepended
 # to read naturally combined with a base property address.
 _UNIT_DESIGNATOR_RE = re.compile(r"^\s*(?:suite|ste\.?|unit|apt\.?|#)\s*[\w-]+", re.IGNORECASE)
-
-
-def _normalize_header(header: Any) -> str:
-    return re.sub(r"[^\w\s]", "", str(header).lower()).strip()
 
 
 def _match_columns(headers: List[Any]) -> Dict[str, int]:

@@ -26,6 +26,12 @@ import html
 from datetime import date
 from typing import Any, Dict, List, Optional
 
+from .normalize import (
+    extracted_field_value as _field_value,
+    format_currency as _format_currency,
+    format_sqft as _format_sqft,
+)
+
 
 # Rendered in the header for a reader to recognize whose portfolio this is.
 # A placeholder until the app models named portfolios.
@@ -278,35 +284,6 @@ def _section(title: str, content: str) -> str:
     return (
         f'<section>\n<h2>{html.escape(title)}</h2>\n{content}\n</section>'
     )
-
-
-def _field_value(lease: Dict[str, Any], field_name: str) -> Optional[str]:
-    """Reads one extracted field's value, tolerating partially-shaped records."""
-    fields = lease.get("extracted_fields") or {}
-    entry = fields.get(field_name)
-    if not isinstance(entry, dict):
-        return None
-    value = entry.get("value")
-    return value if value not in (None, "") else None
-
-
-def _format_currency(value: Optional[float]) -> str:
-    """None becomes an explicit phrase, never a blank or a zero."""
-    if value is None:
-        return "Not available"
-    try:
-        return "${:,.2f}".format(float(value))
-    except (TypeError, ValueError):
-        return "Not available"
-
-
-def _format_sqft(value: Optional[float]) -> str:
-    if value is None:
-        return "Not available"
-    try:
-        return "{:,.0f} sq ft".format(float(value))
-    except (TypeError, ValueError):
-        return "Not available"
 
 
 def _format_count(value: Any) -> str:

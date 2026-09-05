@@ -944,7 +944,6 @@ def get_lease_version_chain(lease_id: int) -> List[Dict[str, Any]]:
             if prior is None:
                 break
             node = dict(prior)
-        root_id = node["id"]
 
         # Walk forward from the root, following whichever lease
         # supersedes each node in turn, until nothing supersedes the
@@ -1305,6 +1304,21 @@ def get_lease(lease_id: int) -> Optional[Dict[str, Any]]:
         conn.close()
 
 
+def get_leases_by_ids(lease_ids: List[int]) -> Dict[int, Dict[str, Any]]:
+    """Batched version of get_lease for many ids at once — {id: lease}. Same OverflowError safety as get_lease (an out-of-range id just won't match any row)."""
+    if not lease_ids:
+        return {}
+    conn = get_connection()
+    try:
+        placeholders = ",".join("?" for _ in lease_ids)
+        rows = conn.execute(f"SELECT * FROM leases WHERE id IN ({placeholders})", lease_ids).fetchall()
+        return {row["id"]: _row_to_dict(row) for row in rows}
+    except OverflowError:
+        return {}
+    finally:
+        conn.close()
+
+
 def get_all_leases(document_type: Optional[str] = "lease", include_superseded: bool = False) -> List[Dict[str, Any]]:
     """
     Base leases only by default (document_type='lease'), ordered by
@@ -1357,6 +1371,27 @@ def get_amendments(base_lease_id: int) -> List[Dict[str, Any]]:
         return [_row_to_dict(r) for r in rows]
     except OverflowError:
         return []
+    finally:
+        conn.close()
+
+
+def get_amendments_for_leases(base_lease_ids: List[int]) -> Dict[int, List[Dict[str, Any]]]:
+    """Batched version of get_amendments for many base lease ids at once — {base_lease_id: [amendments]} — used by portfolio_health_score's data-freshness component so it isn't one query per amended lease."""
+    if not base_lease_ids:
+        return {}
+    conn = get_connection()
+    try:
+        placeholders = ",".join("?" for _ in base_lease_ids)
+        rows = conn.execute(
+            f"SELECT * FROM leases WHERE base_lease_id IN ({placeholders}) ORDER BY uploaded_at",
+            base_lease_ids,
+        ).fetchall()
+        result: Dict[int, List[Dict[str, Any]]] = {bid: [] for bid in base_lease_ids}
+        for row in rows:
+            result[row["base_lease_id"]].append(_row_to_dict(row))
+        return result
+    except OverflowError:
+        return {}
     finally:
         conn.close()
 
@@ -1776,7 +1811,6 @@ def get_usage_stats_for_users(users: List[Dict[str, Any]]) -> Dict[int, Dict[str
         return {}
     result = {u["id"]: dict(_ZERO_USAGE) for u in users}
     id_by_lower_email = {(u.get("email") or "").strip().lower(): u["id"] for u in users if u.get("email")}
-    user_ids = list(result)
 
     conn = get_connection()
     try:
@@ -2492,6 +2526,21 @@ def get_task(task_id: int) -> Optional[Dict[str, Any]]:
     try:
         row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
         return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def get_tasks_by_ids(task_ids: List[int]) -> Dict[int, Dict[str, Any]]:
+    """Batched version of get_task for many ids at once — {id: task}."""
+    if not task_ids:
+        return {}
+    conn = get_connection()
+    try:
+        placeholders = ",".join("?" for _ in task_ids)
+        rows = conn.execute(f"SELECT * FROM tasks WHERE id IN ({placeholders})", task_ids).fetchall()
+        return {row["id"]: dict(row) for row in rows}
+    except OverflowError:
+        return {}
     finally:
         conn.close()
 

@@ -71,7 +71,7 @@ function showToast(message, kind = 'success') {
     const el = document.createElement('div');
     el.setAttribute('role', kind === 'error' ? 'alert' : 'status');
     el.textContent = message;
-    el.style.cssText = `position:fixed;bottom:1.5rem;right:1.5rem;padding:0.75rem 1.25rem;border-radius:8px;font-size:0.875rem;color:#fff;z-index:200;box-shadow:0 4px 12px rgba(0,0,0,0.2);background:${kind === 'error' ? '#9a3b3b' : '#2f6b4f'};`;
+    el.style.cssText = `position:fixed;bottom:1.5rem;right:1.5rem;padding:0.75rem 1.25rem;border-radius:8px;font-size:0.875rem;color:#fff;z-index:200;box-shadow:0 4px 12px rgba(0,0,0,0.2);background:var(${kind === 'error' ? '--error-color' : '--success-color'});`;
     document.body.appendChild(el);
     setTimeout(() => el.remove(), 3500);
 }

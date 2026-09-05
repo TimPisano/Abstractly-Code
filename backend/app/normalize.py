@@ -37,6 +37,47 @@ MONTHS_MAP = {
 }
 
 
+def format_currency(value: Optional[float]) -> str:
+    """None (or anything unparseable) becomes an explicit phrase, never a blank or a zero. Was duplicated (less defensively) in qa_engine.py."""
+    if value is None:
+        return "Not available"
+    try:
+        return "${:,.2f}".format(float(value))
+    except (TypeError, ValueError):
+        return "Not available"
+
+
+def format_sqft(value: Optional[float]) -> str:
+    """Same None/unparseable handling as format_currency. Was duplicated (less defensively) in qa_engine.py."""
+    if value is None:
+        return "Not available"
+    try:
+        return "{:,.0f} sq ft".format(float(value))
+    except (TypeError, ValueError):
+        return "Not available"
+
+
+def normalize_header(header: Any) -> str:
+    """Lowercases, strips punctuation, and trims a spreadsheet column header for matching. Was duplicated identically in rent_roll_import.py and t12_import.py."""
+    return re.sub(r"[^\w\s]", "", str(header).lower()).strip()
+
+
+def extracted_field_value(lease: Dict[str, Any], field_name: str) -> Optional[str]:
+    """
+    Reads one extracted field's value, tolerating every shape a partially
+    populated or amendment-merged record can take (missing extracted_fields,
+    missing field, field present but null). Was duplicated identically
+    across report.py/rent_roll_export.py/sheets_export.py/summary_memo.py --
+    consolidated here since all four bodies were byte-for-byte the same.
+    """
+    fields = lease.get("extracted_fields") or {}
+    entry = fields.get(field_name)
+    if not isinstance(entry, dict):
+        return None
+    value = entry.get("value")
+    return value if value not in (None, "") else None
+
+
 def parse_currency(value: Optional[str]) -> Optional[float]:
     """
     "$6,250.00" -> 6250.0 ; "$1,000,000 per occurrence" -> 1000000.0

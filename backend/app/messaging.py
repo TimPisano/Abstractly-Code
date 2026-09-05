@@ -11,7 +11,7 @@ database.is_thread_participant), enforced at the database layer, not
 just this module. See api.py's routes for where that check actually
 gets applied before any read/write.
 """
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 
 from . import database
 

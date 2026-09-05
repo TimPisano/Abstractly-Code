@@ -376,7 +376,7 @@ class FieldExtractor:
         keyword_group = "|".join(keywords)
         # Optional "is"/"was" filler covers casual phrasing like
         # "the tenant is Alex Chen" alongside formal "Tenant: Alex Chen"
-        connector = rf"[:\s]+(?:(?i:is|was)\s+)?"
+        connector = r"[:\s]+(?:(?i:is|was)\s+)?"
         # A repeated word may be a normal capitalized word ("Apparel") or an
         # ALL-CAPS acronym suffix ("LLC", "LP"), each with an optional
         # trailing period, so entity suffixes aren't truncated.
@@ -1069,7 +1069,7 @@ class FieldExtractor:
         """
         sqft_unit = r"(?:square\s+feet|sq\.?\s*ft\.?)"
         patterns = [
-            rf"(?:square\s+footage|rentable\s+area|leasable\s+area)[:\s]+([\d,]+)",
+            r"(?:square\s+footage|rentable\s+area|leasable\s+area)[:\s]+([\d,]+)",
             rf"(?:approximately|consisting\s+of)\s+([\d,]+)\s*{sqft_unit}",
             rf"([\d,]+)\s*{sqft_unit}",
         ]

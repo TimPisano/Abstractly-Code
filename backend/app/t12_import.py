@@ -39,7 +39,7 @@ from typing import Any, Dict, List, Optional
 
 from openpyxl import load_workbook
 
-from app.normalize import parse_currency
+from app.normalize import normalize_header as _normalize_header, parse_currency
 
 
 class T12ImportError(Exception):
@@ -98,10 +98,6 @@ _POTENTIAL_INCOME_WORDS = {"potential", "market", "proforma", "projected", "aski
 
 
 _HEADER_SCAN_WINDOW = 20
-
-
-def _normalize_header(header: Any) -> str:
-    return re.sub(r"[^\w\s]", "", str(header).lower()).strip()
 
 
 def _is_potential_income_label(normalized_label: str) -> bool:

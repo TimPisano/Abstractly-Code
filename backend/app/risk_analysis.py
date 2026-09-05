@@ -30,7 +30,6 @@ from .normalize import (
     parse_date,
     parse_days,
     parse_renewal_options,
-    parse_square_footage,
     rent_per_sqft,
 )
 

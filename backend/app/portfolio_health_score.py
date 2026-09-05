@@ -258,13 +258,12 @@ def _unresolved_discrepancies_component(leases: List[Dict[str, Any]]) -> Dict[st
     }
 
 
-def _last_refreshed_at(lease: Dict[str, Any]) -> str:
+def _last_refreshed_at(lease: Dict[str, Any], amendments_by_lease: Dict[int, List[Dict[str, Any]]]) -> str:
     """The later of this lease's own upload time and its most recent amendment's -- an amendment IS a real data refresh, same convention portfolio_history.py uses."""
     latest = lease["uploaded_at"]
-    if lease.get("amendment_count", 0) > 0:
-        for amendment in database.get_amendments(lease["id"]):
-            if amendment["uploaded_at"] > latest:
-                latest = amendment["uploaded_at"]
+    for amendment in amendments_by_lease.get(lease["id"], []):
+        if amendment["uploaded_at"] > latest:
+            latest = amendment["uploaded_at"]
     return latest
 
 
@@ -281,9 +280,12 @@ def _data_freshness_component(
     threshold = timedelta(days=staleness_threshold_months * _APPROX_DAYS_PER_MONTH)
     now = datetime.combine(reference_date, datetime.min.time(), tzinfo=timezone.utc)
 
+    amended_lease_ids = [lease["id"] for lease in leases if lease.get("amendment_count", 0) > 0]
+    amendments_by_lease = database.get_amendments_for_leases(amended_lease_ids)
+
     fresh_count = 0
     for lease in leases:
-        last_refreshed = datetime.fromisoformat(_last_refreshed_at(lease))
+        last_refreshed = datetime.fromisoformat(_last_refreshed_at(lease, amendments_by_lease))
         if now - last_refreshed <= threshold:
             fresh_count += 1
 

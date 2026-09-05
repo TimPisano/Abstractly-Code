@@ -6,12 +6,10 @@ and falling back to OCR (pytesseract + pdf2image) for scanned PDFs.
 """
 
 import logging
-import re
-from typing import Optional, Dict, Any, List
+from typing import Dict, Any, List
 import pypdf
 from pdf2image import convert_from_path
 import pytesseract
-from io import BytesIO
 
 logger = logging.getLogger(__name__)
 

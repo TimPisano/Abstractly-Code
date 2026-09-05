@@ -34,7 +34,12 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
-from .normalize import parse_currency, parse_square_footage, rent_per_sqft
+from .normalize import (
+    extracted_field_value as _field_value,
+    parse_currency,
+    parse_square_footage,
+    rent_per_sqft,
+)
 from .rent_roll_export import portfolio_summary_table
 
 logger = logging.getLogger(__name__)
@@ -82,15 +87,6 @@ class SheetsExportError(Exception):
     project's other external-service integration (email_service.py) and
     the hardening-pass error handlers in api.py.
     """
-
-
-def _field_value(lease: Dict[str, Any], field_name: str) -> Optional[str]:
-    fields = lease.get("extracted_fields") or {}
-    entry = fields.get(field_name)
-    if not isinstance(entry, dict):
-        return None
-    value = entry.get("value")
-    return value if value not in (None, "") else None
 
 
 def _numeric_or_text(value: str, column: str):
