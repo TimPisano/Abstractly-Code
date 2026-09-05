@@ -156,9 +156,36 @@ def test_unusual_terms_reuses_risk_engine():
 
 def test_attention_items_empty_portfolio():
     attention = compute_attention_items([], reference_date=REFERENCE_DATE)
-    assert attention == {"expiring_soon": [], "missing_data": [], "unusual_terms": []}
+    assert attention == {"expiring_soon": [], "missing_data": [], "needs_verification": [], "unusual_terms": []}
 
     print("✓ test_attention_items_empty_portfolio: PASS")
+
+
+def test_needs_verification_flags_medium_confidence_core_fields():
+    """
+    A lease with a medium-confidence core field (found, but not yet
+    human-confirmed) must show up in needs_verification -- a different
+    list from missing_data, since there IS a value here, just one worth
+    a quick glance rather than retyping.
+    """
+    lease = _lease(
+        6, "medium_confidence.pdf",
+        tenant="Fog City Robotics",
+        landlord="Casco Bay Holdings",
+        rent_amount="$4,000.00",
+        lease_start_date="January 1, 2024",
+        lease_end_date="December 31, 2028",
+    )
+    lease["extracted_fields"]["tenant"] = _field("Fog City Robotics", confidence="medium")
+    attention = compute_attention_items(ALL_LEASES + [lease], reference_date=REFERENCE_DATE)
+    entries = {e["lease_id"]: e["needs_verification_fields"] for e in attention["needs_verification"]}
+
+    assert 6 in entries, "the medium-confidence lease must be flagged"
+    fields_flagged = {f["field"] for f in entries[6]}
+    assert fields_flagged == {"tenant"}, f"only the medium-confidence field should be listed, got {fields_flagged}"
+    assert 1 not in entries, "a fully high-confidence lease must not be flagged"
+
+    print("✓ test_needs_verification_flags_medium_confidence_core_fields: PASS")
 
 
 def test_health_verified_count_matches_attention():
@@ -293,6 +320,7 @@ if __name__ == "__main__":
     test_missing_data_flags_incomplete_leases()
     test_unusual_terms_reuses_risk_engine()
     test_attention_items_empty_portfolio()
+    test_needs_verification_flags_medium_confidence_core_fields()
     test_health_verified_count_matches_attention()
     test_health_excludes_already_expired_from_days_remaining()
     test_health_rent_exposure_windows()

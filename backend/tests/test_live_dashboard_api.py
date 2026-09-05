@@ -101,11 +101,11 @@ def main():
         status, attention = _request("GET", "/portfolio/attention")
         check("attention endpoint returns 200 on empty portfolio", status == 200, str(status))
         check(
-            "attention has the three expected keys",
-            isinstance(attention, dict) and set(attention.keys()) == {"expiring_soon", "missing_data", "unusual_terms"},
+            "attention has the four expected keys",
+            isinstance(attention, dict) and set(attention.keys()) == {"expiring_soon", "missing_data", "needs_verification", "unusual_terms"},
             str(attention.keys()) if isinstance(attention, dict) else str(attention),
         )
-        check("attention lists are empty for an empty portfolio", attention == {"expiring_soon": [], "missing_data": [], "unusual_terms": []})
+        check("attention lists are empty for an empty portfolio", attention == {"expiring_soon": [], "missing_data": [], "needs_verification": [], "unusual_terms": []})
 
         status, portfolio_health = _request("GET", "/portfolio/health")
         check("health endpoint returns 200 on empty portfolio", status == 200, str(status))
@@ -120,7 +120,7 @@ def main():
         status, attention = _request("GET", "/portfolio/attention")
         check("attention endpoint 200 with real leases", status == 200, str(status))
         all_ids_seen = set()
-        for bucket in ("expiring_soon", "missing_data", "unusual_terms"):
+        for bucket in ("expiring_soon", "missing_data", "needs_verification", "unusual_terms"):
             for entry in attention[bucket]:
                 all_ids_seen.add(entry["lease_id"])
         check(

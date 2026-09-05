@@ -229,11 +229,22 @@ class FieldExtractor:
     # labeled dataset, since no such dataset exists for this project.
     _LOW_OCR_CONFIDENCE_THRESHOLD = 60.0
 
-    def _downgrade_confidence(self, entry: Dict[str, Any], note: str) -> None:
+    def _downgrade_confidence(self, entry: Dict[str, Any], note: str, reason: Optional[str] = None) -> None:
         current = entry.get("confidence")
         if current in self._CONFIDENCE_DOWNGRADE:
             entry["confidence"] = self._CONFIDENCE_DOWNGRADE[current]
         entry["validation_note"] = note
+        # Distinguishes WHY a field is low-confidence -- specifically
+        # "the source page was barely legible" (reason="ocr_clarity")
+        # from every other downgrade reason (out-of-range value, date
+        # ordering, etc). The frontend uses this to show "Needs OCR"
+        # instead of a generic "Low Confidence" badge, since the two
+        # call for different user actions: re-scanning/typing the value
+        # in vs. just double-checking a plausible-looking match. Only
+        # set when a caller passes one -- absent for the other
+        # validators below, which stay a plain low-confidence signal.
+        if reason:
+            entry["validation_reason"] = reason
 
     def _validate_currency_range(self, entry: Dict[str, Any], min_val: float, max_val: float, label: str) -> None:
         if not entry.get("value"):
@@ -304,6 +315,7 @@ class FieldExtractor:
                     entry,
                     f"This value came from a scanned page with low OCR clarity "
                     f"({page_confidence:.0f}/100) -- verify against the source document.",
+                    reason="ocr_clarity",
                 )
 
     def _apply_confidence_validation(self, result: Dict[str, Any], pages: List[Dict[str, Any]]) -> None:

@@ -10,6 +10,7 @@ _fresh_temp_db() + Flask test_client(), real database.create_user()-
 backed sessions.
 """
 
+import json
 import os
 import sys
 import tempfile
@@ -68,6 +69,21 @@ def _make_lease(**field_overrides):
     return database.insert_lease("lease.pdf", _fields(**field_overrides), display_name="Test Lease")
 
 
+def _patch_field_entry(lease_id, field_name, **overrides):
+    """Test-only: directly overwrites a field's stored entry with the given
+    overrides merged in, for setting up a confidence/validation-note state
+    that no real extraction/edit path currently produces on its own."""
+    conn = database.get_connection()
+    try:
+        row = conn.execute("SELECT extracted_fields FROM leases WHERE id = ?", (lease_id,)).fetchone()
+        fields = json.loads(row["extracted_fields"])
+        fields[field_name].update(overrides)
+        conn.execute("UPDATE leases SET extracted_fields = ? WHERE id = ?", (json.dumps(fields), lease_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def _make_discrepancy(lease_id, field="rent_amount"):
     return database.upsert_discrepancy(
         "lease_risk_flag", f"lease_risk:{lease_id}:field_mismatch:{field}:0", "field_mismatch",
@@ -123,6 +139,65 @@ def test_update_lease_field_can_clear_to_none_with_manually_verified_flag():
     finally:
         os.unlink(db_path)
     print("✓ test_update_lease_field_can_clear_to_none_with_manually_verified_flag: PASS")
+
+
+def test_mark_field_verified_preserves_value_and_source():
+    """
+    Unlike update_lease_field (which always nulls source -- there's no
+    citation for text a human just typed), mark_field_verified confirms
+    an EXISTING extraction is correct, so the original citation must
+    survive: only confidence/manually_verified change.
+    """
+    db_path = _fresh_temp_db()
+    try:
+        lease_id = _make_lease(tenant="Fog City Robotics")
+        _patch_field_entry(lease_id, "tenant", confidence="medium")
+
+        new_entry = database.mark_field_verified(lease_id, "tenant", edited_by="Alice", edited_by_email="alice@example.com")
+        assert new_entry["value"] == "Fog City Robotics"
+        assert new_entry["source"] == {"page": 1, "quote": "...Fog City Robotics..."}, \
+            "the original citation must survive a verify -- there's nothing wrong with it to erase"
+        assert new_entry["confidence"] == "high"
+        assert new_entry["manually_verified"] is True
+
+        edits = database.get_lease_field_edits(lease_id=lease_id)
+        assert len(edits) == 1
+        assert edits[0]["field_name"] == "tenant"
+        assert edits[0]["edited_by"] == "Alice"
+    finally:
+        os.unlink(db_path)
+    print("✓ test_mark_field_verified_preserves_value_and_source: PASS")
+
+
+def test_mark_field_verified_clears_stale_validation_note():
+    db_path = _fresh_temp_db()
+    try:
+        lease_id = _make_lease(rent_amount="$4,000.00")
+        _patch_field_entry(
+            lease_id, "rent_amount", confidence="low",
+            validation_note="This value came from a scanned page with low OCR clarity (42/100) -- verify against the source document.",
+            validation_reason="ocr_clarity",
+        )
+
+        new_entry = database.mark_field_verified(lease_id, "rent_amount", edited_by="Bob")
+        assert "validation_note" not in new_entry
+        assert "validation_reason" not in new_entry
+        assert new_entry["confidence"] == "high"
+    finally:
+        os.unlink(db_path)
+    print("✓ test_mark_field_verified_clears_stale_validation_note: PASS")
+
+
+def test_mark_field_verified_no_value_is_a_noop():
+    db_path = _fresh_temp_db()
+    try:
+        lease_id = _make_lease()  # every field not-found
+        result = database.mark_field_verified(lease_id, "rent_amount", edited_by="Alice")
+        assert result is None, "confirming a genuinely absent field isn't what this is for"
+        assert database.get_lease_field_edits(lease_id=lease_id) == []
+    finally:
+        os.unlink(db_path)
+    print("✓ test_mark_field_verified_no_value_is_a_noop: PASS")
 
 
 def test_update_lease_field_nonexistent_lease_returns_none():
@@ -237,6 +312,83 @@ def test_patch_field_route_resolves_to_governing_amendment_not_base():
     finally:
         os.unlink(db_path)
     print("✓ test_patch_field_route_resolves_to_governing_amendment_not_base: PASS")
+
+
+def test_verify_field_route_happy_path_preserves_source_and_logs_activity():
+    db_path = _fresh_temp_db()
+    try:
+        admin, analyst, _ = _real_users()
+        client = _client_for(analyst, "analyst")
+        lease_id = _make_lease(tenant="Fog City Robotics")
+        _patch_field_entry(lease_id, "tenant", confidence="medium")
+
+        resp = client.post(f"/leases/{lease_id}/fields/tenant/verify", json={})
+        assert resp.status_code == 200, resp.get_json()
+        data = resp.get_json()
+        assert data["field"]["value"] == "Fog City Robotics"
+        assert data["field"]["confidence"] == "high"
+        assert data["field"]["manually_verified"] is True
+        assert data["field"]["source"] == {"page": 1, "quote": "...Fog City Robotics..."}
+
+        activity = client.get("/activity?limit=5").get_json()
+        verified_entries = [a for a in activity if a["action_type"] == "lease_field_verified"]
+        assert len(verified_entries) == 1
+        assert "Analyst User" in verified_entries[0]["description"]
+    finally:
+        os.unlink(db_path)
+    print("✓ test_verify_field_route_happy_path_preserves_source_and_logs_activity: PASS")
+
+
+def test_verify_field_route_resolves_to_governing_amendment_not_base():
+    db_path = _fresh_temp_db()
+    try:
+        admin, analyst, _ = _real_users()
+        client = _client_for(analyst, "analyst")
+        base_id = _make_lease(rent_amount="$4,000.00")
+        amendment_id = database.insert_lease(
+            "amendment.pdf", _fields(rent_amount="$4,500.00"), document_type="amendment", base_lease_id=base_id,
+        )
+        _patch_field_entry(amendment_id, "rent_amount", confidence="medium")
+
+        resp = client.post(f"/leases/{base_id}/fields/rent_amount/verify", json={})
+        assert resp.status_code == 200, resp.get_json()
+        assert resp.get_json()["edited_document_id"] == amendment_id, \
+            "must verify the document that actually governs the field, not blindly the base lease id from the URL"
+        assert database.get_lease(amendment_id)["extracted_fields"]["rent_amount"]["confidence"] == "high"
+        assert database.get_lease(amendment_id)["extracted_fields"]["rent_amount"]["manually_verified"] is True
+
+        # The base row itself must be untouched -- verify landed on the amendment.
+        base_row = database.get_lease(base_id)
+        assert base_row["extracted_fields"]["rent_amount"]["value"] == "$4,000.00"
+        assert not base_row["extracted_fields"]["rent_amount"].get("manually_verified")
+    finally:
+        os.unlink(db_path)
+    print("✓ test_verify_field_route_resolves_to_governing_amendment_not_base: PASS")
+
+
+def test_verify_field_route_validation():
+    db_path = _fresh_temp_db()
+    try:
+        admin, analyst, viewer = _real_users()
+        client = _client_for(analyst, "analyst")
+        lease_id = _make_lease(rent_amount="$4,000.00")
+
+        resp = client.post(f"/leases/{lease_id}/fields/not_a_real_field/verify", json={})
+        assert resp.status_code == 400
+
+        resp = client.post("/leases/999999/fields/rent_amount/verify", json={})
+        assert resp.status_code == 404
+
+        # Nothing found for this field -- nothing to verify.
+        resp = client.post(f"/leases/{lease_id}/fields/tenant/verify", json={})
+        assert resp.status_code == 400
+
+        viewer_client = _client_for(viewer, "viewer")
+        resp = viewer_client.post(f"/leases/{lease_id}/fields/rent_amount/verify", json={})
+        assert resp.status_code == 403, "verifying a field is an analyst-level action, same as editing one"
+    finally:
+        os.unlink(db_path)
+    print("✓ test_verify_field_route_validation: PASS")
 
 
 def test_patch_field_route_validation():
@@ -546,10 +698,16 @@ def test_task_detail_lease_view_follows_resubmission_to_current_version():
 if __name__ == "__main__":
     test_update_lease_field_mutates_extracted_fields_and_logs_edit()
     test_update_lease_field_can_clear_to_none_with_manually_verified_flag()
+    test_mark_field_verified_preserves_value_and_source()
+    test_mark_field_verified_clears_stale_validation_note()
+    test_mark_field_verified_no_value_is_a_noop()
     test_update_lease_field_nonexistent_lease_returns_none()
     test_get_lease_field_edits_filters_and_ordering()
     test_patch_field_route_happy_path_and_activity_log()
     test_patch_field_route_resolves_to_governing_amendment_not_base()
+    test_verify_field_route_happy_path_preserves_source_and_logs_activity()
+    test_verify_field_route_resolves_to_governing_amendment_not_base()
+    test_verify_field_route_validation()
     test_patch_field_route_validation()
     test_patch_field_route_requires_login_and_analyst_role()
     test_patch_field_route_value_can_be_null()

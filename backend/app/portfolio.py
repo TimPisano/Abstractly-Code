@@ -791,7 +791,7 @@ def compute_attention_items(
     reference_date: Optional[date] = None,
 ) -> Dict[str, List[Dict[str, Any]]]:
     """
-    "What needs attention today" — the three reasons a lease would be
+    "What needs attention today" — the four reasons a lease would be
     worth a human's time right now, computed fresh from the same data
     every other view uses (no separate flag stored on the lease):
 
@@ -799,12 +799,24 @@ def compute_attention_items(
         (including already-due-today, excluding leases already expired —
         those are a different problem, not a thing to plan for)
       - missing_data: missing one or more of CORE_FIELDS_FOR_COMPLETENESS
+        entirely (nothing extracted for that field at all)
+      - needs_verification: has one or more CORE_FIELDS_FOR_COMPLETENESS
+        that WAS found but is only medium-confidence -- a different
+        problem from missing_data (there's a value, a human just needs
+        to glance at it and confirm it's right, via
+        POST .../fields/<name>/verify, rather than type a replacement)
       - unusual_terms: has at least one medium/high severity risk flag
         from the existing risk_analysis engine (below-market rent,
         missing standard clauses, notice-period outliers, inconsistent
         escalation schedules, date conflicts) — reused rather than
         reimplemented, so "unusual" means the same thing here as it does
         on the lease detail page's risk panel.
+
+    Both missing_data and needs_verification are grouped one entry PER
+    LEASE (see _attention_entry), each carrying the full list of that
+    lease's own gaps -- never one entry per (lease, field) pair, which
+    would scatter the same lease across several rows and defeat the
+    point of a "here's everything wrong with this one lease" view.
 
     A lease can appear in more than one list; each list is independently
     useful ("show me every incomplete lease" vs "show me every lease
@@ -815,6 +827,7 @@ def compute_attention_items(
 
     expiring_soon = []
     missing_data = []
+    needs_verification = []
     unusual_terms = []
 
     context = portfolio_context_for_risk_analysis(leases)
@@ -837,6 +850,14 @@ def compute_attention_items(
         if missing_fields:
             missing_data.append(_attention_entry(lease, missing_fields=missing_fields))
 
+        medium_confidence_fields = [
+            {"field": f, "value": field_value(lease, f)}
+            for f in CORE_FIELDS_FOR_COMPLETENESS
+            if field_value(lease, f) is not None and (fields.get(f) or {}).get("confidence") == "medium"
+        ]
+        if medium_confidence_fields:
+            needs_verification.append(_attention_entry(lease, needs_verification_fields=medium_confidence_fields))
+
         date_candidates = lease.get("date_candidates")
         cross_lease_flags = cross_lease_mismatches.get(lease["id"], [])
         flags = analyze_lease_risks(fields, context, date_candidates, cross_lease_flags)
@@ -849,6 +870,7 @@ def compute_attention_items(
     return {
         "expiring_soon": expiring_soon,
         "missing_data": missing_data,
+        "needs_verification": needs_verification,
         "unusual_terms": unusual_terms,
     }
 

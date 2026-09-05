@@ -279,6 +279,18 @@ const Api = {
         return apiRequest(`/leases/${leaseId}/fields/${fieldName}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     },
 
+    // Confirms an EXISTING extracted value is correct -- upgrades
+    // confidence to "high" without touching value or source (see
+    // backend/app/database.py's mark_field_verified for why this is
+    // separate from updateLeaseField, which is for correcting a wrong
+    // value and always clears source).
+    verifyLeaseField(leaseId, fieldName, { note, taskId } = {}) {
+        const body = {};
+        if (note) body.note = note;
+        if (taskId != null) body.task_id = taskId;
+        return apiRequest(`/leases/${leaseId}/fields/${fieldName}/verify`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    },
+
     // Portfolio history & trends for one property (rent growth, tenant
     // turnover, historical rollover pattern) -- see
     // backend/app/portfolio_history.py.

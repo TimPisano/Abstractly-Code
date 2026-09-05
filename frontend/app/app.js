@@ -301,9 +301,14 @@ function hideSidebarTooltip() {
     if (_sidebarTooltipEl) _sidebarTooltipEl.classList.remove('show');
 }
 
-function showLeaseDetail(leaseId) {
+// `highlightField` (optional): jumps straight to that field's card on
+// the detail page, flashes it, and opens its inline editor -- used by
+// the dashboard's attention panel so clicking a specific missing/
+// needs-verification field is a one-click fix, not "go find it
+// yourself among 15 fields." See detail-view.js's load().
+function showLeaseDetail(leaseId, highlightField) {
     AppState.currentLeaseId = leaseId;
-    showView('detail', { leaseId });
+    showView('detail', { leaseId, highlightField });
 }
 
 /**
@@ -655,14 +660,32 @@ function fieldValue(lease, fieldKey) {
  * field. `taskId`, when given, links the edit to the task it happened
  * under (see GET /tasks/<id>'s `field_edits`).
  */
-async function saveLeaseFieldEdit(baseLeaseId, fieldName, value, { taskId } = {}) {
+async function resolveEffectiveDocumentId(baseLeaseId, fieldName) {
     let targetId = baseLeaseId;
     try {
         const chain = await Api.leaseFieldSource(baseLeaseId, fieldName);
         if (chain && chain.effective_document_id != null) targetId = chain.effective_document_id;
-    } catch (err) { /* best-effort -- fall back to editing the base lease directly */ }
+    } catch (err) { /* best-effort -- fall back to the base lease directly */ }
+    return targetId;
+}
+
+async function saveLeaseFieldEdit(baseLeaseId, fieldName, value, { taskId } = {}) {
+    const targetId = await resolveEffectiveDocumentId(baseLeaseId, fieldName);
     const result = await Api.updateLeaseField(targetId, fieldName, { value, taskId });
     return result.field; // {value, source, confidence, manually_verified}
+}
+
+/**
+ * Confirms an EXISTING extracted value is correct -- the one real save
+ * path behind every "Mark as verified" button in the app (lease detail
+ * page, dashboard attention panel), same effective-document resolution
+ * as saveLeaseFieldEdit above so the confirmation lands on whichever
+ * row actually governs the field right now.
+ */
+async function saveLeaseFieldVerify(baseLeaseId, fieldName, { taskId } = {}) {
+    const targetId = await resolveEffectiveDocumentId(baseLeaseId, fieldName);
+    const result = await Api.verifyLeaseField(targetId, fieldName, { taskId });
+    return result.field; // {value, source, confidence: "high", manually_verified: true}
 }
 
 // Confidence glyphs — a redundant, non-color cue so the tier is
@@ -675,10 +698,26 @@ const CONFIDENCE_ICON = {
     medium: '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" focusable="false"><path fill="currentColor" d="M8 1.5 15 14H1zM7.1 6v3.6h1.8V6zm0 4.8v1.8h1.8v-1.8z"/></svg>',
     low: '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" focusable="false"><path fill="currentColor" d="M7.1 2h1.8v7H7.1zm0 9h1.8v1.8H7.1z"/></svg>',
     none: '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" focusable="false"><path fill="currentColor" d="M3 7.1h10v1.8H3z"/></svg>',
+    // Distinct from plain "low" -- a scanned page tesseract itself
+    // scored below the legibility threshold, not a fuzzy/ambiguous
+    // pattern match. Different fix: re-scan or type the value in from
+    // the physical document, rather than just eyeballing a plausible
+    // match. A little scan-line glyph rather than reusing the low-
+    // confidence triangle, so it doesn't read as "just another low".
+    needsOcr: '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" focusable="false"><path fill="currentColor" d="M2 3.5h12v1.5H2zm0 3.75h12v1.5H2zM2 11h7v1.5H2z"/><path fill="none" stroke="currentColor" stroke-width="1.3" d="M11 10.5l2 2m0-2l-2 2"/></svg>',
 };
 
-function confidenceBadgeHtml(confidence, found) {
+// found=false -> "Not Found" (nothing in the document at all).
+// found=true, confidence='low', reason='ocr_clarity' -> "Needs OCR" (the
+// source page was barely legible -- re-scanning/typing it in is the
+// fix, not just eyeballing the match). Every other low/medium/high case
+// is unchanged. These three read identically today even though they
+// call for different actions -- see DECISIONS.md.
+function confidenceBadgeHtml(confidence, found, reason) {
     if (!found) return `<span class="confidence-badge confidence-none">${CONFIDENCE_ICON.none}Not Found</span>`;
+    if (confidence === 'low' && reason === 'ocr_clarity') {
+        return `<span class="confidence-badge confidence-low">${CONFIDENCE_ICON.needsOcr}Needs OCR</span>`;
+    }
     const level = confidence || 'unknown';
     const label = level.charAt(0).toUpperCase() + level.slice(1);
     const icon = CONFIDENCE_ICON[level] || '';

@@ -610,8 +610,8 @@ const Dashboard = {
     },
 
     renderAttention(attention) {
-        const { expiring_soon, missing_data, unusual_terms } = attention;
-        const totalItems = expiring_soon.length + missing_data.length + unusual_terms.length;
+        const { expiring_soon, missing_data, needs_verification, unusual_terms } = attention;
+        const totalItems = expiring_soon.length + missing_data.length + needs_verification.length + unusual_terms.length;
         const content = document.getElementById('attentionContent');
 
         if (totalItems === 0) {
@@ -624,14 +624,18 @@ const Dashboard = {
             return;
         }
 
-        const groups = [
+        // expiring_soon/unusual_terms: one plain row per lease, whole
+        // row navigates (unchanged). missing_data/needs_verification:
+        // one row per lease (never one row per field -- see
+        // compute_attention_items' own docstring on why scattering the
+        // same lease across several rows defeats the point of "see all
+        // of this lease's gaps at once"), but EACH field within that
+        // row is its own chip so a click can jump straight to and
+        // highlight that specific field, not just the lease in general.
+        const simpleGroups = [
             {
                 key: 'expiring_soon', label: 'Expiring Soon', items: expiring_soon,
                 render: e => `${escapeHtml(e.display_name || e.filename)} &mdash; ${e.days_remaining} day${e.days_remaining === 1 ? '' : 's'} left`,
-            },
-            {
-                key: 'missing_data', label: 'Missing Data', items: missing_data,
-                render: e => `${escapeHtml(e.display_name || e.filename)} &mdash; missing ${e.missing_fields.map(f => FIELD_LABELS[f] || f).join(', ')}`,
             },
             {
                 key: 'unusual_terms', label: 'Unusual Terms', items: unusual_terms,
@@ -639,21 +643,120 @@ const Dashboard = {
             },
         ];
 
-        content.innerHTML = groups.filter(g => g.items.length > 0).map(g => `
-            <div class="attention-group">
-                <h4 class="attention-group-title">${g.label} <span class="attention-count">${g.items.length}</span></h4>
-                <div class="attention-items">
-                    ${g.items.slice(0, 5).map(item => `
-                        <div class="attention-item" data-lease-id="${item.lease_id}">${g.render(item)}</div>
-                    `).join('')}
+        const html = [];
+
+        simpleGroups.filter(g => g.items.length > 0).forEach(g => {
+            html.push(`
+                <div class="attention-group">
+                    <h4 class="attention-group-title">${g.label} <span class="attention-count">${g.items.length}</span></h4>
+                    <div class="attention-items">
+                        ${g.items.slice(0, 5).map(item => `
+                            <div class="attention-item" data-lease-id="${item.lease_id}">${g.render(item)}</div>
+                        `).join('')}
+                    </div>
+                    ${g.items.length > 5 ? `<p class="attention-more">+${g.items.length - 5} more</p>` : ''}
                 </div>
-                ${g.items.length > 5 ? `<p class="attention-more">+${g.items.length - 5} more</p>` : ''}
-            </div>
-        `).join('');
+            `);
+        });
+
+        if (missing_data.length > 0) {
+            html.push(this._attentionFieldGroupHtml({
+                label: 'Missing Data', items: missing_data, fieldsKey: 'missing_fields',
+                chipHtml: (leaseId, field, leaseName) => `
+                    <button type="button" class="attention-field-chip attention-field-chip-missing" data-lease-id="${leaseId}" data-field="${field}" aria-label="Enter ${escapeHtml(FIELD_LABELS[field] || field)} for ${escapeHtml(leaseName)}">
+                        ${CONFIDENCE_ICON.none}${escapeHtml(FIELD_LABELS[field] || field)}
+                    </button>
+                `,
+            }));
+        }
+
+        if (needs_verification.length > 0) {
+            html.push(this._attentionFieldGroupHtml({
+                label: 'Needs Verification', items: needs_verification, fieldsKey: 'needs_verification_fields',
+                chipHtml: (leaseId, field, leaseName) => `
+                    <span class="attention-field-chip-wrap">
+                        <button type="button" class="attention-field-chip attention-field-chip-medium" data-lease-id="${leaseId}" data-field="${field}" aria-label="Review ${escapeHtml(FIELD_LABELS[field] || field)} on ${escapeHtml(leaseName)}">
+                            ${CONFIDENCE_ICON.medium}${escapeHtml(FIELD_LABELS[field] || field)}
+                        </button>
+                        <button type="button" class="attention-field-verify-btn" data-lease-id="${leaseId}" data-field="${field}" title="Mark ${escapeHtml(FIELD_LABELS[field] || field)} as manually verified" aria-label="Mark ${escapeHtml(FIELD_LABELS[field] || field)} on ${escapeHtml(leaseName)} as manually verified">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.5 12.75l6 6 9-13.5"/></svg>
+                        </button>
+                    </span>
+                `,
+            }));
+        }
+
+        content.innerHTML = html.join('');
 
         content.querySelectorAll('.attention-item[data-lease-id]').forEach(el => {
             el.addEventListener('click', () => showLeaseDetail(parseInt(el.dataset.leaseId, 10)));
         });
+        content.querySelectorAll('.attention-item-lease-name[data-lease-id]').forEach(el => {
+            const open = () => showLeaseDetail(parseInt(el.dataset.leaseId, 10));
+            el.addEventListener('click', open);
+            el.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); }
+            });
+        });
+        content.querySelectorAll('.attention-field-chip[data-field]').forEach(el => {
+            el.addEventListener('click', () => showLeaseDetail(parseInt(el.dataset.leaseId, 10), el.dataset.field));
+        });
+        content.querySelectorAll('.attention-field-verify-btn').forEach(el => {
+            el.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this._verifyAttentionField(el);
+            });
+        });
+    },
+
+    // Shared markup for both missing_data and needs_verification: one
+    // card per lease, its display name (click -> jump to the lease,
+    // no specific field), then every one of that lease's flagged
+    // fields as its own chip (chipHtml supplied by the caller, since
+    // missing vs needs-verification chips need different content/
+    // actions but the same one-row-per-lease shell).
+    _attentionFieldGroupHtml({ label, items, fieldsKey, chipHtml }) {
+        return `
+            <div class="attention-group">
+                <h4 class="attention-group-title">${label} <span class="attention-count">${items.length}</span></h4>
+                <div class="attention-items">
+                    ${items.slice(0, 5).map(item => {
+                        const leaseName = item.display_name || item.filename;
+                        return `
+                        <div class="attention-item attention-item-fields">
+                            <div class="attention-item-lease-name" data-lease-id="${item.lease_id}" role="button" tabindex="0">${escapeHtml(leaseName)}</div>
+                            <div class="attention-field-chips">
+                                ${item[fieldsKey].map(f => chipHtml(item.lease_id, typeof f === 'string' ? f : f.field, leaseName)).join('')}
+                            </div>
+                        </div>
+                    `;
+                    }).join('')}
+                </div>
+                ${items.length > 5 ? `<p class="attention-more">+${items.length - 5} more</p>` : ''}
+            </div>
+        `;
+    },
+
+    async _verifyAttentionField(btn) {
+        const leaseId = parseInt(btn.dataset.leaseId, 10);
+        const field = btn.dataset.field;
+        btn.disabled = true;
+        try {
+            await saveLeaseFieldVerify(leaseId, field);
+            showToast(`${FIELD_LABELS[field] || field} marked as verified.`, 'success');
+            // Re-fetch just this panel rather than the whole dashboard
+            // (Dashboard.load()) -- this field (and possibly the whole
+            // lease, if it was its last flagged field) may no longer
+            // belong here at all, and a full-page reload/skeleton flash
+            // for one field confirmation would be a jarring amount of
+            // motion for what the user experiences as a small action.
+            Api.portfolioAttention()
+                .then(a => this.renderAttention(a))
+                .catch(() => { document.getElementById('attentionContent').innerHTML = '<p class="error-text">Failed to load.</p>'; });
+        } catch (err) {
+            showError(`Failed to verify: ${err.message}`);
+            btn.disabled = false;
+        }
     },
 
     renderExpirationAlertsSkeleton() {

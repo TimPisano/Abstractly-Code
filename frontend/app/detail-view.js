@@ -7,9 +7,19 @@
 const LeaseDetail = {
     lease: null,
     fieldReliability: null,
+    // Set by showLeaseDetail(leaseId, fieldKey) -- consumed once by
+    // renderFields() right after this load() call, then cleared, so a
+    // later plain navigation back to this same lease doesn't keep
+    // re-triggering the highlight/auto-open.
+    pendingHighlightField: null,
 
-    async load({ leaseId } = {}) {
+    async load({ leaseId, highlightField } = {}) {
         if (!leaseId) return;
+        // Always set (not just when truthy) so a highlightField from a
+        // PREVIOUS navigation that errored out before renderFields()
+        // ever consumed it (see _applyPendingHighlight) can't leak into
+        // this, unrelated one.
+        this.pendingHighlightField = highlightField || null;
         try {
             this.lease = await Api.getLease(leaseId);
             // Which field types the pipeline is historically weak at, so
@@ -129,6 +139,34 @@ const LeaseDetail = {
             section.appendChild(grid);
             container.appendChild(section);
         });
+
+        this._applyPendingHighlight();
+    },
+
+    // Jumps to the field the dashboard's attention panel linked here
+    // for, flashes its card so it's unmistakable in a grid of a dozen+
+    // fields, and opens its inline editor immediately -- "one click to
+    // fix" instead of "find the right card yourself, then click it."
+    _applyPendingHighlight() {
+        const fieldKey = this.pendingHighlightField;
+        this.pendingHighlightField = null;
+        if (!fieldKey) return;
+
+        const card = document.querySelector(`#detailResultsGroups .result-card[data-field="${fieldKey}"]`);
+        if (!card) return;
+
+        card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        card.classList.add('field-highlight-flash');
+        // Both an animationend listener (normal case) and a fixed
+        // timeout fallback (prefers-reduced-motion, where the CSS skips
+        // the animation itself and applies a static ring instead --
+        // see styles.css -- so animationend would never fire) remove
+        // the class; whichever fires first wins, the other is a no-op.
+        card.addEventListener('animationend', () => card.classList.remove('field-highlight-flash'), { once: true });
+        setTimeout(() => card.classList.remove('field-highlight-flash'), 1800);
+
+        const valueDiv = card.querySelector('.field-value.editable');
+        if (valueDiv) this.startInlineEdit(valueDiv, fieldKey, card);
     },
 
     createResultCard(fieldKey, fieldData) {
@@ -147,8 +185,31 @@ const LeaseDetail = {
         title.textContent = FIELD_LABELS[fieldKey] || fieldKey;
         header.appendChild(title);
         const badgeWrapper = document.createElement('div');
-        badgeWrapper.innerHTML = confidenceBadgeHtml(fieldData.confidence, found);
-        header.appendChild(badgeWrapper.firstElementChild);
+        badgeWrapper.className = 'card-header-badges';
+        const badgeEl = document.createElement('div');
+        badgeEl.innerHTML = confidenceBadgeHtml(fieldData.confidence, found, fieldData.validation_reason);
+        badgeWrapper.appendChild(badgeEl.firstElementChild);
+
+        // A human just needs to glance at a medium-confidence value and
+        // confirm it's right -- this is the one-click version of that,
+        // versus retyping the identical value through the edit flow
+        // just to push confidence back to "high" (which would also
+        // needlessly null the source citation -- see
+        // database.mark_field_verified's docstring).
+        if (found && fieldData.confidence === 'medium') {
+            const verifyBtn = document.createElement('button');
+            verifyBtn.type = 'button';
+            verifyBtn.className = 'field-verify-btn';
+            verifyBtn.title = `Mark ${FIELD_LABELS[fieldKey] || fieldKey} as manually verified`;
+            verifyBtn.innerHTML = `
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.5 12.75l6 6 9-13.5"/></svg>
+                Mark as verified
+            `;
+            verifyBtn.addEventListener('click', () => this.verifyField(fieldKey, card, verifyBtn));
+            badgeWrapper.appendChild(verifyBtn);
+        }
+
+        header.appendChild(badgeWrapper);
         card.appendChild(header);
 
         const body = document.createElement('div');
@@ -188,9 +249,19 @@ const LeaseDetail = {
             // than assuming "no page means row") keeps this forward-
             // compatible with a third source shape later needing its
             // own branch, instead of silently falling into the wrong one.
+            // For a lease with amendments, an amendment's value can win
+            // over the base document's -- naming which document this
+            // specific value came from (only when it's not just this
+            // page's own base file, to avoid clutter on the common
+            // no-amendments case) is what makes that visible per field,
+            // not just in the separate amendments list elsewhere on the
+            // page. See database.get_effective_fields' `document` tag.
+            const fromOtherDocument = fieldData.document && fieldData.document.filename !== lease_filename(this.lease)
+                ? ` (from ${escapeHtml(fieldData.document.filename)})`
+                : '';
             const locationHtml = 'row' in fieldData.source
                 ? `<div class="source-page">Row ${fieldData.source.row} of ${escapeHtml(fieldData.source.file)}</div>`
-                : `<div class="source-page">Page ${fieldData.source.page}</div>`;
+                : `<div class="source-page">Page ${fieldData.source.page}${fromOtherDocument}</div>`;
             sourceDiv.innerHTML = `
                 ${locationHtml}
                 <div class="source-quote">"${escapeHtml(fieldData.source.quote)}"</div>
@@ -283,6 +354,23 @@ const LeaseDetail = {
             if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
             else if (e.key === 'Escape') { e.preventDefault(); input.value = currentValue; input.blur(); }
         });
+    },
+
+    async verifyField(fieldKey, card, triggerBtn) {
+        triggerBtn.disabled = true;
+        const originalLabel = triggerBtn.innerHTML;
+        triggerBtn.textContent = 'Verifying...';
+        try {
+            const saved = await saveLeaseFieldVerify(this.lease.id, fieldKey);
+            this.lease.extracted_fields[fieldKey] = saved;
+            const fresh = this.createResultCard(fieldKey, saved);
+            card.replaceWith(fresh);
+            showToast(`${FIELD_LABELS[fieldKey] || fieldKey} marked as verified.`, 'success');
+        } catch (err) {
+            showError(`Failed to verify: ${err.message}`);
+            triggerBtn.disabled = false;
+            triggerBtn.innerHTML = originalLabel;
+        }
     },
 
     async loadComments(leaseId) {

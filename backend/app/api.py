@@ -1446,6 +1446,61 @@ def edit_lease_field(lease_id, field_name):
     }), 200
 
 
+@app.route('/leases/<int:lease_id>/fields/<field_name>/verify', methods=['POST'])
+@require_role('analyst')
+def verify_lease_field(lease_id, field_name):
+    """
+    Body: {} (or {"note": str, "task_id": int}, both optional). "A human
+    looked at this exact value and confirms it's right" -- for a medium
+    (or low) confidence field where the extracted value itself needs no
+    correction, this is a one-click confirm instead of retyping the same
+    value through PATCH .../fields/<name> just to force confidence back
+    to "high" (which would also needlessly null the source citation --
+    see database.mark_field_verified's docstring for why this is a
+    separate function, not a thin wrapper around update_lease_field).
+
+    Same effective-document resolution as PATCH .../fields/<name> above:
+    an amendment already overriding this field must be the one that
+    gets verified, not the base lease, or the confirmation would be
+    silently invisible everywhere the effective value is read.
+    """
+    lease = database.get_lease(lease_id)
+    if not lease:
+        return jsonify({"error": "Lease not found"}), 404
+    if field_name not in FIELD_NAMES:
+        return jsonify({"error": f"Unknown field '{field_name}'. Valid fields: {', '.join(FIELD_NAMES)}"}), 400
+
+    body = request.get_json(silent=True) or {}
+    note = (body.get("note") or "").strip() or None
+    task_id = body.get("task_id")
+    if task_id is not None and not database.get_task(task_id):
+        return jsonify({"error": "task_id does not match a real task"}), 400
+
+    chain = database.get_field_source_chain(lease_id, field_name)
+    target_lease_id = (chain or {}).get("effective_document_id") or lease_id
+
+    user = current_user()
+    new_entry = database.mark_field_verified(
+        target_lease_id, field_name, edited_by=user["name"], edited_by_email=user["email"],
+        note=note, task_id=task_id,
+    )
+    if new_entry is None:
+        return jsonify({"error": "This field has no value yet -- nothing to verify."}), 400
+
+    _invalidate_lease_derived_caches()
+    database.insert_activity(
+        "lease_field_verified",
+        f"{user['name']} verified {field_name.replace('_', ' ')} on {lease.get('display_name') or lease['filename']}",
+        lease_id=lease_id,
+    )
+    return jsonify({
+        "lease_id": lease_id,
+        "field_name": field_name,
+        "field": new_entry,
+        "edited_document_id": target_lease_id,
+    }), 200
+
+
 @app.route('/leases/<int:lease_id>', methods=['DELETE'])
 @require_role('analyst')
 def delete_lease(lease_id):
@@ -3090,7 +3145,7 @@ def portfolio_timeline():
 @app.route('/portfolio/attention', methods=['GET'])
 @require_role()
 def portfolio_attention():
-    """'What needs attention today' — expiring soon, missing data, unusual terms. See compute_attention_items for the exact definitions."""
+    """'What needs attention today' — expiring soon, missing data, needs verification, unusual terms. See compute_attention_items for the exact definitions."""
     leases = cache.get_or_compute("effective_leases", database.get_all_effective_leases)
     return jsonify(compute_attention_items(leases)), 200
 

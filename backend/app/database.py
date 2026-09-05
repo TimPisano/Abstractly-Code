@@ -1189,6 +1189,63 @@ def update_lease_field(
         conn.close()
 
 
+def mark_field_verified(
+    lease_id: int,
+    field_name: str,
+    edited_by: str,
+    edited_by_email: Optional[str] = None,
+    note: Optional[str] = None,
+    task_id: Optional[int] = None,
+) -> Optional[Dict[str, Any]]:
+    """
+    "A human looked at this exact extracted value and confirmed it's
+    correct" -- upgrades confidence to "high" and sets manually_verified,
+    WITHOUT touching value or source, unlike update_lease_field above
+    (which is for correcting a wrong value, and always nulls source
+    since there's no document citation for text a human just typed).
+    Here the original citation is still accurate -- the human confirmed
+    the extractor read it right -- so erasing it would throw away real
+    provenance for no reason. Any now-stale validation_note/
+    validation_reason (e.g. "verify against the source document" or an
+    OCR-clarity flag) is cleared, since a human just did exactly that.
+
+    Returns None (no-op, nothing written) if this field has no value to
+    verify -- confirming an absence isn't what this is for; see
+    update_lease_field's docstring for how a genuine "checked, it's not
+    in the lease" gets recorded instead. Also a no-op-but-still-returns
+    the current entry if it's already high-confidence + manually
+    verified, so callers don't need to check that themselves first.
+    """
+    conn = get_connection()
+    try:
+        row = conn.execute("SELECT extracted_fields FROM leases WHERE id = ?", (lease_id,)).fetchone()
+        if row is None:
+            return None
+        fields = json.loads(row["extracted_fields"])
+        old_entry = fields.get(field_name)
+        if not old_entry or old_entry.get("value") is None:
+            return None
+        if old_entry.get("confidence") == "high" and old_entry.get("manually_verified"):
+            return old_entry  # already verified -- nothing to change
+
+        new_entry = {k: v for k, v in old_entry.items() if k not in ("validation_note", "validation_reason")}
+        new_entry["confidence"] = "high"
+        new_entry["manually_verified"] = True
+        fields[field_name] = new_entry
+
+        now = datetime.now(timezone.utc).isoformat()
+        conn.execute("UPDATE leases SET extracted_fields = ? WHERE id = ?", (json.dumps(fields), lease_id))
+        conn.execute(
+            "INSERT INTO lease_field_edits (lease_id, field_name, old_value, new_value, edited_by, "
+            "edited_by_email, note, task_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (lease_id, field_name, json.dumps(old_entry), json.dumps(new_entry), edited_by, edited_by_email, note, task_id, now),
+        )
+        conn.commit()
+        return new_entry
+    finally:
+        conn.close()
+
+
 def get_lease_field_edits(lease_id: Optional[int] = None, field_name: Optional[str] = None, task_id: Optional[int] = None) -> List[Dict[str, Any]]:
     """Oldest first -- a correction history reads top-to-bottom like a timeline, same convention as get_discrepancy_resolutions. Any combination of filters may be applied together; at least one should normally be given or this returns every edit ever made across the whole portfolio."""
     conn = get_connection()
@@ -1396,6 +1453,22 @@ def get_amendments_for_leases(base_lease_ids: List[int]) -> Dict[int, List[Dict[
         conn.close()
 
 
+def _tag_field_document(field_data: Any, document: Dict[str, Any]) -> Any:
+    """
+    Returns a copy of one field's value-dict with a `document` key added
+    (`{"lease_id", "filename"}` of whichever document this value actually
+    came from) -- never mutates the caller's dict. Only added when there's
+    a real value to attribute; a not-found field has no source document to
+    name, same reasoning as `source`/`reason` staying null in that case.
+    """
+    if not isinstance(field_data, dict):
+        return field_data
+    entry = dict(field_data)
+    if entry.get("value") is not None:
+        entry["document"] = {"lease_id": document["id"], "filename": document["filename"]}
+    return entry
+
+
 def get_effective_fields(lease_id: int) -> Optional[Dict[str, Any]]:
     """
     Merge a base lease's extracted_fields with its amendments' non-null
@@ -1404,16 +1477,21 @@ def get_effective_fields(lease_id: int) -> Optional[Dict[str, Any]]:
     analysis, comparison, and the Q&A engine should read from, not the
     raw base lease alone, so an amendment (e.g. a rent increase
     addendum) is actually reflected in portfolio math.
+
+    Each returned field also carries a `document` key naming which
+    document (base lease or a specific amendment) it actually came
+    from -- necessary once a lease has amendments, since two documents
+    can each state the same field and only one wins per field.
     """
     base = get_lease(lease_id)
     if not base:
         return None
 
-    effective = dict(base["extracted_fields"])
+    effective = {name: _tag_field_document(data, base) for name, data in base["extracted_fields"].items()}
     for amendment in get_amendments(lease_id):
         for field_name, field_data in amendment["extracted_fields"].items():
             if isinstance(field_data, dict) and field_data.get("value") is not None:
-                effective[field_name] = field_data
+                effective[field_name] = _tag_field_document(field_data, amendment)
     return effective
 
 
