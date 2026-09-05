@@ -139,3 +139,68 @@ empty-state handling (`dashboard-view.js`).
   screen — that's a product call, not something to guess at.
 
 ---
+
+## Task 3 — OCR diagnostics
+
+**The diagnostic question first, since it determines everything else:**
+Coastal Brew Coffee Co. and Northbridge Analytics' missing Landlord/date
+fields were **neither a text-layer problem nor a parsing miss**. I
+pulled every lease in the demo dataset directly from the live API and
+found each property actually has **two separate lease records** sharing
+the same display name: the real PDF-derived lease (fully populated,
+high confidence on every field) and a **rent-roll-derived duplicate**
+(`q1_2026_rent_roll.csv`) that never had those fields to begin with —
+a real rent roll spreadsheet genuinely never states landlord name or
+lease dates, only tenant/rent/address/sqft. The "missing data" was
+someone looking at the rent-roll entry and mistaking it for the same
+record as the fully-populated PDF one, because they share a display
+name. Nothing to fix in extraction for these two specifically — I did
+also find and fix a real, unrelated bug while investigating (both
+records were further duplicated 2x each, 8 total instead of 4, from a
+gunicorn multi-worker seeding race — see the housekeeping note at the
+top of this file) and cleaned up the live duplicates.
+
+**The actual pipeline feature** (separate from the above, and a real
+gap in the general extraction pipeline, not specific to the demo data):
+added a document-quality check that runs after text extraction and
+before any field extraction, in `document_extractor.find_low_text_pages()`.
+Flags any page under ~50 characters of text, or whose text is mostly
+non-alphanumeric symbols (garbled OCR), as unusable.
+
+This catches something the existing OCR fallback in `pdf_extractor.py`
+can't: that fallback decides whether to run OCR at all based on the
+**whole document's total** text length, so a hybrid PDF — several
+genuinely digital pages plus one embedded scanned page (a photocopied
+signature page, a scanned exhibit) — never triggers OCR at all if the
+digital pages alone clear the threshold, silently leaving that one page
+blank forever. Verified this exact scenario with a real generated PDF
+(good page 1, blank page 2, total text comfortably over the
+whole-document OCR threshold) — confirmed the page was previously
+silently skipped, and is now correctly flagged.
+
+When flagged, the whole document is persisted as one lease with
+`processing_status: "ocr_needed"`, `processing_error` naming exactly
+which page(s) and why, and every field left honestly null — no
+per-field extraction runs at all, so it can never be confused with the
+source genuinely not stating a field. Surfaced in both the upload
+result screen and the lease detail page as a clear banner instead of
+the previous "not a lease" framing (which would have been actively
+misleading here — extraction never ran, so "no tenant/landlord/rent
+found" isn't the right message).
+
+**Verified:** end-to-end through the real upload API (a lease with a
+blank page correctly comes back `ocr_needed` with the right page named,
+placeholder fields, and `looks_like_lease: true` so it isn't
+double-flagged as "not a lease" on top of "unreadable"); full test
+suite still 63/64 (only the pre-existing, environment-only failure —
+`tesseract` isn't installed on this dev machine, unrelated to this
+change and confirmed by reading its actual traceback, not assumed).
+
+**Not fixed / out of scope:** the deeper structural fix (running OCR
+per-page instead of only on a whole-document total) would close the gap
+at the source rather than just flagging it after the fact. Didn't build
+that — it's a larger change to `pdf_extractor.py`'s core OCR-fallback
+decision, and the detection layer above already gets you the visibility
+this task asked for without changing the OCR strategy itself.
+
+---

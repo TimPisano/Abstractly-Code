@@ -764,9 +764,18 @@ def insert_lease(
     supersedes_lease_id: Optional[int] = None,
     version_number: int = 1,
     processing_status: str = "complete",
+    processing_error: Optional[str] = None,
 ) -> int:
     """
     Persist one extracted document. Returns its new lease id.
+
+    `processing_error` is normally only set later, by
+    finalize_lease_processing when an async extraction fails -- but a
+    document-quality problem caught synchronously at upload time
+    (document_extractor.find_low_text_pages flagging one or more pages
+    as unreadable, processing_status="ocr_needed") has its reason known
+    up front, so it's accepted here too rather than requiring an
+    immediate second write just to attach it.
 
     `date_candidates` (shape: {"start": [...], "end": [...]}, from
     FieldExtractor.find_all_date_candidates) is stored alongside the
@@ -793,8 +802,8 @@ def insert_lease(
     try:
         cur = conn.execute(
             "INSERT INTO leases (filename, uploaded_at, extracted_fields, document_type, base_lease_id, "
-            "date_candidates, display_name, source_page_start, source_page_end, status, supersedes_lease_id, version_number, processing_status) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "date_candidates, display_name, source_page_start, source_page_end, status, supersedes_lease_id, version_number, processing_status, processing_error) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 filename,
                 datetime.now(timezone.utc).isoformat(),
@@ -809,6 +818,7 @@ def insert_lease(
                 supersedes_lease_id,
                 version_number,
                 processing_status,
+                processing_error,
             ),
         )
         conn.commit()

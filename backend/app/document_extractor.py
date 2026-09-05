@@ -107,6 +107,62 @@ def extract_pages(file_bytes: bytes, filename: str, temp_path: str) -> List[Dict
     return pages
 
 
+# A page below this character count almost never has real lease text on
+# it -- calibrated well under a typical clause-bearing page (hundreds to
+# thousands of characters) so a genuinely short-but-real page (a lone
+# signature line, a one-sentence exhibit cover) doesn't false-positive,
+# while a truly blank or unrecognized scan (single digits, often 0) does.
+MIN_USABLE_CHARS_PER_PAGE = 50
+
+# Below this fraction of alphanumeric characters, a page "has text" by
+# character count but isn't real recognized words -- the profile of a
+# badly garbled OCR read (stray symbols, misrecognized glyphs) rather
+# than genuine prose, which is just as unusable to field extraction as
+# an empty page.
+MIN_ALNUM_RATIO = 0.3
+
+
+def find_low_text_pages(pages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Flags pages whose text isn't usable enough to extract fields from
+    with any confidence -- almost always a scanned page that either
+    never went through OCR (e.g. one bad page in an otherwise-digital
+    PDF, where the document's TOTAL text length across all pages stays
+    well above PDFExtractor's whole-document OCR-fallback threshold
+    even though this one page's own text is blank) or went through OCR
+    and came back nearly empty or badly garbled.
+
+    Deliberately run PER PAGE, independent of PDFExtractor's own
+    all-or-nothing OCR-fallback decision (based on the WHOLE document's
+    total length) -- that check answers "should OCR run at all"; this
+    one answers "is each individual page's result actually usable,"
+    which a document-wide total can hide for exactly the hybrid case
+    above.
+
+    Returns [{"page": N, "char_count": N, "reason": "..."}] for each
+    flagged page, in page order; [] if every page looks usable.
+    """
+    flagged = []
+    for page in pages:
+        text = (page.get("text") or "").strip()
+        char_count = len(text)
+        if char_count < MIN_USABLE_CHARS_PER_PAGE:
+            flagged.append({
+                "page": page["page"],
+                "char_count": char_count,
+                "reason": f"Only {char_count} character(s) of text found on this page.",
+            })
+            continue
+        alnum_count = sum(1 for c in text if c.isalnum())
+        if alnum_count / char_count < MIN_ALNUM_RATIO:
+            flagged.append({
+                "page": page["page"],
+                "char_count": char_count,
+                "reason": "This page's text is mostly non-alphanumeric symbols, consistent with a garbled OCR read.",
+            })
+    return flagged
+
+
 # ----------------------------------------------------------------------
 # PDF
 # ----------------------------------------------------------------------

@@ -535,6 +535,37 @@ def _extract_leases_from_file_storage(file_storage, defer_ai=False):
         except DocumentExtractionError as e:
             return None, (str(e), 422)
 
+        # Checked before ANY extraction runs, including boundary
+        # detection -- both are regex-driven and equally unreliable
+        # against a page that isn't real recognized text in the first
+        # place. Rather than silently returning "Not Found" for
+        # whatever fields would have come from an unreadable page
+        # (indistinguishable from the source genuinely not stating
+        # them), the whole document is persisted as one lease in
+        # 'ocr_needed' status with placeholder (all-null) fields and a
+        # message naming exactly which pages triggered it. See
+        # document_extractor.find_low_text_pages.
+        low_text_pages = document_extractor.find_low_text_pages(pages)
+        if low_text_pages:
+            page_list = ", ".join(
+                f"page {p['page']} ({p['reason'][0].lower()}{p['reason'][1:-1]})" for p in low_text_pages
+            )
+            placeholder_fields = _placeholder_fields()
+            return [{
+                "fields": placeholder_fields,
+                "date_candidates": {"start": [], "end": []},
+                "source_page_start": pages[0]["page"],
+                "source_page_end": pages[-1]["page"],
+                "display_name": _default_lease_name(placeholder_fields, file_storage.filename, 0, 1),
+                "looks_like_lease": True,  # unknown until OCR'd -- don't pre-flag as "not a lease" on top of "unreadable"
+                "processing_status": "ocr_needed",
+                "processing_error": (
+                    f"{len(low_text_pages)} of {len(pages)} page(s) appear to be scanned images with no "
+                    f"usable text layer, so extraction was skipped rather than guessing: {page_list}. "
+                    "Re-scan with OCR, or upload a text-based version of this document."
+                ),
+            }], None
+
         if looks_like_rent_roll_table(pages):
             # Running the single-lease extractor against a portfolio
             # rent roll doesn't fail cleanly -- it confidently returns
@@ -710,7 +741,7 @@ def _lease_summary(lease):
         "extracted_fields": lease["extracted_fields"],
         # A lease still being extracted has all-null fields -- don't
         # pre-flag it as "doesn't look like a lease" until it's done.
-        "looks_like_lease": True if processing_status == "processing" else _looks_like_lease(lease["extracted_fields"]),
+        "looks_like_lease": True if processing_status in ("processing", "ocr_needed") else _looks_like_lease(lease["extracted_fields"]),
         "confidence_summary": compute_lease_confidence_summary(lease),
         "source_page_start": lease.get("source_page_start"),
         "source_page_end": lease.get("source_page_end"),
@@ -776,7 +807,8 @@ def _persist_split_leases(filename, split_leases):
             display_name=lease_data["display_name"],
             source_page_start=lease_data["source_page_start"],
             source_page_end=lease_data["source_page_end"],
-            processing_status="processing" if lease_data.get("pending") else "complete",
+            processing_status="processing" if lease_data.get("pending") else lease_data.get("processing_status", "complete"),
+            processing_error=lease_data.get("processing_error"),
         )
         if lease_data.get("ai_run_id"):
             database.link_ai_extraction_run_to_lease(lease_data["ai_run_id"], lease_id)
