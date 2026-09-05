@@ -1,2 +1,11 @@
 # Claude Code agent worktrees (isolated per-agent git repos, not project content)
 .claude/
+
+# Defense in depth: backend/.gitignore already covers backend/.env (the
+# only .env that exists today), but that only protects a file placed
+# there specifically. A repo-root rule means a .env dropped anywhere
+# else later is never one accidental `git add -A` away from being
+# committed for real.
+.env
+*.env
+!.env.example
