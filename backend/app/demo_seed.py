@@ -22,6 +22,8 @@ only ever runs against the dedicated demo database, never production.
 """
 
 import logging
+import os
+import tempfile
 
 from app import auth, database
 
@@ -188,8 +190,31 @@ def _sample_rent_roll_leases():
     ]
 
 
+_SEED_LOCK_PATH = os.path.join(tempfile.gettempdir(), "abstractly_demo_seed.lock")
+
+
 def seed_demo_data() -> None:
-    """Idempotent: no-op if the demo database already has any leases."""
+    """
+    Idempotent: no-op if the demo database already has any leases.
+
+    Guarded by an exclusive-create lock file (same pattern as api.py's
+    FLASK_SECRET_KEY fallback), not just the leases-empty check above --
+    gunicorn runs multiple worker processes, each importing this module
+    and calling this function independently at boot. Two workers can
+    both see an empty leases table before either has committed its own
+    inserts (a plain check-then-act race), each proceeding to seed --
+    caught live on the real demo deployment as 8 leases instead of 4.
+    Only the first process to win the exclusive-create actually seeds;
+    reset_demo_data() removes the lock file first so a real reset can
+    still reseed afterward.
+    """
+    try:
+        fd = os.open(_SEED_LOCK_PATH, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        os.close(fd)
+    except FileExistsError:
+        logger.info("Demo data seed already claimed by another process -- skipping.")
+        return
+
     existing = database.get_all_leases(document_type=None)
     if existing:
         logger.info("Demo data already present (%d lease(s)) -- skipping seed.", len(existing))
@@ -221,5 +246,10 @@ def reset_demo_data() -> None:
         conn.commit()
     finally:
         conn.close()
+
+    try:
+        os.remove(_SEED_LOCK_PATH)
+    except FileNotFoundError:
+        pass
     logger.warning("Demo data reset: all content tables wiped.")
     seed_demo_data()
