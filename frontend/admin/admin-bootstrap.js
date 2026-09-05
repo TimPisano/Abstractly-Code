@@ -54,7 +54,7 @@ async function adminFetch(path, options = {}, treatAsSessionExpiry = true) {
         throw new Error("Couldn't reach the server. Is the backend running?");
     }
     if (response.status === 401 && treatAsSessionExpiry) {
-        window.location.href = 'index.html';
+        window.location.href = 'index.html?expired=1';
         // Never resolves -- the redirect above is already underway, and
         // nothing calling this should keep running against a session
         // that just turned out to be invalid.

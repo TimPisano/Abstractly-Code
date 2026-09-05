@@ -50,7 +50,7 @@ async function ownerFetch(path, options = {}) {
         throw new Error("Couldn't reach the server. Is the backend running?");
     }
     if (response.status === 401) {
-        window.location.href = 'login.html';
+        window.location.href = 'login.html?expired=1';
         return new Promise(() => {});
     }
     if (response.status === 404) {

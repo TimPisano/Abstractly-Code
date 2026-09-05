@@ -43,6 +43,16 @@ if (new URLSearchParams(window.location.search).get('reset') === '1') {
     window.history.replaceState({}, '', window.location.pathname);
 }
 
+// admin-bootstrap.js's adminFetch sends people here as ?expired=1 on a
+// 401 that means the session ended mid-use. Same convention as
+// ?reset=1 above.
+if (new URLSearchParams(window.location.search).get('expired') === '1') {
+    const expiredMessageEl = document.getElementById('adminLoginMessage');
+    expiredMessageEl.textContent = 'Your session expired. Sign in again to continue.';
+    expiredMessageEl.classList.add('is-error');
+    window.history.replaceState({}, '', window.location.pathname);
+}
+
 document.getElementById('adminLoginForm').addEventListener('submit', async (e) => {
     e.preventDefault();
 

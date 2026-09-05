@@ -15,6 +15,18 @@
  * cross-origin by default.
  */
 
+// owner-app.js's ownerFetch sends people here as ?expired=1 on a 401
+// that means the session ended mid-use -- same convention as
+// frontend/app/login.js's ?expired=1. The param is stripped afterward
+// so a refresh/bookmark doesn't keep re-asserting an expiry that
+// happened once, minutes ago.
+if (new URLSearchParams(window.location.search).get('expired') === '1') {
+    const expiredMessageEl = document.getElementById('ownerLoginMessage');
+    expiredMessageEl.textContent = 'Your session expired. Sign in again to continue.';
+    expiredMessageEl.classList.add('is-error');
+    window.history.replaceState({}, '', window.location.pathname);
+}
+
 document.getElementById('ownerLoginForm').addEventListener('submit', async (e) => {
     e.preventDefault();
 

@@ -47,7 +47,7 @@ async function apiRequest(path, options = {}) {
     // at once, indistinguishable from a real server-side bug, with
     // nothing telling the user the actual fix is just signing in again.
     if (response.status === 401) {
-        window.location.href = 'login.html';
+        window.location.href = 'login.html?expired=1';
         // Never resolves -- the redirect is already underway, and
         // nothing calling this should keep running against a session
         // that just turned out to be invalid.

@@ -36,6 +36,19 @@ if (new URLSearchParams(window.location.search).get('reset') === '1') {
     window.history.replaceState({}, '', window.location.pathname);
 }
 
+// api.js's apiRequest sends people here as ?expired=1 on any 401 (see
+// its own comment for why that always means session expiry in this
+// app). Same pattern as ?reset=1 above -- land with a clear reason
+// instead of an unexplained bare login form, and strip the param so a
+// refresh/bookmark doesn't keep re-asserting an expiry that happened
+// once, minutes ago.
+if (new URLSearchParams(window.location.search).get('expired') === '1') {
+    const messageEl = document.getElementById('loginMessage');
+    messageEl.textContent = 'Your session expired. Sign in again to continue.';
+    messageEl.classList.add('is-error');
+    window.history.replaceState({}, '', window.location.pathname);
+}
+
 document.getElementById('loginForm').addEventListener('submit', async (e) => {
     e.preventDefault();
 
