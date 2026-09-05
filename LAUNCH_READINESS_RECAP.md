@@ -204,3 +204,38 @@ decision, and the detection layer above already gets you the visibility
 this task asked for without changing the OCR strategy itself.
 
 ---
+
+## Task 4 — Confidence transparency
+
+This was already done earlier today, before this task list — restating
+here for the record since it's exactly what this task asked for.
+
+Every extracted field already stores `source.quote` (the exact
+sentence/table cell it was pulled from, with page number or rent-roll
+row+file), and now also `validation_note` — a one-line reason,
+populated whenever confidence is medium or low, e.g. "Landlord name
+inferred from a signature block -- appeared above a standalone
+'LANDLORD' caption rather than an explicit label" or "Date found
+further from the commencement keyword than a direct statement usually
+appears." High-confidence fields don't get a note — nothing to
+caveat.
+
+Also added `document: {lease_id, filename}` on every field — which
+document (base lease, or whichever amendment most recently overrode
+it) actually produced that value, since a lease with amendments has
+more than one document that could have stated a given field. Verified
+live: uploaded a base lease + an amendment that only overrides
+rent_amount, confirmed via the real API response that landlord still
+attributes to the base document while rent_amount attributes to the
+amendment.
+
+All of this flows into the API response automatically (the lease
+detail/list endpoints already pass `extracted_fields` through
+verbatim) — no separate API change was needed. Frontend already
+displays `validation_note` inline on each field's card (a pre-existing
+mechanism I found was populated inconsistently, not one I had to
+build), and now shows "(from filename.pdf)" next to a field's citation
+when its value came from a different document than the one being
+viewed.
+
+---
