@@ -29,11 +29,14 @@ Every strategy is tagged with a confidence level ("high"/"medium"/"low"):
 Fields that were not found have confidence None.
 """
 
+import logging
 import re
 from datetime import date as _date
 from typing import Optional, Dict, Any, List, Tuple
 
 from .normalize import parse_currency, parse_date, parse_square_footage
+
+logger = logging.getLogger(__name__)
 
 
 MONTHS_FULL = (r"January|February|March|April|May|June|July|August|September"
@@ -175,12 +178,15 @@ class FieldExtractor:
     def __init__(self):
         pass
 
-    def extract_fields(self, pages: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def extract_fields(self, pages: List[Dict[str, Any]], source_label: Optional[str] = None) -> Dict[str, Any]:
         """
         Extract all lease fields from page data.
 
         Args:
             pages: List of page dictionaries with "page" and "text" keys
+            source_label: optional filename/identifier included in the
+                not-found log line below, so a real gap can be traced
+                back to the document that produced it.
 
         Returns:
             Dictionary with extracted fields in the required format:
@@ -206,6 +212,26 @@ class FieldExtractor:
         }
 
         self._apply_confidence_validation(result, pages)
+
+        not_found = [name for name, entry in result.items() if entry.get("value") is None]
+        if not_found:
+            # This engine has no notion of document sections (recitals,
+            # signature block, exhibits, ...) -- it only knows it searched
+            # every pattern for each field against the full, page-joined
+            # text. Logging that plainly (rather than naming a section it
+            # never actually tracked) is what lets a real gap in the
+            # source be told apart from a parsing miss over time: a field
+            # that's "not found" on every document of a given lease
+            # template points at a parsing gap worth adding a pattern
+            # for; one that's occasionally not found across otherwise-
+            # similar documents more likely reflects the source itself
+            # sometimes omitting it.
+            logger.info(
+                "Field(s) not found after searching the full document (%d page(s)%s): %s",
+                len(pages),
+                f", {source_label}" if source_label else "",
+                ", ".join(sorted(not_found)),
+            )
         return result
 
     # ------------------------------------------------------------------
@@ -331,6 +357,7 @@ class FieldExtractor:
         pages: List[Dict[str, Any]],
         patterns: List[str],
         confidences: List[str],
+        reasons: Optional[List[Optional[str]]] = None,
         group: int = 1,
         flags: int = re.IGNORECASE
     ) -> Optional[Dict[str, Any]]:
@@ -339,6 +366,15 @@ class FieldExtractor:
         order), returning the first match found. `confidences` must be the
         same length as `patterns` and gives the confidence tier to report
         for a match on that pattern.
+
+        `reasons`, when given, must also be the same length as `patterns` --
+        `reasons[i]` becomes the match's `validation_note` (the same "why
+        isn't this High confidence" field _downgrade_confidence sets later
+        for a post-hoc downgrade) whenever pattern i matches and its own
+        confidence isn't "high". Not every pattern needs one: a plain
+        prose-vs-label distinction is usually self-evident from the quote
+        alone, so pass None for entries that don't need a callout, or omit
+        `reasons` entirely for a field where none of them do.
 
         `flags` defaults to case-insensitive, which is fine for keyword
         anchors and dates/currency. Patterns whose capture group relies on
@@ -356,19 +392,25 @@ class FieldExtractor:
         not beat a high-confidence match on page 2.
         """
         assert len(patterns) == len(confidences)
+        if reasons is not None:
+            assert len(reasons) == len(patterns)
 
         full_text, page_for_offset = _concat_pages(pages)
 
-        for pattern, confidence in zip(patterns, confidences):
+        for i, (pattern, confidence) in enumerate(zip(patterns, confidences)):
             match = re.search(pattern, full_text, flags)
             if match:
                 value = _clean_value(match.group(group))
                 quote = _make_quote(full_text, match.start(), match.end())
-                return {
+                entry = {
                     "value": value,
                     "source": {"page": page_for_offset(match.start()), "quote": quote},
                     "confidence": confidence
                 }
+                reason = reasons[i] if reasons is not None else None
+                if reason and confidence != "high":
+                    entry["validation_note"] = reason
+                return entry
 
         return None
 
@@ -416,7 +458,13 @@ class FieldExtractor:
         # extraction and multi-lease boundary detection alike, since
         # both go through this same pattern.
         role_group = "|".join(role_keywords)
-        return rf"([A-Z][A-Za-z0-9&,\.\'\-\s]{{2,80}}?)\s*\(\s*{QUOTE_OPEN}(?i:{role_group}){QUOTE_CLOSE}\s*\)"
+        # Up to 4 filler words between "(" and the quote covers real
+        # phrasings like '(hereinafter "Landlord")' or '(sometimes
+        # referred to as "Landlord")' -- previously the quote had to
+        # follow "(" immediately, so either of those missed entirely
+        # even though the defined-term relationship is just as clear.
+        filler = r"(?:[A-Za-z,]+\s+){0,4}"
+        return rf"([A-Z][A-Za-z0-9&,\.\'\-\s]{{2,80}}?)\s*\(\s*{filler}{QUOTE_OPEN}(?i:{role_group}){QUOTE_CLOSE}\s*\)"
 
     def _clean_defined_term_value(self, value: str) -> str:
         """Shared cleanup for a defined-term-style party match (e.g. '...Some Company, LLC ("Tenant")')."""
@@ -444,6 +492,73 @@ class FieldExtractor:
                 value = value[:-1]
         return value
 
+    # A line that's nothing but a role caption -- "LANDLORD", "LANDLORD:",
+    # or "\"LANDLORD\"" -- the way a signature page often labels a
+    # signature block, with the entity's actual name given earlier
+    # (sometimes many lines earlier, past "By:"/"Name:"/"Title:"
+    # boilerplate), not right after this caption the way every other
+    # party pattern above expects.
+    _SIGNATURE_BOILERPLATE_RE = re.compile(r"^(?:by|name|title|its|date|signature)\s*:?", re.IGNORECASE)
+    _SIGNATURE_NAME_LINE_RE = re.compile(r"^([A-Z][\w&,\.\'\-]+(?:[ \t]+[A-Z][\w&,\.\'\-]+)*),?\s*$")
+
+    def _extract_party_from_signature_caption(
+        self, pages: List[Dict[str, Any]], role_keywords: Tuple[str, ...]
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Last-resort tier for a signature block that names the entity
+        FIRST and labels it with a bare role caption only afterward, e.g.:
+
+            Meridian Properties Group, LLC
+
+            By: _______________________
+            Its: Manager
+
+            "LANDLORD"
+
+        Every pattern _extract_defined_party tries above only looks
+        FORWARD from the role keyword to a name (a label right after it,
+        or a parenthetical right after the name) -- none of them can
+        connect a caption back to a name that already appeared several
+        lines earlier. Medium confidence and a validation_note always
+        accompany a match here: unlike the label/defined-term patterns,
+        this is inferring an association from document layout, not
+        reading an explicit "X is the Landlord" statement.
+        """
+        full_text, page_for_offset = _concat_pages(pages)
+        role_group = "|".join(role_keywords)
+        caption_pattern = re.compile(
+            rf'^[ \t]*{QUOTE_OPEN}?(?:{role_group}){QUOTE_CLOSE}?[ \t]*:?[ \t]*$',
+            re.IGNORECASE | re.MULTILINE,
+        )
+
+        for caption_match in caption_pattern.finditer(full_text):
+            window_start = max(0, caption_match.start() - 400)
+            preceding_lines = full_text[window_start:caption_match.start()].splitlines()
+            for line in reversed(preceding_lines[-8:]):
+                line = line.strip()
+                if not line or self._SIGNATURE_BOILERPLATE_RE.match(line):
+                    continue
+                name_match = self._SIGNATURE_NAME_LINE_RE.match(line)
+                if not name_match:
+                    break  # nearest non-boilerplate line isn't name-shaped -- give up on this caption
+                value = self._clean_defined_term_value(name_match.group(1))
+                if not value:
+                    break
+                role_label = role_keywords[0].capitalize()
+                return {
+                    "value": value,
+                    "source": {
+                        "page": page_for_offset(caption_match.start()),
+                        "quote": _make_quote(full_text, caption_match.start(), caption_match.end()),
+                    },
+                    "confidence": "medium",
+                    "validation_note": (
+                        f"{role_label} name inferred from a signature block -- \"{value}\" appeared above a "
+                        f"standalone \"{role_label.upper()}\" caption rather than an explicit label or defined term."
+                    ),
+                }
+        return None
+
     def _extract_defined_party(
         self,
         pages: List[Dict[str, Any]],
@@ -456,8 +571,11 @@ class FieldExtractor:
              matching any of role_keywords (e.g. "Tenant"/"Lessee"/
              "Renter"), not just the first one (high)
           2. Label style: 'Tenant: John Smith' (high)
+          3. Signature-block caption: the name appears first, a bare role
+             caption follows later (medium) -- see
+             _extract_party_from_signature_caption.
 
-        Both run case-sensitive (flags=0) with keywords scoped
+        The first two run case-sensitive (flags=0) with keywords scoped
         case-insensitive via (?i:...) — see _party_label_patterns.
         """
         result = self._search_ordered(pages, [self._defined_term_pattern(*role_keywords)], ["high"], flags=0)
@@ -468,6 +586,10 @@ class FieldExtractor:
         result = self._search_ordered(pages, label_patterns, ["high", "high"], flags=0)
         if result:
             result["value"] = self._clean_label_style_value(result["value"])
+            return result
+
+        result = self._extract_party_from_signature_caption(pages, role_keywords)
+        if result:
             return result
 
         return _not_found()
@@ -853,13 +975,23 @@ class FieldExtractor:
             rf"(?:shall\s+)?commenc\w*\b(?!\s+Date){GAP}{DATE_REGEX}",
             rf"begin\w*\b(?!\s+Date){GAP}{DATE_REGEX}",
             rf"starting{GAP}{DATE_REGEX}",
+            # Last resort: the same commence/begin cue, but allowing up to
+            # WIDE_GAP's ~150 chars (crossing one more clause) instead of
+            # GAP's ~100 -- covers a date stated a sentence away from the
+            # keyword (e.g. "...as defined in Section 3. The Commencement
+            # Date is anticipated to be April 1, 2025"), at the cost of a
+            # higher chance the date belongs to something else nearby.
+            rf"(?:shall\s+)?commenc\w*\b(?!\s+Date){WIDE_GAP}{DATE_REGEX}",
         ]
-        confidences = ["high", "high", "high", "high", "high", "high", "medium", "medium"]
-        return patterns, confidences
+        confidences = ["high", "high", "high", "high", "high", "high", "medium", "medium", "low"]
+        reasons = [None, None, None, None, None, None, None, None,
+            "Date found further from the commencement keyword than a direct statement usually appears -- "
+            "confirm it actually describes this lease's start, not a different referenced event or date."]
+        return patterns, confidences, reasons
 
     def _extract_start_date(self, pages: List[Dict[str, Any]]) -> Dict[str, Any]:
-        patterns, confidences = self._start_date_patterns()
-        result = self._search_ordered(pages, patterns, confidences)
+        patterns, confidences, reasons = self._start_date_patterns()
+        result = self._search_ordered(pages, patterns, confidences, reasons=reasons)
         return result if result else _not_found()
 
     def _end_date_patterns(self):
@@ -880,9 +1012,14 @@ class FieldExtractor:
             rf"(?:shall\s+)?terminat\w*\b(?!\s+Date){GAP}{DATE_REGEX}",
             rf"ending{GAP}{DATE_REGEX}",
             rf"running\s+through{GAP}{DATE_REGEX}",
+            # Same WIDE_GAP last resort as the start-date list above.
+            rf"(?:shall\s+)?expir\w*\b(?!\s+Date){WIDE_GAP}{DATE_REGEX}",
         ]
-        confidences = ["high", "high", "high", "high", "high", "high", "high", "medium", "medium"]
-        return patterns, confidences
+        confidences = ["high", "high", "high", "high", "high", "high", "high", "medium", "medium", "low"]
+        reasons = [None, None, None, None, None, None, None, None, None,
+            "Date found further from the expiration keyword than a direct statement usually appears -- "
+            "confirm it actually describes this lease's end, not a different referenced event or date."]
+        return patterns, confidences, reasons
 
     def find_all_date_candidates(self, pages: List[Dict[str, Any]], role: str) -> List[Dict[str, Any]]:
         """
@@ -897,7 +1034,7 @@ class FieldExtractor:
 
         Returns a list of {"value": ..., "source": {"page": N, "quote": ...}}.
         """
-        patterns, _confidences = self._start_date_patterns() if role == "start" else self._end_date_patterns()
+        patterns, _confidences, _reasons = self._start_date_patterns() if role == "start" else self._end_date_patterns()
         full_text, page_for_offset = _concat_pages(pages)
 
         seen_values = set()
@@ -915,9 +1052,9 @@ class FieldExtractor:
         return candidates
 
     def _extract_end_date(self, pages: List[Dict[str, Any]]) -> Dict[str, Any]:
-        patterns, confidences = self._end_date_patterns()
+        patterns, confidences, reasons = self._end_date_patterns()
 
-        result = self._search_ordered(pages, patterns, confidences)
+        result = self._search_ordered(pages, patterns, confidences, reasons=reasons)
         return result if result else _not_found()
 
     def _extract_rent_escalation(self, pages: List[Dict[str, Any]]) -> Dict[str, Any]:
