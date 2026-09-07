@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Only the two pages meant to be indexed: see frontend/robots.txt and
+     the noindex meta tag already on every app/admin/owner/login page.
+     Same "update the host here if the deployed frontend URL changes"
+     note as index.html's og:url/og:image: this is the one other place
+     the domain is hardcoded. -->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+    <url>
+        <loc>https://abstractly-n0id.onrender.com/</loc>
+        <lastmod>2026-09-06</lastmod>
+        <changefreq>weekly</changefreq>
+        <priority>1.0</priority>
+    </url>
+    <url>
+        <loc>https://abstractly-n0id.onrender.com/pricing.html</loc>
+        <lastmod>2026-09-06</lastmod>
+        <changefreq>monthly</changefreq>
+        <priority>0.8</priority>
+    </url>
+</urlset>

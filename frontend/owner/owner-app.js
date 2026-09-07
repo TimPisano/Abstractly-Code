@@ -521,6 +521,84 @@ const ExtractionQuality = {
     },
 };
 
+/* ===================== Analytics panel ===================== */
+
+const Analytics = {
+    async load() {
+        try {
+            const summary = await ownerFetch('/owner/analytics/summary?days=30');
+            this.renderTotals(summary);
+            this.renderTrend(summary.daily_trend);
+            this.renderFunnel(summary.funnel);
+            this.renderList('analyticsTopPaths', summary.top_paths, 'path', 'No pageviews recorded yet.');
+            this.renderList('analyticsTopReferrers', summary.top_referrers, 'referrer', 'No pageviews recorded yet.');
+        } catch (err) {
+            showToast(`Failed to load analytics: ${err.message}`, 'error');
+        }
+    },
+
+    renderTotals(summary) {
+        document.getElementById('analyticsTotals').innerHTML = `
+            <div class="owner-total-tile">
+                <div class="owner-total-value">${summary.total_pageviews.toLocaleString()}</div>
+                <div class="owner-total-label">Total pageviews</div>
+            </div>
+            <div class="owner-total-tile">
+                <div class="owner-total-value">${summary.unique_sessions.toLocaleString()}</div>
+                <div class="owner-total-label">Unique visits</div>
+            </div>
+        `;
+    },
+
+    renderTrend(trend) {
+        const el = document.getElementById('analyticsTrend');
+        if (!trend || trend.length === 0) {
+            el.innerHTML = '<p class="owner-empty">No pageviews in the last 30 days yet.</p>';
+            return;
+        }
+        const maxVal = Math.max(1, ...trend.map(t => t.count));
+        el.innerHTML = trend.map(t => `
+            <div class="owner-trend-row">
+                <span>${escapeHtml(t.date)}</span>
+                <div><div class="owner-trend-bar-track"><div class="owner-trend-bar rev" style="width:${(t.count / maxVal * 100).toFixed(1)}%"></div></div></div>
+                <span>${t.count.toLocaleString()}</span>
+            </div>
+        `).join('');
+    },
+
+    renderFunnel(funnel) {
+        const el = document.getElementById('analyticsFunnel');
+        if (!funnel || funnel.landing === 0) {
+            el.innerHTML = '<p class="owner-empty">No visits recorded yet.</p>';
+            return;
+        }
+        const pct = (n) => funnel.landing > 0 ? `${(n / funnel.landing * 100).toFixed(0)}%` : '—';
+        const steps = [
+            { label: 'Landed on the site', value: funnel.landing },
+            { label: 'Viewed pricing', value: funnel.pricing },
+            { label: 'Submitted the waitlist form', value: funnel.waitlist_submitted },
+        ];
+        el.innerHTML = steps.map(s => `
+            <div class="owner-entry-row">
+                <div><strong>${s.value.toLocaleString()}</strong> — ${escapeHtml(s.label)}</div>
+                <span>${pct(s.value)}</span>
+            </div>
+        `).join('');
+    },
+
+    renderList(elementId, items, key, emptyMessage) {
+        const el = document.getElementById(elementId);
+        el.innerHTML = (!items || items.length === 0)
+            ? `<p class="owner-empty">${escapeHtml(emptyMessage)}</p>`
+            : items.map(item => `
+                <div class="owner-entry-row">
+                    <div>${escapeHtml(item[key])}</div>
+                    <span>${item.count.toLocaleString()}</span>
+                </div>
+            `).join('');
+    },
+};
+
 /* ===================== Tabs ===================== */
 
 function switchTab(tab) {
@@ -529,6 +607,7 @@ function switchTab(tab) {
     if (tab === 'accounts') Accounts.load();
     if (tab === 'finance') Finance.load();
     if (tab === 'quality') ExtractionQuality.load();
+    if (tab === 'analytics') Analytics.load();
 }
 
 /* ===================== Bootstrap ===================== */

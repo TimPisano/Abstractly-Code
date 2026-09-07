@@ -70,6 +70,7 @@ OWNER_ROUTES_GET = [
     "/owner/revenue",
     "/owner/expenses",
     "/owner/finance/summary",
+    "/owner/analytics/summary",
 ]
 
 

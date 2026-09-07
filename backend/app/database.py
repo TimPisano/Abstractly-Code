@@ -18,7 +18,8 @@ DECISIONS.md for the full reasoning.
 import sqlite3
 import json
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from urllib.parse import urlparse
 from typing import Optional, List, Dict, Any
 
 from . import cache
@@ -379,6 +380,17 @@ def init_db() -> None:
                 status TEXT NOT NULL DEFAULT 'pending'
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS pageviews (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                path TEXT NOT NULL,
+                referrer TEXT,
+                session_id TEXT,
+                created_at TEXT NOT NULL
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_pageviews_created_at ON pageviews(created_at)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_pageviews_session_id ON pageviews(session_id)")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS activity_log (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1751,6 +1763,107 @@ def deny_waitlist_signup(signup_id: int) -> bool:
         return False
     finally:
         conn.close()
+
+
+# ----------------------------------------------------------------------
+# Analytics: first-party, cookie-less pageview logging for the public
+# marketing site (index.html/pricing.html -- see frontend/landing.js).
+# `session_id` is a random id the frontend generates into sessionStorage
+# per tab, NOT a persistent/cross-site tracking cookie -- it exists
+# only so this table can answer "how many separate visits reached
+# pricing" / "how many converted", not to identify anyone. Owner-only
+# reporting (GET /owner/analytics/summary) mirrors get_discrepancy_
+# summary's approach: one full-table read, aggregated in Python, since
+# this is a low-volume marketing-site table, not something needing a
+# SQL aggregate at leases-table scale.
+# ----------------------------------------------------------------------
+
+# The waitlist form's success path POSTs a second beacon with this as
+# `path` -- a conversion marker, not a real page, reusing this same
+# table/endpoint instead of standing up a separate events table for one
+# signal. Both this and PAGEVIEW_PRICING_PATH are matched against
+# whatever `path` the frontend actually sends (see POST /analytics/
+# pageview in api.py), so they must stay in sync with landing.js.
+PAGEVIEW_LANDING_PATH = "/"
+PAGEVIEW_PRICING_PATH = "/pricing.html"
+PAGEVIEW_CONVERSION_PATH = "/__event/waitlist_submitted"
+
+
+def insert_pageview(path: str, referrer: Optional[str], session_id: Optional[str]) -> int:
+    """One row per page load (or the synthetic waitlist-conversion beacon above). `path`'s shape is validated at the API layer (POST /analytics/pageview), not here."""
+    conn = get_connection()
+    try:
+        cur = conn.execute(
+            "INSERT INTO pageviews (path, referrer, session_id, created_at) VALUES (?, ?, ?, ?)",
+            (path, referrer, session_id, datetime.now(timezone.utc).isoformat()),
+        )
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def _referrer_host(referrer: Optional[str]) -> str:
+    """"https://www.google.com/search?q=..." -> "www.google.com" ; empty/missing/unparseable -> "direct" (typed the URL directly, or a bookmark -- no referrer header either way)."""
+    if not referrer:
+        return "direct"
+    try:
+        host = urlparse(referrer).netloc
+    except ValueError:
+        return "direct"
+    return host or "direct"
+
+
+def get_pageview_summary(days: int = 30) -> Dict[str, Any]:
+    """
+    Totals, top paths/referrers (all-time), a daily trend for the last
+    `days`, and a 3-step funnel by SESSION (not raw pageview count --
+    a session that reloaded pricing.html three times still only counts
+    once): landing -> pricing -> waitlist_submitted. A pageview with no
+    session_id (a non-browser client, or sessionStorage unavailable)
+    still counts toward totals/top_paths/top_referrers but is excluded
+    from the funnel, which is inherently session-based.
+    """
+    conn = get_connection()
+    try:
+        rows = conn.execute("SELECT path, referrer, session_id, created_at FROM pageviews").fetchall()
+    finally:
+        conn.close()
+
+    by_path: Dict[str, int] = {}
+    by_referrer: Dict[str, int] = {}
+    daily: Dict[str, int] = {}
+    sessions_seen = set()
+    sessions_by_path: Dict[str, set] = {}
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+
+    for row in rows:
+        path, referrer, session_id, created_at = row["path"], row["referrer"], row["session_id"], row["created_at"]
+        by_path[path] = by_path.get(path, 0) + 1
+        host = _referrer_host(referrer)
+        by_referrer[host] = by_referrer.get(host, 0) + 1
+        if session_id:
+            sessions_seen.add(session_id)
+            sessions_by_path.setdefault(path, set()).add(session_id)
+        if created_at >= cutoff:
+            day = created_at[:10]
+            daily[day] = daily.get(day, 0) + 1
+
+    top_paths = sorted(by_path.items(), key=lambda kv: kv[1], reverse=True)[:20]
+    top_referrers = sorted(by_referrer.items(), key=lambda kv: kv[1], reverse=True)[:20]
+
+    return {
+        "total_pageviews": len(rows),
+        "unique_sessions": len(sessions_seen),
+        "top_paths": [{"path": p, "count": c} for p, c in top_paths],
+        "top_referrers": [{"referrer": r, "count": c} for r, c in top_referrers],
+        "daily_trend": [{"date": d, "count": c} for d, c in sorted(daily.items())],
+        "funnel": {
+            "landing": len(sessions_by_path.get(PAGEVIEW_LANDING_PATH, set())),
+            "pricing": len(sessions_by_path.get(PAGEVIEW_PRICING_PATH, set())),
+            "waitlist_submitted": len(sessions_by_path.get(PAGEVIEW_CONVERSION_PATH, set())),
+        },
+    }
 
 
 # ----------------------------------------------------------------------

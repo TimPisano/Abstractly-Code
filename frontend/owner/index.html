@@ -28,6 +28,7 @@
             <button class="owner-tab active" data-tab="accounts">Accounts</button>
             <button class="owner-tab" data-tab="finance">Revenue &amp; Expenses</button>
             <button class="owner-tab" data-tab="quality">Extraction Quality</button>
+            <button class="owner-tab" data-tab="analytics">Analytics</button>
         </nav>
 
         <main class="owner-main">
@@ -106,6 +107,38 @@
                     <p class="owner-panel-subtitle">AI lease-abstraction accuracy and confidence calibration over time, from the training loop (<code>tools/training_harness.py</code>), plus live production volume/errors. Use this to catch quality drift as new user documents come through.</p>
                 </div>
                 <div id="qualityContent"><p class="loading-inline"><span class="spinner-small"></span> Loading…</p></div>
+            </section>
+
+            <!-- ===================== Analytics ===================== -->
+            <section class="owner-panel" id="panel-analytics">
+                <div class="owner-panel-header">
+                    <h1>Analytics</h1>
+                    <p class="owner-panel-subtitle">First-party pageview tracking on the public marketing site (index.html / pricing.html) — no cookies, no third party. Counts since this feature was added, not historical.</p>
+                </div>
+
+                <div class="owner-finance-totals" id="analyticsTotals"></div>
+
+                <div class="owner-trend-wrap">
+                    <h2>Daily pageviews (last 30 days)</h2>
+                    <div id="analyticsTrend"></div>
+                </div>
+
+                <div class="owner-trend-wrap">
+                    <h2>Landing → pricing → waitlist funnel</h2>
+                    <p class="owner-panel-subtitle">By distinct visit, not raw pageview count.</p>
+                    <div id="analyticsFunnel"></div>
+                </div>
+
+                <div class="owner-finance-columns">
+                    <div class="owner-finance-col">
+                        <h2>Top pages</h2>
+                        <div id="analyticsTopPaths"></div>
+                    </div>
+                    <div class="owner-finance-col">
+                        <h2>Top referrers</h2>
+                        <div id="analyticsTopReferrers"></div>
+                    </div>
+                </div>
             </section>
         </main>
     </div>

@@ -7,11 +7,47 @@
  *    which links back to the hero's form instead of duplicating it)
  *    don't throw on this line and silently skip the reveal-animation
  *    wiring below it as a result.
+ *  - Pageview beacon: fire-and-forget first-party analytics (see
+ *    backend/app/api.py's POST /analytics/pageview) -- one per page
+ *    load, plus a synthetic one on a successful waitlist submission so
+ *    the owner console's funnel can show conversions, not just visits.
  *  - Scroll reveal: a subtle fade + rise for elements marked .reveal
  *    as they enter the viewport, restrained rather than bouncy, and
  *    skipped entirely for prefers-reduced-motion (handled in CSS).
  * API_BASE_URL comes from config.js, loaded before this script.
  */
+
+// A per-tab id in sessionStorage, NOT a cookie -- gone when the tab
+// closes, never sent anywhere except this one beacon, and not read by
+// or shared with anything else on the page. Only exists so the owner
+// console can count distinct visits/conversions instead of raw
+// pageview volume; see database.get_pageview_summary's own docstring.
+function _pageviewSessionId() {
+    try {
+        let id = sessionStorage.getItem('_pvsid');
+        if (!id) {
+            id = (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+            sessionStorage.setItem('_pvsid', id);
+        }
+        return id;
+    } catch (e) {
+        // Private browsing / storage disabled: still send a beacon, just
+        // without session continuity across this page's other beacons.
+        return null;
+    }
+}
+
+function recordPageview(path) {
+    try {
+        fetch(`${API_BASE_URL}/analytics/pageview`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path, referrer: document.referrer || null, session_id: _pageviewSessionId() }),
+        }).catch(() => {}); // analytics must never surface an error to a visitor
+    } catch (e) { /* same -- never let telemetry break the page */ }
+}
+
+recordPageview(window.location.pathname);
 
 const waitlistFormEl = document.getElementById('waitlistForm');
 if (waitlistFormEl) {
@@ -51,6 +87,9 @@ if (waitlistFormEl) {
 
             document.getElementById('heroFormWrap').classList.add('submitted');
             document.getElementById('waitlistConfirm').classList.add('show');
+            // Synthetic "path" -- a conversion marker, not a real page.
+            // Must match backend/app/database.py's PAGEVIEW_CONVERSION_PATH.
+            recordPageview('/__event/waitlist_submitted');
         } catch (err) {
             errorEl.textContent = err.message;
             errorEl.classList.add('show');

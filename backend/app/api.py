@@ -3182,6 +3182,43 @@ def join_waitlist():
     return jsonify({"message": "Your request has been received. If it's a fit, we'll be in touch."}), 201
 
 
+# Generous relative to the waitlist limiter above -- this fires once per
+# marketing-page load (plus once more on a successful waitlist submit),
+# not once per deliberate form submission, so normal browsing across
+# index.html/pricing.html needs headroom the waitlist limiter doesn't.
+_pageview_rate_limiter = RateLimiter(max_hits=60, window_seconds=60)  # per IP: 60 / minute
+
+
+@app.route('/analytics/pageview', methods=['POST'])
+def record_pageview():
+    """
+    Body: {"path": str, "referrer": str (optional), "session_id": str
+    (optional)}. Public, unauthenticated -- fired by frontend/landing.js
+    on every marketing-page load, and once more with a synthetic path on
+    a successful waitlist submission (see database.PAGEVIEW_CONVERSION_
+    PATH). Fire-and-forget telemetry: the response is never branched on
+    for anything beyond ok/not-ok, so there's nothing here beyond basic
+    shape validation and a generous per-IP rate limit against abuse.
+    """
+    if _pageview_rate_limiter.check([f"ip:{request.remote_addr or 'unknown'}"]):
+        return jsonify({"error": "Too many requests."}), 429
+
+    body = request.get_json(silent=True) or {}
+    path = (body.get("path") or "").strip()
+    referrer = (body.get("referrer") or "").strip() or None
+    session_id = (body.get("session_id") or "").strip() or None
+
+    if not path.startswith("/") or len(path) > 512:
+        return jsonify({"error": "Invalid path"}), 400
+    if referrer and len(referrer) > 1024:
+        referrer = referrer[:1024]
+    if session_id and len(session_id) > 128:
+        session_id = session_id[:128]
+
+    database.insert_pageview(path, referrer, session_id)
+    return jsonify({"status": "ok"}), 201
+
+
 @app.route('/waitlist', methods=['GET'])
 @require_role('admin')
 def list_waitlist():
@@ -4768,6 +4805,22 @@ def owner_finance_summary():
         "profit": total_revenue - total_expenses,
         "monthly_trend": trend,
     }), 200
+
+
+@app.route('/owner/analytics/summary', methods=['GET'])
+@require_owner()
+def owner_analytics_summary():
+    """
+    GET /owner/analytics/summary?days=30 -- pageview totals, top paths,
+    top referrers, a daily trend for the given window, and the landing
+    -> pricing -> waitlist-submitted funnel, all from the public
+    marketing site (see database.get_pageview_summary and frontend/
+    landing.js, which is what actually sends these). Owner-only, same
+    guard as /owner/finance/summary -- this is business telemetry, not
+    something every team member needs visibility into.
+    """
+    days = request.args.get('days', default=30, type=int) or 30
+    return jsonify(database.get_pageview_summary(days=days)), 200
 
 
 @app.route('/extraction-quality/trend', methods=['GET'])

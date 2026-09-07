@@ -24,6 +24,11 @@ _MUTATING = {"POST", "PUT", "PATCH", "DELETE"}
 _PUBLIC_MUTATING = {
     "/auth/login", "/auth/logout", "/auth/forgot-password", "/auth/reset-password",
     "/waitlist", "/waitlist/check",
+    # Fired by anonymous visitors on the public marketing site itself
+    # (frontend/landing.js) -- same "public by design" category as
+    # /waitlist above, not an oversight. See POST /analytics/pageview's
+    # own docstring.
+    "/analytics/pageview",
 }
 
 
