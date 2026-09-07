@@ -1,0 +1,252 @@
+[
+  {
+    "id": "01_baseline_clean",
+    "file": "01_baseline_clean.csv",
+    "notes": "Sanity baseline -- clean, standard headers, should pass with zero issues."
+  },
+  {
+    "id": "02_yardi_style_headers",
+    "file": "02_yardi_style_headers.csv",
+    "notes": "Yardi/AppFolio terminology: Resident/Scheduled Rent/Unit SF/Lease Commencement."
+  },
+  {
+    "id": "03_realpage_market_vs_actual",
+    "file": "03_realpage_market_vs_actual.csv",
+    "notes": "Market Rent and Rent PSF columns present -- must resolve rent_amount to Actual Rent, not either denylisted column."
+  },
+  {
+    "id": "04_extra_unmapped_columns",
+    "file": "04_extra_unmapped_columns.csv",
+    "notes": "Unrecognized columns (Parking Spaces, Notes) must be ignored, not misread as tenant/rent."
+  },
+  {
+    "id": "05_multispace_headers",
+    "file": "05_multispace_headers.csv",
+    "notes": "Header cells with multiple internal spaces (\"Tenant   Name\") -- tests whether normalize_header's whitespace handling still matches the alias."
+  },
+  {
+    "id": "06_pms_decorative_rows",
+    "file": "06_pms_decorative_rows.csv",
+    "notes": "Decorative title/as-of-date/blank rows before the real header row -- tests _find_header_row's scan window."
+  },
+  {
+    "id": "07_header_deep_in_scan_window",
+    "file": "07_header_deep_in_scan_window.csv",
+    "notes": "Real header row sits deep in the file (within the 20-row scan window) -- boundary test."
+  },
+  {
+    "id": "08_rent_commencement_column",
+    "file": "08_rent_commencement_column.csv",
+    "notes": "'Rent Commencement' must map to lease_start_date, not collide with rent_amount's bare 'rent' alias."
+  },
+  {
+    "id": "09_mri_short_headers",
+    "file": "09_mri_short_headers.csv",
+    "notes": "Bare MRI-style 'Commence'/'Expire' headers."
+  },
+  {
+    "id": "10_per_row_property_column",
+    "file": "10_per_row_property_column.csv",
+    "notes": "Per-row Property column must override the uploader's base_property_address for that row."
+  },
+  {
+    "id": "11_property_manager_denylist",
+    "file": "11_property_manager_denylist.csv",
+    "notes": "'Property Manager' (a person's name) must not be matched as the address/property column."
+  },
+  {
+    "id": "12_multisheet_summary_then_detail",
+    "file": "12_multisheet_summary_then_detail.xlsx",
+    "notes": "Blank Summary sheet before the real Detail sheet -- must not report 'no usable data'."
+  },
+  {
+    "id": "13_unit_designator_variants",
+    "file": "13_unit_designator_variants.csv",
+    "notes": "Unit column already self-designated ('Suite 101', 'STE. 12', '#7') must not get double-prefixed with 'Suite'; a bare number still gets prefixed."
+  },
+  {
+    "id": "14_sqft_header_variants",
+    "file": "14_sqft_header_variants.csv",
+    "notes": "RSF as a square-footage alias."
+  },
+  {
+    "id": "15_totally_unrecognized_headers",
+    "file": "15_totally_unrecognized_headers.csv",
+    "notes": "No header alias matches tenant or rent at all ('Occupant Entity', 'Consideration') -- correct behavior is a clean RentRollImportError, not a guess."
+  },
+  {
+    "id": "16_unambiguous_ddmm",
+    "file": "16_unambiguous_ddmm.csv",
+    "notes": "DD/MM/YYYY where day=25 makes it UNAMBIGUOUSLY not US-style MM/DD (month 25 doesn't exist). Correct date is March 25 2023 - March 24 2028."
+  },
+  {
+    "id": "17_ambiguous_ddmm_looks_like_mmdd",
+    "file": "17_ambiguous_ddmm_looks_like_mmdd.csv",
+    "notes": "TRULY AMBIGUOUS: '03/04/2023' could mean March 4 (US/MM-DD) or April 3 (DD-MM) with no way to tell from the string alone. This codebase's documented, existing convention is MM/DD-first (see normalize.parse_date's docstring) -- so March 4 is the CORRECT/expected result here, unchanged by the DD/MM fix below. Included specifically to prove the fix (which only kicks in when MM/DD is INVALID, e.g. fixture 16) doesn't also flip this already-correct, merely-ambiguous case."
+  },
+  {
+    "id": "18_month_year_only",
+    "file": "18_month_year_only.csv",
+    "notes": "Month+year only ('March 2024', no day) has no single correct calendar date -- correct behavior is 'not found', not a guessed day-of-month."
+  },
+  {
+    "id": "19_abbreviated_month_year",
+    "file": "19_abbreviated_month_year.csv",
+    "notes": "Spreadsheet-style 'Mar-24' abbreviated month-year with no day -- correctly 'not found', same reasoning as #18."
+  },
+  {
+    "id": "20_iso_dates",
+    "file": "20_iso_dates.csv",
+    "notes": "ISO 8601 (YYYY-MM-DD) is NOT one of parse_date's recognized shapes at all -- expect a clean 'not found', which is itself a real gap worth knowing about (a very common PMS export format)."
+  },
+  {
+    "id": "21_two_digit_years",
+    "file": "21_two_digit_years.csv",
+    "notes": "Two-digit-year century pivot (parse_date: <70 -> 2000s, >=70 -> 1900s). Row 1 deliberately exercises the 68/98 boundary case."
+  },
+  {
+    "id": "22_spelled_out_dates",
+    "file": "22_spelled_out_dates.csv",
+    "notes": "Spelled-out ('September 1, 2022') and abbreviated-with-period ('Aug. 31, 2027') month names."
+  },
+  {
+    "id": "23_date_with_annotation",
+    "file": "23_date_with_annotation.csv",
+    "notes": "Trailing annotation text on a date cell ('(est.)') -- parse_date requires a full-string match, so this is correctly 'not found' rather than a partial/wrong parse."
+  },
+  {
+    "id": "24_excel_real_date_cells",
+    "file": "24_excel_real_date_cells.xlsx",
+    "notes": "Real Excel date-typed cells (not text) -- _cell_to_str formats via strftime('%B %d, %Y') before parse_date sees it."
+  },
+  {
+    "id": "25_blank_dates",
+    "file": "25_blank_dates.csv",
+    "notes": "Genuinely blank date cells -- must be 'not found', not a crash or a guessed date."
+  },
+  {
+    "id": "26_missing_sqft",
+    "file": "26_missing_sqft.csv",
+    "notes": "Blank square footage cell -- not a core field, must not block the rest of the row."
+  },
+  {
+    "id": "27_missing_unit",
+    "file": "27_missing_unit.csv",
+    "notes": "Blank unit cell -- property_address falls back to just the base address with no suite."
+  },
+  {
+    "id": "28_missing_end_date_only",
+    "file": "28_missing_end_date_only.csv",
+    "notes": "Blank lease-end date only -- start date must still import correctly."
+  },
+  {
+    "id": "29_missing_rent",
+    "file": "29_missing_rent.csv",
+    "notes": "Blank rent cell -- a real tenant name still imports the row (rent just 'not found'), doesn't get skipped as if it were vacant."
+  },
+  {
+    "id": "30_scattered_blanks_multi_row",
+    "file": "30_scattered_blanks_multi_row.csv",
+    "notes": "Multiple rows, each missing a different, unpredictable combination of fields -- each row's independent fields must still import correctly."
+  },
+  {
+    "id": "31_vacant_unit_rows",
+    "file": "31_vacant_unit_rows.csv",
+    "notes": "Vacant-unit rows (both 'VACANT' and 'Vacant' casing) mixed with real tenants -- vacant rows must be skipped, not imported as fake tenants."
+  },
+  {
+    "id": "32_totals_subtotal_rows",
+    "file": "32_totals_subtotal_rows.csv",
+    "notes": "Subtotal/Total summary rows mixed in with real data rows -- must be skipped, not treated as a fake mega-tenant."
+  },
+  {
+    "id": "33_completely_blank_row_between_data",
+    "file": "33_completely_blank_row_between_data.csv",
+    "notes": "A fully blank row between two real data rows is dropped entirely before parsing (not even a skipped_rows entry) -- must not shift or corrupt the surrounding rows' row-number citations."
+  },
+  {
+    "id": "34_duplicate_tenant_name_two_units",
+    "file": "34_duplicate_tenant_name_two_units.csv",
+    "notes": "Same tenant name leasing two separate units -- correct behavior is TWO separate lease records (no entity-resolution/merging is attempted, and none should be), distinguished by their different Suite numbers."
+  },
+  {
+    "id": "35_typo_tenant_names",
+    "file": "35_typo_tenant_names.csv",
+    "notes": "Near-duplicate tenant names differing by a typo ('Corporation' vs 'Corp0ration') -- correct behavior is to import BOTH verbatim as distinct records; fuzzy-merging different rows on a guess would be worse than keeping them separate."
+  },
+  {
+    "id": "36_inconsistent_unit_formats",
+    "file": "36_inconsistent_unit_formats.csv",
+    "notes": "Same file, four different unit-numbering conventions -- each must combine correctly with the base address without double-prefixing."
+  },
+  {
+    "id": "37_case_variant_vacant_keyword",
+    "file": "37_case_variant_vacant_keyword.csv",
+    "notes": "Mixed-case 'VaCaNt' -- keyword matching must be case-insensitive."
+  },
+  {
+    "id": "38_tenant_name_with_real_word_total",
+    "file": "38_tenant_name_with_real_word_total.csv",
+    "notes": "A REAL tenant name that happens to start with 'Total' as a substring of a different word ('Totally') -- must NOT be mistaken for a totals row (word-boundary check, not substring)."
+  },
+  {
+    "id": "39_leading_trailing_whitespace_names",
+    "file": "39_leading_trailing_whitespace_names.csv",
+    "notes": "Tenant name with leading/trailing whitespace -- must be trimmed."
+  },
+  {
+    "id": "40_zero_as_vacant_marker",
+    "file": "40_zero_as_vacant_marker.csv",
+    "notes": "A literal '0' in the tenant cell (a real pattern some rent rolls use for vacant units) must not import as a fake tenant literally named '0'."
+  },
+  {
+    "id": "41_bare_number_no_dollar_sign",
+    "file": "41_bare_number_no_dollar_sign.csv",
+    "notes": "Bare number with no '$' at all -- _parse_import_currency's specific tolerance for spreadsheet cells."
+  },
+  {
+    "id": "42_currency_format_variants",
+    "file": "42_currency_format_variants.csv",
+    "notes": "Four different formattings of the exact same $1,200 rent -- all four must resolve to the identical 1200.0 value."
+  },
+  {
+    "id": "43_currency_with_trailing_text",
+    "file": "43_currency_with_trailing_text.csv",
+    "notes": "Trailing unit annotation ('/mo') after the dollar amount -- the currency regex should still extract the leading number."
+  },
+  {
+    "id": "44_non_numeric_rent_placeholder",
+    "file": "44_non_numeric_rent_placeholder.csv",
+    "notes": "Non-numeric placeholder text ('TBD') in the rent cell -- must be 'not found', never coerced to 0 or some other fabricated number."
+  },
+  {
+    "id": "45_annual_rent_mislabeled_column",
+    "file": "45_annual_rent_mislabeled_column.csv",
+    "notes": "'Annual Rent' isn't one of rent_amount's monthly-rent aliases (deliberately -- this system's rent_amount is always monthly; treating an annual figure as-is would silently overstate monthly rent 12x). Expect either 'no usable rent column' (file-level failure) or, if some other alias coincidentally matches, WRONG data -- this is specifically testing whether the importer can tell the difference between a real gap and a unit mismatch, which is a known limitation, not a bug this pass fixes."
+  },
+  {
+    "id": "46_ocr_currency_substitution",
+    "file": "46_ocr_currency_substitution.csv",
+    "notes": "OCR-style letter/digit confusion inside a number ('1,2OO.00' with a capital O instead of two zeros) -- correct/safe behavior is failing to find a clean number (None), NOT silently extracting a truncated '1.2' or similar wrong-but-plausible value."
+  },
+  {
+    "id": "47_ocr_date_substitution",
+    "file": "47_ocr_date_substitution.csv",
+    "notes": "OCR letter/digit confusion inside dates ('Ol/l5/2O23') -- correct/safe behavior is 'not found' (regex simply won't match letters), not a garbled wrong date."
+  },
+  {
+    "id": "48_misaligned_row",
+    "file": "48_misaligned_row.csv",
+    "notes": "Middle row has extra stray fields injected before its real rent/dates, shifting them past the columns the header declared -- none of its mapped columns end up with a parseable rent or date, so the same guard that catches junk lines (fixture 49) also catches this: skipped and reported by name, not silently imported with a garbled address."
+  },
+  {
+    "id": "49_injected_junk_line",
+    "file": "49_injected_junk_line.csv",
+    "notes": "A junk non-tabular line (page-break marker text, a common artifact of a PDF-to-CSV/OCR conversion) injected between real data rows -- before the fix, its text landed in the tenant column and, having no other data at all, was skipped over by NO existing check (it isn't blank and isn't a known non-tenant keyword), so it silently imported as a fake tenant with no rent or dates."
+  },
+  {
+    "id": "50_merged_cell_tenant_column",
+    "file": "50_merged_cell_tenant_column.xlsx",
+    "notes": "A tenant cell merged across two rows (e.g. one tenant leasing two adjacent suites, shown once visually) -- openpyxl reports the second physical row's tenant cell as blank. Correct/safe behavior is skipping that row (losing a real second unit) rather than fabricating a tenant name for it; documented as a real, known limitation of the merged-cell case, not silently wrong data."
+  }
+]

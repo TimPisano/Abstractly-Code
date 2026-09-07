@@ -1,0 +1,14 @@
+{
+  "notes": "Trailing unit annotation ('/mo') after the dollar amount -- the currency regex should still extract the leading number.",
+  "rows": [
+    {
+      "tenant": "Zeta Three LLC",
+      "rent_amount": 2500.0,
+      "lease_start_date": "2023-03-01",
+      "lease_end_date": "2028-02-28",
+      "property_address": "500 Commerce Way, Suite 115",
+      "skip": false,
+      "skip_reason": null
+    }
+  ]
+}

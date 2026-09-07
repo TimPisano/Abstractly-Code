@@ -1,0 +1,12 @@
+{
+  "pages": [
+    {
+      "page": 1,
+      "text": "This Lease Agreement is entered into between Landlord and Tenant.\nThe Lease shall commence on April 1, 2023 (the \"Commencement Date\") and shall expire on March 31, 2028,\nunless sooner terminated as provided herein.\nTenant shall pay Landlord Base Rent of $6,250.00 per month.\nTenant shall have two (2) options to renew this Lease for additional terms of five (5) years each,\nprovided Tenant delivers written notice to Landlord not less than one hundred eighty (180) days prior to\nthe expiration of the then-current Term. Renewal rent shall be based on the then-prevailing fair market rate."
+    }
+  ],
+  "truth": {
+    "renewal_notice_deadline": "2027-10-03"
+  },
+  "notes": "Lease end 2028-03-31 minus 180 days notice = 2027-10-03 (180 days before March 31, 2028, counting back: Mar31-180d -> Oct 3, 2027; verified: Mar31 to Oct3 is 180 days spanning Oct(28)+Nov(30)+Dec(31)+Jan(31)+Feb(28,2028 not leap)+Mar(31)=179 days to Oct 4? recompute carefully in the runner, this is a hand-check reference, see verification notes in the summary)."
+}

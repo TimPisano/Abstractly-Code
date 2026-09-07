@@ -1,0 +1,14 @@
+{
+  "notes": "Trailing annotation text on a date cell ('(est.)') -- parse_date requires a full-string match, so this is correctly 'not found' rather than a partial/wrong parse.",
+  "rows": [
+    {
+      "tenant": "Alpha Two LLC",
+      "rent_amount": 2700.0,
+      "lease_start_date": null,
+      "lease_end_date": "2027-12-31",
+      "property_address": "500 Commerce Way, Suite 27",
+      "skip": false,
+      "skip_reason": null
+    }
+  ]
+}

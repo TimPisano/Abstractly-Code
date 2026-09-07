@@ -1,0 +1,17 @@
+{
+  "pages": [
+    {
+      "page": 1,
+      "text": "The Lease Term shall commence on March 1, 2023 and terminate on February 28, 2028.\nBase Rent shall be as follows: Year 1: $8,000.00; Year 2: $8,240.00; Year 3: $8,487.00; Year 4: $8,742.00; Year 5: $9,004.00."
+    }
+  ],
+  "truth": {
+    "escalation_trigger_dates": [
+      "2024-03-01",
+      "2025-03-01",
+      "2026-03-01",
+      "2027-03-01"
+    ]
+  },
+  "notes": "Year 2's rate ($8,240) takes effect on the 1-year anniversary (2024-03-01), Year 3 on the 2-year anniversary (2025-03-01), etc. Year 1 is the starting rent, not a future trigger -- only 4 trigger dates for a 5-year schedule."
+}

@@ -1,0 +1,14 @@
+{
+  "notes": "Yardi/AppFolio terminology: Resident/Scheduled Rent/Unit SF/Lease Commencement.",
+  "rows": [
+    {
+      "tenant": "Beta Industries",
+      "rent_amount": 3800.0,
+      "lease_start_date": "2022-03-01",
+      "lease_end_date": "2027-02-28",
+      "property_address": "500 Commerce Way, Suite 204",
+      "skip": false,
+      "skip_reason": null
+    }
+  ]
+}

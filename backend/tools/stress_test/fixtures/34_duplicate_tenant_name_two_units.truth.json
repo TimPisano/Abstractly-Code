@@ -1,0 +1,23 @@
+{
+  "notes": "Same tenant name leasing two separate units -- correct behavior is TWO separate lease records (no entity-resolution/merging is attempted, and none should be), distinguished by their different Suite numbers.",
+  "rows": [
+    {
+      "tenant": "Pi Two Retail",
+      "rent_amount": 2000.0,
+      "lease_start_date": "2023-01-01",
+      "lease_end_date": "2027-12-31",
+      "property_address": "500 Commerce Way, Suite 43",
+      "skip": false,
+      "skip_reason": null
+    },
+    {
+      "tenant": "Pi Two Retail",
+      "rent_amount": 1800.0,
+      "lease_start_date": "2023-01-01",
+      "lease_end_date": "2027-12-31",
+      "property_address": "500 Commerce Way, Suite 44",
+      "skip": false,
+      "skip_reason": null
+    }
+  ]
+}

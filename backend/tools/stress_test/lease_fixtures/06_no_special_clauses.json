@@ -1,0 +1,14 @@
+{
+  "pages": [
+    {
+      "page": 1,
+      "text": "This Lease commences on May 1, 2024 and expires on April 30, 2029.\nTenant shall pay Base Rent of $3,000.00 per month. There are no renewal options, no early termination\nrights, and rent shall remain flat for the entire Term."
+    }
+  ],
+  "truth": {
+    "renewal_notice_deadline": null,
+    "termination_notice_deadline": null,
+    "escalation_trigger_dates": []
+  },
+  "notes": "No renewal/termination/escalation language at all -- every obligation type must come back empty/None, never a guessed default."
+}

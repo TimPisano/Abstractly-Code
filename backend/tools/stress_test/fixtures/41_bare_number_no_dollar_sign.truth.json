@@ -1,0 +1,14 @@
+{
+  "notes": "Bare number with no '$' at all -- _parse_import_currency's specific tolerance for spreadsheet cells.",
+  "rows": [
+    {
+      "tenant": "Alpha Three Corp",
+      "rent_amount": 1200.0,
+      "lease_start_date": "2023-01-01",
+      "lease_end_date": "2027-12-31",
+      "property_address": "500 Commerce Way, Suite 110",
+      "skip": false,
+      "skip_reason": null
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "pages": [
+    {
+      "page": 1,
+      "text": "This Lease commences on January 1, 2023.\nTenant shall have one (1) option to renew this Lease for five (5) years, provided Tenant delivers\nwritten notice not less than ninety (90) days prior to the expiration of the Term."
+    }
+  ],
+  "truth": {
+    "renewal_notice_deadline": null
+  },
+  "notes": "No lease_end_date stated anywhere -- renewal deadline requires it and must come back None, not computed from a guessed end date."
+}

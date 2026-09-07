@@ -1,0 +1,14 @@
+{
+  "notes": "TRULY AMBIGUOUS: '03/04/2023' could mean March 4 (US/MM-DD) or April 3 (DD-MM) with no way to tell from the string alone. This codebase's documented, existing convention is MM/DD-first (see normalize.parse_date's docstring) -- so March 4 is the CORRECT/expected result here, unchanged by the DD/MM fix below. Included specifically to prove the fix (which only kicks in when MM/DD is INVALID, e.g. fixture 16) doesn't also flip this already-correct, merely-ambiguous case.",
+  "rows": [
+    {
+      "tenant": "Sigma Freight",
+      "rent_amount": 3100.0,
+      "lease_start_date": "2023-03-04",
+      "lease_end_date": "2028-03-04",
+      "property_address": "500 Commerce Way, Suite 16",
+      "skip": false,
+      "skip_reason": null
+    }
+  ]
+}

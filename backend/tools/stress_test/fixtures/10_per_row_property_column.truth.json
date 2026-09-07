@@ -1,0 +1,14 @@
+{
+  "notes": "Per-row Property column must override the uploader's base_property_address for that row.",
+  "rows": [
+    {
+      "tenant": "Lambda Tech",
+      "rent_amount": 5200.0,
+      "lease_start_date": "2021-03-01",
+      "lease_end_date": "2026-02-28",
+      "property_address": "900 Ocean Blvd, Suite 10",
+      "skip": false,
+      "skip_reason": null
+    }
+  ]
+}

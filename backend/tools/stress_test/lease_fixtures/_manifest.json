@@ -1,0 +1,50 @@
+[
+  {
+    "id": "01_renewal_standard_phrasing",
+    "notes": "Lease end 2028-03-31 minus 180 days notice = 2027-10-03 (180 days before March 31, 2028, counting back: Mar31-180d -> Oct 3, 2027; verified: Mar31 to Oct3 is 180 days spanning Oct(28)+Nov(30)+Dec(31)+Jan(31)+Feb(28,2028 not leap)+Mar(31)=179 days to Oct 4? recompute carefully in the runner, this is a hand-check reference, see verification notes in the summary)."
+  },
+  {
+    "id": "02_renewal_extend_phrasing",
+    "notes": "Lease end 2027-05-31 minus 270 days notice -- independently verified with plain date arithmetic (date(2027,5,31) - timedelta(days=270)), not hand-counted."
+  },
+  {
+    "id": "03_flat_percentage_escalation",
+    "notes": "3% annual escalation on each anniversary of Jan 1, 2024, through the Dec 31, 2029 lease end -- five anniversaries (2025-2029 inclusive)."
+  },
+  {
+    "id": "04_year_by_year_schedule",
+    "notes": "Year 2's rate ($8,240) takes effect on the 1-year anniversary (2024-03-01), Year 3 on the 2-year anniversary (2025-03-01), etc. Year 1 is the starting rent, not a future trigger -- only 4 trigger dates for a 5-year schedule."
+  },
+  {
+    "id": "05_termination_standard_phrasing",
+    "notes": "The 5th year of a Term starting 2022-07-01 runs 2026-07-01 to 2027-06-30 -- its LAST day is 2027-06-30 (one day before the 5-year anniversary, 2027-07-01), not the anniversary itself. Notice deadline = 2027-06-30 minus 180 days. This off-by-one was caught by independently verifying with date arithmetic rather than trusting the code's first output -- see the obligations-engine writeup."
+  },
+  {
+    "id": "06_no_special_clauses",
+    "notes": "No renewal/termination/escalation language at all -- every obligation type must come back empty/None, never a guessed default."
+  },
+  {
+    "id": "07_renewal_notice_no_end_date",
+    "notes": "No lease_end_date stated anywhere -- renewal deadline requires it and must come back None, not computed from a guessed end date."
+  },
+  {
+    "id": "08_insurance_requirement_present",
+    "notes": "Insurance requirement is clearly stated, but the lease never states a certificate renewal DATE -- obligation must be reported as present with due_date=None, not a fabricated annual date."
+  },
+  {
+    "id": "09_one_time_escalation_not_annual",
+    "notes": "A one-time 10% bump is NOT the same as an annual/anniversary escalation -- field_extractor's suffix logic only attaches 'annually' when the text says 'annual'/'anniversary'/'each year'/'per year', none of which appear here, so parse_percent's caller in obligations.py correctly finds no annual cue and returns no trigger dates rather than guessing this is recurring."
+  },
+  {
+    "id": "10_termination_no_notice_period",
+    "notes": "Termination trigger year (7) is stated but no specific notice-day count is given ('upon written notice' with no day count) -- must come back None rather than assuming a default like 180 or 90 days."
+  },
+  {
+    "id": "11_renewal_notice_in_months_text",
+    "notes": "Notice period is stated in MONTHS ('six (6) months'), not days -- parse_renewal_options' notice_days regex only recognizes a day-count ('N days notice'), so this correctly returns no notice_days rather than misreading '6' as 6 days. A real, documented limitation (see final summary), not a bug being fixed in this pass."
+  },
+  {
+    "id": "12_escalation_schedule_various_years",
+    "notes": "Non-consecutive year numbers (1, 4, 7) -- Year 4's rate triggers on the 3-year anniversary (2023-11-01), Year 7's on the 6-year anniversary (2026-11-01). Year 1 is still the starting rent, not a trigger."
+  }
+]

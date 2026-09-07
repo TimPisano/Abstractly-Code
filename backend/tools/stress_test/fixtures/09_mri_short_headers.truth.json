@@ -1,0 +1,14 @@
+{
+  "notes": "Bare MRI-style 'Commence'/'Expire' headers.",
+  "rows": [
+    {
+      "tenant": "Kappa Foods",
+      "rent_amount": 2300.0,
+      "lease_start_date": "2022-05-01",
+      "lease_end_date": "2027-04-30",
+      "property_address": "500 Commerce Way, Suite 15",
+      "skip": false,
+      "skip_reason": null
+    }
+  ]
+}

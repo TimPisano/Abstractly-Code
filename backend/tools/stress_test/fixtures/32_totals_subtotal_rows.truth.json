@@ -1,0 +1,41 @@
+{
+  "notes": "Subtotal/Total summary rows mixed in with real data rows -- must be skipped, not treated as a fake mega-tenant.",
+  "rows": [
+    {
+      "tenant": "Mu Two Retail",
+      "rent_amount": 2950.0,
+      "lease_start_date": "2023-08-01",
+      "lease_end_date": "2028-07-31",
+      "property_address": "500 Commerce Way, Suite 39",
+      "skip": false,
+      "skip_reason": null
+    },
+    {
+      "tenant": null,
+      "rent_amount": null,
+      "lease_start_date": null,
+      "lease_end_date": null,
+      "property_address": null,
+      "skip": true,
+      "skip_reason": "subtotal row, not a real tenant"
+    },
+    {
+      "tenant": "Nu Two Corp",
+      "rent_amount": 3100.0,
+      "lease_start_date": "2023-09-01",
+      "lease_end_date": "2028-08-31",
+      "property_address": "500 Commerce Way, Suite 40",
+      "skip": false,
+      "skip_reason": null
+    },
+    {
+      "tenant": null,
+      "rent_amount": null,
+      "lease_start_date": null,
+      "lease_end_date": null,
+      "property_address": null,
+      "skip": true,
+      "skip_reason": "total row, not a real tenant"
+    }
+  ]
+}

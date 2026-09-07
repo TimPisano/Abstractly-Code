@@ -1,0 +1,15 @@
+{
+  "pages": [
+    {
+      "page": 1,
+      "text": "The Term commences on November 1, 2020 and expires on October 31, 2030.\nRent shall be paid as follows: Year 1: $12,000.00; Year 4: $13,200.00; Year 7: $14,520.00."
+    }
+  ],
+  "truth": {
+    "escalation_trigger_dates": [
+      "2023-11-01",
+      "2026-11-01"
+    ]
+  },
+  "notes": "Non-consecutive year numbers (1, 4, 7) -- Year 4's rate triggers on the 3-year anniversary (2023-11-01), Year 7's on the 6-year anniversary (2026-11-01). Year 1 is still the starting rent, not a trigger."
+}

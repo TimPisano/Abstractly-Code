@@ -1,0 +1,41 @@
+{
+  "notes": "Same file, four different unit-numbering conventions -- each must combine correctly with the base address without double-prefixing.",
+  "rows": [
+    {
+      "tenant": "Sigma Two LLC",
+      "rent_amount": 2100.0,
+      "lease_start_date": "2023-04-01",
+      "lease_end_date": "2028-03-31",
+      "property_address": "500 Commerce Way, Suite 100",
+      "skip": false,
+      "skip_reason": null
+    },
+    {
+      "tenant": "Tau Two Inc",
+      "rent_amount": 2150.0,
+      "lease_start_date": "2023-04-01",
+      "lease_end_date": "2028-03-31",
+      "property_address": "500 Commerce Way, STE 101",
+      "skip": false,
+      "skip_reason": null
+    },
+    {
+      "tenant": "Upsilon Two Co",
+      "rent_amount": 2200.0,
+      "lease_start_date": "2023-04-01",
+      "lease_end_date": "2028-03-31",
+      "property_address": "500 Commerce Way, Unit 102",
+      "skip": false,
+      "skip_reason": null
+    },
+    {
+      "tenant": "Phi Two Corp",
+      "rent_amount": 2250.0,
+      "lease_start_date": "2023-04-01",
+      "lease_end_date": "2028-03-31",
+      "property_address": "500 Commerce Way, Suite 103",
+      "skip": false,
+      "skip_reason": null
+    }
+  ]
+}

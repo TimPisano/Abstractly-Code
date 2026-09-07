@@ -1,0 +1,14 @@
+{
+  "notes": "Genuinely blank date cells -- must be 'not found', not a crash or a guessed date.",
+  "rows": [
+    {
+      "tenant": "Gamma Two Inc",
+      "rent_amount": 1900.0,
+      "lease_start_date": null,
+      "lease_end_date": null,
+      "property_address": "500 Commerce Way, Suite 29",
+      "skip": false,
+      "skip_reason": null
+    }
+  ]
+}

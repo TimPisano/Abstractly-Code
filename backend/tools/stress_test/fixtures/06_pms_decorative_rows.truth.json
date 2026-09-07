@@ -1,0 +1,14 @@
+{
+  "notes": "Decorative title/as-of-date/blank rows before the real header row -- tests _find_header_row's scan window.",
+  "rows": [
+    {
+      "tenant": "Zeta Partners",
+      "rent_amount": 2750.0,
+      "lease_start_date": "2022-07-01",
+      "lease_end_date": "2027-06-30",
+      "property_address": "500 Commerce Way, Suite 3",
+      "skip": false,
+      "skip_reason": null
+    }
+  ]
+}

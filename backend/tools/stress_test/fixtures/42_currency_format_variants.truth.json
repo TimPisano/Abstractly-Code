@@ -1,0 +1,41 @@
+{
+  "notes": "Four different formattings of the exact same $1,200 rent -- all four must resolve to the identical 1200.0 value.",
+  "rows": [
+    {
+      "tenant": "Beta Three Inc",
+      "rent_amount": 1200.0,
+      "lease_start_date": "2023-02-01",
+      "lease_end_date": "2028-01-31",
+      "property_address": "500 Commerce Way, Suite 111",
+      "skip": false,
+      "skip_reason": null
+    },
+    {
+      "tenant": "Gamma Three LLC",
+      "rent_amount": 1200.0,
+      "lease_start_date": "2023-02-01",
+      "lease_end_date": "2028-01-31",
+      "property_address": "500 Commerce Way, Suite 112",
+      "skip": false,
+      "skip_reason": null
+    },
+    {
+      "tenant": "Delta Three Co",
+      "rent_amount": 1200.0,
+      "lease_start_date": "2023-02-01",
+      "lease_end_date": "2028-01-31",
+      "property_address": "500 Commerce Way, Suite 113",
+      "skip": false,
+      "skip_reason": null
+    },
+    {
+      "tenant": "Epsilon Three Corp",
+      "rent_amount": 1200.0,
+      "lease_start_date": "2023-02-01",
+      "lease_end_date": "2028-01-31",
+      "property_address": "500 Commerce Way, Suite 114",
+      "skip": false,
+      "skip_reason": null
+    }
+  ]
+}

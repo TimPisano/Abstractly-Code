@@ -1,0 +1,41 @@
+{
+  "notes": "Unit column already self-designated ('Suite 101', 'STE. 12', '#7') must not get double-prefixed with 'Suite'; a bare number still gets prefixed.",
+  "rows": [
+    {
+      "tenant": "Xi Retail A",
+      "rent_amount": 2000.0,
+      "lease_start_date": "2023-01-01",
+      "lease_end_date": "2027-12-31",
+      "property_address": "500 Commerce Way, Suite 101",
+      "skip": false,
+      "skip_reason": null
+    },
+    {
+      "tenant": "Xi Retail B",
+      "rent_amount": 2100.0,
+      "lease_start_date": "2023-01-01",
+      "lease_end_date": "2027-12-31",
+      "property_address": "500 Commerce Way, STE. 12",
+      "skip": false,
+      "skip_reason": null
+    },
+    {
+      "tenant": "Xi Retail C",
+      "rent_amount": 2200.0,
+      "lease_start_date": "2023-01-01",
+      "lease_end_date": "2027-12-31",
+      "property_address": "500 Commerce Way, #7",
+      "skip": false,
+      "skip_reason": null
+    },
+    {
+      "tenant": "Xi Retail D",
+      "rent_amount": 2300.0,
+      "lease_start_date": "2023-01-01",
+      "lease_end_date": "2027-12-31",
+      "property_address": "500 Commerce Way, Suite 14",
+      "skip": false,
+      "skip_reason": null
+    }
+  ]
+}

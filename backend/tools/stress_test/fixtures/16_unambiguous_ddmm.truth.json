@@ -1,0 +1,14 @@
+{
+  "notes": "DD/MM/YYYY where day=25 makes it UNAMBIGUOUSLY not US-style MM/DD (month 25 doesn't exist). Correct date is March 25 2023 - March 24 2028.",
+  "rows": [
+    {
+      "tenant": "Rho Trading",
+      "rent_amount": 2750.0,
+      "lease_start_date": "2023-03-25",
+      "lease_end_date": "2028-03-24",
+      "property_address": "500 Commerce Way, Suite 11",
+      "skip": false,
+      "skip_reason": null
+    }
+  ]
+}

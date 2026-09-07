@@ -1,0 +1,12 @@
+{
+  "pages": [
+    {
+      "page": 1,
+      "text": "This Lease commences on October 1, 2022 and expires on September 30, 2027.\nBase Rent is $9,500.00 per month.\nTenant shall have three (3) options to renew this Lease for terms of five (5) years each, provided Tenant\ndelivers written notice at least six (6) months prior to the expiration of the then-current Term."
+    }
+  ],
+  "truth": {
+    "renewal_notice_deadline": null
+  },
+  "notes": "Notice period is stated in MONTHS ('six (6) months'), not days -- parse_renewal_options' notice_days regex only recognizes a day-count ('N days notice'), so this correctly returns no notice_days rather than misreading '6' as 6 days. A real, documented limitation (see final summary), not a bug being fixed in this pass."
+}

@@ -1,0 +1,14 @@
+{
+  "notes": "Spelled-out ('September 1, 2022') and abbreviated-with-period ('Aug. 31, 2027') month names.",
+  "rows": [
+    {
+      "tenant": "Omega Health",
+      "rent_amount": 3600.0,
+      "lease_start_date": "2022-09-01",
+      "lease_end_date": "2027-08-31",
+      "property_address": "500 Commerce Way, Suite 26",
+      "skip": false,
+      "skip_reason": null
+    }
+  ]
+}

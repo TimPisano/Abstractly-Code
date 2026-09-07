@@ -1,0 +1,14 @@
+{
+  "notes": "Blank Summary sheet before the real Detail sheet -- must not report 'no usable data'.",
+  "rows": [
+    {
+      "tenant": "Nu Holdings",
+      "rent_amount": 3300.0,
+      "lease_start_date": "2022-10-01",
+      "lease_end_date": "2027-09-30",
+      "property_address": "500 Commerce Way, Suite 18",
+      "skip": false,
+      "skip_reason": null
+    }
+  ]
+}

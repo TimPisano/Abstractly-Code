@@ -1,0 +1,32 @@
+{
+  "notes": "Multiple rows, each missing a different, unpredictable combination of fields -- each row's independent fields must still import correctly.",
+  "rows": [
+    {
+      "tenant": "Theta Two Inc",
+      "rent_amount": 3000.0,
+      "lease_start_date": "2023-05-01",
+      "lease_end_date": null,
+      "property_address": "500 Commerce Way, Suite 33",
+      "skip": false,
+      "skip_reason": null
+    },
+    {
+      "tenant": "Iota Two LLC",
+      "rent_amount": null,
+      "lease_start_date": "2023-06-01",
+      "lease_end_date": "2028-05-31",
+      "property_address": "500 Commerce Way",
+      "skip": false,
+      "skip_reason": null
+    },
+    {
+      "tenant": "Kappa Two Corp",
+      "rent_amount": 2750.0,
+      "lease_start_date": null,
+      "lease_end_date": null,
+      "property_address": "500 Commerce Way, Suite 35",
+      "skip": false,
+      "skip_reason": null
+    }
+  ]
+}

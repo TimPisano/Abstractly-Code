@@ -1,0 +1,14 @@
+{
+  "notes": "ISO 8601 (YYYY-MM-DD) is NOT one of parse_date's recognized shapes at all -- expect a clean 'not found', which is itself a real gap worth knowing about (a very common PMS export format).",
+  "rows": [
+    {
+      "tenant": "Phi Storage",
+      "rent_amount": 2400.0,
+      "lease_start_date": null,
+      "lease_end_date": null,
+      "property_address": "500 Commerce Way, Suite 23",
+      "skip": false,
+      "skip_reason": null
+    }
+  ]
+}

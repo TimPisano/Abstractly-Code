@@ -1,0 +1,14 @@
+{
+  "notes": "Real header row sits deep in the file (within the 20-row scan window) -- boundary test.",
+  "rows": [
+    {
+      "tenant": "Theta Retail",
+      "rent_amount": 3000.0,
+      "lease_start_date": "2024-01-01",
+      "lease_end_date": "2028-12-31",
+      "property_address": "500 Commerce Way, Suite 20",
+      "skip": false,
+      "skip_reason": null
+    }
+  ]
+}

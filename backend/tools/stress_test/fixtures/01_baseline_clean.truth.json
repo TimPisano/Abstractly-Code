@@ -1,0 +1,14 @@
+{
+  "notes": "Sanity baseline -- clean, standard headers, should pass with zero issues.",
+  "rows": [
+    {
+      "tenant": "Acme Corp",
+      "rent_amount": 2500.0,
+      "lease_start_date": "2023-01-15",
+      "lease_end_date": "2028-01-14",
+      "property_address": "500 Commerce Way, Suite 100",
+      "skip": false,
+      "skip_reason": null
+    }
+  ]
+}

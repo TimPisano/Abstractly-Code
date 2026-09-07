@@ -1,0 +1,14 @@
+{
+  "notes": "Non-numeric placeholder text ('TBD') in the rent cell -- must be 'not found', never coerced to 0 or some other fabricated number.",
+  "rows": [
+    {
+      "tenant": "Eta Three Corp",
+      "rent_amount": null,
+      "lease_start_date": "2023-04-01",
+      "lease_end_date": "2028-03-31",
+      "property_address": "500 Commerce Way, Suite 116",
+      "skip": false,
+      "skip_reason": null
+    }
+  ]
+}

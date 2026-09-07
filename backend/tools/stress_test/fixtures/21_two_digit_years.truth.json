@@ -1,0 +1,23 @@
+{
+  "notes": "Two-digit-year century pivot (parse_date: <70 -> 2000s, >=70 -> 1900s). Row 1 deliberately exercises the 68/98 boundary case.",
+  "rows": [
+    {
+      "tenant": "Chi Apparel",
+      "rent_amount": 2000.0,
+      "lease_start_date": "2068-01-01",
+      "lease_end_date": "1998-12-31",
+      "property_address": "500 Commerce Way, Suite 24",
+      "skip": false,
+      "skip_reason": null
+    },
+    {
+      "tenant": "Psi Foods",
+      "rent_amount": 2150.0,
+      "lease_start_date": "2022-06-15",
+      "lease_end_date": "2027-06-14",
+      "property_address": "500 Commerce Way, Suite 25",
+      "skip": false,
+      "skip_reason": null
+    }
+  ]
+}

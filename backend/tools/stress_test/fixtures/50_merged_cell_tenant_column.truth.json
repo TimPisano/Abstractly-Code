@@ -1,0 +1,32 @@
+{
+  "notes": "A tenant cell merged across two rows (e.g. one tenant leasing two adjacent suites, shown once visually) -- openpyxl reports the second physical row's tenant cell as blank. Correct/safe behavior is skipping that row (losing a real second unit) rather than fabricating a tenant name for it; documented as a real, known limitation of the merged-cell case, not silently wrong data.",
+  "rows": [
+    {
+      "tenant": "Pi Three Holdings (multi-suite)",
+      "rent_amount": 2600.0,
+      "lease_start_date": "2023-12-01",
+      "lease_end_date": "2028-11-30",
+      "property_address": "500 Commerce Way, Suite 125",
+      "skip": false,
+      "skip_reason": null
+    },
+    {
+      "tenant": null,
+      "rent_amount": null,
+      "lease_start_date": null,
+      "lease_end_date": null,
+      "property_address": null,
+      "skip": true,
+      "skip_reason": "merged-cell continuation row -- tenant cell is genuinely blank (openpyxl only returns a value on the merge's anchor cell)"
+    },
+    {
+      "tenant": "Rho Three Corp",
+      "rent_amount": 2700.0,
+      "lease_start_date": "2024-01-01",
+      "lease_end_date": "2028-12-31",
+      "property_address": "500 Commerce Way, Suite 127",
+      "skip": false,
+      "skip_reason": null
+    }
+  ]
+}

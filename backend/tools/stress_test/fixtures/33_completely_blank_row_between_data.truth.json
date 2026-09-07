@@ -1,0 +1,23 @@
+{
+  "notes": "A fully blank row between two real data rows is dropped entirely before parsing (not even a skipped_rows entry) -- must not shift or corrupt the surrounding rows' row-number citations.",
+  "rows": [
+    {
+      "tenant": "Xi Two Retail",
+      "rent_amount": 2400.0,
+      "lease_start_date": "2023-10-01",
+      "lease_end_date": "2028-09-30",
+      "property_address": "500 Commerce Way, Suite 41",
+      "skip": false,
+      "skip_reason": null
+    },
+    {
+      "tenant": "Omicron Two LLC",
+      "rent_amount": 2550.0,
+      "lease_start_date": "2023-11-01",
+      "lease_end_date": "2028-10-31",
+      "property_address": "500 Commerce Way, Suite 42",
+      "skip": false,
+      "skip_reason": null
+    }
+  ]
+}

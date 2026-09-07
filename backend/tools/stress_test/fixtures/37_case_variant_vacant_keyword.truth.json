@@ -1,0 +1,23 @@
+{
+  "notes": "Mixed-case 'VaCaNt' -- keyword matching must be case-insensitive.",
+  "rows": [
+    {
+      "tenant": null,
+      "rent_amount": null,
+      "lease_start_date": null,
+      "lease_end_date": null,
+      "property_address": null,
+      "skip": true,
+      "skip_reason": "vacant (mixed case)"
+    },
+    {
+      "tenant": "Chi Two Retail",
+      "rent_amount": 2300.0,
+      "lease_start_date": "2023-05-01",
+      "lease_end_date": "2028-04-30",
+      "property_address": "500 Commerce Way, Suite 105",
+      "skip": false,
+      "skip_reason": null
+    }
+  ]
+}

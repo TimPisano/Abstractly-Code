@@ -1,0 +1,14 @@
+{
+  "notes": "Market Rent and Rent PSF columns present -- must resolve rent_amount to Actual Rent, not either denylisted column.",
+  "rows": [
+    {
+      "tenant": "Gamma LLC",
+      "rent_amount": 4200.0,
+      "lease_start_date": "2021-06-01",
+      "lease_end_date": "2026-05-31",
+      "property_address": "500 Commerce Way, Suite 12",
+      "skip": false,
+      "skip_reason": null
+    }
+  ]
+}

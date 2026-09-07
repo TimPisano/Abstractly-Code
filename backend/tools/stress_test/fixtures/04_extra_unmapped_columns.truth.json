@@ -1,0 +1,14 @@
+{
+  "notes": "Unrecognized columns (Parking Spaces, Notes) must be ignored, not misread as tenant/rent.",
+  "rows": [
+    {
+      "tenant": "Delta Co",
+      "rent_amount": 1950.0,
+      "lease_start_date": "2020-09-01",
+      "lease_end_date": "2025-08-31",
+      "property_address": "500 Commerce Way, Suite 5",
+      "skip": false,
+      "skip_reason": null
+    }
+  ]
+}

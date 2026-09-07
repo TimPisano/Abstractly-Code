@@ -1,0 +1,4 @@
+{
+  "notes": "'Annual Rent' isn't one of rent_amount's monthly-rent aliases (deliberately -- this system's rent_amount is always monthly; treating an annual figure as-is would silently overstate monthly rent 12x). Expect either 'no usable rent column' (file-level failure) or, if some other alias coincidentally matches, WRONG data -- this is specifically testing whether the importer can tell the difference between a real gap and a unit mismatch, which is a known limitation, not a bug this pass fixes.",
+  "rows": null
+}

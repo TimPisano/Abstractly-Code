@@ -1,0 +1,14 @@
+{
+  "notes": "A REAL tenant name that happens to start with 'Total' as a substring of a different word ('Totally') -- must NOT be mistaken for a totals row (word-boundary check, not substring).",
+  "rows": [
+    {
+      "tenant": "Totally Awesome Tenant LLC",
+      "rent_amount": 1700.0,
+      "lease_start_date": "2023-06-01",
+      "lease_end_date": "2028-05-31",
+      "property_address": "500 Commerce Way, Suite 106",
+      "skip": false,
+      "skip_reason": null
+    }
+  ]
+}

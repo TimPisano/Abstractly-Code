@@ -1,0 +1,14 @@
+{
+  "notes": "Blank square footage cell -- not a core field, must not block the rest of the row.",
+  "rows": [
+    {
+      "tenant": "Delta Two Co",
+      "rent_amount": 2200.0,
+      "lease_start_date": "2023-01-01",
+      "lease_end_date": "2027-12-31",
+      "property_address": "500 Commerce Way, Suite 30",
+      "skip": false,
+      "skip_reason": null
+    }
+  ]
+}

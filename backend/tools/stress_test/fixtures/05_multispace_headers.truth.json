@@ -1,0 +1,14 @@
+{
+  "notes": "Header cells with multiple internal spaces (\"Tenant   Name\") -- tests whether normalize_header's whitespace handling still matches the alias.",
+  "rows": [
+    {
+      "tenant": "Epsilon Group",
+      "rent_amount": 2100.0,
+      "lease_start_date": "2023-04-01",
+      "lease_end_date": "2028-03-31",
+      "property_address": "500 Commerce Way, Suite 8",
+      "skip": false,
+      "skip_reason": null
+    }
+  ]
+}

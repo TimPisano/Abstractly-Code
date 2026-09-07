@@ -1,0 +1,32 @@
+{
+  "notes": "Vacant-unit rows (both 'VACANT' and 'Vacant' casing) mixed with real tenants -- vacant rows must be skipped, not imported as fake tenants.",
+  "rows": [
+    {
+      "tenant": null,
+      "rent_amount": null,
+      "lease_start_date": null,
+      "lease_end_date": null,
+      "property_address": null,
+      "skip": true,
+      "skip_reason": "vacant unit, not a real tenant"
+    },
+    {
+      "tenant": "Lambda Two Co",
+      "rent_amount": 2850.0,
+      "lease_start_date": "2023-07-01",
+      "lease_end_date": "2028-06-30",
+      "property_address": "500 Commerce Way, Suite 37",
+      "skip": false,
+      "skip_reason": null
+    },
+    {
+      "tenant": null,
+      "rent_amount": null,
+      "lease_start_date": null,
+      "lease_end_date": null,
+      "property_address": null,
+      "skip": true,
+      "skip_reason": "vacant unit, not a real tenant"
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "notes": "Near-duplicate tenant names differing by a typo ('Corporation' vs 'Corp0ration') -- correct behavior is to import BOTH verbatim as distinct records; fuzzy-merging different rows on a guess would be worse than keeping them separate.",
+  "rows": [
+    {
+      "tenant": "Rho Two Corporation",
+      "rent_amount": 2900.0,
+      "lease_start_date": "2023-02-01",
+      "lease_end_date": "2028-01-31",
+      "property_address": "500 Commerce Way, Suite 45",
+      "skip": false,
+      "skip_reason": null
+    },
+    {
+      "tenant": "Rho Two Corp0ration",
+      "rent_amount": 2950.0,
+      "lease_start_date": "2023-03-01",
+      "lease_end_date": "2028-02-28",
+      "property_address": "500 Commerce Way, Suite 46",
+      "skip": false,
+      "skip_reason": null
+    }
+  ]
+}

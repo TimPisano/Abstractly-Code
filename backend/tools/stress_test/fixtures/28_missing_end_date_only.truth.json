@@ -1,0 +1,14 @@
+{
+  "notes": "Blank lease-end date only -- start date must still import correctly.",
+  "rows": [
+    {
+      "tenant": "Zeta Two Corp",
+      "rent_amount": 2600.0,
+      "lease_start_date": "2023-03-01",
+      "lease_end_date": null,
+      "property_address": "500 Commerce Way, Suite 31",
+      "skip": false,
+      "skip_reason": null
+    }
+  ]
+}

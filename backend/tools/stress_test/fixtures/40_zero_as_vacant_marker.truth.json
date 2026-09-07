@@ -1,0 +1,23 @@
+{
+  "notes": "A literal '0' in the tenant cell (a real pattern some rent rolls use for vacant units) must not import as a fake tenant literally named '0'.",
+  "rows": [
+    {
+      "tenant": null,
+      "rent_amount": null,
+      "lease_start_date": null,
+      "lease_end_date": null,
+      "property_address": null,
+      "skip": true,
+      "skip_reason": "'0' used as a vacant-unit marker, not a real tenant name"
+    },
+    {
+      "tenant": "Omega Two LLC",
+      "rent_amount": 2600.0,
+      "lease_start_date": "2023-08-01",
+      "lease_end_date": "2028-07-31",
+      "property_address": "500 Commerce Way, Suite 109",
+      "skip": false,
+      "skip_reason": null
+    }
+  ]
+}

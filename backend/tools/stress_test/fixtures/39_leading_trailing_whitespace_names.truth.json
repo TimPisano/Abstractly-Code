@@ -1,0 +1,14 @@
+{
+  "notes": "Tenant name with leading/trailing whitespace -- must be trimmed.",
+  "rows": [
+    {
+      "tenant": "Psi Two Corp",
+      "rent_amount": 2400.0,
+      "lease_start_date": "2023-07-01",
+      "lease_end_date": "2028-06-30",
+      "property_address": "500 Commerce Way, Suite 107",
+      "skip": false,
+      "skip_reason": null
+    }
+  ]
+}

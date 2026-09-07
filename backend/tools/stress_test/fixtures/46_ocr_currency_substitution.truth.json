@@ -1,0 +1,14 @@
+{
+  "notes": "OCR-style letter/digit confusion inside a number ('1,2OO.00' with a capital O instead of two zeros) -- correct/safe behavior is failing to find a clean number (None), NOT silently extracting a truncated '1.2' or similar wrong-but-plausible value.",
+  "rows": [
+    {
+      "tenant": "Iota Three LLC",
+      "rent_amount": null,
+      "lease_start_date": "2023-06-01",
+      "lease_end_date": "2028-05-31",
+      "property_address": "500 Commerce Way, Suite 118",
+      "skip": false,
+      "skip_reason": null
+    }
+  ]
+}

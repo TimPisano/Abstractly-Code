@@ -1,0 +1,14 @@
+{
+  "notes": "'Property Manager' (a person's name) must not be matched as the address/property column.",
+  "rows": [
+    {
+      "tenant": "Mu Consulting",
+      "rent_amount": 1800.0,
+      "lease_start_date": "2023-08-01",
+      "lease_end_date": "2028-07-31",
+      "property_address": "500 Commerce Way, Suite 22",
+      "skip": false,
+      "skip_reason": null
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "pages": [
+    {
+      "page": 1,
+      "text": "This Lease commences on July 1, 2022 and expires on June 30, 2032.\nBase Rent is $15,000.00 per month.\nNotwithstanding the foregoing, Tenant shall have the one-time right to terminate this Lease effective as of\nthe last day of the 5th year of the Term, provided Tenant delivers written notice to Landlord no later than\none hundred eighty (180) days prior to such termination date."
+    }
+  ],
+  "truth": {
+    "termination_notice_deadline": "2027-01-01"
+  },
+  "notes": "The 5th year of a Term starting 2022-07-01 runs 2026-07-01 to 2027-06-30 -- its LAST day is 2027-06-30 (one day before the 5-year anniversary, 2027-07-01), not the anniversary itself. Notice deadline = 2027-06-30 minus 180 days. This off-by-one was caught by independently verifying with date arithmetic rather than trusting the code's first output -- see the obligations-engine writeup."
+}

@@ -1,0 +1,4 @@
+{
+  "notes": "No header alias matches tenant or rent at all ('Occupant Entity', 'Consideration') -- correct behavior is a clean RentRollImportError, not a guess.",
+  "rows": null
+}

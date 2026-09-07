@@ -1,0 +1,14 @@
+{
+  "notes": "Real Excel date-typed cells (not text) -- _cell_to_str formats via strftime('%B %d, %Y') before parse_date sees it.",
+  "rows": [
+    {
+      "tenant": "Beta Two Corp",
+      "rent_amount": 2850.0,
+      "lease_start_date": "2023-07-01",
+      "lease_end_date": "2028-06-30",
+      "property_address": "500 Commerce Way, Suite 28",
+      "skip": false,
+      "skip_reason": null
+    }
+  ]
+}

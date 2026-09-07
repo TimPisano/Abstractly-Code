@@ -1,0 +1,32 @@
+{
+  "notes": "Middle row has extra stray fields injected before its real rent/dates, shifting them past the columns the header declared -- none of its mapped columns end up with a parseable rent or date, so the same guard that catches junk lines (fixture 49) also catches this: skipped and reported by name, not silently imported with a garbled address.",
+  "rows": [
+    {
+      "tenant": "Lambda Three Inc",
+      "rent_amount": 2200.0,
+      "lease_start_date": "2023-07-01",
+      "lease_end_date": "2028-06-30",
+      "property_address": "500 Commerce Way, Suite 120",
+      "skip": false,
+      "skip_reason": null
+    },
+    {
+      "tenant": null,
+      "rent_amount": null,
+      "lease_start_date": null,
+      "lease_end_date": null,
+      "property_address": null,
+      "skip": true,
+      "skip_reason": "extra stray fields shift this row's real rent/dates past the columns the header declared, so none of its MAPPED columns contain a parseable rent or date -- caught by the same 'tenant alone isn't enough' guard added for fixture 49, an unplanned but welcome side benefit: a misaligned row is skipped and reported (visible in skipped_rows) rather than silently imported as a half-populated, garbled record"
+    },
+    {
+      "tenant": "Nu Three Corp",
+      "rent_amount": 2400.0,
+      "lease_start_date": "2023-09-01",
+      "lease_end_date": "2028-08-31",
+      "property_address": "500 Commerce Way, Suite 122",
+      "skip": false,
+      "skip_reason": null
+    }
+  ]
+}

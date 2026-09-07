@@ -1,0 +1,13 @@
+{
+  "pages": [
+    {
+      "page": 1,
+      "text": "This Lease commences on February 1, 2024 and expires on January 31, 2029. Base Rent is $5,500.00 per month.\nTenant shall maintain and keep in force Commercial General Liability insurance with limits of not less than\n$2,000,000.00 per occurrence, naming Landlord as additional insured, throughout the Term."
+    }
+  ],
+  "truth": {
+    "insurance_obligation_present": true,
+    "insurance_due_date": null
+  },
+  "notes": "Insurance requirement is clearly stated, but the lease never states a certificate renewal DATE -- obligation must be reported as present with due_date=None, not a fabricated annual date."
+}

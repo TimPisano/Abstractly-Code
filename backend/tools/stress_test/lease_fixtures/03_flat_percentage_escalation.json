@@ -1,0 +1,18 @@
+{
+  "pages": [
+    {
+      "page": 1,
+      "text": "This Lease commences on January 1, 2024 and expires on December 31, 2029.\nTenant shall pay Base Rent of $10,000.00 per month, which amount shall increase by three percent (3%)\non each annual anniversary of the Commencement Date for the remainder of the Term."
+    }
+  ],
+  "truth": {
+    "escalation_trigger_dates": [
+      "2025-01-01",
+      "2026-01-01",
+      "2027-01-01",
+      "2028-01-01",
+      "2029-01-01"
+    ]
+  },
+  "notes": "3% annual escalation on each anniversary of Jan 1, 2024, through the Dec 31, 2029 lease end -- five anniversaries (2025-2029 inclusive)."
+}

@@ -1,0 +1,12 @@
+{
+  "pages": [
+    {
+      "page": 1,
+      "text": "The Term of this Lease shall commence on June 1, 2022 and end on May 31, 2027.\nBase Rent shall be $4,800.00 per month during the initial Term.\nTenant may extend this Lease for one (1) additional period of three (3) years by providing Landlord\nnot less than two hundred seventy (270) days written notice prior to the expiration of the Term,\nwith renewal rent based on the Consumer Price Index."
+    }
+  ],
+  "truth": {
+    "renewal_notice_deadline": "2026-09-03"
+  },
+  "notes": "Lease end 2027-05-31 minus 270 days notice -- independently verified with plain date arithmetic (date(2027,5,31) - timedelta(days=270)), not hand-counted."
+}

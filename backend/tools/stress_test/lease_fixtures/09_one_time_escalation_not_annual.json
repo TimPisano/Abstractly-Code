@@ -1,0 +1,12 @@
+{
+  "pages": [
+    {
+      "page": 1,
+      "text": "This Lease commences on September 1, 2023 and expires on August 31, 2028.\nBase Rent shall be $7,000.00 per month for the first two years, increasing by ten percent (10%) at the\nstart of the third year of the Term only, with no further increases thereafter."
+    }
+  ],
+  "truth": {
+    "escalation_trigger_dates": []
+  },
+  "notes": "A one-time 10% bump is NOT the same as an annual/anniversary escalation -- field_extractor's suffix logic only attaches 'annually' when the text says 'annual'/'anniversary'/'each year'/'per year', none of which appear here, so parse_percent's caller in obligations.py correctly finds no annual cue and returns no trigger dates rather than guessing this is recurring."
+}

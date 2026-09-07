@@ -1,0 +1,12 @@
+{
+  "pages": [
+    {
+      "page": 1,
+      "text": "This Lease commences on April 1, 2021 and expires on March 31, 2031.\nBase Rent is $20,000.00 per month.\nTenant may terminate this Lease effective as of the end of the 7th year of the Term upon written notice\nto Landlord."
+    }
+  ],
+  "truth": {
+    "termination_notice_deadline": null
+  },
+  "notes": "Termination trigger year (7) is stated but no specific notice-day count is given ('upon written notice' with no day count) -- must come back None rather than assuming a default like 180 or 90 days."
+}
