@@ -509,10 +509,13 @@
                         <p class="view-subtitle">Every disagreement this app has ever found — risk flags, cross-lease mismatches, rent-roll-vs-lease and rent-roll-vs-T12 reconciliation — in one place, with a permanent resolution log</p>
                     </div>
                     <div class="view-header-actions">
+                        <button class="btn-secondary" id="discrepanciesRunReconciliationBtn" type="button">Run reconciliation</button>
                         <button class="btn-secondary" id="discrepanciesRefreshBtn" type="button">Refresh</button>
                     </div>
                 </div>
+                <div id="discrepanciesNewBanner" style="display:none;"></div>
                 <div class="health-strip" id="discrepanciesSummaryStrip"></div>
+                <div id="discrepanciesPatternsStrip"></div>
                 <div class="alerts-filter-row">
                     <label class="checkbox-label">
                         <input type="checkbox" id="discrepanciesShowResolved"> Show resolved

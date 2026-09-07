@@ -18,7 +18,6 @@ const Dashboard = {
         this.renderHealthScoreSkeleton();
         this.renderMetricsSkeleton();
         this.renderAttentionSkeleton();
-        this.renderExpirationAlertsSkeleton();
         this.renderHealthSkeleton();
         this.renderActivitySkeleton();
         document.getElementById('portfolioConfidenceSummaryPanel').innerHTML = '<p class="loading-inline" role="status"><span class="spinner-small"></span> Loading...</p>';
@@ -68,9 +67,6 @@ const Dashboard = {
         Api.portfolioAttention()
             .then(a => this.renderAttention(a))
             .catch(() => { document.getElementById('attentionContent').innerHTML = '<p class="error-text">Failed to load.</p>'; });
-        Api.portfolioExpirationAlerts()
-            .then(a => this.renderExpirationAlerts(a))
-            .catch(() => { document.getElementById('expirationAlertsContent').innerHTML = '<p class="error-text">Failed to load.</p>'; });
         Api.portfolioConfidenceSummary()
             .then(s => { document.getElementById('portfolioConfidenceSummaryPanel').innerHTML = confidenceSummaryPanelHtml(s, 'Portfolio Confidence'); })
             .catch(() => { document.getElementById('portfolioConfidenceSummaryPanel').innerHTML = '<p class="error-text">Failed to load confidence summary.</p>'; });
@@ -99,7 +95,7 @@ const Dashboard = {
     // to render its own "not enough data" message.
     applyGettingStartedState(isNewAccount) {
         document.getElementById('gettingStartedPanel').style.display = isNewAccount ? '' : 'none';
-        ['healthScorePanel', 'portfolioConfidenceSummaryPanel', 'attentionPanel', 'expirationAlertsPanel', 'compositionPanel', 'healthStrip', 'metricsRow']
+        ['healthScorePanel', 'portfolioConfidenceSummaryPanel', 'attentionPanel', 'compositionPanel', 'healthStrip', 'metricsRow']
             .forEach(id => { const el = document.getElementById(id); if (el) el.style.display = isNewAccount ? 'none' : ''; });
     },
 
@@ -610,33 +606,34 @@ const Dashboard = {
     },
 
     renderAttention(attention) {
-        const { expiring_soon, missing_data, needs_verification, unusual_terms } = attention;
-        const totalItems = expiring_soon.length + missing_data.length + needs_verification.length + unusual_terms.length;
+        // expiring_soon is deliberately unused here -- that data now
+        // lives exclusively in the Action Items view (see
+        // actionitems-view.js), so "expiring soon" isn't shown in two
+        // places on this page. This panel stays scoped to data-quality
+        // gaps: incomplete/unverified fields and unusual terms.
+        const { missing_data, needs_verification, unusual_terms } = attention;
+        const totalItems = missing_data.length + needs_verification.length + unusual_terms.length;
         const content = document.getElementById('attentionContent');
 
         if (totalItems === 0) {
             content.innerHTML = `
                 <div class="attention-clear">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                    <span>Nothing needs your attention right now — the whole portfolio is in good shape.</span>
+                    <span>Nothing needs review right now — the whole portfolio is in good shape.</span>
                 </div>
             `;
             return;
         }
 
-        // expiring_soon/unusual_terms: one plain row per lease, whole
-        // row navigates (unchanged). missing_data/needs_verification:
-        // one row per lease (never one row per field -- see
-        // compute_attention_items' own docstring on why scattering the
-        // same lease across several rows defeats the point of "see all
-        // of this lease's gaps at once"), but EACH field within that
-        // row is its own chip so a click can jump straight to and
-        // highlight that specific field, not just the lease in general.
+        // unusual_terms: one plain row per lease, whole row navigates
+        // (unchanged). missing_data/needs_verification: one row per
+        // lease (never one row per field -- see compute_attention_
+        // items' own docstring on why scattering the same lease across
+        // several rows defeats the point of "see all of this lease's
+        // gaps at once"), but EACH field within that row is its own
+        // chip so a click can jump straight to and highlight that
+        // specific field, not just the lease in general.
         const simpleGroups = [
-            {
-                key: 'expiring_soon', label: 'Expiring Soon', items: expiring_soon,
-                render: e => `${escapeHtml(e.display_name || e.filename)} &mdash; ${e.days_remaining} day${e.days_remaining === 1 ? '' : 's'} left`,
-            },
             {
                 key: 'unusual_terms', label: 'Unusual Terms', items: unusual_terms,
                 render: e => `${escapeHtml(e.display_name || e.filename)} &mdash; ${escapeHtml(e.flags[0].message)}${e.flags.length > 1 ? ` (+${e.flags.length - 1} more)` : ''}`,
@@ -757,61 +754,6 @@ const Dashboard = {
             showError(`Failed to verify: ${err.message}`);
             btn.disabled = false;
         }
-    },
-
-    renderExpirationAlertsSkeleton() {
-        document.getElementById('expirationAlertsContent').innerHTML = `
-            <div class="attention-skeleton">
-                <div class="skeleton skeleton-text-sm" style="width:40%;margin-bottom:0.75rem;"></div>
-                <div class="skeleton skeleton-text-sm" style="width:70%;margin-bottom:0.5rem;"></div>
-                <div class="skeleton skeleton-text-sm" style="width:55%;"></div>
-            </div>
-        `;
-    },
-
-    renderExpirationAlerts(alerts) {
-        const { expiring, renewal_deadlines } = alerts;
-        const content = document.getElementById('expirationAlertsContent');
-
-        if (expiring.length === 0 && renewal_deadlines.length === 0) {
-            content.innerHTML = `
-                <div class="attention-clear">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                    <span>Nothing expiring and no renewal deadlines in the next 90 days.</span>
-                </div>
-            `;
-            return;
-        }
-
-        const dayLabel = (n) => `${n} day${n === 1 ? '' : 's'}`;
-        const groups = [
-            {
-                key: 'expiring', label: '30 / 60 / 90-Day Expirations', items: expiring,
-                render: e => `${escapeHtml(e.display_name || e.filename)} &mdash; expires ${escapeHtml(e.lease_end_date)} (${dayLabel(e.days_remaining)} left)`,
-            },
-            {
-                key: 'renewal_deadlines', label: 'Renewal Notice Deadlines', items: renewal_deadlines,
-                render: e => e.bucket === 'overdue'
-                    ? `${escapeHtml(e.display_name || e.filename)} &mdash; renewal notice window closed ${dayLabel(Math.abs(e.days_remaining))} ago`
-                    : `${escapeHtml(e.display_name || e.filename)} &mdash; renewal notice due in ${dayLabel(e.days_remaining)} (${e.notice_days}-day notice)`,
-            },
-        ];
-
-        content.innerHTML = groups.filter(g => g.items.length > 0).map(g => `
-            <div class="attention-group">
-                <h4 class="attention-group-title">${g.label} <span class="attention-count">${g.items.length}</span></h4>
-                <div class="attention-items">
-                    ${g.items.slice(0, 5).map(item => `
-                        <div class="attention-item ${item.bucket === 'overdue' ? 'attention-item-overdue' : ''}" data-lease-id="${item.lease_id}">${g.render(item)}</div>
-                    `).join('')}
-                </div>
-                ${g.items.length > 5 ? `<p class="attention-more">+${g.items.length - 5} more</p>` : ''}
-            </div>
-        `).join('');
-
-        content.querySelectorAll('.attention-item[data-lease-id]').forEach(el => {
-            el.addEventListener('click', () => showLeaseDetail(parseInt(el.dataset.leaseId, 10)));
-        });
     },
 
     renderHealthSkeleton() {

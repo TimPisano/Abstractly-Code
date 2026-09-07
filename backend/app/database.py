@@ -147,6 +147,23 @@ def _migrate_users_table_add_is_owner(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE users ADD COLUMN is_owner INTEGER NOT NULL DEFAULT 0")
 
 
+def _migrate_users_table_add_discrepancies_last_viewed_at(conn: sqlite3.Connection) -> None:
+    """
+    `discrepancies_last_viewed_at` powers the Discrepancies page's "N new
+    since you last checked" count (see api.py's GET /discrepancies and
+    GET /discrepancies/summary) -- distinct from last_login_at/
+    previous_login_at, which track session activity generally, not this
+    one page specifically. NULL for every existing user until they first
+    load the page (or call POST /discrepancies/mark-viewed), which the
+    API layer treats as "everything currently open counts as new" --
+    the correct default for a page nobody has looked at through this
+    feature yet.
+    """
+    existing_columns = {row["name"] for row in conn.execute("PRAGMA table_info(users)").fetchall()}
+    if "discrepancies_last_viewed_at" not in existing_columns:
+        conn.execute("ALTER TABLE users ADD COLUMN discrepancies_last_viewed_at TEXT")
+
+
 def _migrate_comments_table_add_task_id(conn: sqlite3.Connection) -> None:
     """
     Adds `task_id` so a comment can be attached to a task -- lease_id/
@@ -252,6 +269,23 @@ def _migrate_discrepancies_table_drop_lease_fk(conn: sqlite3.Connection) -> None
     conn.execute("DROP TABLE discrepancies_pre_fk_migration")
     conn.execute("PRAGMA foreign_keys = ON")
     conn.commit()
+
+
+def _migrate_discrepancies_table_add_dollar_impact(conn: sqlite3.Connection) -> None:
+    """
+    `estimated_dollar_impact` -- a nullable, monthly-normalized dollar
+    estimate of how much a discrepancy is actually worth, where one is
+    calculable (currently: rent_roll_reconciliation's rent_amount field,
+    and t12_reconciliation's annual-income gap). Lets the Discrepancies
+    page sort "a $2,000/mo rent gap" ahead of "a mismatched suite
+    number" instead of both showing as flat "medium" severity forever.
+    NULL for discrepancy types this pass doesn't compute an impact for
+    (lease_risk_flag, cross_lease_mismatch) -- absence here means "not
+    calculated," never "zero impact."
+    """
+    existing_columns = {row["name"] for row in conn.execute("PRAGMA table_info(discrepancies)").fetchall()}
+    if "estimated_dollar_impact" not in existing_columns:
+        conn.execute("ALTER TABLE discrepancies ADD COLUMN estimated_dollar_impact REAL")
 
 
 def _seed_first_admin_user(conn: sqlite3.Connection) -> None:
@@ -382,6 +416,7 @@ def init_db() -> None:
             )
         """)
         _migrate_discrepancies_table_drop_lease_fk(conn)
+        _migrate_discrepancies_table_add_dollar_impact(conn)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS discrepancy_resolutions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -443,6 +478,7 @@ def init_db() -> None:
         """)
         _migrate_users_table_add_previous_login_at(conn)
         _migrate_users_table_add_is_owner(conn)
+        _migrate_users_table_add_discrepancies_last_viewed_at(conn)
         _seed_first_admin_user(conn)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS password_reset_tokens (
@@ -1764,6 +1800,16 @@ def get_user(user_id: int) -> Optional[Dict[str, Any]]:
         conn.close()
 
 
+def set_discrepancies_last_viewed(user_id: int, timestamp: str) -> None:
+    """Stamps when this user last viewed the Discrepancies page -- see this column's own migration comment for what it powers."""
+    conn = get_connection()
+    try:
+        conn.execute("UPDATE users SET discrepancies_last_viewed_at = ? WHERE id = ?", (timestamp, user_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def get_user_by_email(email: str) -> Optional[Dict[str, Any]]:
     """
     Case-insensitive lookup -- login shouldn't be case-sensitive on the
@@ -2911,16 +2957,21 @@ def upsert_discrepancy(
     related_lease_id: Optional[int] = None,
     field: Optional[str] = None,
     severity: Optional[str] = None,
+    estimated_dollar_impact: Optional[float] = None,
 ) -> int:
     """
     Records that this discrepancy was seen in the current computation.
     First time this natural_key is seen: inserts a new row, status
     'open'. Every subsequent time: updates the latest-known snapshot
-    (category/field/severity/message/details/last_seen_at) but
-    deliberately leaves `status` untouched -- recomputing a flag must
-    never silently un-resolve or re-resolve it; only an explicit
-    resolve_discrepancy/reopen_discrepancy call changes status. Returns
-    the discrepancy's id either way.
+    (category/field/severity/message/details/estimated_dollar_impact/
+    last_seen_at) but deliberately leaves `status` untouched --
+    recomputing a flag must never silently un-resolve or re-resolve it;
+    only an explicit resolve_discrepancy/reopen_discrepancy call changes
+    status. Returns the discrepancy's id either way.
+
+    `estimated_dollar_impact` is left NULL by callers that don't compute
+    one (lease_risk_flag, cross_lease_mismatch) -- see this column's own
+    migration comment for why absence and zero are kept distinct.
 
     A single atomic `INSERT ... ON CONFLICT DO UPDATE` statement, NOT
     a "SELECT to check, then INSERT or UPDATE" pair -- that older
@@ -2940,19 +2991,20 @@ def upsert_discrepancy(
         conn.execute(
             """
             INSERT INTO discrepancies (discrepancy_type, natural_key, lease_id, related_lease_id,
-                category, field, severity, message, details, status, first_detected_at, last_seen_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)
+                category, field, severity, message, details, estimated_dollar_impact, status, first_detected_at, last_seen_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)
             ON CONFLICT(natural_key) DO UPDATE SET
                 category = excluded.category,
                 field = excluded.field,
                 severity = excluded.severity,
                 message = excluded.message,
                 details = excluded.details,
+                estimated_dollar_impact = excluded.estimated_dollar_impact,
                 lease_id = excluded.lease_id,
                 related_lease_id = excluded.related_lease_id,
                 last_seen_at = excluded.last_seen_at
             """,
-            (discrepancy_type, natural_key, lease_id, related_lease_id, category, field, severity, message, json.dumps(details), now, now),
+            (discrepancy_type, natural_key, lease_id, related_lease_id, category, field, severity, message, json.dumps(details), estimated_dollar_impact, now, now),
         )
         conn.commit()
         # A second SELECT after the atomic upsert above is race-free --
@@ -3183,6 +3235,55 @@ def get_discrepancy_resolutions(discrepancy_id: int) -> List[Dict[str, Any]]:
         rows = conn.execute(
             "SELECT * FROM discrepancy_resolutions WHERE discrepancy_id = ? ORDER BY created_at ASC, id ASC",
             (discrepancy_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    except OverflowError:
+        return []
+    finally:
+        conn.close()
+
+
+def get_prior_resolutions_for_lease(
+    lease_id: Optional[int], category: str, field: Optional[str], exclude_discrepancy_id: int, limit: int = 5,
+) -> List[Dict[str, Any]]:
+    """
+    Resolution history for OTHER discrepancy rows on this same lease
+    that share this category+field -- the "flagged before, resolved as
+    X" context a genuinely new discrepancy row can't otherwise surface
+    (a fresh rent-roll import creates a new lease_id, hence a new
+    natural_key, hence a brand-new row with no resolution history of
+    its own, even though the same real-world disagreement on the same
+    unit was already resolved once before).
+
+    Matches on lease_id OR related_lease_id, same as every other
+    lease-scoped discrepancy query in this module (a discrepancy about
+    a PAIR of leases -- rent-roll-vs-lease-PDF, cross-lease -- can be
+    "about" either side). Returns None (empty list) for a discrepancy
+    with no lease_id at all (e.g. t12_reconciliation, which is
+    address-keyed, not lease-keyed) -- there's no lease to search
+    history for in that case.
+
+    Most recent resolution first -- the LATEST explanation is the one
+    most likely still relevant, not the first.
+    """
+    if lease_id is None:
+        return []
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            """
+            SELECT r.*, d.id AS source_discrepancy_id, d.message AS source_message
+            FROM discrepancy_resolutions r
+            JOIN discrepancies d ON d.id = r.discrepancy_id
+            WHERE (d.lease_id = ? OR d.related_lease_id = ?)
+              AND d.category = ?
+              AND d.field IS ?
+              AND d.id != ?
+              AND r.action = 'resolved'
+            ORDER BY r.created_at DESC, r.id DESC
+            LIMIT ?
+            """,
+            (lease_id, lease_id, category, field, exclude_discrepancy_id, limit),
         ).fetchall()
         return [dict(r) for r in rows]
     except OverflowError:

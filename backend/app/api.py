@@ -81,9 +81,14 @@ from app.portfolio import (
     portfolio_context_for_risk_analysis,
 )
 from app.comparison import compare_leases, benchmark_lease
-from app.discrepancies import sync_lease_risk_flags, sync_all_lease_risk_flags_bulk, sync_rent_roll_reconciliation, sync_t12_reconciliation
+from app.discrepancies import (
+    sync_lease_risk_flags, sync_all_lease_risk_flags_bulk, sync_rent_roll_reconciliation, sync_t12_reconciliation,
+    detect_discrepancy_patterns, DEFAULT_PATTERN_MIN_LEASE_COUNT,
+)
 from app import assignments as assignments_module
+from app import obligations as obligations_module
 from app import tasks as tasks_module
+from app.action_items import compute_action_items
 from app import assistant
 from app import messaging
 from app import email_accounts
@@ -787,6 +792,60 @@ def _invalidate_discrepancy_derived_caches():
     cache.invalidate("health_score")
 
 
+def _run_reconciliation_sweep():
+    """
+    Re-runs the two reconciliation checks that a static "upload once,
+    read once" tool can't offer: rent-roll-vs-lease-PDF (compute_rent_
+    roll_reconciliation) and lease risk flags / cross-lease mismatches
+    (the same computation GET /portfolio/risks does, reused verbatim so
+    this can never disagree with what that route reports) -- against
+    whatever leases exist RIGHT NOW, not just at initial upload time.
+
+    T12-vs-rent-roll reconciliation is deliberately NOT re-run here: a
+    T12 file is never persisted (see sync_t12_reconciliation's own
+    docstring), so there is nothing to recompute against without a
+    fresh upload -- that discrepancy already syncs at upload time, in
+    portfolio_t12_reconciliation() itself.
+
+    Ends with generate_alerts() so a fresh discrepancy is reflected in
+    the alerts feed (new_discrepancy alerts) immediately, not only the
+    next time something else happens to call it.
+
+    Called both from import_rent_roll() (automatic, fire-and-forget --
+    a new rent roll should re-check itself without a separate manual
+    step) and from POST /portfolio/reconciliation/run (the explicit
+    "Run reconciliation" trigger for everything else, including a
+    lease PDF re-upload or amendment that this sweep alone wouldn't
+    have a reason to fire from). Returns counts for the caller to log/
+    return; safe to call as often as needed -- every step here is
+    upsert-by-natural-key, so re-running against unchanged data
+    produces zero new rows.
+    """
+    leases = database.get_all_effective_leases()
+
+    rent_roll_result = compute_rent_roll_reconciliation(leases)
+    sync_rent_roll_reconciliation(rent_roll_result["mismatches"])
+
+    context = portfolio_context_for_risk_analysis(leases)
+    cross_lease_mismatches = compute_cross_lease_mismatches(leases)
+    per_lease_flags = []
+    for lease in leases:
+        date_candidates = lease.get("date_candidates")
+        cross_lease_flags = cross_lease_mismatches.get(lease["id"], [])
+        flags = analyze_lease_risks(lease["extracted_fields"], context, date_candidates, cross_lease_flags)
+        per_lease_flags.append((lease["id"], flags))
+    sync_all_lease_risk_flags_bulk(per_lease_flags)
+
+    _invalidate_discrepancy_derived_caches()
+    alert_result = generate_alerts()
+
+    return {
+        "leases_checked": len(leases),
+        "rent_roll_mismatches": len(rent_roll_result["mismatches"]),
+        "new_alerts": alert_result["created"],
+    }
+
+
 def _persist_split_leases(filename, split_leases):
     """
     Persists every lease FieldExtractor.extract_multiple_leases()
@@ -1318,6 +1377,19 @@ def import_rent_roll():
 
     if created:
         _invalidate_lease_derived_caches()
+        # Auto-reconcile the newly imported rows against whatever lease
+        # PDFs are already on file, right away -- see
+        # _run_reconciliation_sweep's own docstring. Fail-open, same
+        # convention as every other best-effort side effect in this
+        # app (email, alert generation): a reconciliation hiccup must
+        # never turn a successful import into a failed response: the
+        # leases are already committed by this point.
+        try:
+            _run_reconciliation_sweep()
+        except Exception:
+            logger.exception(
+                "Auto-reconciliation after rent roll import failed (import itself still succeeded)."
+            )
 
     skipped_note = f" ({len(parsed['skipped_rows'])} row(s) skipped)" if parsed["skipped_rows"] else ""
     database.insert_activity("rent_roll_imported", f"Imported {len(created)} lease(s) from {filename}{skipped_note}")
@@ -2722,6 +2794,24 @@ def today_view():
     return jsonify(assignments_module.compute_today_view(user_id)), 200
 
 
+@app.route('/action-items', methods=['GET'])
+@require_role()
+def action_items():
+    """
+    GET /action-items?user_id=<id> (optional, defaults to the caller).
+    One prioritized, chronological list combining this user's open
+    tasks with a due date, portfolio-wide lease expirations, and
+    renewal-notice deadlines -- see app.action_items.compute_action_items
+    for exactly how the merge and sort work. Same "any logged-in role
+    may view any user's list, id must be real" convention as /today.
+    """
+    user_id = request.args.get('user_id', type=int) or current_user()["id"]
+    if not database.get_user(user_id):
+        return jsonify({"error": "User not found"}), 404
+    leases = cache.get_or_compute("effective_leases", database.get_all_effective_leases)
+    return jsonify({"items": compute_action_items(user_id, leases)}), 200
+
+
 # ----------------------------------------------------------------------
 # AI assistant: a chat-style helper grounded in the real portfolio.
 # See app/assistant.py for the actual Claude API call + grounding
@@ -3459,6 +3549,33 @@ def portfolio_t12_reconciliation():
     return jsonify(result), 200
 
 
+@app.route('/portfolio/reconciliation/run', methods=['POST'])
+@require_role('analyst')
+def run_reconciliation():
+    """
+    The Discrepancies page's "Run reconciliation" button -- an explicit,
+    on-demand re-check of rent-roll-vs-lease-PDF mismatches and lease
+    risk flags/cross-lease mismatches against current data (see
+    _run_reconciliation_sweep's own docstring for exactly what it does
+    and does NOT cover -- T12 reconciliation needs a fresh file upload,
+    not a re-run). The same sweep also fires automatically after a rent
+    roll import; this is for every other reason data might have changed
+    since the last check (a lease PDF re-upload, an amendment, or just
+    "it's been a month, check again").
+
+    @require_role('analyst') because, like /discrepancies/<id>/resolve,
+    this can create/update persisted discrepancy rows -- not a pure
+    read, even though nothing here is destructive.
+    """
+    result = _run_reconciliation_sweep()
+    database.insert_activity(
+        "reconciliation_run",
+        f"Reconciliation run: {result['leases_checked']} lease(s) checked, "
+        f"{result['rent_roll_mismatches']} rent roll mismatch(es), {result['new_alerts']} new alert(s).",
+    )
+    return jsonify(result), 200
+
+
 @app.route('/activity', methods=['GET'])
 @require_role()
 def recent_activity():
@@ -3496,6 +3613,27 @@ def portfolio_risks():
     return jsonify(results), 200
 
 
+@app.route('/portfolio/obligations', methods=['GET'])
+@require_role()
+def portfolio_obligations():
+    """
+    Every forward-looking, date-computed obligation across the whole
+    portfolio, in one prioritized (soonest-due-first) list -- renewal
+    notice deadlines, early-termination notice deadlines, rent-
+    escalation trigger dates, and insurance-requirement obligations
+    (present but not date-computable, never a guessed date). See
+    app/obligations.py's own module docstring for exactly which
+    obligation types this does and does not cover, and why.
+
+    Computed live on every call (same as /portfolio/risks), not
+    persisted -- an obligation is fully derived from the lease's own
+    extracted fields, so a cached snapshot would go stale the moment a
+    field is corrected.
+    """
+    leases = cache.get_or_compute("effective_leases", database.get_all_effective_leases)
+    return jsonify(obligations_module.compute_portfolio_obligations(leases)), 200
+
+
 @app.route('/leases/<int:lease_id>/risks', methods=['GET'])
 @require_role()
 def lease_risks(lease_id):
@@ -3509,6 +3647,16 @@ def lease_risks(lease_id):
 def _discrepancy_detail(discrepancy):
     detail = dict(discrepancy)
     detail["resolutions"] = database.get_discrepancy_resolutions(discrepancy["id"])
+    # "Flagged before, resolved as X" context from OTHER discrepancy
+    # rows on this same lease/category/field -- see get_prior_
+    # resolutions_for_lease's own docstring for why this can't just be
+    # this row's own resolutions (a fresh rent-roll import creates a
+    # brand-new row with no history of its own). Only fetched for a
+    # single detail view, never in the bulk list -- see that function's
+    # docstring on why.
+    detail["prior_history"] = database.get_prior_resolutions_for_lease(
+        discrepancy.get("lease_id"), discrepancy["category"], discrepancy.get("field"), discrepancy["id"],
+    )
     return detail
 
 
@@ -3523,6 +3671,19 @@ def _activity_lease_id(lease_id):
     return lease_id if lease_id is not None and database.get_lease(lease_id) else None
 
 
+def _current_user_discrepancies_last_viewed_at():
+    """
+    None means either there's no session, or this user has never viewed
+    the Discrepancies page through this feature -- both treated the
+    same way by callers: "everything currently open counts as new."
+    """
+    user = current_user()
+    if not user:
+        return None
+    row = database.get_user(user["id"])
+    return row.get("discrepancies_last_viewed_at") if row else None
+
+
 @app.route('/discrepancies', methods=['GET'])
 @require_role()
 def list_discrepancies():
@@ -3535,6 +3696,13 @@ def list_discrepancies():
     /portfolio/rent-roll-reconciliation, /portfolio/t12-reconciliation)
     -- this endpoint lists what's already been persisted, it doesn't
     trigger a fresh computation of its own.
+
+    Each row carries `is_new`: whether it was first detected after the
+    CALLING user's own discrepancies_last_viewed_at (see
+    POST /discrepancies/mark-viewed) -- per-user, since different team
+    members open this page on different days. Purely a read; viewing
+    this list does NOT itself advance that timestamp, so a badge stays
+    visible until the frontend explicitly marks it seen.
     """
     status = request.args.get('status')
     if status and status not in ('open', 'resolved'):
@@ -3544,6 +3712,9 @@ def list_discrepancies():
     discrepancy_type = request.args.get('type')
 
     discrepancies = database.list_discrepancies(status=status, lease_id=lease_id, discrepancy_type=discrepancy_type)
+    last_viewed_at = _current_user_discrepancies_last_viewed_at()
+    for d in discrepancies:
+        d["is_new"] = last_viewed_at is None or d["first_detected_at"] > last_viewed_at
     return jsonify(discrepancies), 200
 
 
@@ -3559,8 +3730,50 @@ def discrepancies_summary():
     as GET /discrepancies itself (every discrepancy ever recorded), so
     this digest can never disagree with what that list returns -- see
     database.get_discrepancy_summary's own docstring.
+
+    Also includes `new_since_last_view`: how many currently-OPEN
+    discrepancies were first detected after the calling user last
+    viewed this page -- the "3 new issues" count a user coming back
+    after a month should see without re-scanning the whole list. Purely
+    a read, same as the rest of this endpoint -- see
+    POST /discrepancies/mark-viewed for what actually advances it.
     """
-    return jsonify(database.get_discrepancy_summary()), 200
+    summary = database.get_discrepancy_summary()
+    last_viewed_at = _current_user_discrepancies_last_viewed_at()
+    open_discrepancies = database.list_discrepancies(status="open")
+    summary["new_since_last_view"] = (
+        len(open_discrepancies) if last_viewed_at is None
+        else sum(1 for d in open_discrepancies if d["first_detected_at"] > last_viewed_at)
+    )
+    return jsonify(summary), 200
+
+
+@app.route('/discrepancies/mark-viewed', methods=['POST'])
+@require_role()
+def mark_discrepancies_viewed():
+    """
+    Stamps the calling user's discrepancies_last_viewed_at to now --
+    called by the frontend right after it's read/rendered the current
+    `is_new` state, so the "new" badge naturally clears going forward
+    (this is a plain per-user bookkeeping action, not a change to any
+    discrepancy itself, hence @require_role() rather than 'analyst').
+    """
+    user = current_user()
+    database.set_discrepancies_last_viewed(user["id"], datetime.now(timezone.utc).isoformat())
+    return jsonify({"status": "ok"}), 200
+
+
+@app.route('/discrepancies/patterns', methods=['GET'])
+@require_role()
+def discrepancies_patterns():
+    """
+    GET /discrepancies/patterns?min_lease_count=3 (default 3) -- the
+    same TYPE of discrepancy recurring across several leases, surfaced
+    as one portfolio-level insight instead of N separate line items.
+    See detect_discrepancy_patterns's own docstring.
+    """
+    min_lease_count = request.args.get('min_lease_count', type=int) or DEFAULT_PATTERN_MIN_LEASE_COUNT
+    return jsonify(detect_discrepancy_patterns(min_lease_count=min_lease_count)), 200
 
 
 @app.route('/discrepancies/<int:discrepancy_id>', methods=['GET'])

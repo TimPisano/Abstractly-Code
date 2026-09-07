@@ -399,7 +399,10 @@ def test_discrepancy_summary_route():
         client = _authed_client()
         resp = client.get("/discrepancies/summary")
         assert resp.status_code == 200
-        assert resp.get_json() == {"total": 0, "by_status": {"open": 0, "resolved": 0}, "by_severity": {"high": 0, "medium": 0, "low": 0}, "by_type": {}}
+        assert resp.get_json() == {
+            "total": 0, "by_status": {"open": 0, "resolved": 0}, "by_severity": {"high": 0, "medium": 0, "low": 0},
+            "by_type": {}, "new_since_last_view": 0,
+        }
 
         id1 = database.upsert_discrepancy(discrepancy_type="lease_risk_flag", natural_key="a", category="missing_clause", message="m", details={}, lease_id=1, severity="high")
         database.upsert_discrepancy(discrepancy_type="rent_roll_reconciliation", natural_key="b", category="rent_roll_reconciliation", message="m", details={}, lease_id=1, severity="medium")
@@ -412,6 +415,10 @@ def test_discrepancy_summary_route():
         assert data["by_severity"]["high"] == 1
         assert data["by_severity"]["medium"] == 1
         assert data["by_type"] == {"lease_risk_flag": 1, "rent_roll_reconciliation": 1}
+        # This session's user has never called POST /discrepancies/mark-viewed,
+        # so every currently-open discrepancy counts as new -- see
+        # _current_user_discrepancies_last_viewed_at's own docstring.
+        assert data["new_since_last_view"] == 1
 
         # Must always agree with what GET /discrepancies (unfiltered) itself returns
         full_list = client.get("/discrepancies").get_json()

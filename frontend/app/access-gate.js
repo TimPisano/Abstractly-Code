@@ -31,14 +31,27 @@
         // etc.) used by several of the view modules below -- loaded
         // right after app.js, before any view that calls into them.
         'api.js', 'app.js', 'verify-popover.js', 'comments.js', 'discrepancy-modal.js', 'export-modal.js',
-        'upload-view.js', 'dashboard-view.js', 'alerts-view.js', 'discrepancies-view.js', 'team-notes-view.js',
+        'upload-view.js', 'dashboard-view.js', 'actionitems-view.js', 'alerts-view.js', 'discrepancies-view.js', 'team-notes-view.js',
         'detail-view.js', 'timeline-view.js', 'rentroll-view.js', 'comparison-view.js',
         'qa-view.js', 'report-view.js', 'trends-view.js', 'team-view.js', 'tasks-view.js', 'messaging.js',
         'task-detail-modal.js',
     ];
 
     const bootLoadingEl = document.getElementById('appBootLoading');
+    const bootLoadingHintEl = document.getElementById('appBootLoadingHint');
     const shellEl = document.getElementById('appShell');
+
+    // Render's free tier spins the backend down after 15 min idle, and
+    // the first request after that takes 30-60s to wake it back up
+    // (DEPLOYMENT.md's "Free-tier behavior you should know about").
+    // Without this, that wait is indistinguishable from a hung page --
+    // this only fires if the /auth/session check below is still
+    // pending past the point a warm backend would have already
+    // responded, so a normal warm load never shows it.
+    const BOOT_COLD_START_HINT_DELAY_MS = 5000;
+    const bootColdStartHintTimer = setTimeout(() => {
+        bootLoadingHintEl.textContent = 'Still waking up the server after inactivity — this can take up to a minute.';
+    }, BOOT_COLD_START_HINT_DELAY_MS);
 
     function hideBootLoading() {
         bootLoadingEl.style.display = 'none';
@@ -152,6 +165,7 @@
             // Can't reach the backend at all -- fail closed to the login
             // page, same as any other "not authenticated" outcome.
         }
+        clearTimeout(bootColdStartHintTimer);
         if (session.authenticated) {
             grant(session);
             return;

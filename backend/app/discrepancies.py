@@ -18,10 +18,37 @@ recognized as resolved tomorrow once the numbers shift slightly.
 See database.py's discrepancies/discrepancy_resolutions tables for the
 persistence layer this sits on top of.
 """
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Tuple
 
 from app import database
+from app.normalize import parse_currency
 from app.portfolio import _normalize_building_address
+
+# ----------------------------------------------------------------------
+# Dollar-impact / severity for reconciliation mismatches.
+#
+# Every OTHER discrepancy category in this file (lease_risk_flag,
+# cross_lease_mismatch) gets its severity from risk_analysis.py, which
+# already reasons about the underlying lease data -- deliberately left
+# untouched here. This is specifically about the two reconciliation
+# categories, which previously hardcoded a single flat severity
+# ("medium") for every field, making a $2,000/mo rent gap and a stale
+# lease-end date look equally urgent. Thresholds are monthly-normalized
+# so rent_roll_reconciliation (naturally monthly) and t12_reconciliation
+# (naturally annual, divided by 12 below) share one scale.
+# ----------------------------------------------------------------------
+_HIGH_IMPACT_MONTHLY = 1000.0
+_MEDIUM_IMPACT_MONTHLY = 250.0
+
+
+def _severity_for_monthly_impact(monthly_impact: Optional[float]) -> str:
+    if monthly_impact is None:
+        return "medium"
+    if monthly_impact >= _HIGH_IMPACT_MONTHLY:
+        return "high"
+    if monthly_impact >= _MEDIUM_IMPACT_MONTHLY:
+        return "medium"
+    return "low"
 
 
 def _annotate(flag_like: Dict[str, Any], discrepancy_id: int) -> None:
@@ -192,6 +219,31 @@ def sync_all_lease_risk_flags_bulk(per_lease_flags: List[tuple]) -> None:
                     break
 
 
+def _rent_roll_mismatch_severity_and_impact(mismatch: Dict[str, Any]) -> Tuple[str, Optional[float]]:
+    """
+    field == "tenant_name": always high -- there's no "close enough" for
+    whether it's the same tenant (same reasoning as compute_rent_roll_
+    reconciliation's own docstring for why this field has zero
+    tolerance). field == "rent_amount": severity follows the actual
+    monthly dollar gap, which IS calculable here (both sides are
+    currency strings). Every other field (currently just
+    lease_end_date): stays "medium", same as this function's previous
+    flat default -- a stale expiration date matters but isn't something
+    this function can price in dollars.
+    """
+    field = mismatch.get("field")
+    if field == "tenant_name":
+        return "high", None
+    if field == "rent_amount":
+        rr_value = parse_currency(mismatch.get("rent_roll_value"))
+        doc_value = parse_currency(mismatch.get("lease_document_value"))
+        if rr_value is None or doc_value is None:
+            return _severity_for_monthly_impact(None), None
+        monthly_impact = abs(rr_value - doc_value)
+        return _severity_for_monthly_impact(monthly_impact), monthly_impact
+    return "medium", None
+
+
 def sync_rent_roll_reconciliation(mismatches: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Upserts every rent-roll-vs-lease-PDF mismatch and annotates each dict in place. Returns the same list."""
     for mismatch in mismatches:
@@ -203,16 +255,18 @@ def sync_rent_roll_reconciliation(mismatches: List[Dict[str, Any]]) -> List[Dict
             f"Rent roll and lease document disagree on {field} at {mismatch.get('address')}: "
             f"rent roll says {mismatch.get('rent_roll_value')!r}, lease document says {mismatch.get('lease_document_value')!r}"
         )
+        severity, estimated_dollar_impact = _rent_roll_mismatch_severity_and_impact(mismatch)
         discrepancy_id = database.upsert_discrepancy(
             discrepancy_type="rent_roll_reconciliation",
             natural_key=natural_key,
             category="rent_roll_reconciliation",
             field=field,
-            severity="medium",
+            severity=severity,
             message=message,
             details=mismatch,
             lease_id=rr_id,
             related_lease_id=doc_id,
+            estimated_dollar_impact=estimated_dollar_impact,
         )
         _annotate(mismatch, discrepancy_id)
     return mismatches
@@ -246,14 +300,109 @@ def sync_t12_reconciliation(result: Dict[str, Any]) -> Dict[str, Any]:
         f"Rent roll and T12 disagree on annual rental income at {result.get('property_address')}: "
         f"rent roll implies ${result.get('rent_roll_annual_rent')}, T12 states ${result.get('t12_annual_rental_income')}"
     )
+    # Monthly-equivalent so this sits on the same severity scale as
+    # rent_roll_reconciliation's rent_amount impact above -- `difference`
+    # is already the annual gap compute_t12_reconciliation computed, not
+    # re-derived here. Only priced in when currently flagged: an
+    # unflagged result (numbers now agree, or an existing row whose
+    # condition cleared) isn't an active dollar concern regardless of
+    # what the historical gap once was.
+    estimated_dollar_impact = None
+    severity = None
+    if result.get("flagged"):
+        difference = result.get("difference")
+        estimated_dollar_impact = abs(difference) / 12 if difference is not None else None
+        severity = _severity_for_monthly_impact(estimated_dollar_impact)
     discrepancy_id = database.upsert_discrepancy(
         discrepancy_type="t12_reconciliation",
         natural_key=natural_key,
         category="t12_reconciliation",
         field="rent_amount",
-        severity="medium" if result.get("flagged") else None,
+        severity=severity,
         message=message,
         details=result,
+        estimated_dollar_impact=estimated_dollar_impact,
     )
     _annotate(result, discrepancy_id)
     return result
+
+
+# ----------------------------------------------------------------------
+# Portfolio-level pattern detection: the same TYPE of discrepancy
+# recurring across many leases is a systemic issue (a broken CAM
+# reconciliation process, a rent roll export that's stale portfolio-
+# wide) that no single-discrepancy view can show -- exactly the thing a
+# person managing a handful of leases would never need surfaced for
+# them, and a person managing 50+ genuinely cannot spot by reading a
+# flat list. Computed on read, not persisted -- unlike a discrepancy
+# itself, a pattern has no independent identity to resolve or track;
+# it's a live grouping over whatever's currently open.
+# ----------------------------------------------------------------------
+
+DEFAULT_PATTERN_MIN_LEASE_COUNT = 3
+
+
+def detect_discrepancy_patterns(min_lease_count: int = DEFAULT_PATTERN_MIN_LEASE_COUNT) -> List[Dict[str, Any]]:
+    """
+    Groups every currently-OPEN discrepancy by (discrepancy_type,
+    category, field) and keeps groups touching at least
+    `min_lease_count` DISTINCT leases (counting both lease_id and
+    related_lease_id -- a rent-roll-vs-lease mismatch touches two lease
+    rows, and either one recurring across a group counts). Sorted by
+    lease count desc, then total dollar impact desc (groups with no
+    calculable impact sort after ones that have it, not before -- see
+    upsert_discrepancy's docstring on why absence and zero are kept
+    distinct).
+
+    Returns a list of {discrepancy_type, category, field, lease_count,
+    discrepancy_count, total_estimated_dollar_impact, example_message,
+    discrepancy_ids}. Resolving a discrepancy removes it from this
+    computation on the next call, same as it disappearing from
+    GET /discrepancies?status=open -- there's no separate "pattern
+    resolved" state to manage.
+    """
+    open_discrepancies = database.list_discrepancies(status="open")
+
+    groups: Dict[Any, Dict[str, Any]] = {}
+    for disc in open_discrepancies:
+        key = (disc["discrepancy_type"], disc["category"], disc.get("field"))
+        group = groups.setdefault(key, {
+            "discrepancy_type": disc["discrepancy_type"],
+            "category": disc["category"],
+            "field": disc.get("field"),
+            "lease_ids": set(),
+            "discrepancy_ids": [],
+            "total_estimated_dollar_impact": 0.0,
+            "has_any_impact": False,
+            "example_message": disc["message"],
+        })
+        if disc.get("lease_id") is not None:
+            group["lease_ids"].add(disc["lease_id"])
+        if disc.get("related_lease_id") is not None:
+            group["lease_ids"].add(disc["related_lease_id"])
+        group["discrepancy_ids"].append(disc["id"])
+        if disc.get("estimated_dollar_impact") is not None:
+            group["total_estimated_dollar_impact"] += disc["estimated_dollar_impact"]
+            group["has_any_impact"] = True
+
+    patterns = []
+    for group in groups.values():
+        lease_count = len(group["lease_ids"])
+        if lease_count < min_lease_count:
+            continue
+        patterns.append({
+            "discrepancy_type": group["discrepancy_type"],
+            "category": group["category"],
+            "field": group["field"],
+            "lease_count": lease_count,
+            "discrepancy_count": len(group["discrepancy_ids"]),
+            "total_estimated_dollar_impact": group["total_estimated_dollar_impact"] if group["has_any_impact"] else None,
+            "example_message": group["example_message"],
+            "discrepancy_ids": group["discrepancy_ids"],
+        })
+
+    patterns.sort(key=lambda p: (
+        p["lease_count"],
+        p["total_estimated_dollar_impact"] if p["total_estimated_dollar_impact"] is not None else -1,
+    ), reverse=True)
+    return patterns

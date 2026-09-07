@@ -2876,8 +2876,10 @@
 .app-boot-loading {
     min-height: 100vh;
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
+    gap: 1rem;
     background: var(--background);
 }
 
@@ -2885,6 +2887,18 @@
     width: 1.75rem;
     height: 1.75rem;
     border-width: 3px;
+}
+
+/* Empty until access-gate.js's timer fills it in -- see that file's
+   comment on why, and .access-gate-message.is-pending above for the
+   same pattern on the login forms. Empty means it takes no visible
+   space beyond the spinner above it on a warm-backend load. */
+.app-boot-loading-hint {
+    font-size: 0.875rem;
+    color: var(--text-medium);
+    text-align: center;
+    max-width: 22rem;
+    padding: 0 1.5rem;
 }
 
 /* ---- Access gate (frontend/app/access-gate.js) ---- */
@@ -2965,6 +2979,20 @@
 
 .access-gate-message.is-success {
     color: var(--success-color);
+}
+
+/* Shown only if a login/session request is still in flight past the
+   point a warm backend would have already responded (see the timers
+   in login.js/access-gate.js) -- Render's free tier spins the backend
+   down after 15 min idle, and the first request after that takes
+   30-60s to wake it back up (DEPLOYMENT.md's "Free-tier behavior you
+   should know about"). Without this, that wait is indistinguishable
+   from a hung/broken page. Same --text-medium as the element's own
+   unstyled default, stated explicitly (rather than just removing
+   is-error/is-success) so it can't silently inherit some other color
+   from wherever this class gets added next. */
+.access-gate-message.is-pending {
+    color: var(--text-medium);
 }
 
 /* "Forgot password?" -- a flex item inside #loginForm's column stack
@@ -3993,6 +4021,180 @@
     color: var(--text-light);
     font-style: italic;
     margin-top: 0.5rem;
+}
+
+/* ---- Shared "dated item" card: Action Items (actionitems-view.js)
+   and the dashboard's Today Briefing / Needs Review rows all render
+   through this one component, so a task, a lease expiration, and a
+   renewal deadline look like the same kind of thing regardless of
+   which backend source produced them -- see action_items.py's own
+   comment for why that consistency is the point. ---- */
+.item-card-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.item-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.875rem;
+    background-color: var(--white);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    padding: 1rem 1.125rem;
+    box-shadow: var(--shadow-sm);
+    cursor: pointer;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.item-card:hover,
+.item-card:focus-visible {
+    border-color: var(--lux-accent, var(--primary-color));
+    box-shadow: var(--shadow-md);
+}
+
+.item-card:focus-visible {
+    outline: 2px solid var(--lux-accent, var(--primary-color));
+    outline-offset: 2px;
+}
+
+.item-card-icon {
+    flex-shrink: 0;
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: var(--radius-full);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: var(--background);
+    color: var(--text-medium);
+}
+
+.item-card-icon svg {
+    width: 1.125rem;
+    height: 1.125rem;
+}
+
+/* One accent color per category -- same purpose as .alert-card's
+   left-border severity color, but as an icon tint here since severity
+   isn't this list's organizing axis (date is). */
+.item-card-icon-task { background-color: var(--primary-light); color: var(--primary-color); }
+.item-card-icon-lease_expiration { background-color: var(--warning-light); color: var(--warning-color); }
+.item-card-icon-renewal_deadline { background-color: var(--warning-light); color: var(--warning-color); }
+
+.item-card-body {
+    flex: 1;
+    min-width: 0;
+}
+
+.item-card-head {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    margin-bottom: 0.25rem;
+}
+
+.item-card-category {
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--text-light);
+}
+
+.item-card-title {
+    font-size: 0.9375rem;
+    font-weight: 700;
+    color: var(--text-dark);
+}
+
+.item-card-subtitle {
+    font-size: 0.8125rem;
+    color: var(--text-medium);
+    margin-top: 0.125rem;
+}
+
+.item-card-date {
+    flex-shrink: 0;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    white-space: nowrap;
+    padding-top: 0.125rem;
+}
+
+.item-card-date-overdue { color: var(--error-color); }
+.item-card-date-upcoming { color: var(--text-medium); }
+
+.discrepancy-new-badge {
+    background-color: var(--primary-light);
+    color: var(--primary-color);
+    font-style: normal;
+    font-weight: 700;
+    padding: 0.0625rem 0.5rem;
+    border-radius: var(--radius-full);
+}
+
+.discrepancy-impact-chip {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--text-dark);
+    background-color: var(--background);
+    padding: 0.0625rem 0.5rem;
+    border-radius: var(--radius-full);
+}
+
+.discrepancy-prior-history {
+    font-size: 0.8125rem;
+    color: var(--text-medium);
+    background-color: var(--background);
+    border-radius: var(--radius-sm);
+    padding: 0.625rem 0.875rem;
+    margin-top: 0.75rem;
+    line-height: 1.5;
+}
+
+#discrepanciesNewBanner .attention-banner {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.625rem 0.875rem;
+    background-color: var(--primary-light);
+    color: var(--primary-color);
+    border-radius: var(--radius-sm);
+    font-size: 0.875rem;
+    margin-bottom: 1rem;
+}
+
+.portfolio-insights {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-bottom: 1.25rem;
+}
+
+.portfolio-insights-header {
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-medium);
+}
+
+.portfolio-insight-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.75rem 0.875rem;
+    background-color: var(--background);
+    border-radius: var(--radius-sm);
+    font-size: 0.875rem;
+    color: var(--text-dark);
+}
+
+.discrepancies-clear-pattern-filter {
+    align-self: flex-start;
 }
 
 .alert-card-actions {

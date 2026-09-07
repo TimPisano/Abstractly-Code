@@ -34,6 +34,7 @@
     <div class="app-boot-loading" id="appBootLoading" role="status">
         <span class="spinner-small"></span>
         <span class="sr-only">Loading the app&hellip;</span>
+        <span class="app-boot-loading-hint" id="appBootLoadingHint"></span>
     </div>
 
     <div class="app-shell" id="appShell" style="display:none;">
@@ -53,6 +54,26 @@
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h8v8H3V3zm10 0h8v5h-8V3zm0 8h8v10h-8V11zM3 14h8v7H3v-7z"/></svg>
                         <span class="nav-label">Dashboard</span>
                     </button>
+                </div>
+
+                <div class="nav-group">
+                    <div class="nav-group-label nav-label">Alerts &amp; Tasks</div>
+                    <button class="nav-item nav-item-actionitems" data-view="actionitems" data-tooltip="Action Items" type="button">
+                        <span class="nav-item-icon-wrap">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
+                            <span class="nav-badge-dot" id="actionItemsNavBadgeDot"></span>
+                        </span>
+                        <span class="nav-label">Action Items</span>
+                        <span class="nav-badge nav-label" id="actionItemsNavBadge" style="display:none;">0</span>
+                    </button>
+                    <button class="nav-item nav-item-tasks" data-view="tasks" data-tooltip="Tasks" type="button">
+                        <span class="nav-item-icon-wrap">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                            <span class="nav-badge-dot" id="tasksNavBadgeDot"></span>
+                        </span>
+                        <span class="nav-label">Tasks</span>
+                        <span class="nav-badge nav-label" id="tasksNavBadge" style="display:none;">0</span>
+                    </button>
                     <button class="nav-item nav-item-alerts" data-view="alerts" data-tooltip="Alerts" type="button">
                         <span class="nav-item-icon-wrap">
                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0"/></svg>
@@ -68,18 +89,6 @@
                         </span>
                         <span class="nav-label">Discrepancies</span>
                         <span class="nav-badge nav-label" id="discrepanciesNavBadge" style="display:none;">0</span>
-                    </button>
-                    <button class="nav-item" data-view="trends" data-tooltip="Portfolio Trends" type="button">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3v18h18M7 15l4-5 3 3 5-7"/></svg>
-                        <span class="nav-label">Portfolio Trends</span>
-                    </button>
-                    <button class="nav-item nav-item-tasks" data-view="tasks" data-tooltip="Tasks" type="button">
-                        <span class="nav-item-icon-wrap">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                            <span class="nav-badge-dot" id="tasksNavBadgeDot"></span>
-                        </span>
-                        <span class="nav-label">Tasks</span>
-                        <span class="nav-badge nav-label" id="tasksNavBadge" style="display:none;">0</span>
                     </button>
                 </div>
 
@@ -105,6 +114,10 @@
 
                 <div class="nav-group">
                     <div class="nav-group-label nav-label">Insights</div>
+                    <button class="nav-item" data-view="trends" data-tooltip="Portfolio Trends" type="button">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3v18h18M7 15l4-5 3 3 5-7"/></svg>
+                        <span class="nav-label">Portfolio Trends</span>
+                    </button>
                     <button class="nav-item" data-view="qa" data-tooltip="Ask a Question" type="button">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
                         <span class="nav-label">Ask a Question</span>
@@ -244,20 +257,17 @@
                 <!-- Portfolio-wide confidence summary: the trust mechanism -- real, computed field-confidence counts across every lease, not a decorative badge -->
                 <div class="panel" id="portfolioConfidenceSummaryPanel"></div>
 
-                <!-- What Needs Attention Today -->
+                <!-- Needs Review: data-quality gaps only (missing/unverified
+                     fields, unusual terms) -- date-driven items (expirations,
+                     renewal deadlines) moved to the Action Items view so
+                     "expiring soon" isn't shown in two places on this page.
+                     See the "View all action items" link below. -->
                 <div class="panel attention-panel" id="attentionPanel">
                     <div class="panel-header">
-                        <h2>What Needs Attention Today</h2>
+                        <h2>Needs Review</h2>
                     </div>
                     <div id="attentionContent"></div>
-                </div>
-
-                <!-- Expiration & Renewal Alerts: 30/60/90-day expirations, plus renewal-notice deadlines closing soon, kept separate since the deadline to act is usually earlier than the lease's own end date -->
-                <div class="panel attention-panel" id="expirationAlertsPanel">
-                    <div class="panel-header">
-                        <h2>Expiring Soon</h2>
-                    </div>
-                    <div id="expirationAlertsContent"></div>
+                    <button type="button" class="btn-text" data-goto="actionitems">View all action items &rarr;</button>
                 </div>
 
                 <!-- Portfolio Composition & Risk: tenant concentration, WALT/rollover,
@@ -360,6 +370,21 @@
                 </div>
             </section>
 
+            <!-- ACTION ITEMS VIEW -->
+            <section class="view" id="view-actionitems">
+                <div class="view-header">
+                    <div>
+                        <h1>Action Items</h1>
+                        <p class="view-subtitle">Every date-driven obligation across your portfolio — overdue and due-soon tasks, lease expirations, and renewal-notice deadlines — in one prioritized, chronological list</p>
+                    </div>
+                    <div class="view-header-actions">
+                        <button class="btn-secondary" id="actionItemsRefreshBtn" type="button">Refresh</button>
+                    </div>
+                </div>
+
+                <div id="actionItemsContent"></div>
+            </section>
+
             <!-- ALERTS VIEW -->
             <section class="view" id="view-alerts">
                 <div class="view-header">
@@ -404,11 +429,16 @@
                         <p class="view-subtitle">Every disagreement this app has ever found — risk flags, cross-lease mismatches, rent-roll-vs-lease and rent-roll-vs-T12 reconciliation — in one place, with a permanent resolution log</p>
                     </div>
                     <div class="view-header-actions">
+                        <button class="btn-secondary" id="discrepanciesRunReconciliationBtn" type="button">Run reconciliation</button>
                         <button class="btn-secondary" id="discrepanciesRefreshBtn" type="button">Refresh</button>
                     </div>
                 </div>
 
+                <div id="discrepanciesNewBanner" style="display:none;"></div>
+
                 <div class="health-strip" id="discrepanciesSummaryStrip"></div>
+
+                <div id="discrepanciesPatternsStrip"></div>
 
                 <div class="alerts-filter-row">
                     <label class="checkbox-label">

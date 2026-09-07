@@ -65,9 +65,21 @@ document.getElementById('adminLoginForm').addEventListener('submit', async (e) =
     // Both, not just is-error: a leftover is-success from the
     // post-reset banner above would otherwise still be on the element
     // and paint a subsequent login *error* in the success color.
-    messageEl.classList.remove('is-error', 'is-success');
+    messageEl.classList.remove('is-error', 'is-success', 'is-pending');
     submitBtn.disabled = true;
     submitBtn.textContent = 'Signing in...';
+
+    // Render's free tier spins the backend down after 15 min idle, and
+    // the first request after that takes 30-60s to wake it back up
+    // (DEPLOYMENT.md's "Free-tier behavior you should know about").
+    // Without this, that wait is indistinguishable from a hung page --
+    // this only fires if the request below is still pending past the
+    // point a warm backend would have already responded, so a normal
+    // login never shows it.
+    const coldStartHintTimer = setTimeout(() => {
+        messageEl.textContent = 'Still working — the server may be waking up after being idle. This can take up to a minute.';
+        messageEl.classList.add('is-pending');
+    }, 5000);
 
     try {
         let response;
@@ -96,9 +108,12 @@ document.getElementById('adminLoginForm').addEventListener('submit', async (e) =
             throw new Error('This account does not have admin access.');
         }
 
+        clearTimeout(coldStartHintTimer);
         window.location.href = 'dashboard.html';
     } catch (err) {
+        clearTimeout(coldStartHintTimer);
         messageEl.textContent = err.message;
+        messageEl.classList.remove('is-pending');
         messageEl.classList.add('is-error');
         submitBtn.disabled = false;
         submitBtn.textContent = 'Sign In';

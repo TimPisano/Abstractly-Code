@@ -272,6 +272,28 @@ const Api = {
         });
     },
 
+    // Re-runs rent-roll-vs-lease and lease-risk-flag reconciliation
+    // against current data on demand (the Discrepancies page's "Run
+    // reconciliation" button) -- see backend/app/api.py's
+    // _run_reconciliation_sweep for exactly what this does and does not
+    // cover. Returns {leases_checked, rent_roll_mismatches, new_alerts}.
+    runReconciliation() {
+        return apiRequest('/portfolio/reconciliation/run', { method: 'POST' });
+    },
+
+    // Stamps "I've seen the current state of this page" for the calling
+    // user -- clears the `is_new` badges / new_since_last_view count on
+    // the NEXT load, not this one (see backend's own docstring).
+    markDiscrepanciesViewed() {
+        return apiRequest('/discrepancies/mark-viewed', { method: 'POST' });
+    },
+
+    // Discrepancy TYPES recurring across several leases, grouped as one
+    // portfolio-level insight instead of N separate rows.
+    discrepancyPatterns() {
+        return apiRequest('/discrepancies/patterns');
+    },
+
     // Full audit-trail source chain for one field -- effective value/source
     // plus every prior value this field held across amendments (see
     // backend/app/database.py's get_field_source_chain).
@@ -413,6 +435,13 @@ const Api = {
     // ---- Today view (backend/app/assignments.py's compute_today_view) ----
     todayView(userId) {
         return apiRequest(`/today${userId != null ? `?user_id=${userId}` : ''}`);
+    },
+
+    // ---- Action Items (backend/app/action_items.py's compute_action_items):
+    // one chronological list merging due/overdue tasks, lease
+    // expirations, and renewal-notice deadlines. ----
+    actionItems(userId) {
+        return apiRequest(`/action-items${userId != null ? `?user_id=${userId}` : ''}`);
     },
 
     // ---- Tasks (backend/app/tasks.py) -- distinct from assignments:

@@ -85,6 +85,10 @@ const CONTEXTUAL_TOOLBAR_ACTIONS = {
         { label: 'Generate Report', icon: 'report', goto: 'report' },
         { label: 'View Expirations', icon: 'calendar', goto: 'timeline' },
     ],
+    actionitems: [
+        { label: 'View Tasks', icon: 'task', goto: 'tasks' },
+        { label: 'View Alerts', icon: 'alert', goto: 'alerts' },
+    ],
     alerts: [
         { label: 'View Discrepancies', icon: 'discrepancy', goto: 'discrepancies' },
         { label: 'Upload Lease', icon: 'upload', goto: 'upload' },
@@ -903,6 +907,7 @@ function init() {
     // triggered client-side at all (no scheduled backend job exists
     // yet).
     Api.generateAlerts().catch(() => {}).then(() => refreshAlertsBadge());
+    refreshActionItemsBadge();
 
     startLiveActivityPolling();
 }

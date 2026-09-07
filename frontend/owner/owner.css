@@ -74,6 +74,13 @@
     color: var(--error-color);
 }
 
+/* See frontend/app/styles.css's .access-gate-message.is-pending for
+   why this exists -- same "backend may be waking up" hint, same
+   pattern, duplicated here since this page doesn't load styles.css. */
+.owner-gate-message.is-pending {
+    color: var(--text-medium);
+}
+
 .owner-brand {
     display: flex;
     align-items: center;
