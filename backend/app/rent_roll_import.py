@@ -163,6 +163,25 @@ def _is_rate_not_amount_header(normalized_header: str) -> bool:
     return "rent" in words and bool(words & _RATE_NOT_AMOUNT_WORDS)
 
 
+# rent_amount is a MONTHLY figure everywhere else this system uses it
+# (dashboards, WALT, loss-to-lease, every other computation). "Annual
+# Rent" is a real, common rent-roll column -- and its bare "rent" word
+# would otherwise match the bare "rent" alias, silently mapping a
+# once-a-year total into a field every downstream computation treats
+# as monthly (roughly 12x too high). Found via stress-testing messy
+# rent rolls, 2026-09. Same denylist pattern as _MARKET_RENT_WORDS/
+# _RATE_NOT_AMOUNT_WORDS: the honest behavior is treating the file as
+# if it has no recognizable rent column at all (an annual-to-monthly
+# conversion isn't attempted -- guessing the header really does mean
+# a clean /12 division is its own way to be silently wrong).
+_ANNUAL_NOT_MONTHLY_WORDS = {"annual", "annualized", "yearly"}
+
+
+def _is_annual_not_monthly_header(normalized_header: str) -> bool:
+    words = set(normalized_header.split())
+    return "rent" in words and bool(words & _ANNUAL_NOT_MONTHLY_WORDS)
+
+
 # "Property" alone is a genuinely common, useful column header (see the
 # "property" alias above, and this module's own synthetic AppFolio
 # fixture) -- but it's also a common WORD inside several other, very
@@ -221,7 +240,7 @@ def _match_columns(headers: List[Any]) -> Dict[str, int]:
         for i, h in enumerate(normalized):
             if i in used_columns:
                 continue
-            if field_name == "rent_amount" and (_is_market_rent_header(h) or _is_rate_not_amount_header(h)):
+            if field_name == "rent_amount" and (_is_market_rent_header(h) or _is_rate_not_amount_header(h) or _is_annual_not_monthly_header(h)):
                 continue  # see _MARKET_RENT_WORDS / _RATE_NOT_AMOUNT_WORDS -- never eligible for rent_amount, exact match or not
             if field_name == "property" and _is_non_address_property_header(h):
                 continue  # see _NON_ADDRESS_PROPERTY_WORDS -- never eligible for property, exact match or not
@@ -252,7 +271,7 @@ def _match_columns(headers: List[Any]) -> Dict[str, int]:
             for i, h in enumerate(normalized):
                 if i in used_columns:
                     continue
-                if field_name == "rent_amount" and (_is_market_rent_header(h) or _is_rate_not_amount_header(h)):
+                if field_name == "rent_amount" and (_is_market_rent_header(h) or _is_rate_not_amount_header(h) or _is_annual_not_monthly_header(h)):
                     continue  # see _MARKET_RENT_WORDS / _RATE_NOT_AMOUNT_WORDS -- e.g. "Market Rent"/"Rent PSF" must not fall through to the bare "rent" alias
                 if field_name == "property" and _is_non_address_property_header(h):
                     continue  # see _NON_ADDRESS_PROPERTY_WORDS -- e.g. "Property Manager" must not fall through to the bare "property" alias
@@ -342,6 +361,12 @@ def _parse_import_currency(value: Any) -> Optional[float]:
         return strict
     match = re.search(r"[\d,]+(?:\.\d+)?", text)  # fall back to a bare number with no "$"
     if not match:
+        return None
+    # Same OCR-truncation guard as normalize.parse_currency (see its own
+    # docstring): a match immediately followed by a bare letter with no
+    # separator ("1,2OO.00") is a corrupted/truncated number, not a real
+    # one -- reject rather than silently return the truncated prefix.
+    if re.match(r"[A-Za-z]", text[match.end():]):
         return None
     try:
         return float(match.group(0).replace(",", ""))
@@ -476,6 +501,28 @@ def parse_rent_roll_rows(
         sqft_str = _cell_to_str(cell("square_footage"))
         start_str = _cell_to_str(cell("lease_start_date"))
         end_str = _cell_to_str(cell("lease_end_date"))
+
+        # A row with a "tenant" cell that isn't blank/a known non-tenant
+        # keyword (so it passed the check above) but has NO rent and NO
+        # parseable lease date at all is almost never a real lease row --
+        # found via stress-testing messy rent rolls, 2026-09: a junk,
+        # non-tabular line (a page-break/footer artifact from a PDF-to-
+        # CSV conversion, e.g. "*** END OF PAGE 1 ***") has fewer real
+        # columns than the header, so every OTHER field lands out of
+        # range/blank, but its one text column still reads as a
+        # syntactically valid "tenant name" -- _is_real_tenant_name has
+        # no way to tell that apart from a real, if incomplete, tenant
+        # row using text alone. Requiring at least one other real signal
+        # is what catches it. A genuinely real tenant with every other
+        # field missing is vanishingly rare in practice (a real lease
+        # has SOME dollar figure or date attached); a row with a tenant
+        # name and truly nothing else is far more often noise than data.
+        if rent is None and parse_date(start_str) is None and parse_date(end_str) is None:
+            skipped_rows.append({
+                "row": row_num,
+                "reason": "tenant name found but no rent or lease dates -- likely a non-data row (e.g. a page-break/footer artifact), not a real lease",
+            })
+            continue
 
         # A per-row Property column (portfolio-wide PMS exports covering
         # several buildings in one file) takes priority over the single

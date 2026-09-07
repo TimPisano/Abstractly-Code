@@ -204,6 +204,7 @@ class FieldExtractor:
             "cam_charges": self._extract_cam_charges(pages),
             "rent_escalation": self._extract_rent_escalation(pages),
             "renewal_options": self._extract_renewal_options(pages),
+            "termination_options": self._extract_termination_options(pages),
             "permitted_use": self._extract_permitted_use(pages),
             "exclusivity_clause": self._extract_exclusivity_clause(pages),
             "insurance_requirements": self._extract_insurance_requirements(pages),
@@ -1011,12 +1012,21 @@ class FieldExtractor:
             rf"(?:shall\s+)?expir\w*\b(?!\s+Date){GAP}{DATE_REGEX}",
             rf"(?:shall\s+)?terminat\w*\b(?!\s+Date){GAP}{DATE_REGEX}",
             rf"ending{GAP}{DATE_REGEX}",
+            # "...commence on April 1, 2025 and end on March 31, 2030" --
+            # the verb form ("end on"), as distinct from the gerund
+            # "ending" above -- a real, common phrasing found via
+            # obligations-engine stress-testing, 2026-09, that the
+            # "ending" pattern alone didn't cover. \bend\w* (not a bare
+            # "end") still requires a following "on" plus an actual
+            # DATE_REGEX match, so this doesn't false-positive on
+            # unrelated "end" mentions with no real date attached.
+            rf"\bend\w*\s+on{GAP}{DATE_REGEX}",
             rf"running\s+through{GAP}{DATE_REGEX}",
             # Same WIDE_GAP last resort as the start-date list above.
             rf"(?:shall\s+)?expir\w*\b(?!\s+Date){WIDE_GAP}{DATE_REGEX}",
         ]
-        confidences = ["high", "high", "high", "high", "high", "high", "high", "medium", "medium", "low"]
-        reasons = [None, None, None, None, None, None, None, None, None,
+        confidences = ["high", "high", "high", "high", "high", "high", "high", "medium", "medium", "medium", "low"]
+        reasons = [None, None, None, None, None, None, None, None, None, None,
             "Date found further from the expiration keyword than a direct statement usually appears -- "
             "confirm it actually describes this lease's end, not a different referenced event or date."]
         return patterns, confidences, reasons
@@ -1152,6 +1162,64 @@ class FieldExtractor:
         # Fallback: label-style single-line summary (medium — raw, unparsed content)
         result = self._search_ordered(pages, [r"renewal\s+option[s]?[:\s]+([^\n]+)"], ["medium"])
         return result if result else _not_found()
+
+    def _extract_termination_options(self, pages: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Extract an early-termination option: how many years into the
+        Term the tenant may terminate, and the notice period required
+        beforehand. Assembled into one summary value, same "not every
+        clause states both sub-parts" tolerance as _extract_renewal_
+        options -- and same context-window anchoring as _extract_
+        default_cure_period below, for the same reason: a lease can
+        have several unrelated "(N) days ... notice" clauses (renewal,
+        cure, termination), so the day-count alone isn't enough --
+        requiring a "terminat*" word nearby is what confirms THIS
+        notice period belongs to THIS clause.
+
+        Deliberately narrow (a fixed "after year N of the Term" shape)
+        rather than attempting every way a termination right could be
+        worded -- a termination option is significant enough that a
+        low-confidence guess here would be worse than a clean "not
+        found" a human then has to read the lease for directly. See
+        obligations.py for what this feeds into.
+        """
+        trigger_pattern = re.compile(
+            r"(?:end|last\s+day|completion)\s+of\s+the\s+(\d+)(?:st|nd|rd|th)?\s+(?:lease\s+)?year"
+            r"|after\s+(?:the\s+)?(\d+)(?:st|nd|rd|th)?\s+(?:lease\s+)?year",
+            re.IGNORECASE,
+        )
+        notice_pattern = re.compile(r"\(?\s*(\d+)\s*\)?\s+days\b[^.]{0,30}?(?:notice|prior)", re.IGNORECASE)
+        context_pattern = re.compile(r"\bterminat\w*\b", re.IGNORECASE)
+        context_window = 200
+
+        full_text, page_for_offset = _concat_pages(pages)
+
+        trigger_match = None
+        for m in trigger_pattern.finditer(full_text):
+            window = full_text[max(0, m.start() - context_window):min(len(full_text), m.end() + context_window)]
+            if context_pattern.search(window):
+                trigger_match = m
+                break
+
+        if not trigger_match:
+            return _not_found()
+
+        years_into_term = int(trigger_match.group(1) or trigger_match.group(2))
+        forward_window = full_text[trigger_match.start():min(len(full_text), trigger_match.end() + 250)]
+        notice_match = notice_pattern.search(forward_window)
+
+        parts = [f"terminable after year {years_into_term} of the term"]
+        confidence = "medium"
+        if notice_match:
+            parts.append(f"{notice_match.group(1)} days notice")
+            confidence = "high"
+
+        quote = _make_quote(full_text, trigger_match.start(), trigger_match.end(), pad=80)
+        return {
+            "value": "; ".join(parts),
+            "source": {"page": page_for_offset(trigger_match.start()), "quote": quote},
+            "confidence": confidence,
+        }
 
     def _extract_default_cure_period(self, pages: List[Dict[str, Any]]) -> Dict[str, Any]:
         """

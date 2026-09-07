@@ -222,13 +222,13 @@ def test_year_table_escalation_contributes_a_derived_rate():
 
 def test_fields_missing_count_is_accurate():
     """
-    Every one of the 15 fields must be reported, including fields no lease
+    Every one of the 16 fields must be reported, including fields no lease
     is missing (count 0), so the UI can show a complete coverage picture.
     """
     metrics = compute_portfolio_metrics(ALL_LEASES)
     missing = metrics["fields_missing_count"]
 
-    assert set(missing.keys()) == set(FIELD_NAMES), "all 15 fields must be reported"
+    assert set(missing.keys()) == set(FIELD_NAMES), "all 16 fields must be reported"
 
     expected = {
         "tenant": 0,
@@ -241,6 +241,7 @@ def test_fields_missing_count_is_accurate():
         "cam_charges": 2,               # warehouse, sublease
         "rent_escalation": 1,           # sublease
         "renewal_options": 2,           # warehouse, sublease
+        "termination_options": 5,       # none of the fixtures below state an early-termination clause
         "permitted_use": 1,             # sublease
         "exclusivity_clause": 3,        # office, warehouse, sublease
         "insurance_requirements": 1,    # sublease
@@ -577,10 +578,13 @@ def test_lease_confidence_summary_counts_every_tier():
 
     summary = compute_lease_confidence_summary(lease)
 
-    assert summary["total_fields"] == 15
+    assert summary["total_fields"] == 16
     assert summary["medium"] == 1
     assert summary["low"] == 1
-    assert summary["not_found"] == 1
+    # 2, not 1: lease_start_date is explicitly cleared above, and
+    # LEASE_RETAIL never sets termination_options, so it's already
+    # "not found" by the _lease() fixture helper's own default.
+    assert summary["not_found"] == 2
     assert summary["high"] == 12
     assert summary["flagged_for_review"] == 1
     assert summary["flagged_fields"] == ["rent_amount"]
@@ -590,7 +594,7 @@ def test_lease_confidence_summary_counts_every_tier():
 def test_lease_confidence_summary_all_not_found():
     lease = _lease(61, "blank.pdf")  # no field values passed -- every field defaults to not-found
     summary = compute_lease_confidence_summary(lease)
-    assert summary["not_found"] == 15
+    assert summary["not_found"] == 16
     assert summary["high"] == 0 and summary["medium"] == 0 and summary["low"] == 0
     assert summary["flagged_for_review"] == 0
     print("✓ test_lease_confidence_summary_all_not_found: PASS")
@@ -609,14 +613,17 @@ def test_portfolio_confidence_summary_aggregates_across_leases():
 
     summary = compute_portfolio_confidence_summary([lease_a, lease_b])
 
+    # LEASE_RETAIL never sets termination_options (added after this
+    # fixture was written), so each of the two copies contributes one
+    # genuinely not_found field -- 2 across both, not 0.
     assert summary["lease_count"] == 2
-    assert summary["total_fields"] == 30
+    assert summary["total_fields"] == 32
     assert summary["medium"] == 1
     assert summary["low"] == 1
     assert summary["high"] == 28
     assert summary["flagged_for_review"] == 1
-    assert summary["extracted_fields"] == 30, "both fixtures have every field found -- none should be not_found"
-    assert summary["high_confidence_pct"] == round(28 / 30 * 100, 1)
+    assert summary["extracted_fields"] == 30, "both fixtures have every field found except termination_options"
+    assert summary["high_confidence_pct"] == round(28 / 32 * 100, 1)
     print("✓ test_portfolio_confidence_summary_aggregates_across_leases: PASS")
 
 

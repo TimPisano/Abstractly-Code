@@ -58,8 +58,21 @@ def format_sqft(value: Optional[float]) -> str:
 
 
 def normalize_header(header: Any) -> str:
-    """Lowercases, strips punctuation, and trims a spreadsheet column header for matching. Was duplicated identically in rent_roll_import.py and t12_import.py."""
-    return re.sub(r"[^\w\s]", "", str(header).lower()).strip()
+    """
+    Lowercases, strips punctuation, collapses internal whitespace, and
+    trims a spreadsheet column header for matching. Was duplicated
+    identically in rent_roll_import.py and t12_import.py.
+
+    Whitespace collapse (found via stress-testing messy rent rolls,
+    2026-09): a header like "Tenant   Name" (multiple internal spaces --
+    a real artifact of hand-built broker spreadsheets and some PDF-to-
+    CSV conversions) previously normalized to "tenant   name", which
+    matched neither the exact alias "tenant name" (Pass 1) nor its
+    word-boundary substring search (Pass 2, since re.escape'd a single
+    space) in rent_roll_import._match_columns -- the column silently
+    went unmapped instead of matching the obviously-intended alias.
+    """
+    return re.sub(r"\s+", " ", re.sub(r"[^\w\s]", "", str(header).lower())).strip()
 
 
 def extracted_field_value(lease: Dict[str, Any], field_name: str) -> Optional[str]:
@@ -82,10 +95,23 @@ def parse_currency(value: Optional[str]) -> Optional[float]:
     """
     "$6,250.00" -> 6250.0 ; "$1,000,000 per occurrence" -> 1000000.0
     Returns None if no dollar amount is found.
+
+    Rejects a match immediately followed by a letter with no separator
+    (found via stress-testing OCR-garbled rent rolls, 2026-09): OCR
+    routinely confuses a digit for a letter mid-number ("$1,2OO.00" for
+    "$1,200.00") -- [\\d,]+ then stops at the "O", silently returning a
+    truncated 12.0 instead of failing. A real amount is never directly
+    followed by a bare letter (currency, whitespace, punctuation, or
+    end-of-string are the only legitimate next characters), so treating
+    that shape as corrupted and returning None -- an honest "couldn't
+    read this" -- is safer than confidently reporting a truncated wrong
+    number.
     """
     if not value:
         return None
     match = re.search(r"\$\s?([\d,]+(?:\.\d+)?)", value)
+    if match and re.match(r"[A-Za-z]", value[match.end():]):
+        return None
     if not match:
         return None
     try:
@@ -145,13 +171,31 @@ def parse_date(value: Optional[str]) -> Optional[date]:
         return None
     value = value.strip()
 
-    # MM/DD/YYYY or M-D-YY etc.
+    # MM/DD/YYYY or M-D-YY etc. -- this app's existing, documented
+    # convention (US-style, month first) for the genuinely ambiguous
+    # case where both readings would be valid (e.g. "03/04/2024").
+    #
+    # DD/MM fallback (found via stress-testing messy rent rolls,
+    # 2026-09): a value like "25/03/2023" is UNAMBIGUOUSLY day-then-
+    # month -- no calendar has a 25th month -- so treating the first
+    # component as MM/DD-first below made date(year, 25, 3) raise and
+    # this function return None, silently dropping a perfectly
+    # well-formed date rather than reading it correctly. Only swaps
+    # when doing so turns an invalid date into a valid one; the
+    # genuinely ambiguous case (both components <= 12) is deliberately
+    # left exactly as before -- there is no universally correct answer
+    # for "03/04/2024" without an explicit source-locale signal this
+    # string doesn't carry, so this keeps resolving it MM/DD-first
+    # rather than silently flipping an existing, working convention.
     match = re.match(r"^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$", value)
     if match:
-        month, day, year = int(match.group(1)), int(match.group(2)), int(match.group(3))
+        first, second, year = int(match.group(1)), int(match.group(2)), int(match.group(3))
         if year < 100:
             year += 2000 if year < 70 else 1900
-        return _safe_date(year, month, day)
+        mm_dd = _safe_date(year, first, second)
+        if mm_dd is not None:
+            return mm_dd
+        return _safe_date(year, second, first)  # DD/MM fallback -- only reached when MM/DD was invalid
 
     # "1st day of January, 2026" (legal style)
     match = re.match(
@@ -216,6 +260,30 @@ def parse_renewal_options(value: Optional[str]) -> Dict[str, Any]:
     match = re.search(r"renewal rent based on (.+?)(?:;|$)", value, re.IGNORECASE)
     if match:
         result["basis"] = match.group(1).strip()
+
+    return result
+
+
+def parse_termination_options(value: Optional[str]) -> Dict[str, Any]:
+    """
+    Parses the composite termination_options display string (see
+    field_extractor._extract_termination_options) back into structured
+    pieces, e.g. "terminable after year 3 of the term; 180 days notice"
+    -> {"years_into_term": 3, "notice_days": 180}. Any piece that can't
+    be found is None -- same "don't guess a missing sub-part" contract
+    as parse_renewal_options.
+    """
+    result = {"years_into_term": None, "notice_days": None}
+    if not value:
+        return result
+
+    match = re.search(r"year\s+(\d+)\s+of\s+the\s+term", value, re.IGNORECASE)
+    if match:
+        result["years_into_term"] = int(match.group(1))
+
+    match = re.search(r"(\d+)\s*days\s*notice", value, re.IGNORECASE)
+    if match:
+        result["notice_days"] = int(match.group(1))
 
     return result
 

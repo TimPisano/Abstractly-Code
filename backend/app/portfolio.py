@@ -49,6 +49,7 @@ FIELD_NAMES = [
     "cam_charges",
     "rent_escalation",
     "renewal_options",
+    "termination_options",
     "permitted_use",
     "exclusivity_clause",
     "insurance_requirements",

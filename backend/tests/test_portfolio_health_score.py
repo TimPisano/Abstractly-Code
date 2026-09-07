@@ -67,6 +67,7 @@ def _all_field_kwargs(prefix=""):
         "lease_start_date": "January 1, 2025", "lease_end_date": "January 1, 2030",
         "property_address": "1 Main St", "security_deposit": "$5,000.00", "cam_charges": "$500.00",
         "rent_escalation": "3% annually", "renewal_options": "1 option of 5 years; 90 days notice",
+        "termination_options": "terminable after year 5 of the term; 180 days notice",
         "permitted_use": "office", "exclusivity_clause": "none", "insurance_requirements": "$1,000,000",
         "default_cure_period": "10 days", "square_footage": "1,000 sq ft",
     }
@@ -213,8 +214,8 @@ def test_confidence_distribution_gives_partial_credit_for_medium_and_low():
     try:
         database.insert_lease("a.pdf", _fields(confidence="medium", tenant="Acme"))
         result = compute_portfolio_health_score(reference_date=REF_DATE)
-        # 1 of 15 fields found at medium confidence: (0.6 * 1) / 15 * 100 = 4.0
-        assert result["components"]["confidence_distribution"]["score"] == 4.0
+        # 1 of 16 fields found at medium confidence: round((0.6 * 1) / 16 * 100, 1) = 3.8
+        assert result["components"]["confidence_distribution"]["score"] == 3.8
     finally:
         os.unlink(db_path)
     print("✓ test_confidence_distribution_gives_partial_credit_for_medium_and_low: PASS")
