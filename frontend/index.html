@@ -3,24 +3,24 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Abstractly — Rent Roll AI for Real Estate Underwriting</title>
+    <title>Abstractly — Lease-vs-Rent-Roll Reconciliation for Real Estate Underwriting</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml">
     <link rel="icon" href="/favicon.ico" sizes="32x32">
     <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-    <meta name="description" content="Abstractly turns any rent roll — Yardi, AppFolio, a broker's Excel, a scanned PDF — into clean, standardized data, validated against the T12 and the underlying lease documents. Built for acquisitions analysts and asset managers.">
+    <meta name="description" content="Abstractly reads the leases behind a rent roll and checks them against it line by line, then hands you a report of every place the two disagree — each finding traced to the page and quote in the lease. Built for acquisitions analysts and asset managers.">
     <!-- og:image / og:url are absolute per the OG spec; update the host
          here if the deployed frontend URL changes (same as config.js). -->
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="Abstractly">
-    <meta property="og:title" content="Abstractly — Rent Roll AI for Real Estate Underwriting">
-    <meta property="og:description" content="Abstractly turns any rent roll — Yardi, AppFolio, a broker's Excel, a scanned PDF — into clean, standardized data, validated against the T12 and the underlying lease documents. Built for acquisitions analysts and asset managers.">
+    <meta property="og:title" content="Abstractly — Lease-vs-Rent-Roll Reconciliation for Real Estate Underwriting">
+    <meta property="og:description" content="Abstractly reads the leases behind a rent roll and checks them against it line by line, then hands you a report of every place the two disagree — each finding traced to the page and quote in the lease. Built for acquisitions analysts and asset managers.">
     <meta property="og:url" content="https://abstractly-n0id.onrender.com/">
     <meta property="og:image" content="https://abstractly-n0id.onrender.com/og-image.png">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="Abstractly — Rent Roll AI for Real Estate Underwriting">
-    <meta name="twitter:description" content="Abstractly turns any rent roll — Yardi, AppFolio, a broker's Excel, a scanned PDF — into clean, standardized data, validated against the T12 and the underlying lease documents. Built for acquisitions analysts and asset managers.">
+    <meta name="twitter:title" content="Abstractly — Lease-vs-Rent-Roll Reconciliation for Real Estate Underwriting">
+    <meta name="twitter:description" content="Abstractly reads the leases behind a rent roll and checks them against it line by line, then hands you a report of every place the two disagree — each finding traced to the page and quote in the lease. Built for acquisitions analysts and asset managers.">
     <meta name="twitter:image" content="https://abstractly-n0id.onrender.com/og-image.png">
     <link rel="preload" href="fonts/inter-latin-var.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="stylesheet" href="design-system.css">
@@ -38,6 +38,7 @@
         </div>
         <div class="landing-nav-links">
             <a href="#how-it-works">How It Works</a>
+            <a href="#sample">Sample Report</a>
             <a href="#platform">Platform</a>
             <a href="#trust">Trust &amp; Security</a>
             <a href="#faq">FAQ</a>
@@ -83,15 +84,16 @@
         </div>
 
         <div class="hero-inner reveal">
-            <span class="eyebrow">Rent Roll AI</span>
-            <h1>Every Rent Roll,<br><span class="accent">Underwriting-Ready.</span></h1>
+            <span class="eyebrow">Lease-vs-rent-roll reconciliation</span>
+            <h1>Your rent roll says one thing.<br><span class="accent">The lease says another.</span></h1>
             <p class="hero-subhead">
-                Upload a rent roll in whatever shape it actually comes in —
-                a Yardi or AppFolio export, a broker's Excel file, a scanned
-                PDF — and get back clean, standardized data validated against
-                the T12 and the underlying lease documents. Built for the
-                acquisitions analysts and asset managers who review these by
-                hand today, not a general productivity tool.
+                Abstractly reads the actual lease documents behind a rent roll
+                and checks them against it line by line — tenant, rent,
+                escalations, expiration dates. You get back one thing: a
+                discrepancy report showing exactly where the rent roll and the
+                leases conflict, every finding linked to the page and quote in
+                the lease it came from. It's the cross-check every acquisition
+                needs and nobody does by hand across a whole portfolio.
             </p>
 
             <div class="hero-form-wrap" id="heroFormWrap">
@@ -105,6 +107,7 @@
                 </div>
                 <p class="waitlist-error" id="waitlistError"></p>
                 <p class="waitlist-note">By request only — we personally review every inquiry.</p>
+                <a class="hero-sample-link" href="#sample">See a sample discrepancy report &darr;</a>
             </div>
         </div>
     </header>
@@ -113,24 +116,119 @@
     <section class="how-it-works" id="how-it-works">
         <div class="section-heading reveal">
             <span class="eyebrow">How It Works</span>
-            <h2>From Messy Export To Underwriting-Ready Data</h2>
+            <h2>Two Files In. A List Of Every Disagreement Out.</h2>
         </div>
         <div class="steps-grid">
             <div class="step-card reveal">
                 <div class="step-number">1</div>
-                <h3>Upload, in whatever format you have it</h3>
-                <p>A Yardi, AppFolio, RealPage, MRI, or Buildium export, a broker's hand-built Excel or CSV, a PDF, even a scanned PDF. We don't ask you to reformat anything first.</p>
+                <h3>Upload the rent roll — and the leases behind it</h3>
+                <p>A Yardi, AppFolio, RealPage, MRI, or Buildium export, a broker's hand-built Excel, a PDF, even a scanned one. No reformatting, no fixed column layout.</p>
             </div>
             <div class="step-card reveal">
                 <div class="step-number">2</div>
-                <h3>We map, standardize, and validate</h3>
-                <p>Every field is mapped to a clean, consistent schema and checked against the underlying lease documents — every value traceable to its exact source page, not a black-box guess.</p>
+                <h3>We read every lease and line it up against the rent roll</h3>
+                <p>Every lease term — tenant, rent, escalation, expiration — is extracted with the exact page and quote it came from, then matched unit by unit against what the rent roll claims for that space.</p>
             </div>
             <div class="step-card reveal">
                 <div class="step-number">3</div>
-                <h3>Export clean, checked data</h3>
-                <p>Rent, dates, escalations, and flagged discrepancies — ready for your underwriting model, not another round of manual cleanup.</p>
+                <h3>You get the discrepancy report</h3>
+                <p>Every place the two disagree: a rent that doesn't match the lease, a tenant who was replaced, an expiration the management data never caught up to. Each finding traces back to the lease text, so your analyst confirms it in seconds instead of re-reading the file.</p>
             </div>
+        </div>
+    </section>
+
+    <!-- ===================== What the report catches ===================== -->
+    <section class="catches" id="catches">
+        <div class="section-heading reveal">
+            <span class="eyebrow">The Report</span>
+            <h2>What It Catches</h2>
+            <p>Every finding is a specific disagreement between the rent roll and a signed lease for the same unit — not a statistical outlier, not a guess. Each one links back to the page and quote in the lease.</p>
+        </div>
+        <div class="catches-grid">
+            <div class="catch-card reveal">
+                <h3>Rent that doesn't match the lease</h3>
+                <p>The rent roll shows one base rent; the lease says another. Flagged with the monthly dollar gap, so a $1,550/mo difference sorts above a rounding artifact.</p>
+            </div>
+            <div class="catch-card reveal">
+                <h3>A tenant who was replaced</h3>
+                <p>The name on the rent roll isn't the entity on the signed lease — an assignment or a new lease the management system never caught up to.</p>
+            </div>
+            <div class="catch-card reveal">
+                <h3>A stale expiration date</h3>
+                <p>The rent roll still shows the pre-renewal expiration while the executed lease was extended — the single most common form of stale property-management data.</p>
+            </div>
+            <div class="catch-card reveal">
+                <h3>Escalations and dates that don't add up</h3>
+                <p>Rent-step math that doesn't reconcile, conflicting start/end dates, missing clauses — the details that change an underwriting model but hide in the document.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===================== Sample report ===================== -->
+    <!-- The findings below are REAL output from the reconciliation engine
+         (backend/app/portfolio.py compute_rent_roll_reconciliation +
+         discrepancies.py) run against one test lease and one disagreeing
+         rent-roll row. Regenerate with tools if the message format or
+         severity logic changes. Swap this static block for the live
+         POST /public/reconcile endpoint once the backend confirms it. -->
+    <section class="sample" id="sample">
+        <div class="section-heading reveal">
+            <span class="eyebrow">Sample Report</span>
+            <h2>Here's One, Start To Finish</h2>
+            <p>Generated from a test lease and a rent roll built to disagree with it. This is the real report format — the same severity, dollar-impact, and source-citation the product produces. Not live data.</p>
+        </div>
+
+        <div class="sample-report reveal">
+            <div class="sample-report-head">
+                <span class="sample-report-tag">Sample — test data</span>
+                <span class="sample-report-unit">2200 Larimer Street, Suite 140, Denver, CO 80205</span>
+                <span class="sample-report-meta">1 lease document &times; 1 rent-roll row &nbsp;·&nbsp; 3 discrepancies found</span>
+            </div>
+
+            <div class="sample-disc-list">
+                <div class="sample-disc-card sample-disc-high">
+                    <div class="sample-disc-head">
+                        <span class="sample-sev sample-sev-high">High</span>
+                        <span class="sample-disc-type">Rent Roll Reconciliation</span>
+                        <span class="sample-impact-chip">~$1,550/mo impact</span>
+                    </div>
+                    <p class="sample-disc-message">Rent roll and lease document disagree on <strong>rent_amount</strong> at 2200 Larimer Street, Suite 140, Denver, CO 80205: rent roll says <strong>'$7,900.00'</strong>, lease document says <strong>'$9,450.00'</strong></p>
+                    <p class="sample-disc-citation">Lease p.3 — &ldquo;Base Rent shall be Nine Thousand Four Hundred Fifty and 00/100 Dollars ($9,450.00) per month&rdquo;</p>
+                </div>
+
+                <div class="sample-disc-card sample-disc-medium">
+                    <div class="sample-disc-head">
+                        <span class="sample-sev sample-sev-medium">Medium</span>
+                        <span class="sample-disc-type">Rent Roll Reconciliation</span>
+                    </div>
+                    <p class="sample-disc-message">Rent roll and lease document disagree on <strong>lease_end_date</strong> at 2200 Larimer Street, Suite 140, Denver, CO 80205: rent roll says <strong>'March 31, 2028'</strong>, lease document says <strong>'March 31, 2031'</strong></p>
+                    <p class="sample-disc-citation">Lease p.2 — &ldquo;the Term shall expire on March 31, 2031&rdquo;</p>
+                </div>
+
+                <div class="sample-disc-card sample-disc-medium">
+                    <div class="sample-disc-head">
+                        <span class="sample-sev sample-sev-medium">Medium</span>
+                        <span class="sample-disc-type">Rent Roll Reconciliation</span>
+                    </div>
+                    <p class="sample-disc-message">Rent roll and lease document disagree on <strong>tenant</strong> at 2200 Larimer Street, Suite 140, Denver, CO 80205: rent roll says <strong>'Ridgeline Coffee'</strong>, lease document says <strong>'Ridgeline Coffee Roasters LLC'</strong></p>
+                    <p class="sample-disc-citation">Lease p.1 — &ldquo;by and between the Landlord and Ridgeline Coffee Roasters LLC (&lsquo;Tenant&rsquo;)&rdquo;</p>
+                </div>
+            </div>
+
+            <p class="sample-report-foot"><strong>Coming soon:</strong> upload your own lease and rent roll and get this back in minutes. For now, <a href="#request-access">request access</a> to run it on a real deal.</p>
+        </div>
+    </section>
+
+    <!-- ===================== Proof stat ===================== -->
+    <!-- STAT PENDING: replace the placeholder below with the confirmed
+         number from the backend reconciliation benchmark
+         (backend/tools/reconciliation_benchmark/). Do NOT invent a
+         number — leave the placeholder visible until the real figure
+         and sentence are provided. -->
+    <section class="stat-band reveal" id="stat">
+        <div class="stat-band-inner">
+            <span class="stat-pending">[ STAT PENDING — backend benchmark ]</span>
+            <p class="stat-caption">A measured count of discrepancies caught across a test set of leases and units — published here once the benchmark run is complete and the number is verified.</p>
         </div>
     </section>
 
