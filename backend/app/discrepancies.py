@@ -221,18 +221,20 @@ def sync_all_lease_risk_flags_bulk(per_lease_flags: List[tuple]) -> None:
 
 def _rent_roll_mismatch_severity_and_impact(mismatch: Dict[str, Any]) -> Tuple[str, Optional[float]]:
     """
-    field == "tenant_name": always high -- there's no "close enough" for
+    field == "tenant": always high -- there's no "close enough" for
     whether it's the same tenant (same reasoning as compute_rent_roll_
     reconciliation's own docstring for why this field has zero
-    tolerance). field == "rent_amount": severity follows the actual
-    monthly dollar gap, which IS calculable here (both sides are
+    tolerance). The field key is "tenant", matching what
+    compute_rent_roll_reconciliation actually emits (and FIELD_NAMES) --
+    NOT "tenant_name". field == "rent_amount": severity follows the
+    actual monthly dollar gap, which IS calculable here (both sides are
     currency strings). Every other field (currently just
     lease_end_date): stays "medium", same as this function's previous
     flat default -- a stale expiration date matters but isn't something
     this function can price in dollars.
     """
     field = mismatch.get("field")
-    if field == "tenant_name":
+    if field == "tenant":
         return "high", None
     if field == "rent_amount":
         rr_value = parse_currency(mismatch.get("rent_roll_value"))

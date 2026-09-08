@@ -17,7 +17,10 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 from app.api import app
 from app import database
 from app.portfolio import FIELD_NAMES
-from app.discrepancies import sync_lease_risk_flags, sync_rent_roll_reconciliation, sync_t12_reconciliation
+from app.discrepancies import (
+    sync_lease_risk_flags, sync_rent_roll_reconciliation, sync_t12_reconciliation,
+    _rent_roll_mismatch_severity_and_impact,
+)
 
 FIXTURES_DIR = os.path.dirname(__file__)
 
@@ -226,6 +229,29 @@ def test_sync_cross_lease_mismatch_dedupes_across_both_leases_perspectives():
     finally:
         os.unlink(db_path)
     print("✓ test_sync_cross_lease_mismatch_dedupes_across_both_leases_perspectives: PASS")
+
+
+def test_rent_roll_mismatch_severity_by_field():
+    """
+    Regression: the severity helper must key off "tenant" -- the field
+    compute_rent_roll_reconciliation actually emits -- not "tenant_name".
+    A tenant-name disagreement has zero tolerance and must score high;
+    it was silently scoring medium while the check looked for the wrong
+    field name.
+    """
+    tenant = {"field": "tenant", "rent_roll_value": "Acme", "lease_document_value": "Acme Inc"}
+    assert _rent_roll_mismatch_severity_and_impact(tenant) == ("high", None)
+
+    big_rent_gap = {"field": "rent_amount", "rent_roll_value": "$7,900.00", "lease_document_value": "$9,450.00"}
+    assert _rent_roll_mismatch_severity_and_impact(big_rent_gap) == ("high", 1550.0)
+
+    small_rent_gap = {"field": "rent_amount", "rent_roll_value": "$4,000.00", "lease_document_value": "$4,100.00"}
+    assert _rent_roll_mismatch_severity_and_impact(small_rent_gap) == ("low", 100.0)
+
+    end_date = {"field": "lease_end_date", "rent_roll_value": "March 31, 2028", "lease_document_value": "March 31, 2031"}
+    assert _rent_roll_mismatch_severity_and_impact(end_date) == ("medium", None)
+
+    print("✓ test_rent_roll_mismatch_severity_by_field: PASS")
 
 
 def test_sync_rent_roll_reconciliation():
@@ -483,6 +509,7 @@ if __name__ == "__main__":
     test_sync_lease_risk_flags_annotates_and_persists()
     test_sync_lease_risk_flags_same_category_field_gets_distinct_natural_keys()
     test_sync_cross_lease_mismatch_dedupes_across_both_leases_perspectives()
+    test_rent_roll_mismatch_severity_by_field()
     test_sync_rent_roll_reconciliation()
     test_sync_t12_reconciliation_only_persists_when_flagged_or_already_tracked()
     test_lease_risks_route_flags_carry_resolution_status()
