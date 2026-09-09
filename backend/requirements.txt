@@ -13,8 +13,10 @@ Werkzeug==3.1.8
 flask-cors==6.0.5
 bcrypt==5.0.0
 pypdf==6.16.2
+pdfplumber==0.11.8       # PDF table extraction for rent-roll import (text-layer PDFs)
 pdf2image==1.16.3
 pytesseract==0.3.10
+pillow-heif==1.1.1       # decode iPhone .heic/.heif images before OCR
 Pillow==11.3.0
 reportlab==4.0.7
 openpyxl==3.1.5

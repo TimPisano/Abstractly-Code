@@ -57,7 +57,10 @@ from app import database
 from app import email_service
 from app.risk_analysis import analyze_lease_risks
 from app.qa_engine import answer_question
-from app.rent_roll_import import RentRollImportError, parse_csv_rent_roll, parse_xlsx_rent_roll
+from app.rent_roll_import import (
+    RentRollImportError, parse_csv_rent_roll, parse_xlsx_rent_roll, parse_rent_roll_file,
+)
+from app.rent_roll_table_extract import ALL_RENT_ROLL_EXTENSIONS
 from app.t12_import import T12ImportError, parse_csv_t12, parse_xlsx_t12
 from app.portfolio import (
     FIELD_NAMES,
@@ -1349,17 +1352,15 @@ def import_rent_roll():
 
     filename = file_storage.filename
     extension = filename.rsplit('.', 1)[1].lower() if '.' in filename else ''
-    if extension not in ('csv', 'xlsx'):
-        return jsonify({"error": "Invalid file type. Only .csv and .xlsx rent rolls are supported."}), 400
+    if extension not in ALL_RENT_ROLL_EXTENSIONS:
+        supported = "CSV/TSV, Excel (.xlsx/.xls), Word (.docx), PDF, or an image (.jpg/.png/.heic)"
+        return jsonify({"error": f"Invalid file type '.{extension or '?'}'. Supported rent-roll formats: {supported}."}), 400
 
     base_property_address = (request.form.get('property_address') or '').strip() or None
     file_bytes = file_storage.read()
 
     try:
-        if extension == 'csv':
-            parsed = parse_csv_rent_roll(file_bytes, filename, base_property_address)
-        else:
-            parsed = parse_xlsx_rent_roll(file_bytes, filename, base_property_address)
+        parsed = parse_rent_roll_file(file_bytes, filename, base_property_address)
     except RentRollImportError as e:
         return jsonify({"error": str(e)}), 400
 
@@ -1399,6 +1400,13 @@ def import_rent_roll():
         "imported_count": len(created),
         "skipped_rows": parsed["skipped_rows"],
         "column_mapping": parsed["column_mapping"],
+        # How the table was obtained ("delimited"/"excel"/"excel_legacy"/
+        # "word"/"pdf-text"/"pdf-ocr"/"image-ocr") and any caveats -- the
+        # frontend shows `warnings` verbatim after an OCR/heuristic import
+        # so the user knows to spot-check, rather than trusting it blindly.
+        "source_kind": parsed.get("source_kind", "delimited"),
+        "warnings": parsed.get("warnings", []),
+        **({"ocr_confidence": parsed["ocr_confidence"]} if "ocr_confidence" in parsed else {}),
     }), 201
 
 

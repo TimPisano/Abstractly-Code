@@ -586,26 +586,22 @@ def parse_rent_roll_rows(
     }
 
 
-def parse_csv_rent_roll(file_bytes: bytes, filename: str, base_property_address: Optional[str] = None) -> Dict[str, Any]:
+def _parse_from_numbered_rows(
+    numbered_rows: List[tuple],
+    filename: str,
+    base_property_address: Optional[str],
+    empty_message: str,
+) -> Dict[str, Any]:
     """
-    Reads a CSV file's bytes and parses it via parse_rent_roll_rows.
-    Raises RentRollImportError for a genuinely empty file. Auto-detects
-    which row is the real header (see _find_header_row) rather than
-    assuming row 1 always is -- a canned PMS export routinely has a few
-    decorative rows (property name, report title, date range) above it.
+    Shared tail for every format: given ``(true_row_number, row)`` pairs
+    (blank rows already dropped), auto-detect the header row and hand the
+    rest to ``parse_rent_roll_rows``. Extracted so the CSV path and every
+    non-spreadsheet format (PDF/Word/image, via
+    ``rent_roll_table_extract``) run identical column-matching / row-
+    parsing logic -- there is exactly one place that logic lives.
     """
-    text = file_bytes.decode("utf-8-sig", errors="replace")  # utf-8-sig strips a leading BOM, common from Excel's own CSV export
-    reader = csv.reader(io.StringIO(text))
-    # (true 1-indexed file row number, row) pairs, blank rows dropped --
-    # tracking the TRUE row number here (rather than just dropping blank
-    # rows and recomputing a citation from position alone) matters once
-    # a decorative PMS-report header block is in play: those routinely
-    # have a blank spacer row in them, which would otherwise silently
-    # shift every later row's citation off by one.
-    numbered_rows = [(i, row) for i, row in enumerate(reader, start=1) if any(cell.strip() for cell in row)]
-
     if not numbered_rows:
-        raise RentRollImportError("This CSV file is empty -- nothing to import.")
+        raise RentRollImportError(empty_message)
 
     row_contents = [row for _, row in numbered_rows]
     header_idx = _find_header_row(row_contents)
@@ -616,6 +612,47 @@ def parse_csv_rent_roll(file_bytes: bytes, filename: str, base_property_address:
     return parse_rent_roll_rows(
         headers, data_rows, filename, base_property_address,
         header_row_offset=header_idx, row_numbers=data_row_numbers,
+    )
+
+
+def parse_csv_rent_roll(
+    file_bytes: bytes, filename: str, base_property_address: Optional[str] = None,
+    delimiter: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Reads a CSV/TSV file's bytes and parses it via parse_rent_roll_rows.
+    Raises RentRollImportError for a genuinely empty file. Auto-detects
+    which row is the real header (see _find_header_row) rather than
+    assuming row 1 always is -- a canned PMS export routinely has a few
+    decorative rows (property name, report title, date range) above it.
+
+    `delimiter` defaults to ',' -- pass '\\t' for a .tsv, or None to let
+    the caller decide by extension. A .tsv whose rows still have no tab
+    is retried as comma-separated before giving up.
+    """
+    text = file_bytes.decode("utf-8-sig", errors="replace")  # utf-8-sig strips a leading BOM, common from Excel's own CSV export
+
+    def _rows_for(delim):
+        reader = csv.reader(io.StringIO(text), delimiter=delim)
+        # (true 1-indexed file row number, row) pairs, blank rows dropped --
+        # tracking the TRUE row number here (rather than just dropping blank
+        # rows and recomputing a citation from position alone) matters once
+        # a decorative PMS-report header block is in play: those routinely
+        # have a blank spacer row in them, which would otherwise silently
+        # shift every later row's citation off by one.
+        return [(i, row) for i, row in enumerate(reader, start=1) if any(cell.strip() for cell in row)]
+
+    numbered_rows = _rows_for(delimiter or ",")
+    # A .tsv that came through with no tabs at all (someone renamed a
+    # .csv) collapses to one column -- retry as comma before failing.
+    if delimiter == "\t" and numbered_rows and max(len(r) for _, r in numbered_rows) == 1:
+        retried = _rows_for(",")
+        if retried and max(len(r) for _, r in retried) > 1:
+            numbered_rows = retried
+
+    return _parse_from_numbered_rows(
+        numbered_rows, filename, base_property_address,
+        "This file is empty -- nothing to import.",
     )
 
 
@@ -681,3 +718,85 @@ def parse_xlsx_rent_roll(file_bytes: bytes, filename: str, base_property_address
     # so the message stays in exactly one place rather than being
     # duplicated here.
     return parse_rent_roll_rows([], [], filename, base_property_address)
+
+
+def _extension_of(filename: str) -> str:
+    return filename.rsplit(".", 1)[1].lower() if filename and "." in filename else ""
+
+
+def parse_rent_roll_file(
+    file_bytes: bytes, filename: str, base_property_address: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Single entry point for a rent-roll upload in ANY supported format.
+
+    Spreadsheets and delimited text are read here directly (csv/openpyxl,
+    the long-standing well-tested paths). Every other format -- .xls,
+    .docx, .pdf, and image files -- is reduced to a plain list of rows by
+    ``rent_roll_table_extract.extract_rent_roll_table`` and then run
+    through the EXACT same ``_parse_from_numbered_rows`` ->
+    ``parse_rent_roll_rows`` pipeline: identical column-header matching,
+    identical row parsing, identical output shape. No format gets its own
+    downstream logic.
+
+    Returns the same dict ``parse_rent_roll_rows`` returns, plus a
+    ``source_kind`` string and a ``warnings`` list (empty for clean
+    structured files; populated for OCR / heuristic reconstructions so
+    the route can pass an honest caveat to the frontend).
+
+    Raises ``RentRollImportError`` (the route already handles it as a
+    400) with a specific message for every failure -- unsupported type,
+    empty file, a document that genuinely isn't a table.
+    """
+    ext = _extension_of(filename)
+
+    if ext in ("csv", "tsv", "txt"):
+        result = parse_csv_rent_roll(
+            file_bytes, filename, base_property_address,
+            delimiter="\t" if ext == "tsv" else ",",
+        )
+        result.setdefault("source_kind", "delimited")
+        result.setdefault("warnings", [])
+        return result
+
+    if ext in ("xlsx", "xlsm"):
+        result = parse_xlsx_rent_roll(file_bytes, filename, base_property_address)
+        result.setdefault("source_kind", "excel")
+        result.setdefault("warnings", [])
+        return result
+
+    # .xls / .docx / .pdf / images -> reduce to rows, then shared pipeline.
+    from app.rent_roll_table_extract import extract_rent_roll_table
+
+    table = extract_rent_roll_table(file_bytes, filename)
+    numbered_rows = [
+        (i, [_cell_to_str(c) or "" for c in row])
+        for i, row in enumerate(table.rows, start=1)
+        if any((c or "").strip() for c in row)
+    ]
+    result = _parse_from_numbered_rows(
+        numbered_rows, filename, base_property_address,
+        "We opened this file but found no rows to import.",
+    )
+
+    # A reconstructed grid (OCR, or a borderless PDF rebuilt from word
+    # positions) can pass the "looks like a table" gate yet still have
+    # columns misaligned enough that not one row parses into a lease.
+    # That's not a successful import of zero -- it's a failure to read
+    # the structure, and the user should be told so plainly rather than
+    # shown an empty "0 imported" result that looks like their file was
+    # blank.
+    _RECONSTRUCTED = {"pdf-text-reconstructed", "pdf-ocr", "image-ocr"}
+    if table.source_kind in _RECONSTRUCTED and not result["leases"]:
+        raise RentRollImportError(
+            "We read this file but couldn't line its text up into a rent-roll table reliably "
+            "-- the columns didn't come out cleanly enough to trust. This is common with "
+            "photos, scans, and PDFs that aren't a ruled table. Export the rent roll to Excel "
+            "or CSV from your property-management system and upload that instead."
+        )
+
+    result["source_kind"] = table.source_kind
+    result["warnings"] = list(table.warnings)
+    if table.ocr_confidence is not None:
+        result["ocr_confidence"] = table.ocr_confidence
+    return result
