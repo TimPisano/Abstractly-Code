@@ -347,12 +347,12 @@ const RentRollImport = {
     },
 
     async handleFile(file) {
-        const name = file.name.toLowerCase();
-        if (!name.endsWith('.csv') && !name.endsWith('.xlsx')) {
-            showError('Please select a .csv or .xlsx rent roll file.');
-            return;
-        }
-
+        // No client-side extension gate: the backend accepts a wide set
+        // of formats (spreadsheet, CSV, Word, PDF, image/scan -- see
+        // parse_rent_roll_file / ALL_RENT_ROLL_EXTENSIONS) and returns a
+        // specific, user-facing message for anything it genuinely can't
+        // read. Letting it through and showing that message beats
+        // guessing here from the extension.
         document.getElementById('rentRollResults').style.display = 'none';
         document.getElementById('rentRollProgress').style.display = 'block';
 
@@ -365,21 +365,64 @@ const RentRollImport = {
                 showToast(`${response.imported_count} lease(s) imported from ${file.name}.`, 'success');
             }
         } catch (err) {
-            showError(`Couldn't import ${file.name}: ${err.message}`);
+            // The import endpoint's error strings are already specific
+            // and written for the end user (wrong format, no table in
+            // the file, OCR unavailable, image isn't a rent roll, ...),
+            // so show the message verbatim rather than wrapping it in a
+            // generic "couldn't import" that buries the actual reason.
+            showError(err.message);
         } finally {
             document.getElementById('rentRollProgress').style.display = 'none';
         }
     },
 
+    // Human label for the import response's `source_kind` -- only shown
+    // when the file wasn't a clean structured spreadsheet/CSV, so a user
+    // knows an OCR or heuristic path was involved and the `warnings`
+    // below apply.
+    sourceKindNote(sourceKind, ocrConfidence) {
+        const labels = {
+            'pdf-text': 'Read from a PDF table.',
+            'pdf-text-reconstructed': 'Columns reconstructed from a borderless PDF.',
+            'pdf-ocr': 'Read from a scanned PDF using OCR.',
+            'image-ocr': 'Read from an image using OCR.',
+            'word': 'Read from a Word table.',
+            'excel_legacy': 'Read from a legacy .xls workbook.',
+        };
+        const label = labels[sourceKind];
+        if (!label) return '';
+        const conf = (typeof ocrConfidence === 'number')
+            ? ` (mean text confidence ${Math.round(ocrConfidence)}%)` : '';
+        return `<p class="upload-source-kind">${escapeHtml(label + conf)}</p>`;
+    },
+
     showResults(filename, response) {
         const container = document.getElementById('rentRollResultsList');
         const skipped = response.skipped_rows || [];
+        const warnings = response.warnings || [];
 
-        let html = `
+        let html = '';
+
+        // Import warnings (OCR / borderless-PDF reconstruction) shown
+        // verbatim and ABOVE everything else -- these are the honest
+        // "spot-check every row, OCR can misread digits" caveats and a
+        // user needs to see them before they trust the numbers, not
+        // after scrolling past the imported rows.
+        if (warnings.length > 0) {
+            html += `
+                <div class="upload-result-warning upload-result-warning-block">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/></svg>
+                    <span>${warnings.map(w => escapeHtml(w)).join('<br>')}</span>
+                </div>
+            `;
+        }
+
+        html += `
             <p class="upload-summary">
                 <strong>${response.imported_count}</strong> lease(s) imported from <strong>${escapeHtml(filename)}</strong>
                 ${skipped.length > 0 ? `&mdash; <strong>${skipped.length}</strong> row(s) skipped` : ''}
             </p>
+            ${this.sourceKindNote(response.source_kind, response.ocr_confidence)}
         `;
 
         html += response.leases.map(lease => `
