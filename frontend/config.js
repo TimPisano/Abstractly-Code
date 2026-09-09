@@ -24,6 +24,19 @@
 const API_BASE_URL = (() => {
     const host = window.location.hostname;
     if (host === 'localhost' || host === '127.0.0.1') {
+        // Local-dev override -- point the frontend at a backend on a
+        // different port or host WITHOUT editing this committed file.
+        // Set it once from the browser devtools console:
+        //   localStorage.setItem('abstractly.apiBaseOverride', 'http://localhost:5001')
+        // and undo with localStorage.removeItem('abstractly.apiBaseOverride').
+        // Needed mainly because macOS (Monterey+) binds :5000 to the
+        // AirPlay Receiver, so a local backend often runs on :5001.
+        // Honored ONLY when this page is itself served from localhost,
+        // so it can never redirect API calls on the deployed site.
+        try {
+            const override = localStorage.getItem('abstractly.apiBaseOverride');
+            if (override) return override.trim().replace(/\/+$/, '');
+        } catch (e) { /* localStorage blocked -- fall through to the default */ }
         return 'http://localhost:5000';
     }
     // The demo deployment's static site talks to its own separate

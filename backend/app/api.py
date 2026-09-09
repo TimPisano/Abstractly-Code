@@ -118,7 +118,20 @@ app = Flask(__name__)
 # also refuses a wildcard-plus-credentials combination. Extend
 # ADMIN_ALLOWED_ORIGINS (comma-separated) in .env for a real deployed
 # frontend origin -- nothing else about this needs to change.
-_default_allowed_origins = "http://localhost:8000,http://127.0.0.1:8000"
+#
+# The default list (used only when ADMIN_ALLOWED_ORIGINS is unset, i.e.
+# local dev -- the real deployment sets it explicitly via render.yaml)
+# covers the ports a local static file server is commonly on:
+# `python3 -m http.server 8000` (the documented default, kept first so
+# it wins as the redirect-fallback origin at ALLOWED_ORIGINS[0]), 8080,
+# a Vite dev/preview server (5173/4173), and 3000. All are loopback-only
+# -- reachable solely from the developer's own machine -- so listing
+# them here has no bearing on the deployed service's CORS posture.
+_default_allowed_origins = ",".join(
+    f"http://{host}:{port}"
+    for host in ("localhost", "127.0.0.1")
+    for port in ("8000", "8080", "5173", "4173", "3000")
+)
 ALLOWED_ORIGINS = [
     origin.strip()
     for origin in os.environ.get("ADMIN_ALLOWED_ORIGINS", _default_allowed_origins).split(",")
