@@ -140,15 +140,15 @@ A Q&A response:
 
 ## Known Limitations
 
-- Regex-based extraction, not ML/NLP — see `PROGRESS.md` for measured accuracy and known weak spots
-- Q&A only answers questions matching a known intent pattern (by design — see `DECISIONS.md` for why this trades coverage for zero-hallucination guarantees)
+- Regex-based extraction, not ML/NLP — see `docs/PROGRESS.md` for measured accuracy and known weak spots
+- Q&A only answers questions matching a known intent pattern (by design — see `docs/DECISIONS.md` for why this trades coverage for zero-hallucination guarantees)
 - Risk thresholds are fixed constants, not yet tunable per portfolio
 - OCR fallback logic verified with mocks only — no tesseract/poppler in this dev environment
 - No authentication/multi-user support; SQLite is right-sized for single-user/local use, not a hosted multi-tenant deployment
 
 ## Future Enhancements
 
-See the prioritized list in `PROGRESS.md`.
+See the prioritized list in `docs/PROGRESS.md`.
 
 ## Troubleshooting
 
