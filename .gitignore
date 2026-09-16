@@ -1,5 +1,8 @@
-# Claude Code agent worktrees (isolated per-agent git repos, not project content)
-.claude/
+# Claude Code agent worktrees (isolated per-agent git repos, not project
+# content) -- but track the subagent team definitions themselves.
+.claude/*
+!.claude/agents/
+!.claude/agents/**
 
 # Defense in depth: backend/.gitignore already covers backend/.env (the
 # only .env that exists today), but that only protects a file placed
