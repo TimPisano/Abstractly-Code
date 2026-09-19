@@ -104,7 +104,7 @@ from app.rent_roll_export import generate_rent_roll_csv, generate_rent_roll_exce
 from app.report import generate_portfolio_report_html
 from app.summary_memo import generate_lease_summary_pdf, generate_portfolio_summary_pdf, monthly_report_extra_sections
 from app.sheets_export import export_to_google_sheets, SheetsExportError
-from app.auth import verify_password, require_role, require_owner, current_user, hash_password
+from app.auth import verify_password, require_role, require_owner, current_user, hash_password, issue_token
 
 
 app = Flask(__name__)
@@ -1939,6 +1939,9 @@ def auth_login():
     return jsonify({
         "id": user["id"], "email": user["email"], "name": user["name"], "role": user["role"],
         "is_owner": bool(user.get("is_owner")),
+        # app/ frontend only (see frontend/app/api.js) -- admin/ and
+        # owner/ ignore this field and keep using the cookie.
+        "token": issue_token(user),
     }), 200
 
 

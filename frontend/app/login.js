@@ -95,6 +95,8 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
             throw new Error(data.error || 'Something went wrong. Please try again.');
         }
 
+        if (data.token) sessionStorage.setItem('authToken', data.token);
+
         clearTimeout(coldStartHintTimer);
         window.location.href = 'index.html';
     } catch (err) {

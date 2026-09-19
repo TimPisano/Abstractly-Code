@@ -25,15 +25,17 @@
 async function apiRequest(path, options = {}) {
     let response;
     try {
-        // credentials: 'include' is required now that most routes are
-        // behind real per-user login (see backend/app/auth.py) -- fetch
-        // omits cookies on a cross-origin request by default, and the
-        // frontend (its own port) and backend API are different origins
-        // in this project's dev setup, so the session cookie a login
-        // sets would otherwise never be sent back on later requests.
-        // `options` can still override this per-call if a route ever
-        // needs to opt out, but no caller does today.
-        response = await fetch(`${API_BASE_URL}${path}`, { credentials: 'include', ...options });
+        // Authorization: Bearer <token> instead of credentials:'include'
+        // -- moves off the cross-origin session cookie entirely for this
+        // surface (see login.js, which stores the token issue_token()
+        // returns), since that cookie is silently dropped by Safari/ITP
+        // and other strict-cookie browsers regardless of SameSite/Secure
+        // being set correctly. Token lives in sessionStorage: readable by
+        // this origin's own JS only, cleared when the tab closes.
+        const token = sessionStorage.getItem('authToken');
+        const headers = { ...(options.headers || {}) };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+        response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
     } catch (networkErr) {
         throw new Error("Couldn't reach the server. Check your connection and try again.");
     }
@@ -47,6 +49,7 @@ async function apiRequest(path, options = {}) {
     // at once, indistinguishable from a real server-side bug, with
     // nothing telling the user the actual fix is just signing in again.
     if (response.status === 401) {
+        sessionStorage.removeItem('authToken');
         window.location.href = 'login.html?expired=1';
         // Never resolves -- the redirect is already underway, and
         // nothing calling this should keep running against a session

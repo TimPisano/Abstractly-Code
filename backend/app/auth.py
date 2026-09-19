@@ -21,13 +21,64 @@ import logging
 from functools import wraps
 
 import bcrypt
-from flask import jsonify, session
+from flask import current_app, jsonify, request, session
+from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
 from app import database
 
 logger = logging.getLogger(__name__)
 
 ROLE_RANK = {"viewer": 0, "analyst": 1, "admin": 2}
+
+# Matches app.permanent_session_lifetime (api.py) -- the bearer token's
+# lifetime should track the cookie session's, not drift independently.
+TOKEN_MAX_AGE_SECONDS = 12 * 3600
+
+
+def _token_serializer() -> URLSafeTimedSerializer:
+    # current_app.secret_key, not a module-level import of api.py's app
+    # object -- avoids a circular import (api.py imports this module),
+    # and current_app is valid anywhere inside a request context.
+    return URLSafeTimedSerializer(current_app.secret_key, salt="bearer-auth")
+
+
+def issue_token(user: dict) -> str:
+    """
+    Signed, stateless bearer token for the app/ client surface's
+    Authorization header (see frontend/app/api.js) -- carries the same
+    identity fields the session cookie does. admin/ and owner/ still
+    use the cookie exclusively; this is additive, not a replacement,
+    so a stale/pre-migration client still works unchanged.
+
+    Stateless like the existing session cookie: logout can't force
+    early invalidation of an already-issued token any more than it
+    could of an already-issued cookie value (see current_user's
+    docstring) -- this preserves existing behavior, it doesn't weaken it.
+    """
+    return _token_serializer().dumps({
+        "user_id": user["id"],
+        "email": user["email"],
+        "name": user["name"],
+        "role": user["role"],
+        "is_owner": bool(user.get("is_owner", False)),
+    })
+
+
+def _user_from_bearer_token():
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return None
+    try:
+        data = _token_serializer().loads(auth_header[7:].strip(), max_age=TOKEN_MAX_AGE_SECONDS)
+    except (BadSignature, SignatureExpired):
+        return None
+    return {
+        "id": data.get("user_id"),
+        "email": data.get("email"),
+        "name": data.get("name"),
+        "role": data.get("role"),
+        "is_owner": bool(data.get("is_owner", False)),
+    }
 
 # A precomputed bcrypt hash of a fixed, never-issued dummy password --
 # checked (and always fails) whenever the email doesn't match a real,
@@ -78,15 +129,20 @@ def current_user():
     """
     The logged-in user's {"id", "email", "name", "role", "is_owner"},
     or None if there's no session. Reads straight from the signed
-    session cookie -- this is what resolved_by/author_name/
-    dismissed_by/actor_user_id are sourced from now, never a
-    client-supplied request-body field.
+    session cookie, or an Authorization: Bearer token (see
+    issue_token) -- token checked first, cookie as fallback, since a
+    request carries at most one of the two in practice. This is what
+    resolved_by/author_name/dismissed_by/actor_user_id are sourced
+    from now, never a client-supplied request-body field.
 
     is_owner defaults to False for any session predating this field
     (an old cookie from before the owner console existed) -- correct,
     since owner status is only ever granted explicitly (see
     require_owner) and such a session was never granted it.
     """
+    token_user = _user_from_bearer_token()
+    if token_user is not None:
+        return token_user
     if not session.get("user_id"):
         return None
     return {

@@ -159,7 +159,9 @@
     (async function init() {
         let session = { authenticated: false };
         try {
-            const { data } = await fetchJson(`${API_BASE_URL}/auth/session`, { credentials: 'include' });
+            const token = sessionStorage.getItem('authToken');
+            const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+            const { data } = await fetchJson(`${API_BASE_URL}/auth/session`, { credentials: 'include', headers });
             session = data;
         } catch (err) {
             // Can't reach the backend at all -- fail closed to the login
