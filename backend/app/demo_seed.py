@@ -21,11 +21,13 @@ database and reseeds -- safe here specifically because this module
 only ever runs against the dedicated demo database, never production.
 """
 
+import bcrypt
+import fcntl
 import logging
 import os
 import tempfile
 
-from app import auth, database
+from app import database
 
 logger = logging.getLogger(__name__)
 
@@ -193,48 +195,70 @@ def _sample_rent_roll_leases():
 _SEED_LOCK_PATH = os.path.join(tempfile.gettempdir(), "abstractly_demo_seed.lock")
 
 
+# Cost factor for the two demo accounts' password hashes only -- NOT
+# app.auth.hash_password (that keeps its default bcrypt cost for every
+# real signup/login/password-change/password-reset path; this module
+# no longer even imports it). These two passwords are public, published
+# demo credentials, not secrets (see DEPLOYMENT.md), so there's no
+# security reason to pay bcrypt's default cost for them -- and the
+# default cost (~0.3-1s each on Render's free-tier shared CPU, x2
+# sequential) was most of the real time both workers spend blocked
+# below. Rounds=4 is bcrypt's minimum; low tens of ms instead.
+_DEMO_PASSWORD_BCRYPT_ROUNDS = 4
+
+
 def seed_demo_data() -> None:
     """
     Idempotent: no-op if the demo database already has any leases.
 
-    Guarded by an exclusive-create lock file (same pattern as api.py's
-    FLASK_SECRET_KEY fallback), not just the leases-empty check above --
-    gunicorn runs multiple worker processes, each importing this module
-    and calling this function independently at boot. Two workers can
-    both see an empty leases table before either has committed its own
-    inserts (a plain check-then-act race), each proceeding to seed --
-    caught live on the real demo deployment as 8 leases instead of 4.
-    Only the first process to win the exclusive-create actually seeds;
-    reset_demo_data() removes the lock file first so a real reset can
-    still reseed afterward.
+    Guarded by a blocking exclusive flock, held for the whole
+    check-then-seed section -- gunicorn runs multiple worker processes,
+    each importing this module and calling this function independently
+    at boot. A prior non-blocking guard here (O_CREAT|O_EXCL, losing
+    process returns immediately) stopped the two workers from
+    double-seeding, but let the losing worker finish its own boot and
+    start accepting logins before the winning worker had actually
+    committed the demo user/leases -- real login requests landed a 401
+    against a still-empty users table in the first seconds after a cold
+    boot. flock() blocks the losing process's own import (and therefore
+    its own gunicorn boot -- load_wsgi() runs before that worker's
+    run()/accept() loop ever starts) until the winner releases the
+    lock, so neither worker can reach "ready to accept traffic" --
+    /health included -- until the data is actually committed, whichever
+    one did the committing. This also can't wedge shut the way the old
+    marker file could -- flock releases automatically if a process dies
+    mid-seed, instead of leaving a lock file no future boot would clear.
     """
+    lock_fd = os.open(_SEED_LOCK_PATH, os.O_CREAT | os.O_RDWR)
     try:
-        fd = os.open(_SEED_LOCK_PATH, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-        os.close(fd)
-    except FileExistsError:
-        logger.info("Demo data seed already claimed by another process -- skipping.")
-        return
+        fcntl.flock(lock_fd, fcntl.LOCK_EX)  # losing worker blocks HERE, before its own run()/accept() loop exists
 
-    existing = database.get_all_leases(document_type=None)
-    if existing:
-        logger.info("Demo data already present (%d lease(s)) -- skipping seed.", len(existing))
-        return
+        existing = database.get_all_leases(document_type=None)
+        if existing:
+            logger.info("Demo data already present (%d lease(s)) -- skipping seed.", len(existing))
+            return
 
-    for account in DEMO_ACCOUNTS:
-        user_result = database.create_user(
-            account["email"], account["name"], auth.hash_password(account["password"]), role=account["role"],
-        )
-        if user_result["status"] == "created":
-            logger.info("Seeded demo user %s", account["email"])
+        for account in DEMO_ACCOUNTS:
+            password_hash = bcrypt.hashpw(
+                account["password"].encode("utf-8"), bcrypt.gensalt(rounds=_DEMO_PASSWORD_BCRYPT_ROUNDS),
+            ).decode("utf-8")
+            user_result = database.create_user(
+                account["email"], account["name"], password_hash, role=account["role"],
+            )
+            if user_result["status"] == "created":
+                logger.info("Seeded demo user %s", account["email"])
 
-    for lease in _sample_pdf_leases():
-        database.insert_lease(lease["filename"], lease["extracted_fields"], document_type="lease", display_name=lease["display_name"])
+        for lease in _sample_pdf_leases():
+            database.insert_lease(lease["filename"], lease["extracted_fields"], document_type="lease", display_name=lease["display_name"])
 
-    for lease in _sample_rent_roll_leases():
-        database.insert_lease(lease["filename"], lease["extracted_fields"], document_type="lease", display_name=lease["display_name"])
+        for lease in _sample_rent_roll_leases():
+            database.insert_lease(lease["filename"], lease["extracted_fields"], document_type="lease", display_name=lease["display_name"])
 
-    database.insert_activity("demo_seeded", "Demo account seeded with sample leases and a sample rent roll")
-    logger.info("Demo data seeded: 2 sample leases + 2 matching rent-roll rows.")
+        database.insert_activity("demo_seeded", "Demo account seeded with sample leases and a sample rent roll")
+        logger.info("Demo data seeded: 2 sample leases + 2 matching rent-roll rows.")
+    finally:
+        fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        os.close(lock_fd)
 
 
 def reset_demo_data() -> None:
@@ -247,9 +271,5 @@ def reset_demo_data() -> None:
     finally:
         conn.close()
 
-    try:
-        os.remove(_SEED_LOCK_PATH)
-    except FileNotFoundError:
-        pass
     logger.warning("Demo data reset: all content tables wiped.")
     seed_demo_data()
