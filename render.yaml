@@ -44,6 +44,12 @@ services:
         value: "false"
       - key: LOG_LEVEL
         value: INFO
+      # Upstash Redis connection string (rediss://...), from the
+      # Upstash console -- backs the background lease-extraction queue
+      # (app/jobs.py). Entered directly in the Render dashboard, never
+      # committed here, same as the other secrets below.
+      - key: REDIS_URL
+        sync: false
       # Emails ADMIN_EMAIL on any ERROR/CRITICAL log line (rate-limited).
       # Needs EMAIL_USER/EMAIL_APP_PASSWORD/ADMIN_EMAIL set too. See
       # DEPLOYMENT.md "Getting alerted when something breaks".
@@ -179,6 +185,15 @@ services:
         value: "false"
       - key: LOG_LEVEL
         value: INFO
+      # Same Upstash instance as abstractly-api is fine -- a distinct
+      # queue name (below) keeps demo and prod extraction jobs from
+      # ever landing in each other's queue. Can also point at a wholly
+      # separate free Upstash database instead if you'd rather not
+      # share one at all.
+      - key: REDIS_URL
+        sync: false
+      - key: LEASE_EXTRACTION_QUEUE
+        value: extraction-demo
       # No persistent disk (see the free-tier note on abstractly-api
       # above) -- here that's a feature, not a caveat: a cold restart
       # after Render's free-tier idle spindown wipes the demo database,

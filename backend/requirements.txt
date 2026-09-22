@@ -32,3 +32,5 @@ anthropic==0.125.0
 cryptography==50.0.0
 requests==2.32.5
 gunicorn==23.0.0
+redis==7.0.1              # transport for the background lease-extraction queue (app/jobs.py)
+rq==2.8.0                  # background lease-extraction queue, replaces the old raw threading.Thread

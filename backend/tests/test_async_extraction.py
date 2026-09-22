@@ -1,11 +1,13 @@
 """
 Tests for the background (async) AI extraction path added in the
 performance hardening pass: an AI-engine upload returns 202 immediately
-with the leases in 'processing' state, and a background thread fills in
+with the leases in 'processing' state, and a background job fills in
 the fields (or marks the row 'failed' with a plain reason).
 
-The background thread is made deterministic by patching
-app.api.threading.Thread so .start() runs the target synchronously.
+The background job (an RQ queue, see app/jobs.py) is made deterministic
+by patching jobs.extraction_queue.enqueue so it either does nothing
+(_NoopEnqueue, for observing the immediate 202 state) or runs the job
+function inline (_SyncEnqueue).
 """
 
 import io
@@ -22,6 +24,7 @@ from app import api
 from app.api import app
 from app import database
 from app import ai_extraction
+from app import jobs
 from app.portfolio import FIELD_NAMES
 
 
@@ -62,14 +65,15 @@ def _fields(**overrides):
     return out
 
 
-class _SyncThread:
-    """Stand-in for threading.Thread whose .start() runs the target inline."""
-    def __init__(self, target=None, name=None, daemon=None, args=(), kwargs=None):
-        self._target, self._args, self._kwargs = target, args, kwargs or {}
+def _noop_enqueue(func, *args, **kwargs):
+    """Stand-in for Queue.enqueue that does nothing -- for observing the immediate 202 state without the job running."""
+    return mock.Mock()
 
-    def start(self):
-        if self._target:
-            self._target(*self._args, **self._kwargs)
+
+def _sync_enqueue(func, *args, **kwargs):
+    """Stand-in for Queue.enqueue that runs the job inline. `kwargs` here is RQ's own enqueue kwargs (e.g. job_timeout), not the job function's -- this queue's jobs only ever take positional args."""
+    func(*args)
+    return mock.Mock()
 
 
 def _upload(client, filename="acme.pdf", body=None):
@@ -82,10 +86,9 @@ def _upload(client, filename="acme.pdf", body=None):
 def test_ai_upload_returns_202_and_leases_start_in_processing_state():
     db = _fresh_temp_db()
     try:
-        # thread does NOT run (real Thread, but we don't wait) -> observe the immediate 202 state
+        # job does NOT run -> observe the immediate 202 state
         with mock.patch.object(ai_extraction, "resolve_engine", return_value="ai"), \
-             mock.patch.object(api.threading, "Thread") as FakeThread:
-            FakeThread.return_value = mock.Mock()  # .start() is a no-op
+             mock.patch.object(jobs.extraction_queue, "enqueue", _noop_enqueue):
             resp = _upload(_analyst_client())
         assert resp.status_code == 202
         body = resp.get_json()
@@ -108,7 +111,7 @@ def test_background_thread_fills_in_fields_and_links_telemetry():
         extracted_with_meta["_ai_meta"] = {"model": "claude-sonnet-5", "latency_ms": 40,
                                            "input_tokens": 90, "output_tokens": 15, "found_count": 2}
         with mock.patch.object(ai_extraction, "resolve_engine", return_value="ai"), \
-             mock.patch.object(api.threading, "Thread", _SyncThread), \
+             mock.patch.object(jobs.extraction_queue, "enqueue", _sync_enqueue), \
              mock.patch.object(ai_extraction, "extract_lease_fields", return_value=extracted_with_meta):
             resp = _upload(_analyst_client())
 
@@ -136,7 +139,7 @@ def test_background_ai_failure_marks_lease_failed_and_keeps_the_row():
     db = _fresh_temp_db()
     try:
         with mock.patch.object(ai_extraction, "resolve_engine", return_value="ai"), \
-             mock.patch.object(api.threading, "Thread", _SyncThread), \
+             mock.patch.object(jobs.extraction_queue, "enqueue", _sync_enqueue), \
              mock.patch.object(ai_extraction, "extract_lease_fields",
                                side_effect=ai_extraction.AIExtractionError("AI processing is unavailable: the API credit balance is too low.")):
             resp = _upload(_analyst_client())
@@ -171,7 +174,7 @@ def test_multi_lease_document_processes_every_split_lease():
             return {**_fields(tenant=f"Tenant {len(calls)}"), "_ai_meta": {"model": "m", "found_count": 1}}
 
         with mock.patch.object(ai_extraction, "resolve_engine", return_value="ai"), \
-             mock.patch.object(api.threading, "Thread", _SyncThread), \
+             mock.patch.object(jobs.extraction_queue, "enqueue", _sync_enqueue), \
              mock.patch.object(api.FieldExtractor, "detect_lease_boundaries", return_value=[(1, 1), (2, 2)]), \
              mock.patch.object(ai_extraction, "extract_lease_fields", side_effect=_fake_extract):
             resp = _upload(_analyst_client(), body=two_lease_pdf)

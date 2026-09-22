@@ -55,6 +55,7 @@ from app import document_extractor
 from app.document_extractor import DocumentExtractionError
 from app import database
 from app import email_service
+from app import jobs
 from app.risk_analysis import analyze_lease_risks
 from app.qa_engine import answer_question
 from app.rent_roll_import import (
@@ -903,13 +904,18 @@ def _persist_split_leases(filename, split_leases):
 
 def _start_deferred_extraction(filename, split_leases):
     """
-    Kick off the background thread that runs AI extraction for every
-    'pending' lease `_persist_split_leases` just inserted. Returns True
-    if a thread was started. The thread: extracts each range, writes the
-    real fields (or marks the row 'failed' with a plain reason on an AI
-    error), links telemetry, invalidates caches, logs one activity
-    entry. It touches only `database` and pure helpers -- never `request`
-    or `session` -- so it's safe off the request context.
+    Enqueue the RQ job that runs AI extraction for every 'pending'
+    lease `_persist_split_leases` just inserted. Returns True if a job
+    was enqueued. See app/jobs.py's run_deferred_extraction for what
+    the job itself does (extracts each range, writes the real fields
+    or marks the row 'failed' with a plain reason on an AI error,
+    links telemetry, invalidates caches, logs one activity entry).
+
+    A queue instead of a bare background thread survives a gunicorn
+    worker restart/recycle (the job description lives in Redis, not one
+    process's memory) -- a thread here silently lost in-flight work on
+    exactly that, which fail_orphaned_processing_leases() existed to
+    clean up after the fact rather than prevent.
     """
     pending = [ld for ld in split_leases if ld.get("pending") and ld.get("lease_id")]
     if not pending:
@@ -923,53 +929,10 @@ def _start_deferred_extraction(filename, split_leases):
         "total": ld.get("total", len(pending)),
     } for i, ld in enumerate(pending)]
 
-    def _run():
-        field_extractor = FieldExtractor()
-        completed = failed = 0
-        for item in items:
-            try:
-                fields, run_id = _extract_one_range(item["sub_pages"], field_extractor, engine="ai")
-            except ai_extraction.AIExtractionError as e:
-                _record_ai_run(None, status="error", error_message=str(e))
-                database.finalize_lease_processing(item["lease_id"], status="failed", error=str(e))
-                failed += 1
-                continue
-            except Exception:
-                # An unexpected bug must not leave the lease stuck
-                # 'processing' forever -- mark it failed with a generic
-                # message (details are logged), same as any other
-                # failure path.
-                logger.exception("Unexpected error extracting lease %s in background", item["lease_id"])
-                database.finalize_lease_processing(
-                    item["lease_id"], status="failed",
-                    error="Something went wrong while extracting this document. Delete it and try again.",
-                )
-                failed += 1
-                continue
-            fields.pop("_ai_meta", None)
-            display_name = _default_lease_name(fields, filename, item["index"], item["total"])
-            database.finalize_lease_processing(
-                item["lease_id"], status="complete", extracted_fields=fields,
-                date_candidates=item["date_candidates"], display_name=display_name,
-            )
-            if run_id:
-                database.link_ai_extraction_run_to_lease(run_id, item["lease_id"])
-            completed += 1
-
-        _invalidate_lease_derived_caches()
-        try:
-            if completed:
-                database.insert_activity(
-                    "lease_uploaded",
-                    f"Finished processing {filename}" + (f" ({completed} lease(s))" if completed > 1 else ""),
-                    lease_id=items[0]["lease_id"],
-                )
-            if failed:
-                database.insert_activity("lease_processing_failed", f"Extraction failed for {failed} lease(s) from {filename}")
-        except Exception:
-            logger.exception("Post-extraction activity log failed (non-fatal)")
-
-    threading.Thread(target=_run, name=f"extract:{filename}", daemon=True).start()
+    jobs.extraction_queue.enqueue(
+        jobs.run_deferred_extraction, filename, items,
+        job_timeout=jobs.EXTRACTION_JOB_TIMEOUT_SECONDS,
+    )
     return True
 
 

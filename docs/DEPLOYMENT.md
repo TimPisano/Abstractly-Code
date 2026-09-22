@@ -106,6 +106,17 @@ you're ready for any of them:
   [console.anthropic.com](https://console.anthropic.com). You
   mentioned funding this key later — same instruction applies here,
   just add it to Render's Environment tab whenever you do.
+- **AI lease extraction's background queue** (`REDIS_URL`) — required
+  once `LEASE_AI_EXTRACTION` is on: AI-engine uploads extract fields on
+  a background job (see `backend/app/jobs.py`), and that job needs
+  Redis as its queue. Create a free database at
+  [upstash.com](https://upstash.com), copy its connection string
+  (starts `rediss://`), and paste it as `REDIS_URL` in Render's
+  Environment tab. `abstractly-demo-api` takes the same `REDIS_URL`
+  (can be the same Upstash database — a separate `LEASE_EXTRACTION_QUEUE`
+  value already keeps demo and prod jobs apart, see `render.yaml`).
+  Without this set, AI-engine uploads will 202 and then never finish
+  processing.
 - **"Export to Google Sheets"** (`GOOGLE_APPLICATION_CREDENTIALS`) —
   see `backend/.env.example`'s step-by-step for creating a Google
   Cloud service account; the resulting JSON key file gets uploaded as
