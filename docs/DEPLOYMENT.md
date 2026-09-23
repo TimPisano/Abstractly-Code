@@ -398,3 +398,53 @@ also spin down after 15 minutes idle and wipe their (non-persistent)
 database on the next cold start, which re-seeds automatically — so a
 demo instance that's sat idle between visitors often resets itself for
 free even before you trigger it manually.
+
+## Tester deployment
+
+For handing the real product (not canned demo data) to one outside
+tester at a time. `render.yaml` defines a third pair of services —
+`abstractly-tester-api` and `abstractly-tester` — structured like
+`abstractly-api` (prod), not like the demo pair: no `DEMO_MODE`, no
+seeded sample data, no `/demo/reset`. Same reason the demo pair is a
+separate deployment in the first place: this app has no per-account
+data isolation within one deployment (every logged-in user reads the
+same shared `leases` table — see the demo section above), so a tester
+account added to `abstractly-api` itself would see every real
+customer's leases, not a sandbox of their own. Free tier, same
+tradeoff as prod and demo: the tester's uploads are wiped on restart
+or 15-minute idle spindown — fine for a short trial; see "Adding
+persistent storage later" above if a given tester run needs to
+outlive that.
+
+**Deploying it:**
+
+1. Push `render.yaml` to GitHub, then Render dashboard → your
+   Blueprint → "Sync" (or wait for the next auto-sync) to pick up
+   the two new services.
+2. Go to **`abstractly-tester-api`** → "Environment" and set:
+
+   | Variable | How to get the value |
+   |---|---|
+   | `FLASK_SECRET_KEY` | Generate fresh (same command as step 5 above) — never reuse prod's or demo's. |
+   | `TOKEN_ENCRYPTION_KEY` | Generate fresh, same way. |
+   | `ADMIN_EMAIL` | The login you're handing to the tester. |
+   | `ADMIN_PASSWORD_HASH` | `python3 set_admin_password.py`, or hash a generated password directly — a fresh password only this tester gets, not a reused one. |
+   | `REDIS_URL` | Paste the **same** value already set on `abstractly-api`/`abstractly-demo-api` — one Upstash instance backs all three deployments' queues. |
+
+   `LEASE_EXTRACTION_QUEUE` (`extraction-tester`) and
+   `ADMIN_ALLOWED_ORIGINS` are already in `render.yaml` — only fix
+   `ADMIN_ALLOWED_ORIGINS` (and the frontend's CSP `connect-src`) if
+   Render auto-suffixes either service name, same as every other
+   pair above.
+3. Confirm `https://abstractly-tester-api.onrender.com/health` returns
+   `{"status":"healthy"}`, then log in at the tester frontend's URL
+   with the `ADMIN_EMAIL`/password you just set. From there, the admin
+   can add the actual tester as a team member (`POST /team/members` /
+   the owner console UI) if they shouldn't just use the admin login
+   directly.
+
+**When the trial is over:** either let it sit (free tier costs
+nothing idle) or delete both services from the Render dashboard —
+nothing else references them. There's no reset script for this pair
+(no `DEMO_MODE`) since it's meant to be torn down or handed to the
+next tester fresh, not reused in place.

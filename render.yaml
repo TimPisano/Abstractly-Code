@@ -139,6 +139,95 @@ services:
         name: Cache-Control
         value: "public, max-age=600, must-revalidate"
 
+  # ---- Tester backend: same image as abstractly-api, own empty database ----
+  # A genuinely separate deployment (own service, own container, own SQLite
+  # file) for handing the real product to one outside tester at a time --
+  # NOT the demo pair above (no DEMO_MODE, no seeded sample data, no
+  # /demo/reset). Exists because this app has no per-account data isolation
+  # within one deployment (see the demo backend's comment above and
+  # docs/DEPLOYMENT.md's "Tester deployment" section) -- a tester account
+  # added to abstractly-api itself would see every real customer's leases,
+  # not a sandbox of their own.
+  - type: web
+    name: abstractly-tester-api
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      # All four generated fresh for this deployment, never reused from
+      # abstractly-api/abstractly-demo-api -- entered directly in the
+      # Render dashboard, never committed here. See DEPLOYMENT.md.
+      - key: FLASK_SECRET_KEY
+        sync: false
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD_HASH
+        sync: false
+      - key: TOKEN_ENCRYPTION_KEY
+        sync: false
+      - key: ADMIN_ALLOWED_ORIGINS
+        value: https://abstractly-tester.onrender.com
+      - key: LOCAL_DEV_MODE
+        value: "false"
+      - key: LOG_LEVEL
+        value: INFO
+      # Same Upstash instance abstractly-api/abstractly-demo-api already
+      # use is fine -- paste the identical REDIS_URL value here. The
+      # distinct queue name below is what actually keeps this
+      # deployment's extraction jobs from ever landing in prod's or
+      # demo's queue, not a separate Redis database.
+      - key: REDIS_URL
+        sync: false
+      - key: LEASE_EXTRACTION_QUEUE
+        value: extraction-tester
+      # No persistent disk (free tier, same tradeoff as abstractly-api
+      # and abstractly-demo-api above) -- the tester's uploads are wiped
+      # on restart/15-min idle spindown. Fine for a short trial; see
+      # "Adding persistent storage later" in DEPLOYMENT.md if a given
+      # tester run needs to survive longer.
+
+  # ---- Tester frontend: same static files as abstractly, points at the tester backend ----
+  - type: web
+    name: abstractly-tester
+    runtime: static
+    staticPublishPath: ./frontend
+    envVars: []
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
+      - path: /*
+        name: Strict-Transport-Security
+        value: max-age=31536000; includeSubDomains
+      - path: /*
+        name: Content-Security-Policy
+        value: >-
+          default-src 'self';
+          connect-src 'self' https://abstractly-tester-api.onrender.com;
+          style-src 'self' 'unsafe-inline';
+          img-src 'self' data:;
+          font-src 'self';
+          object-src 'none';
+          base-uri 'self';
+          frame-ancestors 'none'
+      - path: /*.html
+        name: Cache-Control
+        value: "no-cache"
+      - path: /fonts/*
+        name: Cache-Control
+        value: "public, max-age=2592000"
+      - path: /*
+        name: Cache-Control
+        value: "public, max-age=600, must-revalidate"
+
   # ---- Demo backend: same image as abstractly-api, own database ----
   # Seeded automatically on boot with 2 sample leases + a matching
   # sample rent roll (see app/demo_seed.py) and reset on demand via
