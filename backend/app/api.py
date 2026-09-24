@@ -3576,7 +3576,7 @@ def portfolio_t12_reconciliation():
 
 
 @app.route('/portfolio/deal-mismatch-report', methods=['POST'])
-@require_role()
+@require_role('analyst')
 def portfolio_deal_mismatch_report():
     """
     The Deal Mismatch Report: every discrepancy between the imported
@@ -3606,7 +3606,7 @@ def portfolio_deal_mismatch_report():
 
 
 @app.route('/portfolio/deal-mismatch-report.pdf', methods=['POST'])
-@require_role()
+@require_role('analyst')
 def portfolio_deal_mismatch_report_pdf():
     """Same data and scope rules as POST /portfolio/deal-mismatch-report, rendered as a one-document PDF suitable for a lender or LP."""
     property_address = (request.form.get('property_address') or '').strip() or None
@@ -3625,7 +3625,7 @@ def portfolio_deal_mismatch_report_pdf():
 
 
 @app.route('/portfolio/deal-mismatch-report.xlsx', methods=['POST'])
-@require_role()
+@require_role('analyst')
 def portfolio_deal_mismatch_report_excel():
     """Same data and scope rules as POST /portfolio/deal-mismatch-report, rendered as a formatted Excel workbook."""
     property_address = (request.form.get('property_address') or '').strip() or None

@@ -35,13 +35,13 @@ def _fresh_temp_db():
     return tmp.name
 
 
-def _authed_client():
+def _authed_client(role="analyst"):
     client = app.test_client()
     with client.session_transaction() as sess:
         sess["user_id"] = 1
-        sess["email"] = "test-analyst@example.com"
-        sess["name"] = "Test Analyst"
-        sess["role"] = "analyst"
+        sess["email"] = f"test-{role}@example.com"
+        sess["name"] = f"Test {role.capitalize()}"
+        sess["role"] = role
     return client
 
 
@@ -328,6 +328,37 @@ def test_json_route_requires_auth():
     print("✓ test_json_route_requires_auth: PASS")
 
 
+def test_routes_require_analyst_role():
+    """
+    Viewer role is below analyst on ROLE_RANK (app/auth.py), and every
+    comparable portfolio export (investment-memo.pdf/xlsx, t12-
+    reconciliation) is gated at 'analyst' -- these three routes must
+    match that, not sit open to a bare logged-in viewer.
+    """
+    db_path = _fresh_temp_db()
+    try:
+        viewer = _authed_client(role="viewer")
+        for path in (
+            '/portfolio/deal-mismatch-report',
+            '/portfolio/deal-mismatch-report.pdf',
+            '/portfolio/deal-mismatch-report.xlsx',
+        ):
+            resp = viewer.post(path)
+            assert resp.status_code == 403, f"{path} let a viewer through ({resp.status_code})"
+
+        analyst = _authed_client(role="analyst")
+        for path in (
+            '/portfolio/deal-mismatch-report',
+            '/portfolio/deal-mismatch-report.pdf',
+            '/portfolio/deal-mismatch-report.xlsx',
+        ):
+            resp = analyst.post(path)
+            assert resp.status_code == 200, f"{path} blocked an analyst ({resp.status_code})"
+    finally:
+        os.unlink(db_path)
+    print("✓ test_routes_require_analyst_role: PASS")
+
+
 def test_json_route_returns_report_and_persists_discrepancies():
     db_path = _fresh_temp_db()
     try:
@@ -391,6 +422,7 @@ if __name__ == "__main__":
     test_pdf_export_is_valid_and_readable()
     test_excel_export_has_header_and_rows()
     test_json_route_requires_auth()
+    test_routes_require_analyst_role()
     test_json_route_returns_report_and_persists_discrepancies()
     test_pdf_route()
     test_excel_route()
