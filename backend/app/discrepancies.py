@@ -329,6 +329,77 @@ def sync_t12_reconciliation(result: Dict[str, Any]) -> Dict[str, Any]:
     return result
 
 
+def sync_deal_mismatch_report(data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Upserts every row in a Deal Mismatch Report's discrepancy list (see
+    deal_mismatch.build_deal_mismatch_report_data) as a
+    discrepancy_type="deal_mismatch" row, and annotates each row dict in
+    place -- same bulk-upsert-then-batch-annotate shape as
+    sync_all_lease_risk_flags_bulk, for the same reason (a full-report
+    resync upserts one discrepancy per row, not one at a time).
+
+    Natural key includes both lease ids (rent-roll row id, lease PDF id
+    -- either may be None for a unit_no_lease/lease_no_unit row) plus
+    the field, matching rent_roll_reconciliation's own
+    f"{type}:{rr_id}:{doc_id}:{field}" scheme above, so a Deal Mismatch
+    Report finding and the equivalent standalone reconciliation finding
+    for the same pair/field never collide onto the same row even though
+    both ultimately come from the same underlying lease data.
+
+    Mutates and returns the same `data` dict build_deal_mismatch_report_
+    data returned; each discrepancy row gains discrepancy_id/
+    resolution_status/resolution, same as every other sync_* function in
+    this module.
+    """
+    rows = data.get("discrepancies") or []
+    if not rows:
+        return data
+
+    payloads = []
+    for row in rows:
+        natural_key = (
+            f"deal_mismatch:{row['discrepancy_type']}:"
+            f"{row.get('rent_roll_lease_id')}:{row.get('lease_document_id')}:{row.get('field')}"
+        )
+        row["_natural_key"] = natural_key
+        message = (
+            f"Deal Mismatch Report -- {row['discrepancy_type']} at {row.get('unit')}: "
+            f"rent roll says {row.get('rent_roll_value')!r}, lease says {row.get('lease_value')!r}"
+        )
+        payloads.append({
+            "discrepancy_type": "deal_mismatch",
+            "natural_key": natural_key,
+            "category": row["discrepancy_type"],
+            "field": row.get("field"),
+            "severity": row.get("severity"),
+            "message": message,
+            "details": row,
+            "lease_id": row.get("rent_roll_lease_id"),
+            "related_lease_id": row.get("lease_document_id"),
+            "estimated_dollar_impact": row.get("monthly_dollar_impact"),
+        })
+
+    ids_by_natural_key = database.upsert_discrepancies_bulk(payloads)
+    all_ids = list(ids_by_natural_key.values())
+    discrepancies_by_id = database.get_discrepancies_by_ids(all_ids)
+    resolved_ids = [d["id"] for d in discrepancies_by_id.values() if d["status"] == "resolved"]
+    resolutions_by_id = database.get_discrepancy_resolutions_bulk(resolved_ids)
+
+    for row in rows:
+        discrepancy_id = ids_by_natural_key[row.pop("_natural_key")]
+        discrepancy = discrepancies_by_id[discrepancy_id]
+        row["discrepancy_id"] = discrepancy_id
+        row["resolution_status"] = discrepancy["status"]
+        row["resolution"] = None
+        if discrepancy["status"] == "resolved":
+            for entry in reversed(resolutions_by_id.get(discrepancy_id, [])):
+                if entry["action"] == "resolved":
+                    row["resolution"] = entry
+                    break
+
+    return data
+
+
 # ----------------------------------------------------------------------
 # Portfolio-level pattern detection: the same TYPE of discrepancy
 # recurring across many leases is a systemic issue (a broken CAM

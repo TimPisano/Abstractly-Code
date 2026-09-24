@@ -1,0 +1,253 @@
+{
+  "leases": [
+    {
+      "id": "L01_riverbend_retail_coffee",
+      "file": "L01_riverbend_retail_coffee.pdf",
+      "ground_truth": {
+        "tenant": "Wren & Kettle Coffee, LLC",
+        "landlord": "Riverbend Marketplace Holdings, LLC",
+        "rent_amount": "$4,675.00",
+        "lease_start_date": "March 1, 2024",
+        "lease_end_date": "February 28, 2029",
+        "property_address": "2200 Copperfield Road, Suite 140, Maple Grove, Minnesota 55311",
+        "security_deposit": "$9,350.00",
+        "cam_charges": "$3.25 per rentable square foot per annum",
+        "rent_escalation": "3% annually on each anniversary of the Commencement Date",
+        "renewal_options": "Two 5-year options; 9 months' prior written notice; renewal rent at 95% of fair market rent",
+        "permitted_use": "A specialty coffee shop and cafe (retail sale of coffee, tea, baked goods, and related merchandise)",
+        "exclusivity_clause": "Landlord will not lease other center space to a business whose primary use is sale of specialty coffee beverages; does not apply to tenants over 15,000 sq ft",
+        "insurance_requirements": "$2,000,000 per occurrence / $3,000,000 aggregate commercial general liability; Landlord as additional insured",
+        "default_cure_period": "30 days after written notice for non-monetary default (5 days for monetary)",
+        "square_footage": "1,650 sq ft"
+      }
+    },
+    {
+      "id": "L02_summit_tower_office",
+      "file": "L02_summit_tower_office.pdf",
+      "ground_truth": {
+        "tenant": "Northlight Data Systems, Inc.",
+        "landlord": "Summit Tower Owner LP",
+        "rent_amount": "$32,900.00",
+        "lease_start_date": "August 1, 2023",
+        "lease_end_date": "July 31, 2030",
+        "property_address": "815 Franklin Avenue, Suite 1900, Denver, Colorado 80202",
+        "security_deposit": "$65,800.00",
+        "cam_charges": "Pro rata share 4.7% of increases in operating expenses and real estate taxes over 2023 base year",
+        "rent_escalation": "2.5% annually on each anniversary of the Commencement Date",
+        "renewal_options": "One 5-year option at fair market rental; notice no earlier than 18 months and no later than 12 months before expiration",
+        "permitted_use": "General business and administrative office purposes",
+        "exclusivity_clause": null,
+        "insurance_requirements": "$3,000,000 combined single limit per occurrence commercial general liability",
+        "default_cure_period": "15 days after written notice for non-monetary default (5 business days for monetary)",
+        "square_footage": "9,400 sq ft"
+      }
+    },
+    {
+      "id": "L03_harbor_street_restaurant",
+      "file": "L03_harbor_street_restaurant.pdf",
+      "ground_truth": {
+        "tenant": "Marisol Hospitality Group, LLC",
+        "landlord": "Harbor Street Partners",
+        "rent_amount": "$12,000.00",
+        "lease_start_date": "January 1, 2023",
+        "lease_end_date": "December 31, 2032",
+        "property_address": "47 Harbor Street, Ground Floor, Santa Cruz, California 95060",
+        "security_deposit": "$36,000.00",
+        "cam_charges": "$2,850.00 per month (triple net; tenant also pays taxes and insurance)",
+        "rent_escalation": "Stepped: $12,000/mo (mo 1-24); $13,500 (25-60); $15,200 (61-96); $17,100 (97-120)",
+        "renewal_options": "One 5-year option; 270 days' prior written notice; rent = final-year minimum rent plus 10%",
+        "permitted_use": "Full-service sit-down restaurant serving lunch and dinner with a full bar",
+        "exclusivity_clause": null,
+        "insurance_requirements": "$5,000,000 per occurrence commercial general liability including liquor liability",
+        "default_cure_period": "20 days after written notice for non-monetary default (3 days for monetary)",
+        "square_footage": "3,900 sq ft interior (plus ~600 sq ft patio)"
+      }
+    },
+    {
+      "id": "L04_gateway_industrial_nnn",
+      "file": "L04_gateway_industrial_nnn.pdf",
+      "ground_truth": {
+        "tenant": "Ardent Fulfillment Co.",
+        "landlord": "Gateway Logistics Investors II, LLC",
+        "rent_amount": "$55,800.00",
+        "lease_start_date": "May 1, 2024",
+        "lease_end_date": "July 31, 2031",
+        "property_address": "9401 Distribution Way, Building C, Grove City, Ohio 43123",
+        "security_deposit": "$111,600.00",
+        "cam_charges": null,
+        "rent_escalation": "Annually by greater of 3% or CPI-U, capped at 5%",
+        "renewal_options": "Two 5-year options; 12 months' notice; fair market rent by agreement or appraisal",
+        "permitted_use": "Warehousing, distribution, light assembly, e-commerce order fulfillment, and related office use",
+        "exclusivity_clause": null,
+        "insurance_requirements": "$4,000,000 per occurrence commercial general liability plus all-risk property insurance at full replacement value",
+        "default_cure_period": "30 days after written notice for non-monetary default (10 days for monetary)",
+        "square_footage": "90,000 sq ft (84,000 warehouse + 6,000 office)"
+      }
+    },
+    {
+      "id": "L05_cedar_medical_office",
+      "file": "L05_cedar_medical_office.pdf",
+      "ground_truth": {
+        "tenant": "Willowmere Pediatric Associates, PLLC",
+        "landlord": "Cedar Hollow Medical Plaza, LLC",
+        "rent_amount": "$12,077.08",
+        "lease_start_date": "April 1, 2024",
+        "lease_end_date": "September 30, 2034",
+        "property_address": "1330 Wellspring Drive, Suite 220, Cary, North Carolina 27518",
+        "security_deposit": "$24,154.16",
+        "cam_charges": "$9.75 per rentable square foot per year (proportionate share of operating costs)",
+        "rent_escalation": "$0.90 per rentable square foot increase on each October 1",
+        "renewal_options": "Two 5-year options; notice between 15 and 9 months before term end; renewal rent at 100% of fair market rent",
+        "permitted_use": "The practice of pediatric medicine and directly related administrative functions",
+        "exclusivity_clause": "Landlord will not lease other Building space to a medical practice whose primary specialty is pediatrics or pediatric urgent care; does not limit family-medicine or general-practice tenants",
+        "insurance_requirements": "$1,000,000 per occurrence / $3,000,000 aggregate commercial general liability; $1,000,000 per claim professional liability",
+        "default_cure_period": "25 days after written notice for non-monetary default (5 days for monetary)",
+        "square_footage": "4,675 rentable sq ft (4,250 usable)"
+      }
+    },
+    {
+      "id": "L06_lakeshore_single_tenant_retail",
+      "file": "L06_lakeshore_single_tenant_retail.pdf",
+      "ground_truth": {
+        "tenant": "Brightleaf Pharmacy Partners, LLC",
+        "landlord": "Lakeshore & Vine Family Trust",
+        "rent_amount": "$22,500.00",
+        "lease_start_date": "December 1, 2021",
+        "lease_end_date": "November 30, 2036",
+        "property_address": "600 Lakeshore Boulevard, Evanston, Illinois 60201",
+        "security_deposit": null,
+        "cam_charges": null,
+        "rent_escalation": "None during the primary term (fixed rent does not change)",
+        "renewal_options": "Four 5-year options; 6 months' written notice; rent $310,500/yr in first option then +10% each subsequent option",
+        "permitted_use": "A retail pharmacy and drug store plus lawful ancillary retail use, or any other lawful retail purpose",
+        "exclusivity_clause": null,
+        "insurance_requirements": "$3,000,000 per occurrence commercial general liability plus full-replacement-cost building insurance",
+        "default_cure_period": "30 days after written notice for non-monetary default (10 days for monetary)",
+        "square_footage": "13,500 sq ft"
+      }
+    },
+    {
+      "id": "L07_maple_court_shortform_shop",
+      "file": "L07_maple_court_shortform_shop.pdf",
+      "ground_truth": {
+        "tenant": "The Tinsmith's Daughter LLC",
+        "landlord": "Maple Court Rentals LLC",
+        "rent_amount": "$2,150.00",
+        "lease_start_date": "September 1, 2024",
+        "lease_end_date": null,
+        "property_address": "18 Maple Court, Unit B, Burlington, Vermont 05401",
+        "security_deposit": "$2,150.00",
+        "cam_charges": null,
+        "rent_escalation": null,
+        "renewal_options": null,
+        "permitted_use": "Retail sale of handmade goods and gifts",
+        "exclusivity_clause": null,
+        "insurance_requirements": null,
+        "default_cure_period": "10 days (rent more than 10 days late; landlord may terminate on written notice)",
+        "square_footage": null
+      }
+    },
+    {
+      "id": "L08_park_row_salon_gross",
+      "file": "L08_park_row_salon_gross.pdf",
+      "ground_truth": {
+        "tenant": "Gilded Thistle Salon & Spa, LLC",
+        "landlord": "Park Row Properties, Inc.",
+        "rent_amount": "$5,400.00",
+        "lease_start_date": "July 1, 2023",
+        "lease_end_date": "June 30, 2026",
+        "property_address": "92 Park Row, Suite 1, Providence, Rhode Island 02903",
+        "security_deposit": "$10,800.00",
+        "cam_charges": null,
+        "rent_escalation": "4% on each July 1",
+        "renewal_options": "One 3-year option; at least 120 days' written notice; 4% annual July 1 increases continue",
+        "permitted_use": "A hair salon and day spa offering hair, nail, skincare, and massage services",
+        "exclusivity_clause": "Lessor will not lease another unit in the 92 Park Row building to another full-service hair salon or day spa during the term or any renewal",
+        "insurance_requirements": "$1,000,000 per occurrence liability insurance; Lessor named as additional insured",
+        "default_cure_period": "14 days after written notice for non-monetary default (7 days for monetary)",
+        "square_footage": "2,100 sq ft"
+      }
+    },
+    {
+      "id": "L09_foundry_flex_space",
+      "file": "L09_foundry_flex_space.pdf",
+      "ground_truth": {
+        "tenant": "Halcyon Instruments LLC",
+        "landlord": "Foundry Block Ventures LLC",
+        "rent_amount": "$4,900.00",
+        "lease_start_date": "March 15, 2024",
+        "lease_end_date": "March 14, 2026",
+        "property_address": "355 Ironworks Avenue, Studio 4, Pittsburgh, Pennsylvania 15201",
+        "security_deposit": "$4,900.00",
+        "cam_charges": null,
+        "rent_escalation": "$4,900/mo for months 1-12, then $5,145/mo for months 13-24",
+        "renewal_options": null,
+        "permitted_use": "Light manufacturing and assembly of electronic measurement instruments, product design, and general office work",
+        "exclusivity_clause": null,
+        "insurance_requirements": "$1,000,000 each occurrence general liability insurance",
+        "default_cure_period": "20 days after written notice for non-monetary default (5 days for monetary)",
+        "square_footage": "2,800 sq ft"
+      }
+    },
+    {
+      "id": "L10_greenline_fitness_percentage",
+      "file": "L10_greenline_fitness_percentage.pdf",
+      "ground_truth": {
+        "tenant": "Paceline Studios Inc.",
+        "landlord": "Greenline Station Retail LLC",
+        "rent_amount": "$21,000.00",
+        "lease_start_date": "November 1, 2023",
+        "lease_end_date": "October 31, 2031",
+        "property_address": "4120 Transit Parkway, Suite 210, Somerville, Massachusetts 02143",
+        "security_deposit": "$84,000.00",
+        "cam_charges": "$11.50 per rentable square foot per annum (pro rata share of CAM, taxes, insurance)",
+        "rent_escalation": "3% on each Lease Year anniversary",
+        "renewal_options": "One 5-year option; at least 12 months' notice; renewal rent at greater of fair market rent or last-year base rent",
+        "permitted_use": "A boutique indoor cycling and group fitness studio plus incidental retail sale of fitness apparel and accessories",
+        "exclusivity_clause": "Landlord will not lease other Greenline Station space to a business whose primary use is indoor cycling or spin; carve-outs for a >20,000 sq ft health club and for yoga/Pilates studios",
+        "insurance_requirements": "$3,000,000 per occurrence commercial general liability including participant/athletic injury coverage",
+        "default_cure_period": "30 days after written notice for non-monetary default (5 days for monetary)",
+        "square_footage": "5,600 sq ft"
+      }
+    }
+  ],
+  "rent_rolls": [
+    {
+      "name": "rent_roll_broker_q1",
+      "file": "rent_rolls/rent_roll_broker_q1.csv",
+      "planted_disagreements": [
+        {
+          "address": "815 Franklin Avenue, Suite 1900, Denver, Colorado 80202",
+          "field": "rent_amount",
+          "note": "rent roll $30,200 vs lease base $32,900 \u2014 planted rent understatement"
+        },
+        {
+          "address": "1330 Wellspring Drive, Suite 220, Cary, North Carolina 27518",
+          "field": "lease_end_date",
+          "note": "rent roll 09/30/2033 vs lease September 30, 2034 \u2014 planted stale expiration"
+        }
+      ]
+    },
+    {
+      "name": "rent_roll_yardi_style",
+      "file": "rent_rolls/rent_roll_yardi_style.csv",
+      "planted_disagreements": [
+        {
+          "address": "92 Park Row, Suite 1, Providence, Rhode Island 02903",
+          "field": "tenant",
+          "note": "'Gilded Thistle Salon' vs lease 'Gilded Thistle Salon & Spa, LLC' \u2014 planted name-form difference"
+        },
+        {
+          "address": "4120 Transit Parkway, Suite 210, Somerville, Massachusetts 02143",
+          "field": "rent_amount",
+          "note": "rent roll $23,100 vs lease base $21,000 \u2014 planted rent overstatement"
+        }
+      ]
+    },
+    {
+      "name": "rent_roll_appfolio_style",
+      "file": "rent_rolls/rent_roll_appfolio_style.csv",
+      "planted_disagreements": []
+    }
+  ]
+}

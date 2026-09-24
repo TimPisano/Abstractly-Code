@@ -1,0 +1,181 @@
+lease_id,field,ground_truth_value
+01_ionetix_office_2026,tenant,"Ionetix Radioisotopes, Inc. (formerly known as Ionetix Corporation), a Delaware corporation"
+01_ionetix_office_2026,landlord,"Sonya Silverstein Rothstein, Julie M. Rothstein, Amy L. Rothstein and Susan H. Rothstein-Youakim, as Co-Trustees of the Sonya S. Rothstein Trust (u/a/d July 30, 2025)"
+01_ionetix_office_2026,rent_amount,"$7,250.00 per month (months 1-24), plus applicable sales tax"
+01_ionetix_office_2026,lease_start_date,"August 1, 2026"
+01_ionetix_office_2026,lease_end_date,"derived: July 31, 2028 (24 months after the Commencement Date; no explicit calendar expiration date stated)"
+01_ionetix_office_2026,property_address,"1950 S. Tamiami Trail (US-41), Sarasota, Florida 34239"
+01_ionetix_office_2026,security_deposit,"$15,000.00 (carried over from the $30,000.00 deposit under the prior 2017 lease; $15,000.00 returned to Lessee, $15,000.00 retained under this Lease)"
+01_ionetix_office_2026,cam_charges,
+01_ionetix_office_2026,rent_escalation,"No escalation during the initial 24-month term; Base Rent increases to $7,500.00/month for the renewal term (months 25-48)"
+01_ionetix_office_2026,renewal_options,"One 2-year renewal option; exercise by written notice not less than 180 days prior to expiration of the Initial Term; conditioned on no monetary default and no material non-monetary default; renewal rent $7,500.00/month"
+01_ionetix_office_2026,permitted_use,"Office/medical/research building activities including development of advanced cyclotron technology, production of medical isotopes, and uses similar or incidental thereto; and any other uses permitted by law"
+01_ionetix_office_2026,exclusivity_clause,
+01_ionetix_office_2026,insurance_requirements,"Public liability policy of not less than $3,000,000; Lessor and its lender named as additional insured. Property insurance at not less than 80% of replacement value with Lessor as additional insured."
+01_ionetix_office_2026,default_cure_period,15 days after written notice (both rent in arrears and other non-monetary defaults)
+01_ionetix_office_2026,square_footage,"approximately 8,000 square feet (building, parking and land)"
+02_convera_office_2005,tenant,Convera Corporation
+02_convera_office_2005,landlord,"Gateway 44, LLC"
+02_convera_office_2005,rent_amount,"$4,531.00 per month (Initial Premises, Lease Year 1, at $23.00 per rentable sq ft; annual base rent $54,372.00)"
+02_convera_office_2005,lease_start_date,"derived: not a fixed calendar date -- the 'Initial Premises Commencement Date' (earlier of possession or 15 days after substantial completion + Target Date). Lease dated June 10, 2005; Target Date August 1, 2005."
+02_convera_office_2005,lease_end_date,derived: 3 years (plus partial first month) after the Initial Premises Commencement Date; no fixed calendar date stated
+02_convera_office_2005,property_address,"6760 Alexander Bell Drive, Suite 260, Columbia, Maryland 21046 (Howard County)"
+02_convera_office_2005,security_deposit,"$4,531.00 (plus Advance Rent of $4,531.00)"
+02_convera_office_2005,cam_charges,Tenant pays its proportionate share of Building/Project operating expenses and real estate taxes above a 2006 base year; no fixed dollar amount stated
+02_convera_office_2005,rent_escalation,Annual step-ups in base rent: $23.00 / $23.69 / $24.40 per rentable sq ft in Lease Years 1 / 2 / 3 (approximately 3% per year)
+02_convera_office_2005,renewal_options,"One 3-year renewal option ('Renewal Term') at the Prevailing Market Rate, provided Tenant is not in default"
+02_convera_office_2005,permitted_use,General office purposes in accordance with applicable zoning regulations and for no other purpose (with a continuous-occupancy covenant)
+02_convera_office_2005,exclusivity_clause,
+02_convera_office_2005,insurance_requirements,"Tenant public liability insurance of not less than $2,000,000 combined single limit (per person / per occurrence); all-risk property at replacement cost; business interruption (>=12 months); workers' comp; plate glass. Landlord named as additional insured. Contractors: $200,000 CSL."
+02_convera_office_2005,default_cure_period,Monetary: 10 days after written notice that payment is past due. Non-monetary: 30 days after notice (extended if not curable in 30 days and Tenant is diligently pursuing cure).
+02_convera_office_2005,square_footage,"8,388 rentable square feet (2,364 sq ft Initial Premises / Suite 260 + 5,024 sq ft Remaining Premises / Suite 150)"
+05_conns_retail_2003,tenant,"C. A. I., L.P. (trade names ""Conn's"" and ""Conn Appliances""); guaranteed by Conn Appliances, Inc."
+05_conns_retail_2003,landlord,"Fiesta Mart, Inc."
+05_conns_retail_2003,rent_amount,"$17,722.00 per month (Minimum Guaranteed Rental, months 1-12; total MGR over term $2,618,400.00)"
+05_conns_retail_2003,lease_start_date,derived: not a fixed calendar date -- Commencement Date is the earlier of (i) 120 days after tender of possession or (ii) 5 days after a certificate of occupancy is issued
+05_conns_retail_2003,lease_end_date,derived: last day of the 120th full calendar month after the Commencement Date (10-year term); no fixed calendar date
+05_conns_retail_2003,property_address,"Beaumont Shopping Center, City of Beaumont, Jefferson County, Texas (specific street/legal description in Exhibit A, not in the lease body)"
+05_conns_retail_2003,security_deposit,
+05_conns_retail_2003,cam_charges,"Tenant's Pro Rata Share of Common Area Costs estimated $43,258.18 for the first calendar year ($0.49 per sq ft of Demised Premises floor area; $3,604.89/month). Pro rata share 88,283/137,514. Separate pro rata shares for real estate taxes ($0.34/sq ft) and insurance premiums ($0.06/sq ft)."
+05_conns_retail_2003,rent_escalation,"Stepped Minimum Guaranteed Rental: $17,722.00/month (months 1-12), $20,232.00/month (months 13-60), $23,910.00/month (months 61-120)"
+05_conns_retail_2003,renewal_options,"Two (2) five-year renewal options, per Exhibit H"
+05_conns_retail_2003,permitted_use,"Only for general office purposes and uses related directly thereto, and for no other purpose whatsoever (as stated in Section 1.1(s) -- note this is unusually narrow wording for an appliance retailer)"
+05_conns_retail_2003,exclusivity_clause,
+05_conns_retail_2003,insurance_requirements,"Tenant Commercial General Liability insurance of not less than $2,000,000.00 combined single limit, plus a $3,000,000.00 Excess Liability / Commercial Umbrella policy. Landlord maintains CGL of $2,000,000.00 combined single limit for the Common Areas."
+05_conns_retail_2003,default_cure_period,Monetary default: 10 days after written notice. Non-monetary default: 30 days after written notice. Plus an additional 3 days' written notice before Landlord pursues remedies.
+05_conns_retail_2003,square_footage,"approximately 88,283 square feet (Demised Premises within the Shopping Center)"
+07_growlife_retail_2014,tenant,"GrowLife Hydroponics, Inc., a Delaware corporation"
+07_growlife_retail_2014,landlord,"W-ADP Meadows VII, L.L.C., a Delaware limited liability company"
+07_growlife_retail_2014,rent_amount,"$4,051.25 per month (Minimum Rent, months 1-12, at $15.00 per rentable sq ft / $48,615.00 per year; first 3 full calendar months abated)"
+07_growlife_retail_2014,lease_start_date,"derived: not a fixed calendar date -- the Rent Commencement Date is the earlier of (i) the date Tenant opens for business or (ii) 60 days after Landlord's delivery of the premises. Agreement Effective Date: January 23, 2014."
+07_growlife_retail_2014,lease_end_date,derived: last day of the 39th full calendar month after the Rent Commencement Date (39-month term); no fixed calendar date
+07_growlife_retail_2014,property_address,"4880 Baseline Road, Building E, Suite 106, Boulder, CO 80303 (in the shopping center 'Meadows on the Parkway')"
+07_growlife_retail_2014,security_deposit,"$5,590.73"
+07_growlife_retail_2014,cam_charges,"Tenant's Proportionate Share of Operating Expenses (utilities, real property taxes, Landlord's insurance, management fee up to 4% of gross rents, supervision/admin fee up to 15%, amortized capital improvements); proportionate share = rentable area of Leased Premises / rentable area of all Landlord-owned buildings in the Shopping Center. No fixed dollar amount."
+07_growlife_retail_2014,rent_escalation,"Stepped Minimum Rent, approximately 3% per year: $15.00/sq ft (months 1-12), $15.45/sq ft (months 13-24), and a further step in year 3"
+07_growlife_retail_2014,renewal_options,One option to extend for one additional 36-month period; conditioned on Tenant not being in default and operating per the Permitted Use
+07_growlife_retail_2014,permitted_use,"Solely for the purpose of operating a retail store selling hydroponic horticulture products, and for no other purpose without Landlord's prior written consent"
+07_growlife_retail_2014,exclusivity_clause,
+07_growlife_retail_2014,insurance_requirements,"Tenant Commercial General Liability insurance, minimum combined single limit $1,000,000 / general aggregate $2,000,000 (aggregate applies per-location); Special Form property insurance at full replacement cost (deductible <= $10,000); automobile liability $1,000,000; workers' compensation + employers' liability $1,000,000. Landlord, Landlord's mortgagee and managing agent named as additional insureds."
+07_growlife_retail_2014,default_cure_period,"Monetary default (Rent): immediate, no notice or cure period ('without the necessity of demand therefor or notice thereof'). Non-monetary default: 5 days after written notice."
+07_growlife_retail_2014,square_footage,"approximately 3,241 rentable square feet (Space E-106)"
+10_dover_retail_2006,tenant,"Dover Saddlery Retail, Inc."
+10_dover_retail_2006,landlord,"Sparks Lot Seven, LLC (c/o Obrecht Properties, LLC)"
+10_dover_retail_2006,rent_amount,"$12,523.25 per month (Lease Years 1-3 at $18.34 per sq ft/year on 8,194 sq ft; first 60 days abated)"
+10_dover_retail_2006,lease_start_date,"derived: not a fixed calendar date -- the Commencement Date is when Landlord substantially completes construction, estimated 'on or about July 1, 2006'. Lease dated March 29, 2006."
+10_dover_retail_2006,lease_end_date,"derived: 11:59 p.m. on the day before the 10th anniversary of the first day of the first full calendar month after the Commencement Date (10-year Original Term); approximately June 30, 2016 if commencement is July 1, 2006"
+10_dover_retail_2006,property_address,"10 Fila Way, Sparks, Maryland 21152 (Lot 7, Sparks Corporate Center)"
+10_dover_retail_2006,security_deposit,"$12,500.00"
+10_dover_retail_2006,cam_charges,"Tenant's proportionate share of Annual Operating Costs (real property and similar taxes/assessments, utilities, trash removal, grounds/common area/mechanical-systems maintenance, and other costs of operating and maintaining the Property). No fixed dollar amount."
+10_dover_retail_2006,rent_escalation,"Stepped Base Rent over the 10-year Original Term: $18.34/sq ft (Years 1-3), $19.99 (Years 4-6), $21.79 (Years 7-9), $23.75 (Year 10)"
+10_dover_retail_2006,renewal_options,Two successive 5-year Renewal Terms; written notice at least 180 days before the Renewal Term begins; Landlord may void the renewal if an uncured material default exists at the end of the prior Term. Renewal Base Rent: $23.75 then $25.89/sq ft (First Renewal); $28.22 then $30.76/sq ft (Second Renewal).
+10_dover_retail_2006,permitted_use,For and only for an 'upscale specialty retailer and direct marketer of equestrian products' similar to other Dover Saddlery stores in the United States
+10_dover_retail_2006,exclusivity_clause,"Landlord shall not enter into any lease with a tenant new to the Property allowing space to be used for retail sale of tack, riding apparel, boots, shoes, leather products, medications and ointments related to horse care, saddles, and items related to the care and keeping of horses (subject to carve-outs for unavoidable overlap; enforcement mechanics in Section 3.5)"
+10_dover_retail_2006,insurance_requirements,"Tenant general public liability insurance of not less than $1,000,000 for bodily injury/death of any one person per occurrence, $1,000,000 for all persons per occurrence, and $500,000 for property damage per occurrence, plus full replacement cost of contents. Landlord (and, on request, any mortgagee) named as additional insured; primary and non-contributory; 30 days' cancellation notice."
+10_dover_retail_2006,default_cure_period,"Monetary default: 5 days after written notice. Non-monetary default: 30 days after written notice to begin curing, with full cure within 90 days. No grace period more than twice in any 12-month period."
+10_dover_retail_2006,square_footage,"8,194 square feet (4,567 sq ft first-floor Retail Space + 3,627 sq ft second-floor Office Space)"
+13_altiris_office_2001,tenant,"Altiris, Inc."
+13_altiris_office_2001,landlord,"Canopy Properties, Inc."
+13_altiris_office_2001,rent_amount,"$73,225.28 per month (Base Rent of $878,703.30 annually, year 1; plus separate additional rent of $8,834/month and $12,583/month for above-standard improvements/cabling and furniture per amortization schedules)"
+13_altiris_office_2001,lease_start_date,"January 1, 2002"
+13_altiris_office_2001,lease_end_date,"December 31, 2006"
+13_altiris_office_2001,property_address,"Canopy Office Building III, 588 West 400 South, Lindon, Utah (Suites 250, 300, 350 plus storage space adjacent to the receiving dock)"
+13_altiris_office_2001,security_deposit,
+13_altiris_office_2001,cam_charges,Tenant's Percentage Share of Operating Costs = 53.78%; Basic Operating Costs and Taxes adjusted over a Base Year of 1/1/2002 - 12/31/2002. No fixed dollar amount.
+13_altiris_office_2001,rent_escalation,Base Rent escalates annually at the Wall Street Journal published CPI rate each year of the term
+13_altiris_office_2001,renewal_options,"Two 5-year options to renew, upon 6 months' prior written notice; renewal rate not to exceed market rate, or a maximum 3%/year increase from the initial term, whichever is less"
+13_altiris_office_2001,permitted_use,General office purposes and for no other use or purpose without Landlord's prior written consent (no retail sales without Landlord's prior written consent)
+13_altiris_office_2001,exclusivity_clause,
+13_altiris_office_2001,insurance_requirements,"Tenant liability insurance of $1,000,000 for property damage and $2,000,000 per occurrence for personal injuries or deaths occurring on the Premises"
+13_altiris_office_2001,default_cure_period,"Monetary default (rent): Landlord gives one written notice per calendar year; after that, no further notice required before exercising remedies. Non-monetary default: 10 days from written notice (extended if the default cannot reasonably be cured in 10 days and Tenant commences and diligently pursues cure)."
+13_altiris_office_2001,square_footage,"47,395 approximate square feet (Building size 88,124 sq ft)"
+14_bareescentuals_office_2006,tenant,"MD Beauty, Inc., a Delaware corporation"
+14_bareescentuals_office_2006,landlord,"ECI Stevenson LLC, a California limited liability company"
+14_bareescentuals_office_2006,rent_amount,"$90,781.69 per month (Years 1-3, annual Base Rent $1,089,380.25 at $30.75 per rentable sq ft; first 180 days abated for the 22nd/23rd floor space and for Suites 1825/1815 respectively)"
+14_bareescentuals_office_2006,lease_start_date,"June 1, 2005 (the 22nd/23rd Floor Commencement Date, which is the Lease Commencement Date; Suites 1825/1815 Commencement Date is July 1, 2005)"
+14_bareescentuals_office_2006,lease_end_date,"derived: the last day of the calendar month in which the 10th anniversary of the Suites 1825/1815 Commencement Date (July 1, 2005) falls -- i.e. July 31, 2015"
+14_bareescentuals_office_2006,property_address,"71 Stevenson Street, San Francisco, California 94105 (Suites 2200, 2300, 1825 and 1815 in a 23-story, approximately 323,275 rentable sq ft office building)"
+14_bareescentuals_office_2006,security_deposit,"Letter of credit in the amount of $275,000 (subject to L/C Burnoff; increases proportionately if Tenant leases more than 35,427 rentable sq ft)"
+14_bareescentuals_office_2006,cam_charges,Tenant's Share approximately 10.96%; Direct Expenses adjusted over a Base Year of calendar year 2005. No fixed dollar amount.
+14_bareescentuals_office_2006,rent_escalation,"Stepped Base Rent: $30.75/rentable sq ft (Years 1-3), $32.75 (Years 4-7), $34.75 (Year 8 to end of Term); increases occur on the anniversary of the Suites 1825/1815 Commencement Date"
+14_bareescentuals_office_2006,renewal_options,One 5-year Extension Option at Fair Market Base Rental; written notice at least 12 months but not more than 15 months before the initial Term expires; personal to MD Beauty and its Permitted Transferees; Tenant not in default
+14_bareescentuals_office_2006,permitted_use,"General office use only, consistent with a first-class office building"
+14_bareescentuals_office_2006,exclusivity_clause,
+14_bareescentuals_office_2006,insurance_requirements,"Tenant Commercial General Liability insurance with limits not less than: bodily injury and property damage liability $3,000,000 each occurrence / $3,000,000 annual aggregate; personal injury liability $3,000,000 each occurrence / $3,000,000 annual aggregate"
+14_bareescentuals_office_2006,default_cure_period,Monetary default (Rent): 5 business days after notice. Non-monetary default: 30 days after written notice (up to 60 days if the default cannot reasonably be cured in 30 days and Tenant diligently pursues cure).
+14_bareescentuals_office_2006,square_footage,"35,427 rentable square feet (12,332 sq ft Suite 2200 + 12,398 sq ft Suite 2300 + 9,614 sq ft Suite 1825 + 1,083 sq ft Suite 1815)"
+15_formfactor_industrial_2002,tenant,"Form Factor, Inc., a Delaware corporation"
+15_formfactor_industrial_2002,landlord,"Richard K. and Pamela Corbett, Robert and Cheryl Rumberger, and Connie Duke (individuals)"
+15_formfactor_industrial_2002,rent_amount,"$8,551.00 per month"
+15_formfactor_industrial_2002,lease_start_date,"April 1, 1998"
+15_formfactor_industrial_2002,lease_end_date,"March 31, 2003"
+15_formfactor_industrial_2002,property_address,"2020 Research Drive, Livermore, California (County of Alameda; APN 99A-1500-6-23)"
+15_formfactor_industrial_2002,security_deposit,"$8,551.00"
+15_formfactor_industrial_2002,cam_charges,
+15_formfactor_industrial_2002,rent_escalation,"Scheduled Base Rent step-ups: $8,551.00/month, increasing to $9,149.57 on April 1, 2000 and to $9,790.04 on April 1, 2002"
+15_formfactor_industrial_2002,renewal_options,"Two options to extend, 3 years each; written notice at least 6 months before the current term expires; rent at then-current market rent, but not less than the rent being paid at the end of the current term"
+15_formfactor_industrial_2002,permitted_use,"Office space, laboratory space and other permitted uses"
+15_formfactor_industrial_2002,exclusivity_clause,
+15_formfactor_industrial_2002,insurance_requirements,"Lessee Commercial General Liability policy with single-limit coverage of not less than $1,000,000 per occurrence. Lessor is the Insuring Party for property insurance."
+15_formfactor_industrial_2002,default_cure_period,Monetary default (Base Rent / other monetary payment / evidence of insurance): 3 days following written notice. Failure to provide required documentation: 10 days following written notice. Other non-monetary default: 30 days after written notice (extended if the cure reasonably requires more than 30 days and Lessee commences and diligently prosecutes it).
+15_formfactor_industrial_2002,square_footage,"10,060 square feet (two-story office building on 0.864 acres)"
+16_dialysis_medical_2001,tenant,Dialysis Corporation of America
+16_dialysis_medical_2001,landlord,"Commons Office Research, LLC"
+16_dialysis_medical_2001,rent_amount,"$3,883.33 per month (Rental Year 1; annual Base Rent $46,599.96)"
+16_dialysis_medical_2001,lease_start_date,"derived: not a fixed calendar date -- the Commencement Date is the earlier of (a) the date Tenant takes possession or (b) 15 days after substantial completion and related conditions. Target Date June 15, 2001; Lease dated June 11, 2001."
+16_dialysis_medical_2001,lease_end_date,derived: 5 years (plus partial first month) after the Commencement Date; no fixed calendar date stated
+16_dialysis_medical_2001,property_address,"1344 Ashton Road, Suite 201, Hanover, Maryland (Fifth Election District, Anne Arundel County)"
+16_dialysis_medical_2001,security_deposit,"$3,833.33 (Advance Rental also $3,833.33)"
+16_dialysis_medical_2001,cam_charges,"Tenant's Proportionate Share (approximately 2,330/16,865 = 13.8%) of Building Expenses over a 2000 Base Year and of Taxes over a 2000-2001 Base Year. No fixed dollar amount."
+16_dialysis_medical_2001,rent_escalation,"Stepped annual Base Rent (approximately 2%/year): $46,599.96 / $47,532.00 / $48,482.64 / $49,452.24 / $50,441.28 per year for Rental Years 1-5 (monthly $3,883.33 / $3,961.00 / $4,040.22 / $4,121.02 / $4,203.44)"
+16_dialysis_medical_2001,renewal_options,"One 5-year Renewal Term (Option to Extend), at the Prevailing Market Rate; provided Tenant is not in default"
+16_dialysis_medical_2001,permitted_use,Solely for general office purposes in accordance with applicable zoning regulations and for no other purpose (with a continuous-occupancy covenant)
+16_dialysis_medical_2001,exclusivity_clause,
+16_dialysis_medical_2001,insurance_requirements,"Tenant public liability insurance of not less than $2,000,000 combined single limit (per person and per occurrence) for personal injury, death and property damage; all-risk property/casualty at replacement cost. Contractors: $200,000 combined single limit. Landlord named as additional insured."
+16_dialysis_medical_2001,default_cure_period,Monetary default: 10 days after receipt of written notice that the amount is past due. Non-monetary default: 30 days after notice (extended if the default cannot be cured in 30 days and Tenant is diligently pursuing cure).
+16_dialysis_medical_2001,square_footage,"2,330 rentable square feet (Building: 16,865 rentable sq ft)"
+17_familysteak_retail_2002,tenant,"Family Steak Houses of Florida, Inc., a Florida corporation, d/b/a Ryan's Grill, Buffet & Bakery"
+17_familysteak_retail_2002,landlord,"E.D.I. II Investments, Inc., a Florida corporation"
+17_familysteak_retail_2002,rent_amount,"$18,943.75 per month (Lease Years 1-5; annual Base Rent $227,325.00). Plus percentage rent of 5.0% of gross receipts above a $3,500,000 Gross Receipts Floor."
+17_familysteak_retail_2002,lease_start_date,"derived: not a fixed calendar date -- the Commencement Date is 150 days after Landlord delivers the building pad, or the opening for business, whichever occurs first. Lease dated 2002 (day/month left blank in the document)."
+17_familysteak_retail_2002,lease_end_date,derived: 11:59 p.m. on the last day of the 15th Lease Year (15-year term); no fixed calendar date
+17_familysteak_retail_2002,property_address,"5370 International Drive, Orlando, FL 32819"
+17_familysteak_retail_2002,security_deposit,
+17_familysteak_retail_2002,cam_charges,"Estimated Monthly Operating Expenses of $4,059.37/month for the first Lease Year, based on $4.50 per square foot of Net Rentable Area per annum; subject to adjustment (Section 19.2). Tenant's proportionate share."
+17_familysteak_retail_2002,rent_escalation,"'Inflation Rent': Base Rent increases 10% every 5 Lease Years -- $227,325.00/year (Years 1-5), $250,057.50/year (Years 6-10), $275,063.25/year (Years 11-15)"
+17_familysteak_retail_2002,renewal_options,Two successive 10-year renewal option terms (Section 33)
+17_familysteak_retail_2002,permitted_use,"Initially only as a Ryan's Grill, Buffet and Bakery serving breakfast, lunch and dinner (and as a Tourist Information Attraction Ticket outlet and any use permitted under the Timeshare Lease); may later convert to a sit-down family restaurant or dinner house (not fast food) if not competing with another tenant on the Property"
+17_familysteak_retail_2002,exclusivity_clause,"Section 4.4 'Tenant's Exclusive': while Tenant is not in default and is operating as a Ryan's Grill, Buffet and Bakery, Landlord will not lease to another operator, or operate itself, the uses listed on Exhibit G ('Prohibited Uses'); does not preclude other restaurants not on Exhibit G. Any Phase II free-standing restaurant is limited to 6,500 leasable sq ft unless Landlord adds parking."
+17_familysteak_retail_2002,insurance_requirements,"'Minimum Coverage': bodily injury and property damage of not less than $2,000,000 per person and $2,000,000 per occurrence, with umbrella coverage of $10,000,000 per occurrence, and $1,000,000 for property damage"
+17_familysteak_retail_2002,default_cure_period,"Monetary default (rent/money): 3 days after written notice. Non-monetary default: 10 days after written notice (extendable to 30 days if not a health/safety threat, more than 10 days is reasonably required, and Tenant commences within 10 days and diligently cures). No notice/cure right after 2 or more compliance failures in any 12-month period."
+17_familysteak_retail_2002,square_footage,"approximately 10,825 square feet of Net Rentable Area (free-standing building on a building pad)"
+18_cuyamacabank_retail_2002,tenant,"Cuyamaca Bank, NA"
+18_cuyamacabank_retail_2002,landlord,"The Auerbach Realty Group, LLC"
+18_cuyamacabank_retail_2002,rent_amount,"$6,630.00 per month (Fixed Minimum Monthly Rent; Fixed Annual Rental Rate $79,560.00)"
+18_cuyamacabank_retail_2002,lease_start_date,"October 1, 2003"
+18_cuyamacabank_retail_2002,lease_end_date,"September 30, 2008"
+18_cuyamacabank_retail_2002,property_address,"8002 La Mesa Boulevard, La Mesa, San Diego County, CA 91941"
+18_cuyamacabank_retail_2002,security_deposit,
+18_cuyamacabank_retail_2002,cam_charges,"Tenant pays its proportionate (pro rata) share of real property taxes, insurance, and the cost to maintain the common areas. No fixed dollar amount."
+18_cuyamacabank_retail_2002,rent_escalation,Fixed Minimum Monthly Rent increases 3% each year
+18_cuyamacabank_retail_2002,renewal_options,"Two options to extend, 5 years each; written notice at least 90 days and not more than 270 days before the option period commences; Tenant not in default. First year of each option at prevailing market rate (appraiser mechanism), then 3%/year increases thereafter."
+18_cuyamacabank_retail_2002,permitted_use,Only as a full service bank branch and for no other purpose whatsoever
+18_cuyamacabank_retail_2002,exclusivity_clause,
+18_cuyamacabank_retail_2002,insurance_requirements,"Broad form comprehensive general liability insurance with limits of not less than $1,000,000 combined single limit for bodily injury and property damage (property-damage coverage to include plate glass)"
+18_cuyamacabank_retail_2002,default_cure_period,Monetary default (rent): continues more than 3 days after written notice. Non-monetary default: continues more than 15 days after written notice. (Separate 5-day late-charge trigger with no notice required.)
+18_cuyamacabank_retail_2002,square_footage,"approximately 4,737 square feet"
+19_saflink_office_2003,tenant,"Saflink Corporation, a Delaware corporation"
+19_saflink_office_2003,landlord,"VA Branches, LLC, a Delaware limited liability company"
+19_saflink_office_2003,rent_amount,"$11,025.44 per month (Base Monthly Rent; Base Annual Rent $132,305.25)"
+19_saflink_office_2003,lease_start_date,"derived: Commencement Date 'on or about February 1, 2004', upon substantial completion of tenant improvements and receipt of the Certificate of Occupancy. Deed of Lease dated November 10, 2003."
+19_saflink_office_2003,lease_end_date,"January 31, 2009 (stated; five years after the Rent Commencement Date)"
+19_saflink_office_2003,property_address,"1875 Campus Commons Drive, Suite 301, Reston, Virginia 20191 (Building: 'Campus South')"
+19_saflink_office_2003,security_deposit,"$11,025.44"
+19_saflink_office_2003,cam_charges,Tenant's Proportionate Share (10.8%) of increases in Operating Expenses over the Base Operating Expense Amount (Operating Expenses for calendar year 2004). No fixed dollar amount.
+19_saflink_office_2003,rent_escalation,Annual adjustments to Base Annual Rent of 3%
+19_saflink_office_2003,renewal_options,"One 3-year extension term; provided the Lease is in effect, Tenant is not and has not been in default, and Tenant occupies at least 95% of the Demised Premises. Initial Term Renewal Request at least 9 months before expiration; rent at 100% of prevailing market rent (mutual agreement or MAI Appraisal Process), not less than the rent paid in the last Lease Year of the initial term."
+19_saflink_office_2003,permitted_use,General office use and light assembly of software packages
+19_saflink_office_2003,exclusivity_clause,
+19_saflink_office_2003,insurance_requirements,"Tenant broad form commercial general liability policy of not less than $1,000,000 per occurrence and $2,000,000 in the aggregate; insures Tenant's performance of the Section 18(c) indemnity"
+19_saflink_office_2003,default_cure_period,"Monetary default (Base Annual Rent / Additional Rent): 5 days after written notice that the amount is overdue (or, if Tenant received 2 or more such notices in the preceding 12 months, 5 days after the due date with no further notice). Non-monetary default: 10 days after written notice."
+19_saflink_office_2003,square_footage,"6,083 rentable square feet (Building: 56,359 rentable sq ft)"
