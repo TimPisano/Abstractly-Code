@@ -691,6 +691,30 @@ const Api = {
         return apiRequest('/portfolio/investment-memo.xlsx', { method: 'POST', body: formData });
     },
 
+    // Deal Mismatch Report (see backend/app/deal_mismatch.py): rent
+    // roll vs. lease discrepancies with a per-row dollar impact and a
+    // portfolio-level overstatement/understatement summary. POST, same
+    // reasoning as the investment memo export -- optional scope only
+    // for now, but keeps the door open for an optional file attachment
+    // later without a route-method change.
+    dealMismatchReport({ propertyAddress } = {}) {
+        const formData = new FormData();
+        if (propertyAddress) formData.append('property_address', propertyAddress);
+        return apiRequest('/portfolio/deal-mismatch-report', { method: 'POST', body: formData });
+    },
+
+    exportDealMismatchReportPdf({ propertyAddress } = {}) {
+        const formData = new FormData();
+        if (propertyAddress) formData.append('property_address', propertyAddress);
+        return apiRequest('/portfolio/deal-mismatch-report.pdf', { method: 'POST', body: formData });
+    },
+
+    exportDealMismatchReportExcel({ propertyAddress } = {}) {
+        const formData = new FormData();
+        if (propertyAddress) formData.append('property_address', propertyAddress);
+        return apiRequest('/portfolio/deal-mismatch-report.xlsx', { method: 'POST', body: formData });
+    },
+
     // ---- Team management (admin-only on the backend -- see
     // app/auth.py's require_role('admin')). ----
 
