@@ -381,6 +381,17 @@ def init_db() -> None:
             )
         """)
         conn.execute("""
+            CREATE TABLE IF NOT EXISTS demo_requests (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                work_email TEXT NOT NULL,
+                company TEXT NOT NULL,
+                units INTEGER NOT NULL,
+                message TEXT,
+                created_at TEXT NOT NULL
+            )
+        """)
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS pageviews (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 path TEXT NOT NULL,
@@ -771,6 +782,7 @@ def reset_db() -> None:
         conn.execute("DROP TABLE IF EXISTS discrepancies")
         conn.execute("DROP TABLE IF EXISTS leases")
         conn.execute("DROP TABLE IF EXISTS waitlist_signups")
+        conn.execute("DROP TABLE IF EXISTS demo_requests")
         conn.execute("DROP TABLE IF EXISTS activity_log")
         conn.execute("DROP TABLE IF EXISTS users")
         conn.execute("DROP TABLE IF EXISTS assignments")
@@ -1693,6 +1705,36 @@ def insert_waitlist_signup(email: str) -> Dict[str, Any]:
         return {"status": "created", "id": cur.lastrowid}
     except sqlite3.IntegrityError:
         return {"status": "duplicate"}
+    finally:
+        conn.close()
+
+
+def insert_demo_request(name: str, work_email: str, company: str, units: int, message: Optional[str]) -> int:
+    """Add a Book a Demo submission from the landing page. Returns the new row's id.
+    Unlike insert_waitlist_signup, there's no uniqueness constraint here --
+    the same company legitimately submits more than once (different
+    contacts, a follow-up with more detail), so every submission is its
+    own row rather than being deduplicated."""
+    conn = get_connection()
+    try:
+        cur = conn.execute(
+            "INSERT INTO demo_requests (name, work_email, company, units, message, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (name, work_email, company, units, message, datetime.now(timezone.utc).isoformat()),
+        )
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def get_all_demo_requests() -> List[Dict[str, Any]]:
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM demo_requests ORDER BY created_at DESC"
+        ).fetchall()
+        return [dict(r) for r in rows]
     finally:
         conn.close()
 

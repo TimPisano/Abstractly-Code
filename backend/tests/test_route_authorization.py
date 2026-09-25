@@ -29,6 +29,11 @@ _PUBLIC_MUTATING = {
     # /waitlist above, not an oversight. See POST /analytics/pageview's
     # own docstring.
     "/analytics/pageview",
+    # The landing page's "Book a Demo" form (frontend/landing.js) --
+    # same "public by design" category as /waitlist above. CSRF is
+    # still enforced (see security.py), plus its own rate limit and
+    # honeypot check (see api.py's POST /demo-request).
+    "/demo-request",
 }
 
 

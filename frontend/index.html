@@ -3,24 +3,24 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Abstractly — Lease-vs-Rent-Roll Reconciliation for Real Estate Underwriting</title>
+    <title>Abstractly — Catch Rent Roll Errors Before They Cost You At Closing</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml">
     <link rel="icon" href="/favicon.ico" sizes="32x32">
     <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-    <meta name="description" content="Abstractly reads the leases behind a rent roll and checks them against it line by line, then hands you a report of every place the two disagree — each finding traced to the page and quote in the lease. Built for acquisitions analysts and asset managers.">
+    <meta name="description" content="Abstractly reads the leases behind a multifamily rent roll and checks them against it unit by unit before your deal closes, then hands you every mismatch with its dollar impact — ready to export for your lender or LP. Built for mid-size multifamily syndicators.">
     <!-- og:image / og:url are absolute per the OG spec; update the host
          here if the deployed frontend URL changes (same as config.js). -->
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="Abstractly">
-    <meta property="og:title" content="Abstractly — Lease-vs-Rent-Roll Reconciliation for Real Estate Underwriting">
-    <meta property="og:description" content="Abstractly reads the leases behind a rent roll and checks them against it line by line, then hands you a report of every place the two disagree — each finding traced to the page and quote in the lease. Built for acquisitions analysts and asset managers.">
+    <meta property="og:title" content="Abstractly — Catch Rent Roll Errors Before They Cost You At Closing">
+    <meta property="og:description" content="Abstractly reads the leases behind a multifamily rent roll and checks them against it unit by unit before your deal closes, then hands you every mismatch with its dollar impact — ready to export for your lender or LP. Built for mid-size multifamily syndicators.">
     <meta property="og:url" content="https://abstractly-n0id.onrender.com/">
     <meta property="og:image" content="https://abstractly-n0id.onrender.com/og-image.png">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="Abstractly — Lease-vs-Rent-Roll Reconciliation for Real Estate Underwriting">
-    <meta name="twitter:description" content="Abstractly reads the leases behind a rent roll and checks them against it line by line, then hands you a report of every place the two disagree — each finding traced to the page and quote in the lease. Built for acquisitions analysts and asset managers.">
+    <meta name="twitter:title" content="Abstractly — Catch Rent Roll Errors Before They Cost You At Closing">
+    <meta name="twitter:description" content="Abstractly reads the leases behind a multifamily rent roll and checks them against it unit by unit before your deal closes, then hands you every mismatch with its dollar impact — ready to export for your lender or LP. Built for mid-size multifamily syndicators.">
     <meta name="twitter:image" content="https://abstractly-n0id.onrender.com/og-image.png">
     <link rel="preload" href="fonts/inter-latin-var.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="stylesheet" href="design-system.css">
@@ -43,7 +43,7 @@
             <a href="#trust">Trust &amp; Security</a>
             <a href="#faq">FAQ</a>
             <a href="pricing.html">Pricing</a>
-            <a href="#request-access">Request Access</a>
+            <a href="#book-demo">Book a Demo</a>
             <a href="/app/login.html" class="nav-client-login">Client Login</a>
         </div>
     </nav>
@@ -51,7 +51,7 @@
     <main id="mainContent">
 
     <!-- ===================== Hero ===================== -->
-    <header class="hero" id="request-access">
+    <header class="hero">
         <div class="hero-bg" aria-hidden="true">
             <div class="hero-glow"></div>
             <div class="hero-grid"></div>
@@ -84,29 +84,19 @@
         </div>
 
         <div class="hero-inner reveal">
-            <span class="eyebrow">Lease-vs-rent-roll reconciliation</span>
-            <h1>Your rent roll says one thing.<br><span class="accent">The lease says another.</span></h1>
+            <span class="eyebrow">Built for multifamily syndicators</span>
+            <h1>Catch rent roll errors<br><span class="accent">before they cost you at closing.</span></h1>
             <p class="hero-subhead">
-                Abstractly reads the actual lease documents behind a rent roll
-                and checks them against it line by line — tenant, rent,
-                escalations, expiration dates. You get back one thing: a
-                discrepancy report showing exactly where the rent roll and the
-                leases conflict, every finding linked to the page and quote in
-                the lease it came from. It's the cross-check every acquisition
-                needs and nobody does by hand across a whole portfolio.
+                Abstractly reads the actual leases behind a multifamily rent
+                roll and checks them against it unit by unit — tenant, rent,
+                escalations, lease dates — before your deal closes, not after.
+                You get back every place the rent roll and the leases
+                disagree, each one with its dollar impact and traced to the
+                page and quote in the lease it came from.
             </p>
 
-            <div class="hero-form-wrap" id="heroFormWrap">
-                <form class="waitlist-form" id="waitlistForm">
-                    <input type="email" id="waitlistEmail" placeholder="you@company.com" required autocomplete="email" aria-label="Email address">
-                    <button type="submit" class="btn-primary" id="waitlistSubmitBtn">Request Access</button>
-                </form>
-                <div class="waitlist-confirm" id="waitlistConfirm">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                    <span>Your request has been received. If it's a fit, we'll be in touch.</span>
-                </div>
-                <p class="waitlist-error" id="waitlistError"></p>
-                <p class="waitlist-note">By request only — we personally review every inquiry.</p>
+            <div class="hero-cta-wrap">
+                <a href="#book-demo" class="btn-primary hero-cta">Book a Demo</a>
                 <a class="hero-sample-link" href="#sample">See a sample discrepancy report &darr;</a>
             </div>
         </div>
@@ -116,23 +106,46 @@
     <section class="how-it-works" id="how-it-works">
         <div class="section-heading reveal">
             <span class="eyebrow">How It Works</span>
-            <h2>Two Files In. A List Of Every Disagreement Out.</h2>
+            <h2>Two Files In. Every Mismatch Out.</h2>
         </div>
         <div class="steps-grid">
             <div class="step-card reveal">
                 <div class="step-number">1</div>
-                <h3>Upload the rent roll — and the leases behind it</h3>
+                <h3>Upload your leases and rent roll</h3>
                 <p>A Yardi, AppFolio, RealPage, MRI, or Buildium export, a broker's hand-built Excel, a PDF, even a scanned one. No reformatting, no fixed column layout.</p>
             </div>
             <div class="step-card reveal">
                 <div class="step-number">2</div>
-                <h3>We read every lease and line it up against the rent roll</h3>
-                <p>Every lease term — tenant, rent, escalation, expiration — is extracted with the exact page and quote it came from, then matched unit by unit against what the rent roll claims for that space.</p>
+                <h3>See every mismatch, with dollar impact</h3>
+                <p>Every lease term — tenant, rent, escalation, expiration — is extracted with the exact page and quote it came from, matched unit by unit against the rent roll, and flagged with what the gap actually costs.</p>
             </div>
             <div class="step-card reveal">
                 <div class="step-number">3</div>
-                <h3>You get the discrepancy report</h3>
-                <p>Every place the two disagree: a rent that doesn't match the lease, a tenant who was replaced, an expiration the management data never caught up to. Each finding traces back to the lease text, so your analyst confirms it in seconds instead of re-reading the file.</p>
+                <h3>Export a report for your lender or LP</h3>
+                <p>Every finding traces back to the lease text, so whoever's underwriting the deal confirms it in seconds instead of re-reading the file — and it's ready to hand off, not just to eyeball.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===================== Why multifamily is different ===================== -->
+    <section class="differentiator" id="why-multifamily">
+        <div class="section-heading reveal">
+            <span class="eyebrow">Why Multifamily Is Different</span>
+            <h2>Built For Hundreds Of Units, Not A Handful Of Tenants</h2>
+            <p>Most lease-review tools were built for commercial CRE — a handful of long, heavily negotiated leases per building. Multifamily is a different problem entirely.</p>
+        </div>
+        <div class="differentiator-grid">
+            <div class="differentiator-card reveal">
+                <h3>Volume, not negotiation</h3>
+                <p>A mid-size portfolio can mean hundreds of similar residential leases, not a dozen heavily negotiated commercial ones. Checking that by hand doesn't scale — and a tool built to review 15 anchor tenants a year wasn't built for 300 units.</p>
+            </div>
+            <div class="differentiator-card reveal">
+                <h3>Constant turnover</h3>
+                <p>Unit leases renew and turn over year-round across a portfolio, not on a handful of scheduled dates. The rent roll drifts from the actual leases continuously — not occasionally — which is exactly why it needs checking before every acquisition, not just once a year.</p>
+            </div>
+            <div class="differentiator-card reveal">
+                <h3>Built for the closing table, not asset management</h3>
+                <p>This isn't a tool for an owner managing a handful of tenants over years. It's for the diligence window before you sign — checking what the seller's rent roll claims against what the leases actually say, while you can still walk or reprice.</p>
             </div>
         </div>
     </section>
@@ -215,7 +228,7 @@
                 </div>
             </div>
 
-            <p class="sample-report-foot"><strong>Coming soon:</strong> upload your own lease and rent roll and get this back in minutes. For now, <a href="#request-access">request access</a> to run it on a real deal.</p>
+            <p class="sample-report-foot"><strong>Note:</strong> this run happened to be on a commercial unit — the reconciliation itself works the same way on a multifamily rent-roll line: same unit-by-unit match against the lease, same dollar-impact and citation format. <a href="#book-demo">Book a demo</a> to see it on your own rent roll.</p>
         </div>
     </section>
 
@@ -236,7 +249,7 @@
     <section class="platform" id="platform">
         <div class="section-heading reveal">
             <span class="eyebrow">Platform</span>
-            <h2>Built For The Analyst Who Reviews These By Hand</h2>
+            <h2>Built For The Team That Checks The Rent Roll By Hand</h2>
             <p>Three things a rent roll needs before it's actually usable — standardized structure, real validation, and analysis you can underwrite from. Items marked "Coming soon" are on our roadmap, not live yet.</p>
         </div>
         <div class="platform-groups">
@@ -293,14 +306,6 @@
                     <li>
                         <span class="feature-check">✓</span>
                         <span>Tracks lease expirations and renewal deadlines in 30/60/90-day windows — kept separate, since they're not the same date</span>
-                    </li>
-                    <li>
-                        <span class="feature-check">✓</span>
-                        <span>Tenant concentration analysis — how much of your rent depends on your largest tenants, with an automatic high/moderate/low read (Herfindahl-Hirschman Index, the same standard used to measure market concentration)</span>
-                    </li>
-                    <li>
-                        <span class="feature-check">✓</span>
-                        <span>WALT (weighted average lease term, weighted by rent) and a year-by-year rollover schedule — how much rent expires each year, with a high/moderate/low risk read on how concentrated your near-term rollover is</span>
                     </li>
                     <li>
                         <span class="feature-check">✓</span>
@@ -381,7 +386,62 @@
         <div class="statement-inner reveal">
             <span class="eyebrow">The Standard For Serious Underwriting</span>
             <h2>Every number you underwrite from should be one you can trace back to the source.</h2>
-            <a href="#request-access" class="btn-primary statement-cta">Request Access</a>
+            <a href="#book-demo" class="btn-primary statement-cta">Book a Demo</a>
+        </div>
+    </section>
+
+    <!-- ===================== Book a Demo ===================== -->
+    <section class="book-demo" id="book-demo">
+        <div class="section-heading reveal">
+            <span class="eyebrow">Book a Demo</span>
+            <h2>See It On Your Own Rent Roll</h2>
+            <p>Tell us a bit about your portfolio and we'll set up a walkthrough. We work with a limited number of firms at a time, so every request gets a real look, not a place in a queue.</p>
+        </div>
+
+        <div class="demo-form-wrap reveal" id="demoFormWrap">
+            <form class="demo-form" id="demoForm" novalidate>
+                <div class="demo-form-row">
+                    <div class="demo-form-field">
+                        <label for="demoName">Name</label>
+                        <input type="text" id="demoName" name="name" autocomplete="name" maxlength="200" required>
+                    </div>
+                    <div class="demo-form-field">
+                        <label for="demoWorkEmail">Work Email</label>
+                        <input type="email" id="demoWorkEmail" name="work_email" autocomplete="email" required>
+                    </div>
+                </div>
+                <div class="demo-form-row">
+                    <div class="demo-form-field">
+                        <label for="demoCompany">Company</label>
+                        <input type="text" id="demoCompany" name="company" autocomplete="organization" maxlength="200" required>
+                    </div>
+                    <div class="demo-form-field">
+                        <label for="demoUnits">Number of Units in Portfolio</label>
+                        <input type="number" id="demoUnits" name="units" min="1" max="1000000" step="1" inputmode="numeric" required>
+                    </div>
+                </div>
+                <div class="demo-form-field demo-form-field-full">
+                    <label for="demoMessage">Message <span class="demo-form-optional">(optional)</span></label>
+                    <textarea id="demoMessage" name="message" rows="3" maxlength="2000"></textarea>
+                </div>
+
+                <!-- Honeypot: invisible to a real visitor (aria-hidden,
+                     off-screen, unreachable by Tab), left for a bot that
+                     fills in every field it can find. See landing.js and
+                     backend/app/api.py's POST /demo-request. -->
+                <div class="demo-form-honeypot" aria-hidden="true">
+                    <label for="demoWebsite">Website</label>
+                    <input type="text" id="demoWebsite" name="website" tabindex="-1" autocomplete="off">
+                </div>
+
+                <button type="submit" class="btn-primary demo-form-submit" id="demoSubmitBtn">Book a Demo</button>
+                <p class="demo-form-error" id="demoFormError"></p>
+            </form>
+
+            <div class="demo-form-confirm" id="demoFormConfirm">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                <span>Thanks — we've received your request and will be in touch to schedule a time.</span>
+            </div>
         </div>
     </section>
 
@@ -395,7 +455,7 @@
                 Abstractly
             </div>
         </div>
-        <p class="footer-contact">timmypisano24@gmail.com &nbsp;&middot;&nbsp; 631-697-8711</p>
+        <p class="footer-contact"><a href="mailto:timmypisano24@gmail.com">timmypisano24@gmail.com</a> &nbsp;&middot;&nbsp; 631-697-8711</p>
         <p class="footer-copy">&copy; 2026 Abstractly. All rights reserved.</p>
     </footer>
 

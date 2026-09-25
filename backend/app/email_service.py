@@ -24,6 +24,7 @@ import os
 import smtplib
 import threading
 import time
+from typing import Optional
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
@@ -219,6 +220,67 @@ def send_admin_new_request_notification(requester_email: str) -> bool:
             "Review and approve or deny it from the admin dashboard.",
         ],
     )
+    return _send(admin_email, subject, text_body, html_body)
+
+
+def send_demo_request_confirmation(to_email: str, name: str) -> bool:
+    """Sent immediately when someone submits the landing page's Book a Demo form."""
+    subject = "We've received your demo request"
+    text_body = (
+        f"Thanks for reaching out to Abstractly, {name}.\n\n"
+        "We've received your request for a demo and will follow up "
+        "personally to find a time.\n\n"
+        "Best,\nTim Pisano"
+    )
+    html_body = _email_html(
+        heading="We've received your request.",
+        paragraphs=[
+            f"Thanks for reaching out, {html.escape(name)}. We&rsquo;ve received "
+            "your request for a demo and will follow up personally to find a time.",
+        ],
+    )
+    return _send(to_email, subject, text_body, html_body)
+
+
+def send_demo_request_notification(name: str, work_email: str, company: str, units: int, message: Optional[str]) -> bool:
+    """
+    Sent to the admin (ADMIN_EMAIL) whenever someone submits the landing
+    page's Book a Demo form -- mirrors send_admin_new_request_notification
+    for the waitlist, but carries the extra fields this form collects.
+    No-op (returns False) if ADMIN_EMAIL isn't configured, same
+    fail-open posture as the rest of this module.
+    """
+    admin_email = os.environ.get("ADMIN_EMAIL", "").strip()
+    if not admin_email:
+        logger.warning(
+            "Demo request notification not sent for %r: ADMIN_EMAIL is not "
+            "configured. Set it in backend/.env — see backend/.env.example.",
+            work_email,
+        )
+        return False
+
+    subject = f"New demo request: {company}"
+    text_lines = [
+        f"{name} at {company} requested a demo.",
+        "",
+        f"Work email: {work_email}",
+        f"Units in portfolio: {units}",
+    ]
+    if message:
+        text_lines += ["", f"Message: {message}"]
+    text_body = "\n".join(text_lines)
+
+    # Every value here is user-submitted -- escape all of it before
+    # embedding in the HTML part, same reasoning as the waitlist admin
+    # notification above.
+    paragraphs = [
+        f"<strong>{html.escape(name)}</strong> at <strong>{html.escape(company)}</strong> requested a demo.",
+        f"Work email: {html.escape(work_email)}<br>Units in portfolio: {units}",
+    ]
+    if message:
+        paragraphs.append(f"Message: {html.escape(message)}")
+    html_body = _email_html(heading="New demo request.", paragraphs=paragraphs)
+
     return _send(admin_email, subject, text_body, html_body)
 
 
