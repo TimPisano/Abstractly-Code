@@ -90,6 +90,10 @@
                         <span class="nav-label">Discrepancies</span>
                         <span class="nav-badge nav-label" id="discrepanciesNavBadge" style="display:none;">0</span>
                     </button>
+                    <button class="nav-item nav-item-dealmismatch" data-view="dealmismatch" data-tooltip="Deal Mismatch Report" type="button">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 14l6-6m-5-1h.01M15 15h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        <span class="nav-label">Deal Mismatch Report</span>
+                    </button>
                 </div>
 
                 <div class="nav-group">
@@ -460,6 +464,25 @@
                 </div>
 
                 <div id="discrepanciesFeedContent"></div>
+            </section>
+
+            <!-- DEAL MISMATCH REPORT VIEW -->
+            <section class="view" id="view-dealmismatch">
+                <div class="view-header">
+                    <div>
+                        <h1>Deal Mismatch Report</h1>
+                        <p class="view-subtitle">Every discrepancy between the rent roll and the lease documents on file, each with an estimated dollar impact — the document to hand a lender or LP</p>
+                    </div>
+                    <div class="view-header-actions">
+                        <button class="btn-secondary" id="dealMismatchRefreshBtn" type="button">Refresh</button>
+                        <button class="btn-secondary" id="dealMismatchExportPdfBtn" type="button">Download PDF</button>
+                        <button class="btn-primary" id="dealMismatchExportExcelBtn" type="button">Download Excel</button>
+                    </div>
+                </div>
+
+                <div class="health-strip" id="dealMismatchSummaryStrip"></div>
+
+                <div id="dealMismatchContent"></div>
             </section>
 
             <!-- TEAM NOTES VIEW -->

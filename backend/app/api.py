@@ -87,8 +87,10 @@ from app.portfolio import (
 from app.comparison import compare_leases, benchmark_lease
 from app.discrepancies import (
     sync_lease_risk_flags, sync_all_lease_risk_flags_bulk, sync_rent_roll_reconciliation, sync_t12_reconciliation,
-    detect_discrepancy_patterns, DEFAULT_PATTERN_MIN_LEASE_COUNT,
+    sync_deal_mismatch_report, detect_discrepancy_patterns, DEFAULT_PATTERN_MIN_LEASE_COUNT,
 )
+from app.deal_mismatch import build_deal_mismatch_report_data
+from app.deal_mismatch_export import generate_deal_mismatch_report_pdf, generate_deal_mismatch_report_excel
 from app import assignments as assignments_module
 from app import obligations as obligations_module
 from app import tasks as tasks_module
@@ -3571,6 +3573,74 @@ def portfolio_t12_reconciliation():
     result["t12_source"] = parsed["source"]
     result = sync_t12_reconciliation(result)
     return jsonify(result), 200
+
+
+@app.route('/portfolio/deal-mismatch-report', methods=['POST'])
+@require_role('analyst')
+def portfolio_deal_mismatch_report():
+    """
+    The Deal Mismatch Report: every discrepancy between the imported
+    rent roll and the lease PDFs on file, each with an estimated dollar
+    impact, plus a portfolio-level "rent roll overstates/understates
+    annual income by $X" summary. See app/deal_mismatch.py for the 7
+    discrepancy types this checks and how each one's dollar impact is
+    computed.
+
+    POST (not GET), matching /portfolio/investment-memo.pdf's own
+    reasoning, even though Phase 1 takes no file upload yet: Phase 3
+    (T12 cross-check) extends this same route to optionally accept a
+    t12_file, so the method is decided now rather than changed later.
+
+    Optional form field: 'property_address' (omit for the whole
+    portfolio, same _scoped_leases scoping investment-memo exports use).
+
+    Persists each row to the discrepancies list (discrepancy_type
+    "deal_mismatch") via sync_deal_mismatch_report, so a resolved
+    finding stays resolved across repeated report generations, same as
+    every other reconciliation check in the app.
+    """
+    property_address = (request.form.get('property_address') or '').strip() or None
+    data = build_deal_mismatch_report_data(property_address=property_address)
+    data = sync_deal_mismatch_report(data)
+    return jsonify(data), 200
+
+
+@app.route('/portfolio/deal-mismatch-report.pdf', methods=['POST'])
+@require_role('analyst')
+def portfolio_deal_mismatch_report_pdf():
+    """Same data and scope rules as POST /portfolio/deal-mismatch-report, rendered as a one-document PDF suitable for a lender or LP."""
+    property_address = (request.form.get('property_address') or '').strip() or None
+    data = build_deal_mismatch_report_data(property_address=property_address)
+    data = sync_deal_mismatch_report(data)
+    pdf_bytes = generate_deal_mismatch_report_pdf(data)
+
+    scope_label = property_address or "portfolio"
+    database.insert_activity("deal_mismatch_report_exported", f"Exported Deal Mismatch Report (PDF) for {scope_label}")
+    safe_name = re.sub(r'[^A-Za-z0-9_.-]', '_', scope_label)
+    return Response(
+        pdf_bytes,
+        mimetype='application/pdf',
+        headers={"Content-Disposition": f"attachment; filename=deal_mismatch_report_{safe_name}.pdf"},
+    )
+
+
+@app.route('/portfolio/deal-mismatch-report.xlsx', methods=['POST'])
+@require_role('analyst')
+def portfolio_deal_mismatch_report_excel():
+    """Same data and scope rules as POST /portfolio/deal-mismatch-report, rendered as a formatted Excel workbook."""
+    property_address = (request.form.get('property_address') or '').strip() or None
+    data = build_deal_mismatch_report_data(property_address=property_address)
+    data = sync_deal_mismatch_report(data)
+    excel_bytes = generate_deal_mismatch_report_excel(data)
+
+    scope_label = property_address or "portfolio"
+    database.insert_activity("deal_mismatch_report_exported", f"Exported Deal Mismatch Report (Excel) for {scope_label}")
+    safe_name = re.sub(r'[^A-Za-z0-9_.-]', '_', scope_label)
+    return Response(
+        excel_bytes,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        headers={"Content-Disposition": f"attachment; filename=deal_mismatch_report_{safe_name}.xlsx"},
+    )
 
 
 @app.route('/portfolio/reconciliation/run', methods=['POST'])
