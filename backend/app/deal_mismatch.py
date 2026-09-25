@@ -1,6 +1,7 @@
 """
 Deal Mismatch Report: cross-checks an uploaded rent roll against the
-lease PDFs on file and produces one dollar-quantified discrepancy list,
+lease PDFs on file and optionally against a T12 (trailing 12-month)
+operating statement, producing one dollar-quantified discrepancy list,
 plus a portfolio-level income-impact summary -- Abstractly's primary
 sellable export, the document a buyer hands to a lender or LP (see
 deal_mismatch_export.py for the PDF/Excel renderers this feeds).
@@ -15,7 +16,7 @@ discrepancy severity already surfaced elsewhere in the app.
 Each detector below is a pure function over get_all_effective_leases()'s
 output, returning a list of row dicts shaped:
     {
-        "discrepancy_type": one of the 7 categories below,
+        "discrepancy_type": one of the 11 categories below,
         "unit": display property address (rent roll's own value
             preferred, same fallback compute_rent_roll_reconciliation
             uses),
@@ -56,6 +57,12 @@ Phase 2 (multifamily lease fields) lands. Left in place, not omitted
 entirely, so build_deal_mismatch_report_data's discrepancy_type list
 and the exporters don't need to change shape again when Phase 2 wires
 it up for real.
+
+T12 detectors (detect_t12_income_gap, detect_t12_occupancy_mismatch,
+detect_t12_concession_gap, detect_t12_bad_debt_trend) take optional
+t12_data and materiality_pct and return [] immediately if no T-12 was
+uploaded, so the whole section is silently absent from a report with no
+T-12 file.
 """
 from datetime import date
 from typing import Any, Dict, List, Optional
@@ -80,7 +87,13 @@ DISCREPANCY_TYPES = [
     "concession_missing",
     "dates_mismatch",
     "tenant_mismatch",
+    "t12_income_gap",
+    "t12_occupancy_mismatch",
+    "t12_concession_gap",
+    "t12_bad_debt_trend",
 ]
+
+_T12_MATERIALITY_THRESHOLD_PCT_DEFAULT = 3.0
 
 
 def _field_source(lease: Dict[str, Any], field_name: str) -> Optional[Dict[str, Any]]:
@@ -357,6 +370,228 @@ def detect_tenant_mismatch(leases: List[Dict[str, Any]]) -> List[Dict[str, Any]]
     return rows
 
 
+def detect_t12_income_gap(
+    leases: List[Dict[str, Any]], t12_data: Optional[Dict[str, Any]] = None,
+    materiality_pct: float = _T12_MATERIALITY_THRESHOLD_PCT_DEFAULT
+) -> List[Dict[str, Any]]:
+    """
+    Rent roll's building-level annualized rent vs. T-12 rental_income_collected.annual.
+    Flagged when rent roll is above T-12 collections by more than materiality_pct.
+    income_direction is always "overstate" when flagged.
+    """
+    if not t12_data or t12_data.get("rental_income_collected") is None:
+        return []
+
+    from .portfolio import _normalize_building_address
+
+    rows: List[Dict[str, Any]] = []
+    rental_income = t12_data["rental_income_collected"]
+    t12_annual = rental_income.get("annual")
+
+    if t12_annual is None:
+        return []
+
+    # Build building-level rent totals from rent roll
+    building_rents: Dict[str, List[float]] = {}
+    for lease in leases:
+        if _is_rent_roll_import(lease):
+            addr = _normalize_building_address(field_value(lease, "property_address"))
+            if addr is None:
+                continue
+            rr_rent = parse_currency(field_value(lease, "rent_amount"))
+            if rr_rent is not None:
+                building_rents.setdefault(addr, []).append(rr_rent)
+
+    if not building_rents:
+        return []
+
+    # For simplicity, compare against the first (and typically only) building in the scope
+    first_building_key = list(building_rents.keys())[0]
+    first_building_rent = sum(building_rents[first_building_key])
+
+    diff_abs = first_building_rent - t12_annual
+    if diff_abs <= 0:
+        return []
+
+    larger = max(first_building_rent, t12_annual)
+    diff_pct = (diff_abs / larger * 100) if larger > 0 else 0.0
+
+    if diff_pct <= materiality_pct:
+        return []
+
+    rows.append({
+        "discrepancy_type": "t12_income_gap",
+        "unit": "Building (T12-based)",
+        "field": "rental_income_collected",
+        "rent_roll_value": f"${first_building_rent:,.2f}",
+        "lease_value": f"${t12_annual:,.2f} (T12)",
+        "source": rental_income.get("source"),
+        "severity": _severity_for_monthly_impact(diff_abs / 12),
+        "monthly_dollar_impact": round(diff_abs / 12, 2),
+        "annual_dollar_impact": round(diff_abs, 2),
+        "income_direction": "overstate",
+        "rent_roll_lease_id": None,
+        "lease_document_id": None,
+    })
+    return rows
+
+
+def detect_t12_occupancy_mismatch(
+    leases: List[Dict[str, Any]], t12_data: Optional[Dict[str, Any]] = None,
+    materiality_pct: float = _T12_MATERIALITY_THRESHOLD_PCT_DEFAULT
+) -> List[Dict[str, Any]]:
+    """
+    Rent-roll-implied occupancy vs. T-12-implied occupancy.
+    (1 - vacancy_loss.annual / gross_potential_rent.annual), only when both present.
+    Flagged past materiality_pct percentage-point gap.
+    """
+    if not t12_data:
+        return []
+
+    gpr = t12_data.get("gross_potential_rent")
+    vl = t12_data.get("vacancy_loss")
+
+    if gpr is None or vl is None or gpr.get("annual") is None or vl.get("annual") is None:
+        return []
+
+    gpr_annual = gpr["annual"]
+    vl_annual = vl["annual"]
+
+    if gpr_annual <= 0:
+        return []
+
+    t12_occupancy = (1.0 - vl_annual / gpr_annual) * 100
+
+    # Rent roll occupancy: count occupied vs. total
+    occupied = sum(1 for l in leases if _is_rent_roll_import(l) and field_value(l, "tenant"))
+    total = sum(1 for l in leases if _is_rent_roll_import(l))
+
+    if total == 0:
+        return []
+
+    rr_occupancy = (occupied / total) * 100
+
+    gap = abs(rr_occupancy - t12_occupancy)
+
+    if gap <= materiality_pct:
+        return []
+
+    rows: List[Dict[str, Any]] = []
+    rows.append({
+        "discrepancy_type": "t12_occupancy_mismatch",
+        "unit": "Building (occupancy)",
+        "field": "occupancy_rate",
+        "rent_roll_value": f"{rr_occupancy:.1f}%",
+        "lease_value": f"{t12_occupancy:.1f}% (T12)",
+        "source": vl.get("source"),
+        "severity": "medium",
+        "monthly_dollar_impact": None,
+        "annual_dollar_impact": None,
+        "income_direction": None,
+        "rent_roll_lease_id": None,
+        "lease_document_id": None,
+    })
+    return rows
+
+
+def detect_t12_concession_gap(
+    leases: List[Dict[str, Any]], t12_data: Optional[Dict[str, Any]] = None,
+    materiality_pct: float = _T12_MATERIALITY_THRESHOLD_PCT_DEFAULT
+) -> List[Dict[str, Any]]:
+    """
+    Reports the T-12's concessions.annual figure with rent_roll_value: None
+    and an explanatory note that it's unverifiable (rent roll has no concessions field).
+    income_direction is None since there's no rent-roll-side number.
+    """
+    if not t12_data or t12_data.get("concessions") is None:
+        return []
+
+    concessions = t12_data["concessions"]
+    annual = concessions.get("annual")
+
+    if annual is None:
+        return []
+
+    rows: List[Dict[str, Any]] = []
+    rows.append({
+        "discrepancy_type": "t12_concession_gap",
+        "unit": "Building (concessions)",
+        "field": "concessions",
+        "rent_roll_value": None,
+        "lease_value": f"${annual:,.2f} (T12)",
+        "source": concessions.get("source"),
+        "severity": "low",
+        "monthly_dollar_impact": None,
+        "annual_dollar_impact": None,
+        "income_direction": None,
+        "rent_roll_lease_id": None,
+        "lease_document_id": None,
+    })
+    return rows
+
+
+def detect_t12_bad_debt_trend(
+    leases: List[Dict[str, Any]], t12_data: Optional[Dict[str, Any]] = None,
+    materiality_pct: float = _T12_MATERIALITY_THRESHOLD_PCT_DEFAULT
+) -> List[Dict[str, Any]]:
+    """
+    Building-level bad debt trend: flags sustained upward trend
+    (last 3 months avg notably higher than trailing-12 avg) alongside
+    rent roll showing no vacant/non-current units, with plain-English note
+    explaining the pattern worth investigating.
+    """
+    if not t12_data or t12_data.get("bad_debt") is None:
+        return []
+
+    bad_debt = t12_data["bad_debt"]
+    monthly = bad_debt.get("monthly")
+
+    if monthly is None or len(monthly) < 12:
+        return []
+
+    # Compute trailing-12 average and last-3 average
+    _MONTH_IDS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
+    monthly_values = [monthly.get(m) for m in _MONTH_IDS if monthly.get(m) is not None]
+
+    if len(monthly_values) < 12:
+        return []
+
+    avg_all = sum(monthly_values) / len(monthly_values)
+    avg_last_3 = sum(monthly_values[-3:]) / 3
+
+    if avg_all <= 0 or avg_last_3 <= avg_all:
+        return []
+
+    pct_increase = ((avg_last_3 - avg_all) / avg_all) * 100
+
+    if pct_increase <= 25:
+        return []
+
+    # Check rent roll for vacancies/non-current units
+    occupied = sum(1 for l in leases if _is_rent_roll_import(l) and field_value(l, "tenant"))
+    total = sum(1 for l in leases if _is_rent_roll_import(l))
+
+    if total == 0 or occupied < total:
+        return []  # There are actual vacancies, so the pattern is less anomalous
+
+    rows: List[Dict[str, Any]] = []
+    rows.append({
+        "discrepancy_type": "t12_bad_debt_trend",
+        "unit": "Building (bad debt trend)",
+        "field": "bad_debt_trend",
+        "rent_roll_value": f"Full occupancy ({occupied}/{total} units)",
+        "lease_value": f"Rising bad debt: {avg_last_3:.0f}/mo vs. {avg_all:.0f}/mo avg",
+        "source": bad_debt.get("source"),
+        "severity": "medium",
+        "monthly_dollar_impact": None,
+        "annual_dollar_impact": None,
+        "income_direction": None,
+        "rent_roll_lease_id": None,
+        "lease_document_id": None,
+    })
+    return rows
+
+
 _DETECTORS = [
     detect_rent_mismatch,
     detect_expired_but_occupied,
@@ -365,6 +600,13 @@ _DETECTORS = [
     detect_concession_missing,
     detect_dates_mismatch,
     detect_tenant_mismatch,
+]
+
+_T12_DETECTORS = [
+    detect_t12_income_gap,
+    detect_t12_occupancy_mismatch,
+    detect_t12_concession_gap,
+    detect_t12_bad_debt_trend,
 ]
 
 
@@ -376,6 +618,8 @@ def _total_units_checked(leases: List[Dict[str, Any]]) -> int:
 def build_deal_mismatch_report_data(
     property_address: Optional[str] = None,
     today: Optional[date] = None,
+    t12_data: Optional[Dict[str, Any]] = None,
+    materiality_threshold_pct: float = _T12_MATERIALITY_THRESHOLD_PCT_DEFAULT,
 ) -> Dict[str, Any]:
     """
     Runs every detector once and assembles the single data structure
@@ -388,6 +632,9 @@ def build_deal_mismatch_report_data(
     `property_address` optionally scopes to one building (same
     _normalize_building_address-based filter investment_memo.py's
     _scoped_leases uses) -- omitted means the whole portfolio.
+
+    `t12_data` and `materiality_threshold_pct` are optional, supplied
+    when a T-12 was uploaded. T-12 detectors return [] if no t12_data.
     """
     from .investment_memo import _scoped_leases  # local import: avoids a module-level cycle, investment_memo.py doesn't import this module
 
@@ -401,18 +648,48 @@ def build_deal_mismatch_report_data(
         else:
             discrepancies.extend(detector(leases))
 
+    # T12 detectors
+    t12_rows: List[Dict[str, Any]] = []
+    if t12_data:
+        for detector in _T12_DETECTORS:
+            t12_rows.extend(detector(leases, t12_data, materiality_threshold_pct))
+
     signed_annual_impacts = [
         row["annual_dollar_impact"] if row["income_direction"] == "overstate" else -row["annual_dollar_impact"]
-        for row in discrepancies
+        for row in (discrepancies + t12_rows)
         if row["income_direction"] is not None and row["annual_dollar_impact"] is not None
     ]
     annual_income_overstatement = round(sum(signed_annual_impacts), 2) if signed_annual_impacts else None
 
-    return {
+    # T12-specific income gap estimation (separate from rent-roll-vs-lease-PDF overstatement)
+    t12_income_gap_rows = [r for r in t12_rows if r["discrepancy_type"] == "t12_income_gap"]
+    estimated_income_overstatement_from_t12 = None
+    if t12_income_gap_rows and t12_income_gap_rows[0]["annual_dollar_impact"] is not None:
+        estimated_income_overstatement_from_t12 = t12_income_gap_rows[0]["annual_dollar_impact"]
+
+    # T12 source summary
+    t12_source = None
+    if t12_data:
+        found_categories = [k for k, v in t12_data.items() if v is not None]
+        missing_categories = [k for k, v in t12_data.items() if v is None]
+        t12_source = {
+            "filename": t12_data.get("filename", "unknown"),
+            "found_categories": found_categories,
+            "missing_categories": missing_categories,
+        }
+
+    result = {
         "property_address": property_address,
         "generated_date": (today or date.today()).isoformat(),
         "total_units_checked": _total_units_checked(leases),
-        "total_discrepancies": len(discrepancies),
+        "total_discrepancies": len(discrepancies) + len(t12_rows),
         "annual_income_overstatement": annual_income_overstatement,
         "discrepancies": discrepancies,
     }
+
+    if t12_data:
+        result["t12_source"] = t12_source
+        result["rent_roll_vs_actual_collections"] = t12_rows
+        result["estimated_income_overstatement_from_t12"] = estimated_income_overstatement_from_t12
+
+    return result

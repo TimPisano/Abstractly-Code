@@ -63,6 +63,7 @@ from app.rent_roll_import import (
 )
 from app.rent_roll_table_extract import ALL_RENT_ROLL_EXTENSIONS
 from app.t12_import import T12ImportError, parse_csv_t12, parse_xlsx_t12
+from app.t12_statement import parse_csv_t12_statement, parse_xlsx_t12_statement, parse_pdf_t12_statement
 from app.portfolio import (
     FIELD_NAMES,
     field_value,
@@ -3582,17 +3583,19 @@ def portfolio_deal_mismatch_report():
     The Deal Mismatch Report: every discrepancy between the imported
     rent roll and the lease PDFs on file, each with an estimated dollar
     impact, plus a portfolio-level "rent roll overstates/understates
-    annual income by $X" summary. See app/deal_mismatch.py for the 7
+    annual income by $X" summary. See app/deal_mismatch.py for the
     discrepancy types this checks and how each one's dollar impact is
     computed.
 
     POST (not GET), matching /portfolio/investment-memo.pdf's own
-    reasoning, even though Phase 1 takes no file upload yet: Phase 3
-    (T12 cross-check) extends this same route to optionally accept a
-    t12_file, so the method is decided now rather than changed later.
+    reasoning: Phase 3 (T12 cross-check) extends this same route to
+    optionally accept a t12_file, so the method is decided now rather
+    than changed later.
 
-    Optional form field: 'property_address' (omit for the whole
-    portfolio, same _scoped_leases scoping investment-memo exports use).
+    Optional form fields:
+    - 'property_address' (omit for the whole portfolio)
+    - 't12_file' (csv/xlsx/pdf, only meaningful alongside property_address)
+    - 'materiality_threshold_pct' (float, default 3.0)
 
     Persists each row to the discrepancies list (discrepancy_type
     "deal_mismatch") via sync_deal_mismatch_report, so a resolved
@@ -3600,7 +3603,47 @@ def portfolio_deal_mismatch_report():
     every other reconciliation check in the app.
     """
     property_address = (request.form.get('property_address') or '').strip() or None
-    data = build_deal_mismatch_report_data(property_address=property_address)
+    materiality_pct = 3.0
+    try:
+        materiality_pct = float(request.form.get('materiality_threshold_pct', 3.0))
+    except (ValueError, TypeError):
+        materiality_pct = 3.0
+
+    t12_data = None
+    if 't12_file' in request.files:
+        if not property_address:
+            return jsonify({"error": "t12_file requires property_address"}), 400
+
+        t12_file: FileStorage = request.files['t12_file']
+        if not t12_file.filename:
+            return jsonify({"error": "t12_file is empty"}), 400
+
+        ext = t12_file.filename.rsplit('.', 1)[1].lower() if '.' in t12_file.filename else ''
+        if ext not in {'csv', 'xlsx', 'xls', 'pdf'}:
+            return jsonify({"error": f"t12_file must be csv, xlsx, xls, or pdf, not .{ext}"}), 400
+
+        try:
+            file_bytes = t12_file.read()
+            if ext == 'csv':
+                t12_result = parse_csv_t12_statement(file_bytes, t12_file.filename)
+            elif ext in {'xlsx', 'xls'}:
+                t12_result = parse_xlsx_t12_statement(file_bytes, t12_file.filename)
+            elif ext == 'pdf':
+                t12_result = parse_pdf_t12_statement(file_bytes, t12_file.filename)
+            else:
+                return jsonify({"error": f"Unsupported T12 format: {ext}"}), 400
+
+            # Add filename for reporting
+            t12_result['filename'] = t12_file.filename
+            t12_data = t12_result
+        except T12ImportError as e:
+            return jsonify({"error": f"T12 parse error: {str(e)}"}), 400
+
+    data = build_deal_mismatch_report_data(
+        property_address=property_address,
+        t12_data=t12_data,
+        materiality_threshold_pct=materiality_pct,
+    )
     data = sync_deal_mismatch_report(data)
     return jsonify(data), 200
 
@@ -3610,7 +3653,46 @@ def portfolio_deal_mismatch_report():
 def portfolio_deal_mismatch_report_pdf():
     """Same data and scope rules as POST /portfolio/deal-mismatch-report, rendered as a one-document PDF suitable for a lender or LP."""
     property_address = (request.form.get('property_address') or '').strip() or None
-    data = build_deal_mismatch_report_data(property_address=property_address)
+    materiality_pct = 3.0
+    try:
+        materiality_pct = float(request.form.get('materiality_threshold_pct', 3.0))
+    except (ValueError, TypeError):
+        materiality_pct = 3.0
+
+    t12_data = None
+    if 't12_file' in request.files:
+        if not property_address:
+            return jsonify({"error": "t12_file requires property_address"}), 400
+
+        t12_file: FileStorage = request.files['t12_file']
+        if not t12_file.filename:
+            return jsonify({"error": "t12_file is empty"}), 400
+
+        ext = t12_file.filename.rsplit('.', 1)[1].lower() if '.' in t12_file.filename else ''
+        if ext not in {'csv', 'xlsx', 'xls', 'pdf'}:
+            return jsonify({"error": f"t12_file must be csv, xlsx, xls, or pdf, not .{ext}"}), 400
+
+        try:
+            file_bytes = t12_file.read()
+            if ext == 'csv':
+                t12_result = parse_csv_t12_statement(file_bytes, t12_file.filename)
+            elif ext in {'xlsx', 'xls'}:
+                t12_result = parse_xlsx_t12_statement(file_bytes, t12_file.filename)
+            elif ext == 'pdf':
+                t12_result = parse_pdf_t12_statement(file_bytes, t12_file.filename)
+            else:
+                return jsonify({"error": f"Unsupported T12 format: {ext}"}), 400
+
+            t12_result['filename'] = t12_file.filename
+            t12_data = t12_result
+        except T12ImportError as e:
+            return jsonify({"error": f"T12 parse error: {str(e)}"}), 400
+
+    data = build_deal_mismatch_report_data(
+        property_address=property_address,
+        t12_data=t12_data,
+        materiality_threshold_pct=materiality_pct,
+    )
     data = sync_deal_mismatch_report(data)
     pdf_bytes = generate_deal_mismatch_report_pdf(data)
 
@@ -3629,7 +3711,46 @@ def portfolio_deal_mismatch_report_pdf():
 def portfolio_deal_mismatch_report_excel():
     """Same data and scope rules as POST /portfolio/deal-mismatch-report, rendered as a formatted Excel workbook."""
     property_address = (request.form.get('property_address') or '').strip() or None
-    data = build_deal_mismatch_report_data(property_address=property_address)
+    materiality_pct = 3.0
+    try:
+        materiality_pct = float(request.form.get('materiality_threshold_pct', 3.0))
+    except (ValueError, TypeError):
+        materiality_pct = 3.0
+
+    t12_data = None
+    if 't12_file' in request.files:
+        if not property_address:
+            return jsonify({"error": "t12_file requires property_address"}), 400
+
+        t12_file: FileStorage = request.files['t12_file']
+        if not t12_file.filename:
+            return jsonify({"error": "t12_file is empty"}), 400
+
+        ext = t12_file.filename.rsplit('.', 1)[1].lower() if '.' in t12_file.filename else ''
+        if ext not in {'csv', 'xlsx', 'xls', 'pdf'}:
+            return jsonify({"error": f"t12_file must be csv, xlsx, xls, or pdf, not .{ext}"}), 400
+
+        try:
+            file_bytes = t12_file.read()
+            if ext == 'csv':
+                t12_result = parse_csv_t12_statement(file_bytes, t12_file.filename)
+            elif ext in {'xlsx', 'xls'}:
+                t12_result = parse_xlsx_t12_statement(file_bytes, t12_file.filename)
+            elif ext == 'pdf':
+                t12_result = parse_pdf_t12_statement(file_bytes, t12_file.filename)
+            else:
+                return jsonify({"error": f"Unsupported T12 format: {ext}"}), 400
+
+            t12_result['filename'] = t12_file.filename
+            t12_data = t12_result
+        except T12ImportError as e:
+            return jsonify({"error": f"T12 parse error: {str(e)}"}), 400
+
+    data = build_deal_mismatch_report_data(
+        property_address=property_address,
+        t12_data=t12_data,
+        materiality_threshold_pct=materiality_pct,
+    )
     data = sync_deal_mismatch_report(data)
     excel_bytes = generate_deal_mismatch_report_excel(data)
 

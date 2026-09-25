@@ -42,6 +42,10 @@ DISCREPANCY_TYPE_LABELS = {
     "concession_missing": "Concession Missing from Rent Roll",
     "dates_mismatch": "Lease Dates Mismatch",
     "tenant_mismatch": "Tenant Name Mismatch",
+    "t12_income_gap": "Rent Roll vs. T12 Income",
+    "t12_occupancy_mismatch": "Rent Roll vs. T12 Occupancy",
+    "t12_concession_gap": "T12 Concessions Reported",
+    "t12_bad_debt_trend": "T12 Bad Debt Trend",
 }
 
 _SEVERITY_ORDER = {"high": 0, "medium": 1, "low": 2}
@@ -140,6 +144,23 @@ def generate_deal_mismatch_report_pdf(data: Dict[str, Any]) -> bytes:
     else:
         flowables.append(_discrepancies_table(rows))
 
+    # T12 section
+    t12_rows = data.get("rent_roll_vs_actual_collections")
+    if t12_rows:
+        flowables.append(Spacer(1, 12))
+        flowables.append(Paragraph("Rent Roll vs. Actual Collections (T12 Cross-Check)", _styles["section"]))
+        t12_overstatement = data.get("estimated_income_overstatement_from_t12")
+        if t12_overstatement is not None:
+            if t12_overstatement > 0:
+                headline = f"Rent roll <b>overstates</b> actual collections by <b>{_fmt_money(t12_overstatement)}</b>."
+            else:
+                headline = f"Rent roll <b>understates</b> actual collections by <b>{_fmt_money(abs(t12_overstatement))}</b>."
+        else:
+            headline = "No dollar-quantified T12 findings."
+        flowables.append(Paragraph(headline, _styles["body"]))
+        flowables.append(Spacer(1, 8))
+        flowables.append(_discrepancies_table(t12_rows))
+
     return _build_pdf(flowables)
 
 
@@ -186,8 +207,8 @@ def generate_deal_mismatch_report_excel(data: Dict[str, Any]) -> bytes:
 
     rows = data.get("discrepancies") or []
     ordered = sorted(rows, key=lambda r: (_SEVERITY_ORDER.get(r.get("severity"), 99), r.get("unit") or ""))
-    for row_offset, row in enumerate(ordered, start=1):
-        r = header_row + row_offset
+    current_row = header_row + 1
+    for row in ordered:
         source = row.get("source") or {}
         values = [
             row.get("unit"),
@@ -202,9 +223,64 @@ def generate_deal_mismatch_report_excel(data: Dict[str, Any]) -> bytes:
             row.get("income_direction"),
         ]
         for col_offset, value in enumerate(values, start=1):
-            cell = sheet.cell(row=r, column=col_offset, value=value)
+            cell = sheet.cell(row=current_row, column=col_offset, value=value)
             if col_offset in (8, 9) and value is not None:
                 cell.number_format = _CURRENCY_FORMAT
+        current_row += 1
+
+    # T12 section
+    t12_rows = data.get("rent_roll_vs_actual_collections")
+    if t12_rows:
+        # Add blank row for spacing
+        current_row += 1
+
+        # Add T12 header
+        t12_header_row = current_row
+        sheet.cell(row=t12_header_row, column=1, value="Rent Roll vs. Actual Collections (T12)").font = Font(bold=True)
+        current_row += 1
+
+        # T12 overstatement summary
+        t12_overstatement = data.get("estimated_income_overstatement_from_t12")
+        if t12_overstatement is not None:
+            if t12_overstatement > 0:
+                summary_text = f"Rent roll overstates actual collections by {_fmt_money(t12_overstatement)}."
+            else:
+                summary_text = f"Rent roll understates actual collections by {_fmt_money(abs(t12_overstatement))}."
+        else:
+            summary_text = "No dollar-quantified T12 findings."
+        sheet.cell(row=current_row, column=1, value=summary_text)
+        current_row += 1
+
+        # T12 header row
+        t12_header_start = current_row
+        for index, column in enumerate(_EXCEL_HEADER, start=1):
+            cell = sheet.cell(row=current_row, column=index, value=column)
+            cell.font = header_font
+            cell.alignment = Alignment(vertical="center", wrap_text=True)
+            cell.fill = PatternFill(start_color="E8F4F8", end_color="E8F4F8", fill_type="solid")
+        current_row += 1
+
+        # T12 data rows
+        t12_ordered = sorted(t12_rows, key=lambda r: (_SEVERITY_ORDER.get(r.get("severity"), 99), r.get("unit") or ""))
+        for row in t12_ordered:
+            source = row.get("source") or {}
+            values = [
+                row.get("unit"),
+                DISCREPANCY_TYPE_LABELS.get(row["discrepancy_type"], row["discrepancy_type"]),
+                row.get("field"),
+                row.get("rent_roll_value"),
+                row.get("lease_value"),
+                source.get("page"),
+                (row.get("severity") or "").upper(),
+                row.get("monthly_dollar_impact"),
+                row.get("annual_dollar_impact"),
+                row.get("income_direction"),
+            ]
+            for col_offset, value in enumerate(values, start=1):
+                cell = sheet.cell(row=current_row, column=col_offset, value=value)
+                if col_offset in (8, 9) and value is not None:
+                    cell.number_format = _CURRENCY_FORMAT
+            current_row += 1
 
     sheet.freeze_panes = f"A{header_row + 1}"
 
