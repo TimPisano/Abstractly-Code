@@ -3171,6 +3171,93 @@ def join_waitlist():
     return jsonify({"message": "Your request has been received. If it's a fit, we'll be in touch."}), 201
 
 
+# ----------------------------------------------------------------------
+# Book a Demo (landing page contact form)
+#
+# Public, unauthenticated -- CSRF is covered by the app-wide Origin/
+# Referer check in security.py's install_security (this route is
+# state-changing and not in _CSRF_EXEMPT_PATHS), so nothing extra is
+# needed here. Rate limiting reuses the shared RateLimiter class (same
+# one /analytics/pageview uses below) rather than duplicating the
+# ad-hoc dict the older /waitlist limiter above uses.
+# ----------------------------------------------------------------------
+
+_DEMO_REQUEST_MAX_NAME_LEN = 200
+_DEMO_REQUEST_MAX_COMPANY_LEN = 200
+_DEMO_REQUEST_MAX_MESSAGE_LEN = 2000
+_DEMO_REQUEST_MIN_UNITS = 1
+_DEMO_REQUEST_MAX_UNITS = 1_000_000
+
+_DEMO_REQUEST_SUCCESS_MESSAGE = "Thanks — we've received your request and will be in touch to schedule a time."
+
+_demo_request_rate_limiter = RateLimiter(max_hits=8, window_seconds=60)  # per IP: 8 / minute
+
+
+@app.route('/demo-request', methods=['POST'])
+def request_demo():
+    """
+    Body: {name, work_email, company, units, message (optional), website
+    (honeypot -- must stay empty)}. The landing page's "Book a Demo" form.
+    """
+    if _demo_request_rate_limiter.check([f"ip:{request.remote_addr or 'unknown'}"]):
+        return jsonify({"error": "Too many requests. Please try again in a minute."}), 429
+
+    body = request.get_json(silent=True) or {}
+
+    # Honeypot: real visitors never see this field (hidden off-screen in
+    # the form). A non-empty value means something filled in every field
+    # it could find. Return the SAME success response a real submission
+    # gets, but skip the DB write and both emails -- never tip off a bot
+    # that it was caught.
+    if (body.get("website") or "").strip():
+        return jsonify({"message": _DEMO_REQUEST_SUCCESS_MESSAGE}), 201
+
+    name = (body.get("name") or "").strip()
+    work_email = (body.get("work_email") or "").strip()
+    company = (body.get("company") or "").strip()
+    message = (body.get("message") or "").strip() or None
+
+    if not name or len(name) > _DEMO_REQUEST_MAX_NAME_LEN:
+        return jsonify({"error": "Please enter your name"}), 400
+    if not work_email or not _EMAIL_RE.match(work_email):
+        return jsonify({"error": "Please enter a valid work email address"}), 400
+    if not company or len(company) > _DEMO_REQUEST_MAX_COMPANY_LEN:
+        return jsonify({"error": "Please enter your company name"}), 400
+
+    units_raw = body.get("units")
+    # int() silently truncates a float (int(5.5) == 5) instead of
+    # raising -- reject a fractional value explicitly, or "5.5" units
+    # would pass as 5. A whole-number float (240.0) is still fine.
+    if isinstance(units_raw, float) and not units_raw.is_integer():
+        return jsonify({"error": "Please enter a valid number of units"}), 400
+    try:
+        # bool is technically an int subclass in Python, but a JSON
+        # true/false here doesn't parse to a valid unit count either way
+        # -- int(True) == 1 passes the range check below like any other
+        # small number would, which is harmless (still a valid,
+        # in-range unit count), not a real bypass of anything.
+        units = int(units_raw)
+    except (TypeError, ValueError):
+        return jsonify({"error": "Please enter a valid number of units"}), 400
+    if not (_DEMO_REQUEST_MIN_UNITS <= units <= _DEMO_REQUEST_MAX_UNITS):
+        return jsonify({"error": "Please enter a valid number of units"}), 400
+
+    if message and len(message) > _DEMO_REQUEST_MAX_MESSAGE_LEN:
+        message = message[:_DEMO_REQUEST_MAX_MESSAGE_LEN]
+
+    database.insert_demo_request(name, work_email, company, units, message)
+
+    # Best-effort, same guarantee as the waitlist emails above -- the
+    # submission is already committed regardless of whether either send
+    # succeeds.
+    _send_email_best_effort(email_service.send_demo_request_confirmation, work_email, name)
+    _send_email_best_effort(
+        email_service.send_demo_request_notification, name, work_email, company, units, message
+    )
+
+    return jsonify({"message": _DEMO_REQUEST_SUCCESS_MESSAGE}), 201
+
+
 # Generous relative to the waitlist limiter above -- this fires once per
 # marketing-page load (plus once more on a successful waitlist submit),
 # not once per deliberate form submission, so normal browsing across
