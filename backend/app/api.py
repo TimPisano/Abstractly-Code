@@ -3223,17 +3223,19 @@ def request_demo():
         return jsonify({"error": "Please enter your company name"}), 400
 
     units_raw = body.get("units")
+    # bool is technically an int subclass in Python, so a JSON true/false
+    # would otherwise sail through int() below as 1/0 -- but int(units_raw)
+    # always returns a plain int, never a bool, so this has to be checked
+    # on units_raw before conversion; checking isinstance(units, bool)
+    # afterward would never trip.
+    if isinstance(units_raw, bool):
+        return jsonify({"error": "Please enter a valid number of units"}), 400
     # int() silently truncates a float (int(5.5) == 5) instead of
     # raising -- reject a fractional value explicitly, or "5.5" units
     # would pass as 5. A whole-number float (240.0) is still fine.
     if isinstance(units_raw, float) and not units_raw.is_integer():
         return jsonify({"error": "Please enter a valid number of units"}), 400
     try:
-        # bool is technically an int subclass in Python, but a JSON
-        # true/false here doesn't parse to a valid unit count either way
-        # -- int(True) == 1 passes the range check below like any other
-        # small number would, which is harmless (still a valid,
-        # in-range unit count), not a real bypass of anything.
         units = int(units_raw)
     except (TypeError, ValueError):
         return jsonify({"error": "Please enter a valid number of units"}), 400
