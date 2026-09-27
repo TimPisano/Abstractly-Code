@@ -1028,11 +1028,65 @@ html {
     margin-top: 0.0625rem;
 }
 
+/* A segmented Monthly/Annual control -- two buttons sharing one pill
+   track, aria-pressed marks the active side. No existing toggle/switch
+   component in this codebase to match, so this introduces one small new
+   pattern built from tokens already in use elsewhere (--lux-accent,
+   --radius-full, --border-color). */
+.pricing-toggle {
+    display: inline-flex;
+    margin: 0 auto 2.5rem;
+    padding: 0.25rem;
+    background: var(--white);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-full);
+    box-shadow: var(--shadow-sm);
+}
+
+.pricing-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.pricing-toggle-btn {
+    font-family: inherit;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text-medium);
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-full);
+    padding: 0.5rem 1.25rem;
+    cursor: pointer;
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.pricing-toggle-btn[aria-pressed="true"] {
+    background: var(--lux-accent-text);
+    color: var(--white);
+}
+
+.pricing-toggle-btn:not([aria-pressed="true"]):hover {
+    color: var(--text-dark);
+}
+
+.pricing-feature-includes {
+    font-weight: 700;
+    color: var(--text-dark);
+    padding-left: 0 !important;
+}
+
+.pricing-feature-includes::before {
+    content: none !important;
+}
+
 .pricing-grid {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(3, 1fr);
     gap: 1.25rem;
     align-items: stretch;
+    width: 100%;
 }
 
 .pricing-card {
@@ -1219,7 +1273,9 @@ html {
     }
 
     .pricing-grid {
-        grid-template-columns: repeat(2, 1fr);
+        /* 3 tiers don't split evenly into 2 columns -- single column
+           below this breakpoint, same as every other section here. */
+        grid-template-columns: 1fr;
     }
 
     .steps-grid {
@@ -1232,11 +1288,5 @@ html {
     .demo-form-row {
         grid-template-columns: 1fr;
         gap: 0;
-    }
-}
-
-@media (max-width: 560px) {
-    .pricing-grid {
-        grid-template-columns: 1fr;
     }
 }

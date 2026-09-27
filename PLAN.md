@@ -1,228 +1,217 @@
-# Plan: Multifamily positioning rewrite + Book a Demo
+# Plan: Pricing page rewrite (Starter / Growth / Enterprise)
 
-Scope check: this touches only `frontend/index.html`, `frontend/pricing.html`,
-`frontend/landing.css`, `frontend/landing.js`, and adds one new backend
-endpoint + supporting DB table + emails + tests. It does **not** touch
-`app/auth.py`, `app/deal_mismatch.py`, rent roll parsing, lease extraction,
-or any deployment config (`render.yaml`, `DEPLOYMENT.md`, etc.).
+Scope check: this touches only `frontend/pricing.html`, a new
+`frontend/pricing-config.js` (data) + a new `frontend/pricing.js`
+(renderer), `frontend/landing.css` (styles that serve the pricing page,
+the nav, and the footer only), and the `<nav>` / `<footer>` blocks of
+`frontend/index.html`. It does **not** touch the backend, `frontend/app/`,
+`frontend/admin/`, `frontend/owner/`, or any other section of
+`index.html` (hero, how-it-works, platform, trust, FAQ, sample report,
+etc.).
 
----
-
-## Part 1 — Positioning rewrite
-
-### Open question before I touch copy (needs your call)
-
-The "Sample Report" section on `index.html` is real, captured output from
-the reconciliation engine (see the code comment above it) — a commercial
-retail unit ("2200 Larimer Street, Suite 140", tenant "Ridgeline Coffee
-Roasters LLC"). I have no real multifamily engine output to swap in, and I'm
-not going to fabricate a fake "real" sample.
-
-Options:
-1. **Keep this exact sample, add one caveat line** noting it's shown on a
-   commercial unit but the reconciliation works the same way on a
-   multifamily rent-roll line (unit/tenant/rent/dates). Fastest, least risk.
-2. **Genericize the labels only** (e.g. swap "Suite 140" → "Unit 140",
-   "Ridgeline Coffee Roasters LLC" → a placeholder residential-sounding
-   name) while keeping the real dollar/date/discrepancy values, and add a
-   note that it's illustrative formatting on real output values.
-3. Leave the section out of the multifamily rewrite entirely for now (mark
-   `TODO: replace with real multifamily sample once available`).
-
-I'd default to **option 1** (least invasive, no risk of the copy looking
-like fabricated data) unless you'd rather I do 2 or 3.
-
-### Nav
-- "Request Access" → **"Book a Demo"**, linking to a new `#book-demo`
-  section (replaces the `#request-access` anchor on the hero).
-- Everything else (How It Works, Sample Report, Platform, Trust & Security,
-  FAQ, Pricing, Client Login) stays.
-- `pricing.html`'s nav and all five `index.html#request-access` CTA links on
-  that page get the same anchor/label swap.
-
-### Hero
-- Eyebrow: something like **"Built for multifamily syndicators"**.
-- Headline: **"Catch rent roll errors before they cost you at closing."**
-  (your exact line, as `<h1>`, with a styled accent word/phrase, matching
-  the current two-line treatment).
-- Subhead: rewritten around your framing — mid-size multifamily
-  syndicators, rent roll checked against the actual leases before a deal
-  closes, not "acquisitions analysts and asset managers" generically.
-- CTA: the inline waitlist email-capture form is **replaced** with a single
-  `Book a Demo` button that scrolls to the new `#book-demo` section. The
-  existing `/waitlist` signup flow (backend route, admin approve/deny,
-  `/app` access gate) is left completely alone — it just no longer has a
-  visible entry point on the landing page. Nothing in `app/auth.py` or
-  `access-gate.js` changes.
-- "See a sample discrepancy report ↓" link stays.
-
-### How It Works → your 3-step flow
-1. Upload your leases and rent roll
-2. See every mismatch, with dollar impact
-3. Export a report for your lender or LP
-
-(Rewritten from the current "Upload / We read & match / Discrepancy report"
-copy to your wording, keeping the same 3-card layout.)
-
-### New section: "Why multifamily is different"
-A short section (3-4 short points or a 2-3 sentence block) making the case
-your prompt asked for — e.g., hundreds of small, similar leases instead of
-a handful of long, heavily negotiated commercial leases; rent roll accuracy
-matters unit-by-unit at scale in a way a commercial tenant-by-tenant tool
-isn't built for; renewals/turnover volume is constant, not occasional.
-Placed after "How It Works", before or merged into "What It Catches".
-
-### Sections that carry over with copy edits, not structural changes
-- **What It Catches** — reframe examples toward rent-roll/unit language
-  (already mostly generic: "rent that doesn't match," "stale expiration,"
-  works for multifamily as-is with light wording tweaks).
-- **Platform (Standardization / Validation / Analysis)** — mostly reusable.
-  Two items are commercial-specific and I'd trim or reframe:
-  - "WALT (weighted average lease term)" and "tenant concentration /
-    Herfindahl-Hirschman" are office/retail concepts (a handful of anchor
-    tenants) that don't really apply to a 200-unit apartment building.
-    I'd either cut these two bullets or reframe them as roadmap items,
-    rather than claim them as live multifamily features.
-  - Everything else (OCR extraction, Excel/PDF import, Yardi/AppFolio/
-    RealPage/MRI/Buildium import, citation-linked validation, T12
-    cross-check, loss-to-lease) genuinely applies to multifamily and stays.
-- **Trust & Security**, **FAQ** — copy edits only (swap "acquisitions
-  analyst" language for "syndicator" framing), no structural change. FAQ
-  gets no new questions unless you want one about multifamily specifically.
-- **Dark statement section** — CTA becomes "Book a Demo" → `#book-demo`.
-
-### New section: Book a Demo (`#book-demo`)
-Replaces the removed hero form as the page's actual conversion point. Sits
-near the bottom, above the footer (after FAQ / statement section). Contains
-the form described in Part 2.
-
-### Footer
-- Contact email is already present (`timmypisano24@gmail.com`, plain text
-  next to the phone number). I'll make it a proper `mailto:` link since
-  right now it's unlinked plain text — that's the one footer change needed.
-  Let me know if you want a different/dedicated address instead of your
-  Gmail.
-
-### `<title>` / meta description / OG tags
-Rewritten to the new positioning (multifamily syndicators, rent roll vs.
-lease reconciliation before closing) — same fields, new copy.
+No backend change is needed — confirmed there's no Stripe/billing
+integration anywhere in this codebase (`frontend/owner/index.html` says so
+directly: "Manual entries — no billing integration is connected yet.").
+Every CTA is a link to `index.html#book-demo`, exactly like the existing
+pricing page already does — no checkout, no plan-selection state to
+persist anywhere.
 
 ---
 
-## Part 2 — Book a Demo form + backend endpoint
+## 1. Config file — `frontend/pricing-config.js`
 
-### Frontend (`index.html` + `landing.css` + `landing.js`)
-Form fields: Name, Work Email, Company, Number of Units in Portfolio,
-Message (optional) — plus a hidden honeypot field (visually hidden via
-absolute positioning off-screen + `tabindex="-1"` + `autocomplete="off"`,
-not `display:none`, so it still catches simple bots but isn't a screen-
-reader trap).
+One plain global `const PRICING_CONFIG` object (same style as
+`config.js`'s `API_BASE_URL` — no build step, no modules, loaded as a
+`<script>` tag). Holds every price, property limit, and feature list, so
+none of that data lives in HTML or in the renderer script:
 
-- Client-side validation: required-field checks, email shape check, units
-  must be a positive whole number, message length capped — mirroring the
-  existing waitlist form's inline error pattern (`.waitlist-error` /
-  `.waitlist-confirm` become a `.demo-form-error` / `.demo-form-confirm`
-  pair, same visual language).
-- On submit: `POST {API_BASE_URL}/demo-request` with JSON body, same
-  try/catch-network-error handling as the existing waitlist submit
-  handler, swap in the success state (clear confirmation message, form
-  hidden) on 2xx.
-- Styling: new `.demo-form` block in `landing.css`, built from the same
-  design tokens (`--lux-accent`, `--radius-sm`, etc.) as the rest of the
-  page — a card-style form, not a repaint of the waitlist single-input bar.
-
-### Backend
-
-**CSRF**: already handled. `app/security.py`'s `install_security()` runs a
-global `before_request` Origin/Referer check on every state-changing
-request except `/health` — the new `POST /demo-request` route is covered
-automatically, no extra code needed.
-
-**New DB table** (`app/database.py`, added to `init_db()` next to the
-`waitlist_signups`/`pageviews` tables, and to `reset_db()`'s drop list):
-
-```sql
-CREATE TABLE IF NOT EXISTS demo_requests (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    work_email TEXT NOT NULL,
-    company TEXT NOT NULL,
-    units INTEGER NOT NULL,
-    message TEXT,
-    created_at TEXT NOT NULL
-)
+```js
+const PRICING_CONFIG = {
+  // TODO: confirm the real annual discount before launch.
+  annualDiscountPercent: 20,
+  tiers: [
+    {
+      id: 'starter',
+      name: 'Starter',
+      description: 'For small syndicators doing a few deals a year.',
+      monthlyPricePerProperty: 25, // TODO: placeholder — set real price
+      propertyLimit: 15,           // TODO: placeholder — set real limit
+      features: [
+        'Lease abstraction',
+        'Rent roll validation',
+        'Deal Mismatch Report — PDF & Excel export',
+      ],
+      cta: { label: 'Book a Demo', style: 'secondary' },
+      featured: false,
+    },
+    {
+      id: 'growth',
+      name: 'Growth',
+      description: 'For a growing team underwriting deals every week.',
+      monthlyPricePerProperty: 20, // TODO: placeholder — set real price
+      propertyLimit: 75,           // TODO: placeholder — set real limit
+      includesPrevious: 'starter', // renders "Everything in Starter, plus:"
+      features: [
+        'T-12 cross-check',
+        'Multiple team members with roles',
+        'Priority support',
+      ],
+      cta: { label: 'Book a Demo', style: 'primary' },
+      featured: true,
+    },
+    {
+      id: 'enterprise',
+      name: 'Enterprise',
+      description: 'For firms who need us embedded in how they underwrite.',
+      custom: true,               // renders "Contact us" instead of a price
+      propertyLimitLabel: 'Custom property count',
+      features: [
+        'Custom onboarding',
+        'Dedicated support',
+        'Security review',
+      ],
+      cta: { label: 'Contact Us', style: 'primary' },
+      featured: false,
+    },
+  ],
+};
 ```
-Plus `insert_demo_request(...)` and `get_all_demo_requests()` (the latter
-only so the data isn't write-only from day one — no new admin UI is in
-scope, this is just a plain read function).
 
-**New route** (`app/api.py`, placed near the waitlist section, reusing its
-established shape):
+`propertyLimit` (a number) renders as "Up to N properties" as the first
+feature-list line; `propertyLimitLabel` (a string) is used verbatim
+instead, for Enterprise's "Custom property count." Every dollar figure
+gets a `<!-- TODO: placeholder price, not market-tested -->` treatment —
+see the existing `.pricing-placeholder-note` banner below, which stays
+and gets its copy adjusted to name Starter/Growth explicitly (Enterprise
+has no number to caveat).
 
-```
-POST /demo-request
-Body: {name, work_email, company, units, message (optional), website (honeypot, must be empty)}
-```
-- Per-IP rate limit via the existing `security.RateLimiter` class (same one
-  `/analytics/pageview` already uses) — e.g. 8 requests/minute/IP.
-- Honeypot check first: if `website` is non-empty, return the *same* 201
-  success response without touching the DB or sending any email — never
-  signal to a bot that it was caught.
-- Server-side validation: name/company non-empty and length-capped,
-  work_email matches the existing `_EMAIL_RE`, units is a positive integer
-  in a sane range (1–1,000,000), message length-capped and optional.
-  Validation failures → 400 with a specific, safe message (e.g. "Please
-  enter a valid email address") — never a stack trace or internal detail.
-- On success: insert the row, then two best-effort emails via
-  `email_service.py` (reusing `_send_email_best_effort`, same as waitlist):
-  - `send_demo_request_notification(admin_email, request_data)` → to
-    `ADMIN_EMAIL`, with the submitted details.
-  - `send_demo_request_confirmation(work_email, name)` → short "we got
-    your request, we'll follow up" email to the requester, same visual
-    template as the existing confirmation emails in `email_service.py`.
-  - Both follow the existing fail-open contract: an email failure never
-    fails the request. The submission is already committed before either
-    send is attempted.
-- Response: `{"message": "..."}` on success (generic, no internal IDs
-  leaked), matching the waitlist route's shape. All error paths return
-  only generic, safe messages — nothing from an exception ever reaches the
-  client (the existing global `@app.errorhandler(Exception)` in `api.py`
-  already backstops anything unanticipated).
+**Open question:** should Enterprise's feature list say "Everything in
+Growth, plus:" the way Growth says "Everything in Starter, plus:"? Your
+prompt only listed 4 items for Enterprise (custom property count, custom
+onboarding, dedicated support, security review) without that "plus"
+framing, unlike Growth's explicit "everything in Starter plus." I'd
+default to **adding "Everything in Growth, plus:"** since it'd be a
+strange regression for the top tier to not include T-12 cross-check /
+multi-seat / priority support — but I want your call before I write copy
+that expands scope beyond what you listed.
 
-### Tests (new file: `backend/tests/test_demo_request.py`)
-Modeled directly on `backend/tests/test_waitlist_email.py`'s pattern
-(temp SQLite DB per test, mocked `smtplib.SMTP_SSL`, Flask test client):
-- Valid submission succeeds, persists, and sends both emails.
-- Missing/invalid required fields (name, work_email, company, units) each
-  return 400 with a safe message and do **not** persist a row or send mail.
-- Invalid email format rejected.
-- Non-numeric / negative / zero / absurdly large `units` rejected.
-- Honeypot field populated → 200 success response returned, but **no** row
-  is inserted and **no** email is sent (spam case).
-- Message field is optional — omitting it still succeeds.
-- Overlong message/name/company values are rejected or truncated per the
-  validation rule chosen above (test whichever behavior is implemented).
-- Submission still succeeds (still persists) when SMTP raises or
-  credentials are unset — mirrors the waitlist "email must never block
-  signup" guarantee.
-- Rate limit: N+1th request from the same IP within the window gets 429.
-- CSRF: a state-changing request with a disallowed `Origin` header is
-  rejected 403 by the existing global middleware (one test confirming the
-  new route inherits this, not re-implementing it).
+---
+
+## 2. Renderer — `frontend/pricing.js` (new, pricing.html only)
+
+Reads `PRICING_CONFIG` and:
+- Renders the three tier cards into a `<div id="pricingGrid">` container
+  (markup generated from config, not hand-duplicated per tier — this is
+  what makes "change the config, not the page" actually true).
+- Wires a **Monthly / Annual** segmented toggle (two buttons,
+  `aria-pressed` state, same interaction pattern as a tab control — no
+  existing toggle/switch component in this codebase to match, so this
+  introduces one new small pattern using existing tokens: `--lux-accent`,
+  `--radius-full`, `--border-color`, `--shadow-sm`).
+  - Monthly: `monthlyPricePerProperty` shown as `$X/property/mo`.
+  - Annual: `monthlyPricePerProperty * (1 - annualDiscountPercent/100)`,
+    shown the same way with a "billed annually" note — mirrors the old
+    page's existing "or $X/yr — N months free" pattern, adapted to
+    per-property pricing.
+  - Enterprise ignores the toggle (always "Contact us").
+- Pure DOM rendering, no framework — consistent with `landing.js`.
+
+---
+
+## 3. `frontend/pricing.html` rewrite
+
+- Swap the 4-tier Starter/Team/Business/Concierge grid (flat monthly-only
+  pricing, priced per document-volume) for the new 3-tier
+  Starter/Growth/Enterprise grid, priced per property, rendered by
+  `pricing.js` from config into `#pricingGrid` (replaces the current
+  hand-written `.pricing-grid` markup).
+- Add the Monthly/Annual toggle above the grid.
+- Keep `.pricing-card`, `.pricing-tier-name`, `.pricing-feature-list`,
+  etc. — same visual language, just populated dynamically. Grid CSS goes
+  from `repeat(4, 1fr)` to `repeat(3, 1fr)` (and the `860px` breakpoint's
+  2-column override no longer applies at 3 tiers — becomes 1 column
+  below `860px`, matching the existing `560px` single-column rule already
+  in place for smaller screens).
+- Every CTA button links to `index.html#book-demo` (existing pattern —
+  the demo form already lives there, not duplicated here).
+- New **FAQ section** below the pricing grid, reusing the exact
+  `.faq` / `.faq-list` / `.faq-item` (`<details>`/`<summary>`) component
+  already on `index.html` — no new CSS needed. Six questions:
+
+  1. **How do contracts work?** — factual, derivable from your prompt:
+     annual or monthly, per-property pricing, toggle to compare. Safe to
+     write directly.
+  2. **Is there a pilot?** — not stated in your prompt and not a policy I
+     can find anywhere in this codebase (no existing pilot/trial
+     mentions). I'll write a non-committal answer ("ask during your demo
+     about starting with a subset of your portfolio") and mark it
+     `<!-- TODO: confirm real pilot policy/terms -->` rather than invent
+     specific terms.
+  3. **How accurate is the extraction?** — reuses (lightly adapted) the
+     existing, already-honest answer from `index.html`'s FAQ: no
+     fabricated accuracy percentage, every value shows confidence + a
+     source citation.
+  4. **How is customer data secured and isolated?** — reuses real facts
+     from `index.html`'s Trust & Security section (never shared/resold,
+     deletable anytime, no secrets in source control, access by request
+     only). On "isolated" specifically: I checked `database.py` and
+     there's no per-customer/tenant scoping column or separate-database
+     architecture in this codebase today — so I will **not** claim a
+     specific isolation architecture (e.g. "separate database per
+     customer") I can't back up. I'll phrase this narrowly around what's
+     actually true (your data is under your account, never shared) and
+     add `<!-- TODO: confirm/document the actual multi-tenant isolation
+     model before making a stronger isolation claim -->`.
+  5. **Do you use our documents to train AI?** — **No**, per your
+     instruction, with `<!-- TODO: verify -->` as you specified.
+  6. **How do I cancel?** — not stated in your prompt. Same treatment as
+     the pilot question: a generic, honest answer ("contact us, we'll
+     process it at the end of your current billing period") marked
+     `<!-- TODO: confirm exact cancellation process/notice period -->`
+     rather than invented specifics.
+
+---
+
+## 4. Nav + footer link
+
+- **Nav**: already links to `pricing.html` on both `index.html` and the
+  current `pricing.html` (`<a href="pricing.html">Pricing</a>` /
+  `class="nav-current"`) — no change needed here.
+- **Footer**: currently has no links at all (just the brand mark and
+  contact line) — there's an unused `.footer-links` CSS class already
+  defined in `landing.css` (flex row, hover state) with no matching HTML
+  anywhere. I'll add a `<div class="footer-links">` with **Pricing** and
+  **Book a Demo** links into the `footer-top` row of both `index.html`
+  and `pricing.html`, using that existing-but-dormant style rather than
+  inventing new footer CSS.
+
+---
+
+## 5. Tests
+
+No backend code changes, so no new backend tests are needed. I'll run
+the existing backend suite (`backend/tests/`) once as a sanity check that
+nothing was inadvertently touched, same as the last change on this repo.
+There's no frontend test runner in this project (no `package.json`
+anywhere) — verification here is a manual pass in-browser (toggle
+behavior, all CTA links, FAQ expand/collapse, responsive breakpoints) via
+the `run` skill before commit, not an automated frontend test suite.
 
 ---
 
 ## What I'm explicitly *not* doing
-- Not touching `app/auth.py`, `app/deal_mismatch.py`, rent roll
-  parsing/extraction, or any file under deployment config.
-- Not deleting or modifying the existing `/waitlist` backend flow, admin
-  dashboard waitlist review, or `/app` access gate — only removing its
-  visible entry point from the marketing page.
-- Not adding an admin UI for reviewing demo requests — just the DB table
-  and a plain read function, per your endpoint-only scope.
-- Not touching `frontend/app/`, `frontend/admin/`, or `frontend/owner/`.
+- Not touching the backend, `/demo-request` endpoint, or any DB schema —
+  pricing is fully static/config-driven, no checkout or plan-selection
+  state to persist.
+- Not touching `frontend/app/`, `frontend/admin/`, `frontend/owner/`.
+- Not touching any section of `index.html` besides `<nav>` and
+  `<footer>`.
+- Not inventing specific pilot terms, cancellation notice periods, or a
+  multi-tenant isolation architecture that doesn't exist in this
+  codebase yet — those get honest, general answers plus a `TODO` instead.
 
 ---
 
-Waiting on your go-ahead, plus your call on the Sample Report question
-above (defaulting to option 1 if you don't have a preference).
+Waiting on your go-ahead, plus your call on the Enterprise "Everything in
+Growth, plus:" framing question above (defaulting to **yes, include it**
+if you don't have a preference).
