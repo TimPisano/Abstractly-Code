@@ -2,7 +2,12 @@
 Tests for T12 detectors in deal_mismatch.py
 """
 
-import pytest
+import os
+import sys
+import unittest.mock as mock
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 from app.deal_mismatch import (
     detect_t12_income_gap, detect_t12_occupancy_mismatch,
     detect_t12_concession_gap, detect_t12_bad_debt_trend,
@@ -84,6 +89,7 @@ def test_detect_t12_income_gap_flagged():
     assert results[0]["discrepancy_type"] == "t12_income_gap"
     assert results[0]["income_direction"] == "overstate"
     assert results[0]["annual_dollar_impact"] == 15000.0
+    print("✓ test_detect_t12_income_gap_flagged: PASS")
 
 
 def test_detect_t12_income_gap_within_tolerance():
@@ -94,6 +100,7 @@ def test_detect_t12_income_gap_within_tolerance():
     t12_data = _sample_t12_data(annual_rental_income=100000.0)
     results = detect_t12_income_gap(leases, t12_data, materiality_pct=5.0)
     assert len(results) == 0
+    print("✓ test_detect_t12_income_gap_within_tolerance: PASS")
 
 
 def test_detect_t12_income_gap_no_t12():
@@ -101,6 +108,7 @@ def test_detect_t12_income_gap_no_t12():
     leases = [_rent_roll_lease("123 Main St", "Tenant A", "100000.00", lease_id=1)]
     results = detect_t12_income_gap(leases, None)
     assert len(results) == 0
+    print("✓ test_detect_t12_income_gap_no_t12: PASS")
 
 
 def test_detect_t12_occupancy_mismatch_flagged():
@@ -116,6 +124,7 @@ def test_detect_t12_occupancy_mismatch_flagged():
     # Rent roll: 1/3 = 33%, T12: 90.9% = gap > 3%
     assert len(results) == 1
     assert results[0]["discrepancy_type"] == "t12_occupancy_mismatch"
+    print("✓ test_detect_t12_occupancy_mismatch_flagged: PASS")
 
 
 def test_detect_t12_occupancy_mismatch_no_gap():
@@ -129,6 +138,7 @@ def test_detect_t12_occupancy_mismatch_no_gap():
     results = detect_t12_occupancy_mismatch(leases, t12_data, materiality_pct=3.0)
     # Rent roll: 2/2 = 100%, T12: 90.9% = gap ~9%, so flagged
     assert len(results) == 1
+    print("✓ test_detect_t12_occupancy_mismatch_no_gap: PASS")
 
 
 def test_detect_t12_concession_gap():
@@ -140,6 +150,7 @@ def test_detect_t12_concession_gap():
     assert results[0]["discrepancy_type"] == "t12_concession_gap"
     assert results[0]["rent_roll_value"] is None
     assert results[0]["income_direction"] is None
+    print("✓ test_detect_t12_concession_gap: PASS")
 
 
 def test_detect_t12_concession_gap_no_data():
@@ -149,42 +160,43 @@ def test_detect_t12_concession_gap_no_data():
     t12_data["concessions"] = None
     results = detect_t12_concession_gap(leases, t12_data)
     assert len(results) == 0
+    print("✓ test_detect_t12_concession_gap_no_data: PASS")
 
 
-def test_detect_t12_bad_debt_trend_flagged():
-    """Rising bad debt trend with full occupancy."""
+def test_detect_t12_bad_debt_trend_below_threshold_not_flagged():
+    """A 20% rise in trailing-3-month bad debt vs. the annual average is
+    below the detector's 25%+ threshold, so it's not flagged."""
     leases = [
         _rent_roll_lease("123 Main St", "Tenant A", "10000.00"),
         _rent_roll_lease("123 Main St", "Tenant B", "10000.00"),
     ]
-    # Last 3 months avg: 150, all-year avg: 125, increase: 20%
+    # avg_all = 1500/12 = 125, avg_last_3 = 450/3 = 150, increase = 20%
     t12_data = _sample_t12_data(annual_bad_debt=1500.0,
                                 monthly_bad_debt={
                                     "jan": 100, "feb": 100, "mar": 100, "apr": 100, "may": 100, "jun": 100,
                                     "jul": 150, "aug": 150, "sep": 150, "oct": 150, "nov": 150, "dec": 150,
                                 })
     results = detect_t12_bad_debt_trend(leases, t12_data)
-    # avg_all = 1500/12 = 125, avg_last_3 = 450/3 = 150, increase = 20%
-    # But we need 25%+ increase, so this should NOT be flagged. Let me adjust...
-    assert len(results) == 0  # Increase is only 20%, need >25%
+    assert len(results) == 0
+    print("✓ test_detect_t12_bad_debt_trend_below_threshold_not_flagged: PASS")
 
 
-def test_detect_t12_bad_debt_trend_flagged_with_threshold():
+def test_detect_t12_bad_debt_trend_flagged_above_threshold():
     """Rising bad debt trend flagged when high enough."""
     leases = [
         _rent_roll_lease("123 Main St", "Tenant A", "10000.00", lease_id=1),
         _rent_roll_lease("123 Main St", "Tenant B", "10000.00", lease_id=2),
     ]
-    # Last 3 months avg: 200, all-year avg: 100, increase: 100%
+    # avg_all = 1400/12 ≈ 116.67, avg_last_3 = 600/3 = 200, increase ≈ 71.4%
     t12_data = _sample_t12_data(annual_bad_debt=1400.0,
                                 monthly_bad_debt={
                                     "jan": 100, "feb": 100, "mar": 100, "apr": 100, "may": 100, "jun": 100,
                                     "jul": 100, "aug": 100, "sep": 100, "oct": 200, "nov": 200, "dec": 200,
                                 })
     results = detect_t12_bad_debt_trend(leases, t12_data)
-    # avg_all = 1400/12 ≈ 116.67, avg_last_3 = 600/3 = 200, increase = 71.4%
     assert len(results) == 1
     assert results[0]["discrepancy_type"] == "t12_bad_debt_trend"
+    print("✓ test_detect_t12_bad_debt_trend_flagged_above_threshold: PASS")
 
 
 def test_detect_t12_bad_debt_trend_with_vacancies():
@@ -201,6 +213,7 @@ def test_detect_t12_bad_debt_trend_with_vacancies():
     results = detect_t12_bad_debt_trend(leases, t12_data)
     # Even though trend is high, vacancies exist, so not flagged
     assert len(results) == 0
+    print("✓ test_detect_t12_bad_debt_trend_with_vacancies: PASS")
 
 
 def test_build_deal_mismatch_report_with_t12():
@@ -210,8 +223,6 @@ def test_build_deal_mismatch_report_with_t12():
         _rent_roll_lease("123 Main St", "Tenant B", "20000.00", lease_id=2),
     ]
     t12_data = _sample_t12_data(annual_rental_income=100000.0)
-    # Mock get_all_effective_leases to return our leases
-    import unittest.mock as mock
     with mock.patch("app.deal_mismatch.get_all_effective_leases", return_value=leases):
         report = build_deal_mismatch_report_data(t12_data=t12_data)
 
@@ -222,6 +233,7 @@ def test_build_deal_mismatch_report_with_t12():
     assert len(report["rent_roll_vs_actual_collections"]) >= 1  # At least income_gap
     income_gap_rows = [r for r in report["rent_roll_vs_actual_collections"] if r["discrepancy_type"] == "t12_income_gap"]
     assert len(income_gap_rows) == 1
+    print("✓ test_build_deal_mismatch_report_with_t12: PASS")
 
 
 def test_build_deal_mismatch_report_without_t12():
@@ -229,10 +241,26 @@ def test_build_deal_mismatch_report_without_t12():
     leases = [
         _rent_roll_lease("123 Main St", "Tenant A", "100000.00", lease_id=1),
     ]
-    import unittest.mock as mock
     with mock.patch("app.deal_mismatch.get_all_effective_leases", return_value=leases):
         report = build_deal_mismatch_report_data()
 
     assert "t12_source" not in report
     assert "rent_roll_vs_actual_collections" not in report
     assert "estimated_income_overstatement_from_t12" not in report
+    print("✓ test_build_deal_mismatch_report_without_t12: PASS")
+
+
+if __name__ == "__main__":
+    test_detect_t12_income_gap_flagged()
+    test_detect_t12_income_gap_within_tolerance()
+    test_detect_t12_income_gap_no_t12()
+    test_detect_t12_occupancy_mismatch_flagged()
+    test_detect_t12_occupancy_mismatch_no_gap()
+    test_detect_t12_concession_gap()
+    test_detect_t12_concession_gap_no_data()
+    test_detect_t12_bad_debt_trend_below_threshold_not_flagged()
+    test_detect_t12_bad_debt_trend_flagged_above_threshold()
+    test_detect_t12_bad_debt_trend_with_vacancies()
+    test_build_deal_mismatch_report_with_t12()
+    test_build_deal_mismatch_report_without_t12()
+    print("\nAll deal_mismatch T12 detector tests passed.")
