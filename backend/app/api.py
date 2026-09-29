@@ -26,6 +26,7 @@ from datetime import date, datetime, timedelta, timezone
 import csv
 import hashlib
 import io
+import json
 import logging
 import os
 import re
@@ -686,6 +687,35 @@ def _validate_upload():
         supported = "PDF, Excel (.xlsx/.xls/.xlsm), CSV/TSV, Word (.docx/.doc), images (.jpg/.png/.tiff), or plain text (.txt)"
         return None, (jsonify({"error": f"Unsupported file type. Please upload one of: {supported}."}), 400)
 
+    # Read file bytes for usage-limit checks (size, page count, content hash)
+    file_bytes = file.read()
+    file.seek(0)  # Reset for later processing
+
+    # Check team assignment and quotas
+    from app import usage_limits
+    user = current_user()
+    if not user:
+        return None, (jsonify({"error": "Login required"}), 401)
+
+    if not user.get("team_id"):
+        return None, (jsonify({"error": "Not assigned to a team yet. Contact an admin."}), 403)
+
+    team_id = user["team_id"]
+
+    # Check file size and page limits
+    msg = usage_limits.check_file_limits(file_bytes, file.filename)
+    if msg:
+        return None, (jsonify({"error": msg}), 400)
+
+    # Check team quota
+    msg = usage_limits.check_team_quota(team_id)
+    if msg:
+        return None, (jsonify({"error": msg}), 403)
+
+    # Check extraction rate limit
+    if usage_limits._extraction_rate_limited(user["id"]):
+        return None, (jsonify({"error": f"Rate limit exceeded: maximum {usage_limits.EXTRACTION_RATE_LIMIT_PER_USER_PER_MINUTE} extractions per minute."}), 429)
+
     return file, None
 
 
@@ -1006,13 +1036,45 @@ def upload_lease():
     if error:
         return error
 
+    user = current_user()
+    team_id = user.get("team_id")
+
     filename = file.filename
+    file_bytes = file.read()
+    file.seek(0)
+
+    content_hash = hashlib.sha256(file_bytes).hexdigest()
+
+    # Check for duplicate upload
+    from app import usage_limits
+    dup = usage_limits.find_duplicate_upload(team_id, content_hash)
+    if dup:
+        usage_limits.log_usage_event(team_id, user["id"], dup["id"], None, None, event_type="dedup_reuse")
+        return jsonify({
+            "leases": [dup],
+            "split_count": 1,
+            "reused_existing_upload": True,
+            "message": "This document was previously uploaded. Returning the existing lease."
+        }), 200
+
     split_leases, error = _extract_leases_from_file_storage(file, defer_ai=True)
     if error:
         message, status = error
         return jsonify({"error": message}), status
 
     created = _persist_split_leases(filename, split_leases)
+
+    # Store content hash on leases and log usage
+    conn = database.get_connection()
+    try:
+        for lease in created:
+            conn.execute("UPDATE leases SET content_hash = ? WHERE id = ?", (content_hash, lease["id"]))
+        conn.commit()
+    finally:
+        conn.close()
+
+    # Log usage event (pages unknown for async; tokens will be logged when extraction finishes)
+    usage_limits.log_usage_event(team_id, user["id"], created[0]["id"] if created else None, None, None, event_type="extraction")
 
     if _start_deferred_extraction(filename, split_leases):
         # Model-backed extraction is running in the background. The
@@ -1039,27 +1101,33 @@ def upload_lease():
 
 
 _SAMPLE_LEASE_PATH = os.path.join(os.path.dirname(__file__), '..', 'sample_data', 'sample_lease.pdf')
+_SAMPLE_FIXTURE_PATH = os.path.join(os.path.dirname(__file__), '..', 'sample_data', 'sample_lease_fixture.json')
+
+
+def _load_sample_fixture():
+    """Load precomputed sample lease extraction. Returns None if fixture doesn't exist."""
+    if os.path.exists(_SAMPLE_FIXTURE_PATH):
+        try:
+            with open(_SAMPLE_FIXTURE_PATH, 'r') as f:
+                return json.load(f)
+        except (IOError, json.JSONDecodeError):
+            return None
+    return None
 
 
 @app.route('/leases/sample', methods=['POST'])
 @require_role('analyst')
 def upload_sample_lease():
     """
-    One-click "try it with sample data" for a first-time user: runs a
-    bundled real lease PDF through the exact same extraction/persist
-    pipeline as POST /leases (never a canned/fake response), so what
-    the user sees is genuinely what the product does. The created
-    lease is tagged "Sample" so it's obviously not real portfolio data
-    and easy to filter out or delete from the normal lease list/detail
-    view -- no separate deletion mechanism needed.
+    One-click "try it with sample data" for a first-time user: returns
+    a precomputed extraction result of a bundled real lease PDF (never a
+    live API call). The created lease is tagged "Sample" so it's obviously
+    not real portfolio data and easy to filter out or delete from the normal
+    lease list/detail view -- no separate deletion mechanism needed.
     """
-    with open(_SAMPLE_LEASE_PATH, 'rb') as f:
-        file_storage = FileStorage(stream=io.BytesIO(f.read()), filename='sample_lease.pdf', content_type='application/pdf')
-
-    split_leases, error = _extract_leases_from_file_storage(file_storage)
-    if error:
-        message, status = error
-        return jsonify({"error": message}), status
+    split_leases = _load_sample_fixture()
+    if not split_leases:
+        return jsonify({"error": "Sample data not available"}), 503
 
     created = _persist_split_leases('sample_lease.pdf', split_leases)
     for summary in created:
@@ -1901,10 +1969,11 @@ def auth_login():
     session["name"] = user["name"]
     session["role"] = user["role"]
     session["is_owner"] = bool(user.get("is_owner"))
+    session["team_id"] = user.get("team_id")
     database.update_user_last_login(user["id"])
     return jsonify({
         "id": user["id"], "email": user["email"], "name": user["name"], "role": user["role"],
-        "is_owner": bool(user.get("is_owner")),
+        "is_owner": bool(user.get("is_owner")), "team_id": user.get("team_id"),
         # app/ frontend only (see frontend/app/api.js) -- admin/ and
         # owner/ ignore this field and keep using the cookie.
         "token": issue_token(user),
@@ -2219,7 +2288,7 @@ def create_team_member():
 @app.route('/team/members/<int:member_id>', methods=['PATCH'])
 @require_role('admin')
 def update_team_member(member_id):
-    """Body: any of {"name", "role", "status"}. Only the fields present are changed."""
+    """Body: any of {"name", "role", "status", "team_id"}. Only the fields present are changed."""
     user = database.get_user(member_id)
     if not user:
         return jsonify({"error": "Team member not found"}), 404
@@ -2240,6 +2309,18 @@ def update_team_member(member_id):
         if status not in _VALID_STATUSES:
             return jsonify({"error": f"status must be one of: {', '.join(sorted(_VALID_STATUSES))}"}), 400
         database.update_user_status(member_id, status)
+    if 'team_id' in body:
+        team_id = body.get('team_id')
+        if team_id is not None:
+            conn = database.get_connection()
+            try:
+                team = conn.execute("SELECT id FROM teams WHERE id = ?", (team_id,)).fetchone()
+                if not team:
+                    return jsonify({"error": "Team not found"}), 404
+                conn.execute("UPDATE users SET team_id = ? WHERE id = ?", (team_id, member_id))
+                conn.commit()
+            finally:
+                conn.close()
 
     return jsonify(_user_public(database.get_user(member_id))), 200
 
@@ -2258,6 +2339,147 @@ def reset_team_member_password(member_id):
 
     database.update_user_password(member_id, hash_password(password))
     return jsonify({"status": "password_reset"}), 200
+
+
+# ----------------------------------------------------------------------
+# Usage and team quota management
+# ----------------------------------------------------------------------
+
+@app.route('/team/usage', methods=['GET'])
+@require_role('analyst')
+def get_team_usage():
+    """
+    Current month's usage for the caller's team: documents/pages used vs. quota.
+    Scoped server-side to caller's own team_id (no override param).
+    """
+    user = current_user()
+    if not user.get("team_id"):
+        return jsonify({"error": "Not assigned to a team"}), 403
+
+    team_id = user["team_id"]
+    conn = database.get_connection()
+    try:
+        from app import usage_limits_config
+        now = datetime.now(timezone.utc)
+        current_month = now.strftime("%Y-%m")
+
+        doc_quota, page_quota, budget_usd = usage_limits.check_team_quota.__wrapped__(team_id) if hasattr(usage_limits.check_team_quota, '__wrapped__') else (
+            usage_limits_config.DEFAULT_MONTHLY_DOCUMENT_QUOTA,
+            usage_limits_config.DEFAULT_MONTHLY_PAGE_QUOTA,
+            usage_limits_config.DEFAULT_MONTHLY_BUDGET_USD,
+        )
+
+        # Recalculate using direct queries
+        team_row = conn.execute(
+            "SELECT monthly_document_quota, monthly_page_quota, monthly_budget_usd FROM teams WHERE id = ?",
+            (team_id,)
+        ).fetchone()
+        if team_row:
+            doc_quota = team_row[0] if team_row[0] is not None else usage_limits_config.DEFAULT_MONTHLY_DOCUMENT_QUOTA
+            page_quota = team_row[1] if team_row[1] is not None else usage_limits_config.DEFAULT_MONTHLY_PAGE_QUOTA
+            budget_usd = team_row[2] if team_row[2] is not None else usage_limits_config.DEFAULT_MONTHLY_BUDGET_USD
+
+        docs_used = conn.execute(
+            "SELECT COUNT(*) FROM usage_events WHERE team_id = ? AND strftime('%Y-%m', created_at) = ? AND event_type != 'dedup_reuse'",
+            (team_id, current_month)
+        ).fetchone()[0]
+
+        pages_used = conn.execute(
+            "SELECT COALESCE(SUM(pages), 0) FROM usage_events WHERE team_id = ? AND strftime('%Y-%m', created_at) = ? AND event_type != 'dedup_reuse'",
+            (team_id, current_month)
+        ).fetchone()[0]
+
+        message = None
+        if docs_used >= doc_quota:
+            message = f"Your team has used all {doc_quota} documents included this month. Contact an admin to raise your limit."
+        elif pages_used >= page_quota:
+            message = f"Your team has used all {page_quota} pages included this month. Contact an admin to raise your limit."
+
+        return jsonify({
+            "documents_used": docs_used,
+            "documents_quota": doc_quota,
+            "pages_used": pages_used,
+            "pages_quota": page_quota,
+            "month": current_month,
+            "message": message
+        }), 200
+    finally:
+        conn.close()
+
+
+@app.route('/teams', methods=['POST'])
+@require_role('admin')
+def create_team():
+    """
+    Create a new team.
+    Body: {"name", "monthly_document_quota"?, "monthly_page_quota"?, "monthly_budget_usd"?}
+    """
+    body = request.get_json(silent=True) or {}
+    name = (body.get('name') or '').strip()
+    if not name:
+        return jsonify({"error": "Missing required field: name"}), 400
+
+    conn = database.get_connection()
+    try:
+        existing = conn.execute("SELECT id FROM teams WHERE name = ?", (name,)).fetchone()
+        if existing:
+            return jsonify({"error": "A team with that name already exists"}), 409
+
+        doc_quota = body.get('monthly_document_quota')
+        page_quota = body.get('monthly_page_quota')
+        budget = body.get('monthly_budget_usd')
+
+        conn.execute(
+            "INSERT INTO teams (name, monthly_document_quota, monthly_page_quota, monthly_budget_usd, created_at) VALUES (?, ?, ?, ?, ?)",
+            (name, doc_quota, page_quota, budget, datetime.now(timezone.utc).isoformat())
+        )
+        conn.commit()
+
+        team_id = conn.execute("SELECT id FROM teams WHERE name = ?", (name,)).fetchone()[0]
+        team = conn.execute("SELECT * FROM teams WHERE id = ?", (team_id,)).fetchone()
+        return jsonify(dict(team)), 201
+    finally:
+        conn.close()
+
+
+@app.route('/teams/<int:team_id>', methods=['PATCH'])
+@require_role('admin')
+def update_team(team_id):
+    """
+    Update a team's quota overrides.
+    Body: any of {"monthly_document_quota", "monthly_page_quota", "monthly_budget_usd"}
+    """
+    conn = database.get_connection()
+    try:
+        team = conn.execute("SELECT * FROM teams WHERE id = ?", (team_id,)).fetchone()
+        if not team:
+            return jsonify({"error": "Team not found"}), 404
+
+        body = request.get_json(silent=True) or {}
+        if 'monthly_document_quota' in body:
+            conn.execute("UPDATE teams SET monthly_document_quota = ? WHERE id = ?", (body['monthly_document_quota'], team_id))
+        if 'monthly_page_quota' in body:
+            conn.execute("UPDATE teams SET monthly_page_quota = ? WHERE id = ?", (body['monthly_page_quota'], team_id))
+        if 'monthly_budget_usd' in body:
+            conn.execute("UPDATE teams SET monthly_budget_usd = ? WHERE id = ?", (body['monthly_budget_usd'], team_id))
+        conn.commit()
+
+        team = conn.execute("SELECT * FROM teams WHERE id = ?", (team_id,)).fetchone()
+        return jsonify(dict(team)), 200
+    finally:
+        conn.close()
+
+
+@app.route('/teams', methods=['GET'])
+@require_role('admin')
+def list_teams():
+    """List all teams."""
+    conn = database.get_connection()
+    try:
+        rows = conn.execute("SELECT * FROM teams ORDER BY created_at ASC").fetchall()
+        return jsonify([dict(r) for r in rows]), 200
+    finally:
+        conn.close()
 
 
 # ----------------------------------------------------------------------
