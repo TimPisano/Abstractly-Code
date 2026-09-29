@@ -691,30 +691,27 @@ def _validate_upload():
     file_bytes = file.read()
     file.seek(0)  # Reset for later processing
 
-    # Check team assignment and quotas
+    # Check team assignment and quotas (optional during migration/backward compatibility)
     from app import usage_limits
     user = current_user()
     if not user:
         return None, (jsonify({"error": "Login required"}), 401)
 
-    if not user.get("team_id"):
-        return None, (jsonify({"error": "Not assigned to a team yet. Contact an admin."}), 403)
+    team_id = user.get("team_id")
+    if team_id:
+        # Check file size and page limits
+        msg = usage_limits.check_file_limits(file_bytes, file.filename)
+        if msg:
+            return None, (jsonify({"error": msg}), 400)
 
-    team_id = user["team_id"]
+        # Check team quota
+        msg = usage_limits.check_team_quota(team_id)
+        if msg:
+            return None, (jsonify({"error": msg}), 403)
 
-    # Check file size and page limits
-    msg = usage_limits.check_file_limits(file_bytes, file.filename)
-    if msg:
-        return None, (jsonify({"error": msg}), 400)
-
-    # Check team quota
-    msg = usage_limits.check_team_quota(team_id)
-    if msg:
-        return None, (jsonify({"error": msg}), 403)
-
-    # Check extraction rate limit
-    if usage_limits._extraction_rate_limited(user["id"]):
-        return None, (jsonify({"error": f"Rate limit exceeded: maximum {usage_limits.EXTRACTION_RATE_LIMIT_PER_USER_PER_MINUTE} extractions per minute."}), 429)
+        # Check extraction rate limit
+        if usage_limits._extraction_rate_limited(user["id"]):
+            return None, (jsonify({"error": f"Rate limit exceeded: maximum {usage_limits.EXTRACTION_RATE_LIMIT_PER_USER_PER_MINUTE} extractions per minute."}), 429)
 
     return file, None
 
@@ -1045,17 +1042,18 @@ def upload_lease():
 
     content_hash = hashlib.sha256(file_bytes).hexdigest()
 
-    # Check for duplicate upload
+    # Check for duplicate upload (only if team_id is available)
     from app import usage_limits
-    dup = usage_limits.find_duplicate_upload(team_id, content_hash)
-    if dup:
-        usage_limits.log_usage_event(team_id, user["id"], dup["id"], None, None, event_type="dedup_reuse")
-        return jsonify({
-            "leases": [dup],
-            "split_count": 1,
-            "reused_existing_upload": True,
-            "message": "This document was previously uploaded. Returning the existing lease."
-        }), 200
+    if team_id:
+        dup = usage_limits.find_duplicate_upload(team_id, content_hash)
+        if dup:
+            usage_limits.log_usage_event(team_id, user["id"], dup["id"], None, None, event_type="dedup_reuse")
+            return jsonify({
+                "leases": [dup],
+                "split_count": 1,
+                "reused_existing_upload": True,
+                "message": "This document was previously uploaded. Returning the existing lease."
+            }), 200
 
     split_leases, error = _extract_leases_from_file_storage(file, defer_ai=True)
     if error:
@@ -1064,7 +1062,7 @@ def upload_lease():
 
     created = _persist_split_leases(filename, split_leases)
 
-    # Store content hash on leases and log usage
+    # Store content hash on leases and log usage (only if team_id is available)
     conn = database.get_connection()
     try:
         for lease in created:
@@ -1074,7 +1072,8 @@ def upload_lease():
         conn.close()
 
     # Log usage event (pages unknown for async; tokens will be logged when extraction finishes)
-    usage_limits.log_usage_event(team_id, user["id"], created[0]["id"] if created else None, None, None, event_type="extraction")
+    if team_id:
+        usage_limits.log_usage_event(team_id, user["id"], created[0]["id"] if created else None, None, None, event_type="extraction")
 
     if _start_deferred_extraction(filename, split_leases):
         # Model-backed extraction is running in the background. The
