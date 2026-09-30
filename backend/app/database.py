@@ -423,10 +423,16 @@ def _seed_first_admin_user(conn: sqlite3.Connection) -> None:
     if not email or not password_hash:
         return
 
+    # Seeded before this runs, by _migrate_teams_create_legacy_team's
+    # earlier call in init_db() -- the admin gets a real team_id like
+    # any other user, not NULL, so usage-limit checks apply to them too.
+    legacy_team = conn.execute("SELECT id FROM teams WHERE name='Legacy' LIMIT 1").fetchone()
+    legacy_team_id = legacy_team[0] if legacy_team else None
+
     conn.execute(
-        "INSERT INTO users (email, name, password_hash, role, status, created_at, created_by_user_id, is_owner) "
-        "VALUES (?, 'Admin', ?, 'admin', 'active', ?, NULL, 1)",
-        (email, password_hash, datetime.now(timezone.utc).isoformat()),
+        "INSERT INTO users (email, name, password_hash, role, status, created_at, created_by_user_id, is_owner, team_id) "
+        "VALUES (?, 'Admin', ?, 'admin', 'active', ?, NULL, 1, ?)",
+        (email, password_hash, datetime.now(timezone.utc).isoformat(), legacy_team_id),
     )
 
 
@@ -1980,7 +1986,8 @@ def get_pageview_summary(days: int = 30) -> Dict[str, Any]:
 # ----------------------------------------------------------------------
 
 def create_user(
-    email: str, name: str, password_hash: str, role: str = "viewer", created_by_user_id: Optional[int] = None
+    email: str, name: str, password_hash: str, role: str = "viewer",
+    created_by_user_id: Optional[int] = None, team_id: Optional[int] = None
 ) -> Dict[str, Any]:
     """
     Returns {"status": "created", "id": ...} on success, or
@@ -1989,13 +1996,22 @@ def create_user(
     reason: a UNIQUE-constraint collision here is an expected,
     friendly outcome (an admin fat-fingering an add-member form twice,
     or two admins racing to add the same person), not a server error.
+
+    team_id defaults to the 'Legacy' team when not given -- every new
+    user should have a real team_id in practice (usage-limit checks
+    treat a NULL team_id as "not onboarded yet" and block uploads), so
+    an admin only needs to pass a specific team_id when onboarding a
+    new tester org into its own team.
     """
     conn = get_connection()
     try:
+        if team_id is None:
+            legacy_team = conn.execute("SELECT id FROM teams WHERE name='Legacy' LIMIT 1").fetchone()
+            team_id = legacy_team[0] if legacy_team else None
         cur = conn.execute(
-            "INSERT INTO users (email, name, password_hash, role, status, created_at, created_by_user_id) "
-            "VALUES (?, ?, ?, ?, 'active', ?, ?)",
-            (email.strip().lower(), name, password_hash, role, datetime.now(timezone.utc).isoformat(), created_by_user_id),
+            "INSERT INTO users (email, name, password_hash, role, status, created_at, created_by_user_id, team_id) "
+            "VALUES (?, ?, ?, ?, 'active', ?, ?, ?)",
+            (email.strip().lower(), name, password_hash, role, datetime.now(timezone.utc).isoformat(), created_by_user_id, team_id),
         )
         conn.commit()
         return {"status": "created", "id": cur.lastrowid}

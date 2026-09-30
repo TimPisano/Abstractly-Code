@@ -691,27 +691,32 @@ def _validate_upload():
     file_bytes = file.read()
     file.seek(0)  # Reset for later processing
 
-    # Check team assignment and quotas (optional during migration/backward compatibility)
     from app import usage_limits
     user = current_user()
     if not user:
         return None, (jsonify({"error": "Login required"}), 401)
 
+    # File size/page limits and the per-user rate limit apply to every
+    # upload regardless of team assignment -- these aren't team-scoped
+    # checks, so a user with no team must not bypass them.
+    msg = usage_limits.check_file_limits(file_bytes, file.filename)
+    if msg:
+        return None, (jsonify({"error": msg}), 400)
+
+    if usage_limits._extraction_rate_limited(user["id"]):
+        return None, (jsonify({"error": f"Rate limit exceeded: maximum {usage_limits.EXTRACTION_RATE_LIMIT_PER_USER_PER_MINUTE} extractions per minute."}), 429)
+
+    # Team quota genuinely needs a team to check against. Every user
+    # gets one by default now (create_user() defaults to the 'Legacy'
+    # team), so a missing team_id here means a pre-migration edge case,
+    # not the common path -- block rather than silently skip the quota.
     team_id = user.get("team_id")
-    if team_id:
-        # Check file size and page limits
-        msg = usage_limits.check_file_limits(file_bytes, file.filename)
-        if msg:
-            return None, (jsonify({"error": msg}), 400)
+    if not team_id:
+        return None, (jsonify({"error": "Your account isn't assigned to a team yet. Ask an admin to assign you to a team before uploading."}), 403)
 
-        # Check team quota
-        msg = usage_limits.check_team_quota(team_id)
-        if msg:
-            return None, (jsonify({"error": msg}), 403)
-
-        # Check extraction rate limit
-        if usage_limits._extraction_rate_limited(user["id"]):
-            return None, (jsonify({"error": f"Rate limit exceeded: maximum {usage_limits.EXTRACTION_RATE_LIMIT_PER_USER_PER_MINUTE} extractions per minute."}), 429)
+    msg = usage_limits.check_team_quota(team_id)
+    if msg:
+        return None, (jsonify({"error": msg}), 403)
 
     return file, None
 
@@ -2259,6 +2264,7 @@ def create_team_member():
     name = (body.get('name') or '').strip()
     role = (body.get('role') or '').strip()
     password = body.get('password') or ''
+    team_id = body.get('team_id')
 
     missing = [f for f, v in (('email', email), ('name', name), ('role', role), ('password', password)) if not v]
     if missing:
@@ -2270,7 +2276,7 @@ def create_team_member():
     if len(password) < 8:
         return jsonify({"error": "Password must be at least 8 characters"}), 400
 
-    result = database.create_user(email, name, hash_password(password), role, created_by_user_id=current_user()["id"])
+    result = database.create_user(email, name, hash_password(password), role, created_by_user_id=current_user()["id"], team_id=team_id)
     if result["status"] == "duplicate":
         return jsonify({"error": "A team member with that email already exists"}), 409
 
@@ -2362,13 +2368,11 @@ def get_team_usage():
         now = datetime.now(timezone.utc)
         current_month = now.strftime("%Y-%m")
 
-        doc_quota, page_quota, budget_usd = usage_limits.check_team_quota.__wrapped__(team_id) if hasattr(usage_limits.check_team_quota, '__wrapped__') else (
-            usage_limits_config.DEFAULT_MONTHLY_DOCUMENT_QUOTA,
-            usage_limits_config.DEFAULT_MONTHLY_PAGE_QUOTA,
-            usage_limits_config.DEFAULT_MONTHLY_BUDGET_USD,
-        )
+        doc_quota = usage_limits_config.DEFAULT_MONTHLY_DOCUMENT_QUOTA
+        page_quota = usage_limits_config.DEFAULT_MONTHLY_PAGE_QUOTA
+        budget_usd = usage_limits_config.DEFAULT_MONTHLY_BUDGET_USD
 
-        # Recalculate using direct queries
+        # A team row with a non-NULL override replaces the default above.
         team_row = conn.execute(
             "SELECT monthly_document_quota, monthly_page_quota, monthly_budget_usd FROM teams WHERE id = ?",
             (team_id,)

@@ -24,6 +24,10 @@ def _fresh_temp_db():
     tmp.close()
     database.configure(tmp.name)
     database.init_db()
+    # Matches the fabricated session's user_id=1 with a real row --
+    # usage_events.user_id/team_id are FK-constrained, so a session
+    # pointing at a nonexistent user_id fails on any upload-route call.
+    database.create_user("test-analyst@example.com", "Test Analyst", "x", role="analyst")
     return tmp.name
 
 
@@ -41,12 +45,19 @@ def _authed_client():
     with client.session_transaction() as sess:
         sess["user_id"] = 1
         sess["email"] = "test-analyst@example.com"
+        sess["team_id"] = 1  # the 'Legacy' team, always id 1 in a fresh test DB
         sess["name"] = "Test Analyst"
         sess["role"] = "analyst"
     return client
 
 
 def _upload(client, filename):
+    # This file uploads many times across its own test functions using
+    # the same fabricated user -- reset the per-user extraction rate
+    # limit before each call so upload volume in THIS test file never
+    # trips a limit meant for real usage, regardless of execution order.
+    from app import usage_limits
+    usage_limits._reset_extraction_rate_limit_for_tests()
     with open(os.path.join(FIXTURES_DIR, filename), "rb") as f:
         content = f.read()
     resp = client.post(
