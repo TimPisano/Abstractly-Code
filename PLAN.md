@@ -1,228 +1,258 @@
-# Plan: Multifamily positioning rewrite + Book a Demo
+# Plan: Marketing site redesign (institutional-fintech direction)
 
-Scope check: this touches only `frontend/index.html`, `frontend/pricing.html`,
-`frontend/landing.css`, `frontend/landing.js`, and adds one new backend
-endpoint + supporting DB table + emails + tests. It does **not** touch
-`app/auth.py`, `app/deal_mismatch.py`, rent roll parsing, lease extraction,
-or any deployment config (`render.yaml`, `DEPLOYMENT.md`, etc.).
+Scope check: this touches `frontend/index.html` (near-total rewrite of
+the body sections), `frontend/pricing.html` (re-theme + announcement
+bar, same data/logic), `frontend/landing.css` (large addition/rewrite —
+new hero/nav/announcement-bar treatment, typography scale, hero-visual
+component, pricing-preview component), and `frontend/landing.js` (adds
+the count-up animation, `prefers-reduced-motion`-aware). It does **not**
+touch `frontend/pricing-config.js` or `frontend/pricing.js` (same
+tiers/toggle logic, just restyled), the backend, `/demo-request`, or
+`frontend/design-system.css` — that file is shared with the app and
+admin screens (loaded there via `app/styles.css`'s `@import` and
+directly by `admin.css`), and this task is scoped to the marketing site
+only. I'm being explicit about this because it matters: any new
+palette/typography tokens go into `landing.css`'s own `:root` block
+(only loaded by `index.html`/`pricing.html`), never into
+`design-system.css`, so nothing here can visually change the app or
+admin screens.
 
----
+I'll say this plainly up front: this is a **big diff**, not an
+incremental tweak — most of `index.html`'s body and most of
+`landing.css` gets rewritten. I'm not going to pretend otherwise in the
+interest of looking minimal.
 
-## Part 1 — Positioning rewrite
-
-### Open question before I touch copy (needs your call)
-
-The "Sample Report" section on `index.html` is real, captured output from
-the reconciliation engine (see the code comment above it) — a commercial
-retail unit ("2200 Larimer Street, Suite 140", tenant "Ridgeline Coffee
-Roasters LLC"). I have no real multifamily engine output to swap in, and I'm
-not going to fabricate a fake "real" sample.
-
-Options:
-1. **Keep this exact sample, add one caveat line** noting it's shown on a
-   commercial unit but the reconciliation works the same way on a
-   multifamily rent-roll line (unit/tenant/rent/dates). Fastest, least risk.
-2. **Genericize the labels only** (e.g. swap "Suite 140" → "Unit 140",
-   "Ridgeline Coffee Roasters LLC" → a placeholder residential-sounding
-   name) while keeping the real dollar/date/discrepancy values, and add a
-   note that it's illustrative formatting on real output values.
-3. Leave the section out of the multifamily rewrite entirely for now (mark
-   `TODO: replace with real multifamily sample once available`).
-
-I'd default to **option 1** (least invasive, no risk of the copy looking
-like fabricated data) unless you'd rather I do 2 or 3.
-
-### Nav
-- "Request Access" → **"Book a Demo"**, linking to a new `#book-demo`
-  section (replaces the `#request-access` anchor on the hero).
-- Everything else (How It Works, Sample Report, Platform, Trust & Security,
-  FAQ, Pricing, Client Login) stays.
-- `pricing.html`'s nav and all five `index.html#request-access` CTA links on
-  that page get the same anchor/label swap.
-
-### Hero
-- Eyebrow: something like **"Built for multifamily syndicators"**.
-- Headline: **"Catch rent roll errors before they cost you at closing."**
-  (your exact line, as `<h1>`, with a styled accent word/phrase, matching
-  the current two-line treatment).
-- Subhead: rewritten around your framing — mid-size multifamily
-  syndicators, rent roll checked against the actual leases before a deal
-  closes, not "acquisitions analysts and asset managers" generically.
-- CTA: the inline waitlist email-capture form is **replaced** with a single
-  `Book a Demo` button that scrolls to the new `#book-demo` section. The
-  existing `/waitlist` signup flow (backend route, admin approve/deny,
-  `/app` access gate) is left completely alone — it just no longer has a
-  visible entry point on the landing page. Nothing in `app/auth.py` or
-  `access-gate.js` changes.
-- "See a sample discrepancy report ↓" link stays.
-
-### How It Works → your 3-step flow
-1. Upload your leases and rent roll
-2. See every mismatch, with dollar impact
-3. Export a report for your lender or LP
-
-(Rewritten from the current "Upload / We read & match / Discrepancy report"
-copy to your wording, keeping the same 3-card layout.)
-
-### New section: "Why multifamily is different"
-A short section (3-4 short points or a 2-3 sentence block) making the case
-your prompt asked for — e.g., hundreds of small, similar leases instead of
-a handful of long, heavily negotiated commercial leases; rent roll accuracy
-matters unit-by-unit at scale in a way a commercial tenant-by-tenant tool
-isn't built for; renewals/turnover volume is constant, not occasional.
-Placed after "How It Works", before or merged into "What It Catches".
-
-### Sections that carry over with copy edits, not structural changes
-- **What It Catches** — reframe examples toward rent-roll/unit language
-  (already mostly generic: "rent that doesn't match," "stale expiration,"
-  works for multifamily as-is with light wording tweaks).
-- **Platform (Standardization / Validation / Analysis)** — mostly reusable.
-  Two items are commercial-specific and I'd trim or reframe:
-  - "WALT (weighted average lease term)" and "tenant concentration /
-    Herfindahl-Hirschman" are office/retail concepts (a handful of anchor
-    tenants) that don't really apply to a 200-unit apartment building.
-    I'd either cut these two bullets or reframe them as roadmap items,
-    rather than claim them as live multifamily features.
-  - Everything else (OCR extraction, Excel/PDF import, Yardi/AppFolio/
-    RealPage/MRI/Buildium import, citation-linked validation, T12
-    cross-check, loss-to-lease) genuinely applies to multifamily and stays.
-- **Trust & Security**, **FAQ** — copy edits only (swap "acquisitions
-  analyst" language for "syndicator" framing), no structural change. FAQ
-  gets no new questions unless you want one about multifamily specifically.
-- **Dark statement section** — CTA becomes "Book a Demo" → `#book-demo`.
-
-### New section: Book a Demo (`#book-demo`)
-Replaces the removed hero form as the page's actual conversion point. Sits
-near the bottom, above the footer (after FAQ / statement section). Contains
-the form described in Part 2.
-
-### Footer
-- Contact email is already present (`timmypisano24@gmail.com`, plain text
-  next to the phone number). I'll make it a proper `mailto:` link since
-  right now it's unlinked plain text — that's the one footer change needed.
-  Let me know if you want a different/dedicated address instead of your
-  Gmail.
-
-### `<title>` / meta description / OG tags
-Rewritten to the new positioning (multifamily syndicators, rent roll vs.
-lease reconciliation before closing) — same fields, new copy.
+I don't have `ornn.com` open and I'm not going to fetch it — going on
+the brief itself (oversized headlines, restrained palette, data-forward
+visuals, dark hero, institutional fintech) rather than that specific
+site, so there's no risk of lifting its actual layout or copy.
 
 ---
 
-## Part 2 — Book a Demo form + backend endpoint
+## Design defaults (stating these so you can veto before I build)
 
-### Frontend (`index.html` + `landing.css` + `landing.js`)
-Form fields: Name, Work Email, Company, Number of Units in Portfolio,
-Message (optional) — plus a hidden honeypot field (visually hidden via
-absolute positioning off-screen + `tabindex="-1"` + `autocomplete="off"`,
-not `display:none`, so it still catches simple bots but isn't a screen-
-reader trap).
+**Palette: keep the existing brand tokens, don't introduce a new
+accent.** The current `--lux-black` / `--lux-ivory` / `--lux-accent`
+(warm brass, #b68a4e) palette in `design-system.css` was already built
+around "one flat accent color, never a gradient... reads as considered
+and editorial" (its own code comment). That's already the brief. I'll
+reuse it rather than invent a second palette — restyling is about
+typography scale, whitespace, and a dark hero treatment, not a color
+change.
 
-- Client-side validation: required-field checks, email shape check, units
-  must be a positive whole number, message length capped — mirroring the
-  existing waitlist form's inline error pattern (`.waitlist-error` /
-  `.waitlist-confirm` become a `.demo-form-error` / `.demo-form-confirm`
-  pair, same visual language).
-- On submit: `POST {API_BASE_URL}/demo-request` with JSON body, same
-  try/catch-network-error handling as the existing waitlist submit
-  handler, swap in the success state (clear confirmation message, form
-  hidden) on 2xx.
-- Styling: new `.demo-form` block in `landing.css`, built from the same
-  design tokens (`--lux-accent`, `--radius-sm`, etc.) as the rest of the
-  page — a card-style form, not a repaint of the waitlist single-input bar.
+**Structure: dark hero + dark nav/announcement bar, light body
+sections, dark closing CTA + footer.** This is the standard
+institutional-fintech pattern (dark bookends, light content in between)
+and it's what "lots of whitespace" in your brief points to — an
+all-dark page fights that instruction. Nav and the announcement bar
+stay dark on **both** pages (not just where there's a hero) for one
+consistent header across the site; pricing.html's body stays light
+throughout (it has no hero, just a header).
 
-### Backend
+**Hero visual honesty:** your brief asks for a Deal Mismatch Report
+card with a headline number that counts up to an "annual income
+overstatement," with a few mismatch rows under it. The site already has
+a real sample-report section lower down, built from **actual
+reconciliation-engine output** on one real test lease (see the existing
+code comment on that section) — genuine data, but only one lease with
+one dollar-figure discrepancy, not a multi-unit rent roll. Forcing that
+into a multi-row "several units, all overstated" hero visual would mean
+either (a) fabricating additional dollar rows and presenting them
+alongside real engine output as if they were also real, or (b) relabeling
+real output as something it isn't. Neither is something I'll do
+silently. My plan: label the hero card **"Illustrative example"** (not
+"Sample — test data," which the lower section uses for the real thing),
+use clearly hypothetical unit numbers and round dollar figures to
+build the multi-row scenario your brief describes, and keep the real
+engine-output section further down as the actual target of the hero's
+"See a sample report ↓" button — so the hero is an honest illustration
+of the *kind* of thing the product catches, and the real proof is one
+scroll away, not conflated with it. Flagging this clearly since it's a
+judgment call on a claim, not a pure style choice.
 
-**CSRF**: already handled. `app/security.py`'s `install_security()` runs a
-global `before_request` Origin/Referer check on every state-changing
-request except `/health` — the new `POST /demo-request` route is covered
-automatically, no extra code needed.
+**"Data isolated per team" trust pillar — needs your confirmation
+before I write it as fact.** I checked `database.py` when writing the
+pricing FAQ last round: there's no per-tenant/org scoping column or
+separate-database architecture in this codebase today (confirmed again
+just now — nothing changed). This trust pillar is one of the three
+things a visitor would see high on the homepage; if I write "your data
+is isolated per team" as a flat claim and it isn't true yet, that's a
+false trust signal on the exact kind of page where accuracy matters
+most. I'll include it as requested, but marked with the same
+`<!-- TODO: confirm/document the actual multi-tenant isolation model
+-->` treatment the pricing-page FAQ already uses for this — **unless
+you tell me the isolation model is already real** (e.g. a
+per-customer deployment/database, which the demo-deployment split in
+`DEPLOYMENT.md` suggests might be closer to true than I assumed), in
+which case I'll write it as a confirmed fact instead. Tell me which.
 
-**New DB table** (`app/database.py`, added to `init_db()` next to the
-`waitlist_signups`/`pageviews` tables, and to `reset_db()`'s drop list):
+---
 
-```sql
-CREATE TABLE IF NOT EXISTS demo_requests (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    work_email TEXT NOT NULL,
-    company TEXT NOT NULL,
-    units INTEGER NOT NULL,
-    message TEXT,
-    created_at TEXT NOT NULL
-)
-```
-Plus `insert_demo_request(...)` and `get_all_demo_requests()` (the latter
-only so the data isn't write-only from day one — no new admin UI is in
-scope, this is just a plain read function).
+## 1. Announcement bar (`index.html` + `pricing.html`)
 
-**New route** (`app/api.py`, placed near the waitlist section, reusing its
-established shape):
+Thin, dark, sits above the nav (not sticky/fixed — a fixed bar adds
+scroll-jacking complexity your brief didn't ask for). Copy: **"Now
+onboarding beta testers. Book a demo →"**, the "Book a demo" portion
+linking to `#book-demo` (`index.html#book-demo` from the pricing page).
+No dismiss button — kept simple, matches "thin."
 
-```
-POST /demo-request
-Body: {name, work_email, company, units, message (optional), website (honeypot, must be empty)}
-```
-- Per-IP rate limit via the existing `security.RateLimiter` class (same one
-  `/analytics/pageview` already uses) — e.g. 8 requests/minute/IP.
-- Honeypot check first: if `website` is non-empty, return the *same* 201
-  success response without touching the DB or sending any email — never
-  signal to a bot that it was caught.
-- Server-side validation: name/company non-empty and length-capped,
-  work_email matches the existing `_EMAIL_RE`, units is a positive integer
-  in a sane range (1–1,000,000), message length-capped and optional.
-  Validation failures → 400 with a specific, safe message (e.g. "Please
-  enter a valid email address") — never a stack trace or internal detail.
-- On success: insert the row, then two best-effort emails via
-  `email_service.py` (reusing `_send_email_best_effort`, same as waitlist):
-  - `send_demo_request_notification(admin_email, request_data)` → to
-    `ADMIN_EMAIL`, with the submitted details.
-  - `send_demo_request_confirmation(work_email, name)` → short "we got
-    your request, we'll follow up" email to the requester, same visual
-    template as the existing confirmation emails in `email_service.py`.
-  - Both follow the existing fail-open contract: an email failure never
-    fails the request. The submission is already committed before either
-    send is attempted.
-- Response: `{"message": "..."}` on success (generic, no internal IDs
-  leaked), matching the waitlist route's shape. All error paths return
-  only generic, safe messages — nothing from an exception ever reaches the
-  client (the existing global `@app.errorhandler(Exception)` in `api.py`
-  already backstops anything unanticipated).
+---
 
-### Tests (new file: `backend/tests/test_demo_request.py`)
-Modeled directly on `backend/tests/test_waitlist_email.py`'s pattern
-(temp SQLite DB per test, mocked `smtplib.SMTP_SSL`, Flask test client):
-- Valid submission succeeds, persists, and sends both emails.
-- Missing/invalid required fields (name, work_email, company, units) each
-  return 400 with a safe message and do **not** persist a row or send mail.
-- Invalid email format rejected.
-- Non-numeric / negative / zero / absurdly large `units` rejected.
-- Honeypot field populated → 200 success response returned, but **no** row
-  is inserted and **no** email is sent (spam case).
-- Message field is optional — omitting it still succeeds.
-- Overlong message/name/company values are rejected or truncated per the
-  validation rule chosen above (test whichever behavior is implemented).
-- Submission still succeeds (still persists) when SMTP raises or
-  credentials are unset — mirrors the waitlist "email must never block
-  signup" guarantee.
-- Rate limit: N+1th request from the same IP within the window gets 429.
-- CSRF: a state-changing request with a disallowed `Origin` header is
-  rejected 403 by the existing global middleware (one test confirming the
-  new route inherits this, not re-implementing it).
+## 2. Hero (`index.html` only)
+
+- Dark near-black background reusing the existing `.hero-bg` layer
+  (`.hero-glow` + `.hero-grid` — already exactly the "subtle grid /
+  gradient background" your brief asks for, just needs the literal
+  skyline `<svg>` removed since a city-skyline silhouette reads as
+  generic-real-estate, not data-forward fintech).
+- Two-column layout at desktop width: left = eyebrow, oversized `<h1>`
+  (tight negative letter-spacing, bigger than today's hero type),
+  one-line subhead, two buttons (**Book a Demo** primary, **See a
+  sample report ↓** secondary, scrolling to the real sample section).
+  Right = the new Deal Mismatch Report visual. Stacks to one column on
+  mobile, visual under the copy.
+- Headline: your exact line, **"Check the rent roll before you
+  close."**, as the `<h1>` with the accent treatment the current hero
+  already uses for a phrase.
+- The Deal Mismatch Report card: "Illustrative example" tag (see above),
+  a large count-up headline number (e.g. an annualized total built from
+  2–3 clearly hypothetical per-unit rent gaps), those 2–3 mismatch rows
+  underneath in a compact list. Pure HTML/CSS + one small JS function
+  for the count — `IntersectionObserver`-triggered (counts once, when
+  the card scrolls/loads into view), and skipped entirely (final number
+  shown immediately) under `prefers-reduced-motion: reduce`, same
+  guard `landing.js` already uses for `.reveal`.
+
+---
+
+## 3. Problem section (`index.html`)
+
+This absorbs the site's existing **real** sample-report content (actual
+reconciliation-engine output on one real test lease, already fact-checked
+and already carrying its own honest "not live data" caveat) — reframed
+as "here's a genuine example of what goes wrong," which is also the
+scroll target for the hero's "See a sample report" button. This replaces
+a separate abstract "the problem is X" section with something more
+data-forward and concrete, in keeping with the brief's "data-forward
+visuals" note, and avoids writing a second, softer version of a problem
+statement that's already made concretely by real output. A short lead-in
+sentence or two frames it before the real report card.
+
+---
+
+## 4. Three-step how it works (`index.html`)
+
+Keeps the current three steps (upload leases + rent roll → see every
+mismatch with dollar impact → export a report) — restyled to the new
+oversized-number-per-step treatment, copy essentially unchanged since
+it's already tight and accurate.
+
+---
+
+## 5. Built for multifamily (`index.html`)
+
+Keeps the current three differentiator points (volume not negotiation,
+constant turnover, closing-table timing vs. asset management) and folds
+in a compact capability strip — a row of short chips/labels (OCR
+extraction, Yardi/AppFolio/RealPage/MRI/Buildium import, T12
+cross-check, citation-linked validation) instead of the current
+three-column "Platform" section's long prose — same real facts,
+condensed to fit a leaner institutional-site structure instead of a
+sprawling feature-breakdown section.
+
+---
+
+## 6. Three trust pillars (`index.html`)
+
+Exactly the three from your brief:
+1. Data isolated per team — see the open question above on wording.
+2. Every finding cites the source page and quote in the lease — real,
+   already an established claim elsewhere on the site.
+3. Documents are not used to train AI — **No**, with `<!-- TODO: verify
+   -->`, same treatment as the pricing-page FAQ's identical question.
+
+Compact 3-up grid, not the current longer 6-item Trust & Security list —
+the fuller list (SOC 2 status, credential handling, deletion rights)
+either gets trimmed into these three or moves into the FAQ rather than
+staying as its own dense section, to match a leaner structure.
+
+---
+
+## 7. Pricing preview (`index.html`)
+
+A compact 3-card teaser reusing `PRICING_CONFIG` (loads
+`pricing-config.js` on `index.html` too — read-only, no duplicated
+numbers to maintain in two places) showing each tier's name and
+starting monthly-per-property price, with one "Compare all plans →"
+button linking to `pricing.html`. No toggle here — that stays on the
+real pricing page; this is a teaser, not a duplicate.
+
+---
+
+## 8. FAQ (`index.html`)
+
+Keeps the current five questions (data handling, accuracy, formats/PMS
+support, how this differs from outlier-flagging, does it replace an
+analyst) — content already fact-checked in earlier rounds, just
+restyled to match. Contract/pilot/cancellation questions stay on
+`pricing.html` only, not duplicated here.
+
+---
+
+## 9. Final CTA (`index.html`)
+
+Dark closing band (reuses the existing `.statement` pattern), bigger
+oversized-headline treatment, single **Book a Demo** button.
+
+---
+
+## 10. Footer (`index.html` + `pricing.html`)
+
+Restyled for the dark treatment, same content and links as today
+(brand, Pricing / Book a Demo links, contact, copyright).
+
+---
+
+## `pricing.html` re-theme
+
+Not restructured — same tiers/toggle/FAQ, same `pricing-config.js` /
+`pricing.js` logic untouched. Gets: the new announcement bar, the dark
+nav/footer treatment, the oversized-headline typography on its header,
+and restyled cards/toggle/FAQ to match the new visual system. Body stays
+light (no dark hero — there's no hero here, just a header).
+
+---
+
+## Tests
+
+No backend changes, so no new backend tests. I'll run the existing
+`backend/tests/` suite once as the same sanity check as the last two
+rounds. The Book a Demo form's markup gets restyled but its fields, IDs,
+and `landing.js` submit handler are untouched, so it keeps working
+exactly as today — I'll verify it end-to-end in-browser (submit a real
+test request against a local backend) before committing, not just
+visually.
 
 ---
 
 ## What I'm explicitly *not* doing
-- Not touching `app/auth.py`, `app/deal_mismatch.py`, rent roll
-  parsing/extraction, or any file under deployment config.
-- Not deleting or modifying the existing `/waitlist` backend flow, admin
-  dashboard waitlist review, or `/app` access gate — only removing its
-  visible entry point from the marketing page.
-- Not adding an admin UI for reviewing demo requests — just the DB table
-  and a plain read function, per your endpoint-only scope.
-- Not touching `frontend/app/`, `frontend/admin/`, or `frontend/owner/`.
+- Not touching `design-system.css`, the backend, `pricing-config.js`'s
+  data shape, or `pricing.js`'s render/toggle logic.
+- Not introducing a new accent color or a second palette.
+- Not using any stock photography, external images, fabricated
+  testimonials, or customer logos — every visual is HTML/CSS/inline SVG,
+  same as the current site.
+- Not claiming the hero's illustrative card is real benchmark data, and
+  not claiming per-team data isolation is live unless you confirm it is.
 
 ---
 
-Waiting on your go-ahead, plus your call on the Sample Report question
-above (defaulting to option 1 if you don't have a preference).
+Waiting on your go-ahead, plus two calls:
+1. Is per-team data isolation actually real today (e.g. a genuinely
+   separate deployment/database per customer), or should that trust
+   pillar ship with the `TODO: confirm` treatment like the AI-training
+   claim?
+2. OK with the hero's Deal Mismatch Report card being an explicitly
+   labeled "Illustrative example" (hypothetical numbers) rather than
+   trying to stretch the one real sample-report lease into a multi-unit
+   scenario?

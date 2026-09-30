@@ -7,20 +7,20 @@
     <link rel="icon" href="/favicon.svg" type="image/svg+xml">
     <link rel="icon" href="/favicon.ico" sizes="32x32">
     <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-    <meta name="description" content="Abstractly pricing: plans from a single analyst reviewing one rent roll a month to a portfolio team underwriting deals every week, plus a white-glove concierge tier.">
+    <meta name="description" content="Abstractly pricing: Starter, Growth, and Enterprise plans priced per property for multifamily syndicators, with monthly or annual contracts. Book a demo — no self-serve checkout.">
     <!-- og:image / og:url are absolute per the OG spec; update the host
          here if the deployed frontend URL changes (same as config.js). -->
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="Abstractly">
     <meta property="og:title" content="Abstractly — Pricing">
-    <meta property="og:description" content="Abstractly pricing: plans from a single analyst reviewing one rent roll a month to a portfolio team underwriting deals every week, plus a white-glove concierge tier.">
+    <meta property="og:description" content="Abstractly pricing: Starter, Growth, and Enterprise plans priced per property for multifamily syndicators, with monthly or annual contracts. Book a demo — no self-serve checkout.">
     <meta property="og:url" content="https://abstractly-n0id.onrender.com/pricing.html">
     <meta property="og:image" content="https://abstractly-n0id.onrender.com/og-image.png">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="Abstractly — Pricing">
-    <meta name="twitter:description" content="Abstractly pricing: plans from a single analyst reviewing one rent roll a month to a portfolio team underwriting deals every week, plus a white-glove concierge tier.">
+    <meta name="twitter:description" content="Abstractly pricing: Starter, Growth, and Enterprise plans priced per property for multifamily syndicators, with monthly or annual contracts. Book a demo — no self-serve checkout.">
     <meta name="twitter:image" content="https://abstractly-n0id.onrender.com/og-image.png">
     <link rel="preload" href="fonts/inter-latin-var.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="stylesheet" href="design-system.css">
@@ -29,23 +29,29 @@
 <body>
     <a class="skip-link" href="#mainContent">Skip to content</a>
 
-    <nav class="landing-nav">
-        <div class="landing-brand">
-            <svg class="landing-brand-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5"/>
-            </svg>
-            Abstractly
-        </div>
-        <div class="landing-nav-links">
-            <a href="index.html#how-it-works">How It Works</a>
-            <a href="index.html#platform">Platform</a>
-            <a href="index.html#trust">Trust &amp; Security</a>
-            <a href="index.html#faq">FAQ</a>
-            <a href="pricing.html" class="nav-current">Pricing</a>
-            <a href="index.html#book-demo">Book a Demo</a>
-            <a href="/app/login.html" class="nav-client-login">Client Login</a>
-        </div>
-    </nav>
+    <div class="announcement-bar">
+        Now onboarding beta testers. <a href="index.html#book-demo">Book a demo &rarr;</a>
+    </div>
+
+    <div class="site-header">
+        <nav class="landing-nav">
+            <div class="landing-brand">
+                <svg class="landing-brand-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5"/>
+                </svg>
+                Abstractly
+            </div>
+            <div class="landing-nav-links">
+                <a href="index.html#how-it-works">How It Works</a>
+                <a href="index.html#why-multifamily">Built For Multifamily</a>
+                <a href="index.html#trust">Trust</a>
+                <a href="pricing.html" class="nav-current">Pricing</a>
+                <a href="index.html#faq">FAQ</a>
+                <a href="index.html#book-demo">Book a Demo</a>
+                <a href="/app/login.html" class="nav-client-login">Client Login</a>
+            </div>
+        </nav>
+    </div>
 
     <main id="mainContent">
 
@@ -53,8 +59,8 @@
     <header class="pricing-header">
         <div class="section-heading reveal">
             <span class="eyebrow">Pricing</span>
-            <h1 class="pricing-h1">Straightforward Tiers, Built To Grow With Your Portfolio</h1>
-            <p>From a single analyst reviewing one rent roll a month to a portfolio team underwriting deals every week — including a fully white-glove tier for firms who want us in the room.</p>
+            <h1 class="pricing-h1">Straightforward Tiers, Priced Per Property</h1>
+            <p>Every plan is a real walkthrough with us, not a self-serve checkout — pricing scales with the number of properties in your portfolio, on a monthly or annual contract.</p>
         </div>
     </header>
 
@@ -62,68 +68,68 @@
     <section class="pricing-section">
         <div class="pricing-placeholder-note reveal">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/></svg>
-            <span><strong>Recommended launch pricing.</strong> These numbers reflect the value this replaces (manual abstraction typically runs $30&ndash;100 in analyst time per document) rather than market-tested data &mdash; validate with real customer conversations before treating them as final. <!-- TODO: revisit after early customer conversations --></span>
+            <span><strong>Placeholder launch pricing.</strong> Starter and Growth's per-property prices, property limits, and the annual discount below are not market-tested — validate with real customer conversations before treating them as final. <!-- TODO: revisit after early customer conversations --> All figures live in one place (<code>frontend/pricing-config.js</code>) so they're easy to update.</span>
         </div>
 
-        <div class="pricing-grid reveal">
-            <div class="pricing-card">
-                <h2 class="pricing-tier-name">Starter</h2>
-                <p class="pricing-tier-desc">For a single analyst keeping one portfolio current.</p>
-                <div class="pricing-tier-price">$349<span>/mo</span></div>
-                <p class="pricing-annual-note">or $3,490/yr &mdash; 2 months free</p>
-                <ul class="pricing-feature-list">
-                    <li>Up to 15 leases or rent rolls per month</li>
-                    <li>Standardized extraction &amp; validation</li>
-                    <li>Confidence summary on every upload</li>
-                    <li>Excel &amp; Google Sheets export</li>
-                    <li>Email support</li>
-                </ul>
-                <a href="index.html#book-demo" class="btn-secondary pricing-cta">Book a Demo</a>
-            </div>
+        <!-- Monthly / Annual toggle: a two-option segmented control,
+             aria-pressed marks the active side. Populated (and re-rendered
+             on toggle) by pricing.js from PRICING_CONFIG. -->
+        <div class="pricing-toggle reveal" id="pricingToggle" role="group" aria-label="Billing interval">
+            <button type="button" class="pricing-toggle-btn" id="pricingToggleMonthly" aria-pressed="true">Monthly</button>
+            <button type="button" class="pricing-toggle-btn" id="pricingToggleAnnual" aria-pressed="false">Annual</button>
+        </div>
 
-            <div class="pricing-card pricing-card-featured">
-                <span class="pricing-badge">Most Popular</span>
-                <h2 class="pricing-tier-name">Team</h2>
-                <p class="pricing-tier-desc">For an acquisitions team underwriting deals every week.</p>
-                <div class="pricing-tier-price">$899<span>/mo</span></div>
-                <p class="pricing-annual-note">or $8,990/yr &mdash; 2 months free</p>
-                <ul class="pricing-feature-list">
-                    <li>Up to 75 leases or rent rolls per month</li>
-                    <li>Everything in Starter</li>
-                    <li>Portfolio rollup &amp; cross-lease mismatch detection</li>
-                    <li>Decision-ready PDF summary memos</li>
-                    <li>Priority support</li>
-                </ul>
-                <a href="index.html#book-demo" class="btn-primary pricing-cta">Book a Demo</a>
-            </div>
+        <!-- Tier cards are rendered here by pricing.js from
+             PRICING_CONFIG (frontend/pricing-config.js) -- edit that
+             file to change any price, property limit, or feature list;
+             this container stays empty in the markup. -->
+        <div class="pricing-grid reveal" id="pricingGrid"></div>
+    </section>
 
-            <div class="pricing-card">
-                <h2 class="pricing-tier-name">Business</h2>
-                <p class="pricing-tier-desc">For firms managing a full portfolio across multiple properties.</p>
-                <div class="pricing-tier-price">$2,499<span>/mo</span></div>
-                <p class="pricing-annual-note">or $24,990/yr &mdash; 2 months free</p>
-                <ul class="pricing-feature-list">
-                    <li>Unlimited leases and rent rolls</li>
-                    <li>Everything in Team</li>
-                    <li>Manually-triggered monthly portfolio report</li>
-                    <li>Multiple team seats</li>
-                    <li>Dedicated account contact</li>
-                </ul>
-                <a href="index.html#book-demo" class="btn-secondary pricing-cta">Book a Demo</a>
-            </div>
-
-            <div class="pricing-card pricing-card-concierge">
-                <h2 class="pricing-tier-name">Concierge</h2>
-                <p class="pricing-tier-desc">For firms who want us embedded in how they underwrite.</p>
-                <div class="pricing-tier-price pricing-tier-price-custom">Custom</div>
-                <ul class="pricing-feature-list">
-                    <li>Dedicated onboarding</li>
-                    <li>Setup tailored to your specific PM system(s)</li>
-                    <li>Human-reviewed first deals</li>
-                    <li>Monthly portfolio reporting, handled for you</li>
-                </ul>
-                <a href="index.html#book-demo" class="btn-primary pricing-cta">Talk To Us</a>
-            </div>
+    <!-- ===================== FAQ ===================== -->
+    <section class="faq" id="pricing-faq">
+        <div class="section-heading reveal">
+            <span class="eyebrow">FAQ</span>
+            <h2>Pricing Questions We'd Ask Too</h2>
+        </div>
+        <div class="faq-list">
+            <details class="faq-item reveal">
+                <summary>How do contracts work?</summary>
+                <p>You sign either a monthly or an annual contract — use the toggle above to compare the two. Annual contracts are billed upfront at a discount off the monthly per-property rate; monthly contracts are billed every month at the standard rate. Either way, pricing scales with the number of properties in your portfolio, not with document volume.</p>
+            </details>
+            <details class="faq-item reveal">
+                <summary>Is there a pilot?</summary>
+                <!-- TODO: confirm the real pilot policy/terms — no pilot
+                     program is documented anywhere in this codebase yet,
+                     so this is deliberately non-committal rather than
+                     inventing specific terms. -->
+                <p>Ask us during your demo about starting with a subset of your portfolio before rolling out to the rest — we can talk through what makes sense for your deal flow. <!-- TODO: confirm real pilot policy/terms --></p>
+            </details>
+            <details class="faq-item reveal">
+                <summary>How accurate is the extraction?</summary>
+                <p>We're not going to hand you a made-up accuracy percentage — anyone can print a number, and it means nothing without knowing what it was measured against. Every extracted value shows a confidence level and links back to the exact page and quote it came from, so you or your analyst can verify any figure in seconds rather than trusting a black box.</p>
+            </details>
+            <details class="faq-item reveal">
+                <summary>How is our data secured and isolated?</summary>
+                <!-- TODO: confirm/document the actual multi-tenant
+                     isolation model before making a stronger isolation
+                     claim -- no per-customer database or tenant-scoping
+                     architecture is documented in this codebase today,
+                     so this deliberately stays to what's actually true. -->
+                <p>Your documents and the data extracted from them are stored under your account and are never shared with, or resold to, a third party. You can delete any document and its extracted data at any time, and no credentials or secrets are ever stored in our codebase — only in environment configuration. <!-- TODO: confirm/document the specific multi-tenant data isolation model --></p>
+            </details>
+            <details class="faq-item reveal">
+                <summary>Do you use our documents to train AI?</summary>
+                <!-- TODO: verify this with the team before launch. -->
+                <p>No. <!-- TODO: verify --></p>
+            </details>
+            <details class="faq-item reveal">
+                <summary>How do I cancel?</summary>
+                <!-- TODO: confirm exact cancellation process/notice
+                     period -- not documented anywhere in this codebase
+                     yet, so kept generic rather than invented. -->
+                <p>Contact us and we'll process the cancellation at the end of your current billing period. <!-- TODO: confirm exact cancellation process/notice period --></p>
+            </details>
         </div>
     </section>
 
@@ -140,17 +146,25 @@
     </main>
 
     <footer class="landing-footer">
-        <div class="footer-top">
-            <div class="footer-brand">
-                <svg width="20" height="20" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5"/></svg>
-                Abstractly
+        <div class="footer-inner">
+            <div class="footer-top">
+                <div class="footer-brand">
+                    <svg width="20" height="20" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5"/></svg>
+                    Abstractly
+                </div>
+                <div class="footer-links">
+                    <a href="pricing.html">Pricing</a>
+                    <a href="index.html#book-demo">Book a Demo</a>
+                </div>
             </div>
+            <p class="footer-contact"><a href="mailto:timmypisano24@gmail.com">timmypisano24@gmail.com</a> &nbsp;&middot;&nbsp; 631-697-8711</p>
+            <p class="footer-copy">&copy; 2026 Abstractly. All rights reserved.</p>
         </div>
-        <p class="footer-contact"><a href="mailto:timmypisano24@gmail.com">timmypisano24@gmail.com</a> &nbsp;&middot;&nbsp; 631-697-8711</p>
-        <p class="footer-copy">&copy; 2026 Abstractly. All rights reserved.</p>
     </footer>
 
     <script src="config.js"></script>
+    <script src="pricing-config.js"></script>
+    <script src="pricing.js"></script>
     <script src="landing.js"></script>
 </body>
 </html>
