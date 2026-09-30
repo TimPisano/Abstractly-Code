@@ -27,6 +27,12 @@
     <link rel="stylesheet" href="landing.css">
 </head>
 <body>
+    <!-- Fluted-glass shader background, fixed behind every section (see
+         background-fx.js + landing.css's #bgfx-canvas rules). Stays
+         empty/transparent (falls back to body's own dark background)
+         if JS never runs. -->
+    <canvas id="bgfx-canvas" aria-hidden="true"></canvas>
+
     <a class="skip-link" href="#mainContent">Skip to content</a>
 
     <nav class="landing-nav">
@@ -150,6 +156,8 @@
         <p class="footer-copy">&copy; 2026 Abstractly. All rights reserved.</p>
     </footer>
 
+    <script src="vendor/lenis.min.js"></script>
+    <script src="background-fx.js"></script>
     <script src="config.js"></script>
     <script src="landing.js"></script>
 </body>

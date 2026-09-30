@@ -27,6 +27,12 @@
     <link rel="stylesheet" href="landing.css">
 </head>
 <body>
+    <!-- Fluted-glass shader background, fixed behind every section (see
+         background-fx.js + landing.css's #bgfx-canvas rules). Stays
+         empty/transparent (falls back to body's own dark background)
+         if JS never runs. -->
+    <canvas id="bgfx-canvas" aria-hidden="true"></canvas>
+
     <a class="skip-link" href="#mainContent">Skip to content</a>
 
     <nav class="landing-nav">
@@ -53,8 +59,6 @@
     <!-- ===================== Hero ===================== -->
     <header class="hero">
         <div class="hero-bg" aria-hidden="true">
-            <div class="hero-glow"></div>
-            <div class="hero-grid"></div>
             <svg class="hero-skyline" viewBox="0 0 1440 200" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg" fill="currentColor">
                 <rect x="0" y="140" width="70" height="60"/>
                 <rect x="80" y="100" width="50" height="100"/>
@@ -459,6 +463,8 @@
         <p class="footer-copy">&copy; 2026 Abstractly. All rights reserved.</p>
     </footer>
 
+    <script src="vendor/lenis.min.js"></script>
+    <script src="background-fx.js"></script>
     <script src="config.js"></script>
     <script src="landing.js"></script>
 </body>

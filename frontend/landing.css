@@ -1,17 +1,19 @@
 /**
  * Landing page styles.
  *
- * design-system.css (loaded before this file) now defines this same
- * deep-charcoal/brass/ivory palette as the SHARED default (promoted
- * there in the "polish and reliability" pass that redesigned the app
- * screens to match this page, rather than leaving the app on the old
- * indigo/violet default and only this page opting out of it) — so the
- * :root block below no longer needs to redeclare --primary-color,
- * --text-dark, --background, etc. What's left here is genuinely
- * landing-specific: --lux-line-dark (a hairline border color only this
- * page uses), and a more dramatic shadow/radius treatment than the
- * app's data-dense screens want (deeper shadows, sharper near-square
- * corners) — both deliberate, not oversights.
+ * design-system.css (loaded before this file) defines the shared
+ * deep-charcoal/brass/ivory palette used across the whole product
+ * (promoted there in the "polish and reliability" pass that redesigned
+ * the app screens to match this page). That shared palette is tuned
+ * for the APP's light, card-based UI, though -- since the fluted-glass
+ * shader redesign, this page itself sits on a dark background site-
+ * wide (not just the hero), so the :root block below redeclares
+ * --text-dark, --border-color, --background, and --primary-light for
+ * that dark backdrop, scoped to this stylesheet only (index.html /
+ * pricing.html), leaving the app's own light theme untouched. The
+ * shadow/radius overrides below are a separate, older deviation (a
+ * more dramatic, sharper-cornered look than the app's data-dense
+ * screens want) -- both deliberate, not oversights.
  */
 
 /* Weight 900 is requested together with the rest of Inter's weights
@@ -32,15 +34,62 @@
     --radius-md: 3px;
     --radius-lg: 4px;
     --radius-xl: 6px;
+
+    /* ---- Dark-theme overrides, landing pages only ----
+       The whole page now sits on the fluted-glass shader background
+       (see #bgfx-canvas below), so every shared text/border/fill token
+       design-system.css defines for a light, card-based app UI gets
+       redefined here for a dark, boxless one. Scoped to this
+       stylesheet (only loaded by index.html/pricing.html), so the app
+       itself is untouched. */
+    --text-dark: var(--lux-ivory);
+    --text-medium: rgba(246, 243, 236, 0.68);
+    --text-light: rgba(246, 243, 236, 0.48);
+    --border-color: var(--lux-line-dark);
+    --background: rgba(255, 255, 255, 0.035);
+    --primary-light: rgba(182, 138, 78, 0.14);
 }
 
 body {
     overflow-x: hidden;
-    background: var(--lux-ivory);
+    background: var(--lux-black);
 }
 
 html {
     scroll-behavior: smooth;
+}
+
+/* ===================== Background shader + static fallback ===================== */
+
+/* Fixed, viewport-sized, painted behind every section (negative
+   z-index puts it behind the page's normal-flow content without
+   needing every section to opt into a higher z-index of its own).
+   Driven by background-fx.js; stays empty (transparent, body's own
+   --lux-black shows through) if JS never runs at all. */
+#bgfx-canvas {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    display: block;
+    pointer-events: none;
+}
+
+html.bgfx-static #bgfx-canvas {
+    display: none;
+}
+
+/* Static stand-in for prefers-reduced-motion and touch/no-hover
+   devices (see background-fx.js) -- same fluted-glass mood, no rAF
+   loop, no mousemove tracking, no scroll-linked recompute. */
+html.bgfx-static body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background:
+        radial-gradient(ellipse 60% 45% at 50% 18%, rgba(182, 138, 78, 0.16), transparent 70%),
+        repeating-linear-gradient(90deg, rgba(246, 243, 236, 0.035) 0, rgba(246, 243, 236, 0.035) 1px, transparent 1px, transparent 30px);
 }
 
 /* ---- Small uppercase eyebrow label, reused above every section heading ---- */
@@ -51,11 +100,11 @@ html {
     font-weight: 600;
     letter-spacing: 0.22em;
     text-transform: uppercase;
-    /* One step darker than --lux-accent-text: at 12px on the ivory
-       background that token is 4.33:1, just under AA. .hero .eyebrow
-       overrides this for the dark hero, where the lighter brass is
-       correct. */
-    color: #82612e;
+    /* Whole page sits on the dark shader background now -- --lux-accent
+       (not the darker --lux-accent-text, which was tuned for ivory and
+       only clears ~4.1:1 here) is what stays AA-legible at this size
+       on near-black. */
+    color: var(--lux-accent);
     margin-bottom: 1.25rem;
 }
 
@@ -96,14 +145,10 @@ html {
     padding: 2rem 1.5rem 0;
 }
 
-/* .landing-nav sits in normal document flow BEFORE .hero (not overlaid
-   on top of it), so it renders against the page's own ivory background,
-   not the hero's black one -- these colors are chosen for that ivory
-   backdrop specifically. (Previously used --lux-ivory / a light rgba,
-   colors meant for text on a dark surface; against the actual ivory
-   background behind the nav that made the entire nav bar's text nearly
-   invisible -- a real contrast bug, not a deliberate transparent-over-
-   hero look, since the markup never positions the nav over the hero.) */
+/* The page background is dark site-wide now (the shader shows through
+   behind every section, nav included), so --text-dark/--text-medium
+   here resolve to the ivory/translucent-ivory values redefined at the
+   top of this file -- correct for this dark backdrop. */
 .landing-brand {
     display: flex;
     align-items: center;
@@ -144,7 +189,7 @@ html {
 }
 
 .landing-nav-links a:hover {
-    color: var(--lux-accent-text);
+    color: var(--lux-accent);
 }
 
 .nav-client-login {
@@ -162,7 +207,9 @@ html {
 .hero {
     position: relative;
     overflow: hidden;
-    background: var(--lux-black);
+    /* No background of its own -- the fluted-glass shader (#bgfx-canvas)
+       shows through at full intensity here, the same layer that stays
+       faintly visible behind every section below. */
     padding: 6rem 1.5rem 7rem;
     text-align: center;
 }
@@ -174,26 +221,6 @@ html {
     pointer-events: none;
 }
 
-.hero-glow {
-    position: absolute;
-    top: -18rem;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 70rem;
-    height: 44rem;
-    background: radial-gradient(ellipse at center, rgba(182, 138, 78, 0.22), transparent 68%);
-}
-
-.hero-grid {
-    position: absolute;
-    inset: 0;
-    background-image:
-        repeating-linear-gradient(90deg, rgba(246, 243, 236, 0.05) 0, rgba(246, 243, 236, 0.05) 1px, transparent 1px, transparent 88px),
-        repeating-linear-gradient(0deg, rgba(246, 243, 236, 0.05) 0, rgba(246, 243, 236, 0.05) 1px, transparent 1px, transparent 88px);
-    -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 30%, black 40%, transparent 85%);
-    mask-image: radial-gradient(ellipse 70% 60% at 50% 30%, black 40%, transparent 85%);
-}
-
 .hero-skyline {
     position: absolute;
     left: 0;
@@ -202,7 +229,7 @@ html {
     width: 100%;
     height: 200px;
     color: var(--lux-charcoal-2);
-    opacity: 0.55;
+    opacity: 0.4;
 }
 
 .hero-inner {
@@ -210,10 +237,6 @@ html {
     z-index: 1;
     max-width: 860px;
     margin: 0 auto;
-}
-
-.hero .eyebrow {
-    color: var(--lux-accent-text);
 }
 
 .hero h1 {
@@ -224,6 +247,9 @@ html {
     line-height: 1.02;
     color: var(--lux-ivory);
     margin: 0 auto 1.75rem;
+    /* The shader's spotlight can regionally brighten behind this text --
+       a soft dark halo keeps it legible without a boxed panel. */
+    text-shadow: 0 2px 28px rgba(0, 0, 0, 0.55);
 }
 
 .hero h1 .accent {
@@ -272,6 +298,7 @@ html {
     letter-spacing: -0.025em;
     color: var(--text-dark);
     margin-bottom: 0.875rem;
+    text-shadow: 0 2px 24px rgba(0, 0, 0, 0.5);
 }
 
 .section-heading p {
@@ -331,7 +358,7 @@ html {
     display: inline-block;
     font-size: 0.875rem;
     font-weight: 600;
-    color: var(--lux-accent-text, var(--lux-accent));
+    color: var(--lux-accent);
     text-decoration: none;
 }
 
@@ -350,15 +377,12 @@ html {
 .differentiator-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 1.25rem;
+    gap: 2.5rem;
 }
 
 .differentiator-card {
-    background: var(--white);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    border-left: 3px solid var(--lux-accent);
-    padding: 1.5rem 1.625rem;
+    border-left: 2px solid var(--lux-accent);
+    padding: 0.25rem 0 0.25rem 1.375rem;
 }
 
 .differentiator-card h3 {
@@ -385,15 +409,12 @@ html {
 .catches-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
-    gap: 1.25rem;
+    gap: 2rem 2.5rem;
 }
 
 .catch-card {
-    background: var(--white);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    border-left: 3px solid var(--lux-accent);
-    padding: 1.5rem 1.625rem;
+    border-left: 2px solid var(--lux-accent);
+    padding: 0.25rem 0 0.25rem 1.375rem;
 }
 
 .catch-card h3 {
@@ -417,11 +438,17 @@ html {
     padding: 7rem 1.5rem 0;
 }
 
+/* One of only two "panel" elements left on the page (the other is
+   .pricing-card) -- a subtle translucent dark fill with a blurred
+   backdrop, so the ribs behind it still show through faintly instead
+   of being fully obscured by an opaque card. */
 .sample-report {
-    background: var(--white);
-    border: 1px solid var(--border-color);
+    background: rgba(24, 22, 19, 0.42);
+    border: 1px solid rgba(246, 243, 236, 0.1);
     border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-md);
+    box-shadow: 0 30px 60px -24px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
     overflow: hidden;
 }
 
@@ -460,16 +487,21 @@ html {
 .sample-disc-list {
     display: flex;
     flex-direction: column;
-    gap: 1rem;
-    padding: 1.5rem;
+    padding: 0.5rem 1.5rem;
 }
 
+/* Rows inside the one allowed panel, divided by a hairline instead of
+   each being its own nested box -- the severity color still reads via
+   the left accent bar. */
 .sample-disc-card {
-    border: 1px solid var(--border-color);
     border-left: 3px solid var(--severity-low);
-    border-radius: var(--radius-md);
-    padding: 1.125rem 1.25rem;
-    background: var(--white);
+    border-bottom: 1px solid var(--border-color);
+    padding: 1.125rem 0 1.125rem 1.25rem;
+    background: transparent;
+}
+
+.sample-disc-card:last-child {
+    border-bottom: none;
 }
 
 .sample-disc-high { border-left-color: var(--severity-high); }
@@ -540,7 +572,7 @@ html {
 }
 
 .sample-report-foot a {
-    color: var(--lux-accent-text, var(--lux-accent));
+    color: var(--lux-accent);
     font-weight: 600;
 }
 
@@ -554,9 +586,9 @@ html {
 }
 
 .stat-band-inner {
-    border: 1px dashed var(--border-color);
-    border-radius: var(--radius-lg);
-    padding: 2.5rem 1.5rem;
+    padding: 2rem 1.5rem;
+    border-top: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--border-color);
 }
 
 .stat-pending {
@@ -586,19 +618,23 @@ html {
 .platform-groups {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 1px;
-    background: var(--border-color);
-    border: 1px solid var(--border-color);
+    gap: 3rem;
 }
 
 .platform-group {
     position: relative;
-    background: var(--white);
-    padding: 2.5rem 2rem;
+    padding: 0;
+}
+
+/* Hairline column dividers instead of a filled grid of boxed cells. */
+.platform-group:not(:first-child) {
+    padding-left: 3rem;
+    border-left: 1px solid var(--border-color);
 }
 
 .platform-group-featured {
-    background: var(--primary-light);
+    padding-top: 1.5rem;
+    border-top: 2px solid var(--lux-accent);
 }
 
 .platform-group-badge {
@@ -682,20 +718,21 @@ html {
 .trust-grid {
     display: flex;
     flex-direction: column;
-    gap: 1.25rem;
 }
 
 .trust-item {
     display: flex;
     align-items: flex-start;
     gap: 0.875rem;
-    padding: 1.25rem 1.5rem;
-    background: var(--white);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
+    padding: 1.25rem 0;
+    border-bottom: 1px solid var(--border-color);
     font-size: 0.9375rem;
     color: var(--text-medium);
     line-height: 1.6;
+}
+
+.trust-item:last-child {
+    border-bottom: none;
 }
 
 /* ===================== FAQ ===================== */
@@ -709,14 +746,15 @@ html {
 .faq-list {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
 }
 
 .faq-item {
-    background: var(--white);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    padding: 1.25rem 1.5rem;
+    padding: 1.5rem 0;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.faq-item:last-child {
+    border-bottom: none;
 }
 
 .faq-item summary {
@@ -740,7 +778,7 @@ html {
     flex-shrink: 0;
     font-size: 1.25rem;
     font-weight: 400;
-    color: var(--lux-accent-text);
+    color: var(--lux-accent);
     transition: transform 0.2s ease;
 }
 
@@ -758,7 +796,9 @@ html {
 /* ===================== Dark statement section ===================== */
 
 .statement {
-    background: var(--lux-black);
+    /* No background of its own -- this section sits over the tail end
+       of the page where the shader's spotlight brightens back up
+       toward the final CTA, so it must stay transparent, not opaque. */
     padding: 8rem 1.5rem;
 }
 
@@ -768,10 +808,6 @@ html {
     text-align: center;
 }
 
-.statement .eyebrow {
-    color: var(--lux-accent-text);
-}
-
 .statement h2 {
     font-weight: 800;
     font-size: clamp(1.75rem, 4vw, 2.75rem);
@@ -779,6 +815,7 @@ html {
     line-height: 1.25;
     color: var(--lux-ivory);
     margin-bottom: 2.5rem;
+    text-shadow: 0 2px 28px rgba(0, 0, 0, 0.55);
 }
 
 .statement-cta {
@@ -800,11 +837,16 @@ html {
     padding: 7rem 1.5rem;
 }
 
+/* A functional form needs a real input surface regardless of the
+   "no boxed sections" rule elsewhere -- given the same translucent
+   dark-glass treatment as .sample-report and .pricing-card. */
 .demo-form-wrap {
-    background: var(--white);
-    border: 1px solid var(--border-color);
+    background: rgba(24, 22, 19, 0.42);
+    border: 1px solid rgba(246, 243, 236, 0.1);
     border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-md);
+    box-shadow: 0 30px 60px -24px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
     padding: 2rem;
 }
 
@@ -843,7 +885,7 @@ html {
     border-radius: var(--radius-sm);
     font-size: 0.9375rem;
     font-family: inherit;
-    background: var(--background);
+    background: rgba(255, 255, 255, 0.04);
     color: var(--text-dark);
 }
 
@@ -855,7 +897,7 @@ html {
 .demo-form-field textarea:focus {
     outline: none;
     border-color: var(--lux-accent);
-    background: var(--white);
+    background: rgba(255, 255, 255, 0.08);
 }
 
 /* Honeypot: off-screen (not display:none, which some bots skip),
@@ -882,7 +924,10 @@ html {
 
 .demo-form-error {
     font-size: 0.8125rem;
-    color: var(--error-color);
+    /* --error-color is tuned for a light background and reads as muddy
+       on dark -- design-system.css's --lux-error-on-dark is the same
+       signal, tuned to stay legible on --lux-charcoal/--lux-black. */
+    color: var(--lux-error-on-dark);
     margin-top: 0.875rem;
     display: none;
 }
@@ -996,6 +1041,7 @@ html {
 
 .pricing-h1 {
     font-size: clamp(1.75rem, 3.5vw, 2.5rem) !important;
+    text-shadow: 0 2px 24px rgba(0, 0, 0, 0.5);
 }
 
 .pricing-section {
@@ -1011,11 +1057,12 @@ html {
     max-width: 700px;
     margin: 0 auto 3rem;
     padding: 0.875rem 1.125rem;
-    background-color: var(--warning-light);
-    /* --warning-color on --warning-light is 3.3:1 — under AA for this
-       body-size note. A darker amber on the same tint clears 4.5:1
-       while staying in the warning family. */
-    color: #7c561a;
+    /* Translucent amber on the dark page background, not the light
+       --warning-light tint this was tuned for. #f0c987 on this fill
+       clears 4.5:1 (measured), keeping the warning-family color. */
+    background-color: rgba(166, 116, 31, 0.16);
+    border: 1px solid rgba(166, 116, 31, 0.35);
+    color: #f0c987;
     border-radius: var(--radius-md);
     font-size: 0.875rem;
     line-height: 1.55;
@@ -1035,24 +1082,33 @@ html {
     align-items: stretch;
 }
 
+/* The other of only two "panel" elements on the page (see
+   .sample-report) -- same translucent dark-glass treatment, ribs
+   showing through faintly. */
 .pricing-card {
     display: flex;
     flex-direction: column;
     position: relative;
-    background: var(--white);
-    border: 1px solid var(--border-color);
+    background: rgba(24, 22, 19, 0.42);
+    border: 1px solid rgba(246, 243, 236, 0.1);
     border-radius: var(--radius-lg);
+    box-shadow: 0 30px 60px -24px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
     padding: 2rem 1.75rem;
 }
 
 .pricing-card-featured {
     border-color: var(--lux-accent);
-    box-shadow: var(--shadow-md);
+    box-shadow: 0 0 0 1px var(--lux-accent), 0 30px 60px -24px rgba(182, 138, 78, 0.3);
 }
 
+/* Previously an opaque black to stand out against opaque white
+   sibling cards; now every pricing card is dark glass, so this one
+   instead stands out with a warm accent-tinted glass fill. */
 .pricing-card-concierge {
-    background: var(--lux-black);
-    border-color: var(--lux-black);
+    background: rgba(182, 138, 78, 0.1);
+    border-color: rgba(182, 138, 78, 0.35);
 }
 
 .pricing-badge {
@@ -1107,7 +1163,7 @@ html {
 }
 
 .pricing-tier-price-custom {
-    color: var(--lux-accent-text);
+    color: var(--lux-accent);
 }
 
 .pricing-card-concierge .pricing-tier-price {
@@ -1166,6 +1222,23 @@ html {
     text-decoration: none;
 }
 
+/* design-system.css's shared .btn-secondary is an opaque white button
+   with dark text -- correct for the app's light UI, but on this page's
+   dark background it would render as an unreadable white-on-near-white
+   box, since --white here still means real white (kept that way so
+   .btn-primary's white label and the checkmark bullets above stay
+   correct) while --text-dark now resolves to ivory. */
+.btn-secondary {
+    background-color: rgba(246, 243, 236, 0.05);
+    color: var(--lux-ivory);
+    border: 1px solid var(--border-color);
+}
+
+.btn-secondary:hover {
+    background-color: rgba(246, 243, 236, 0.1);
+    border-color: rgba(246, 243, 236, 0.28);
+}
+
 /* ===================== Responsive ===================== */
 
 /* Nav has grown to 6 links + Client Login as sections were added, and
@@ -1203,6 +1276,21 @@ html {
 @media (max-width: 860px) {
     .platform-groups {
         grid-template-columns: 1fr;
+        gap: 2.5rem;
+    }
+
+    /* Stacked single column -- the hairline divider between columns
+       needs to move from the left edge to the top edge. */
+    .platform-group:not(:first-child) {
+        padding-left: 0;
+        border-left: none;
+        padding-top: 2.5rem;
+        border-top: 1px solid var(--border-color);
+    }
+
+    .platform-group-featured {
+        padding-top: 1.5rem;
+        border-top: 2px solid var(--lux-accent);
     }
 
     .catches-grid {
