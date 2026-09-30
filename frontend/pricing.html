@@ -7,20 +7,18 @@
     <link rel="icon" href="/favicon.svg" type="image/svg+xml">
     <link rel="icon" href="/favicon.ico" sizes="32x32">
     <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-    <meta name="description" content="Abstractly pricing: Starter, Growth, and Enterprise plans priced per property for multifamily syndicators, with monthly or annual contracts. Book a demo — no self-serve checkout.">
-    <!-- og:image / og:url are absolute per the OG spec; update the host
-         here if the deployed frontend URL changes (same as config.js). -->
+    <meta name="description" content="Abstractly pricing: Starter, Growth, and Enterprise plans, flat monthly pricing per team, with monthly or annual contracts. Book a demo — no self-serve checkout.">
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="Abstractly">
     <meta property="og:title" content="Abstractly — Pricing">
-    <meta property="og:description" content="Abstractly pricing: Starter, Growth, and Enterprise plans priced per property for multifamily syndicators, with monthly or annual contracts. Book a demo — no self-serve checkout.">
+    <meta property="og:description" content="Abstractly pricing: Starter, Growth, and Enterprise plans, flat monthly pricing per team, with monthly or annual contracts. Book a demo — no self-serve checkout.">
     <meta property="og:url" content="https://abstractly-n0id.onrender.com/pricing.html">
     <meta property="og:image" content="https://abstractly-n0id.onrender.com/og-image.png">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="Abstractly — Pricing">
-    <meta name="twitter:description" content="Abstractly pricing: Starter, Growth, and Enterprise plans priced per property for multifamily syndicators, with monthly or annual contracts. Book a demo — no self-serve checkout.">
+    <meta name="twitter:description" content="Abstractly pricing: Starter, Growth, and Enterprise plans, flat monthly pricing per team, with monthly or annual contracts. Book a demo — no self-serve checkout.">
     <meta name="twitter:image" content="https://abstractly-n0id.onrender.com/og-image.png">
     <link rel="preload" href="fonts/inter-latin-var.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="stylesheet" href="design-system.css">
@@ -29,28 +27,56 @@
 <body>
     <a class="skip-link" href="#mainContent">Skip to content</a>
 
+    <div class="site-bg" aria-hidden="true"></div>
+
     <div class="announcement-bar">
         Now onboarding beta testers. <a href="index.html#book-demo">Book a demo &rarr;</a>
     </div>
 
     <div class="site-header">
         <nav class="landing-nav">
-            <div class="landing-brand">
-                <svg class="landing-brand-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5"/>
+            <a href="index.html" class="landing-brand">
+                <svg class="landing-logo-mark" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <rect x="1" y="1" width="6" height="6" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.3"/>
+                    <rect x="9" y="1" width="6" height="6" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.3"/>
+                    <rect x="17" y="1" width="6" height="6" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.3"/>
+                    <rect x="1" y="9" width="6" height="6" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.3"/>
+                    <rect x="9" y="9" width="6" height="6" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.3"/>
+                    <rect x="17" y="9" width="6" height="6" rx="1.4" fill="#b68a4e"/>
+                    <rect x="1" y="17" width="6" height="6" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.3"/>
+                    <rect x="9" y="17" width="6" height="6" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.3"/>
+                    <rect x="17" y="17" width="6" height="6" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.3"/>
                 </svg>
                 Abstractly
-            </div>
+            </a>
+
             <div class="landing-nav-links">
                 <a href="index.html#how-it-works">How It Works</a>
                 <a href="index.html#why-multifamily">Built For Multifamily</a>
                 <a href="index.html#trust">Trust</a>
                 <a href="pricing.html" class="nav-current">Pricing</a>
                 <a href="index.html#faq">FAQ</a>
-                <a href="index.html#book-demo">Book a Demo</a>
-                <a href="/app/login.html" class="nav-client-login">Client Login</a>
             </div>
+
+            <div class="landing-nav-actions">
+                <a href="/app/login.html" class="nav-client-login">Client Login</a>
+                <a href="index.html#book-demo" class="btn-primary nav-book-demo">Book a Demo</a>
+            </div>
+
+            <button type="button" class="nav-toggle" id="navToggle" aria-label="Open menu" aria-expanded="false" aria-controls="navMobilePanel">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3.75 6.75h16.5M3.75 12h16.5M3.75 17.25h16.5"/></svg>
+            </button>
         </nav>
+
+        <div class="nav-mobile-panel" id="navMobilePanel">
+            <a href="index.html#how-it-works">How It Works</a>
+            <a href="index.html#why-multifamily">Built For Multifamily</a>
+            <a href="index.html#trust">Trust</a>
+            <a href="pricing.html">Pricing</a>
+            <a href="index.html#faq">FAQ</a>
+            <a href="/app/login.html">Client Login</a>
+            <a href="index.html#book-demo" class="btn-primary nav-mobile-cta">Book a Demo</a>
+        </div>
     </div>
 
     <main id="mainContent">
@@ -59,8 +85,8 @@
     <header class="pricing-header">
         <div class="section-heading reveal">
             <span class="eyebrow">Pricing</span>
-            <h1 class="pricing-h1">Straightforward Tiers, Priced Per Property</h1>
-            <p>Every plan is a real walkthrough with us, not a self-serve checkout — pricing scales with the number of properties in your portfolio, on a monthly or annual contract.</p>
+            <h1 class="pricing-h1">Straightforward Monthly Pricing</h1>
+            <p>Every plan is a real walkthrough with us, not a self-serve checkout — flat pricing per team, on a monthly or annual contract.</p>
         </div>
     </header>
 
@@ -68,7 +94,7 @@
     <section class="pricing-section">
         <div class="pricing-placeholder-note reveal">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/></svg>
-            <span><strong>Placeholder launch pricing.</strong> Starter and Growth's per-property prices, property limits, and the annual discount below are not market-tested — validate with real customer conversations before treating them as final. <!-- TODO: revisit after early customer conversations --> All figures live in one place (<code>frontend/pricing-config.js</code>) so they're easy to update.</span>
+            <span><strong>Placeholder launch pricing.</strong> Starter and Growth's monthly prices, user limits, and the annual discount below are not market-tested — validate with real customer conversations before treating them as final. Monthly document limits are also placeholders: no usage-limits system exists in the product yet to enforce a real one. <!-- TODO: revisit after early customer conversations and once a real usage-limits system exists --> All figures live in one place (<code>frontend/pricing-config.js</code>) so they're easy to update.</span>
         </div>
 
         <!-- Monthly / Annual toggle: a two-option segmented control,
@@ -81,9 +107,10 @@
 
         <!-- Tier cards are rendered here by pricing.js from
              PRICING_CONFIG (frontend/pricing-config.js) -- edit that
-             file to change any price, property limit, or feature list;
+             file to change any price, user limit, or feature list;
              this container stays empty in the markup. -->
         <div class="pricing-grid reveal" id="pricingGrid"></div>
+        <p class="pricing-free-pilot-note reveal">Free pilot available for early testers.</p>
     </section>
 
     <!-- ===================== FAQ ===================== -->
@@ -95,15 +122,11 @@
         <div class="faq-list">
             <details class="faq-item reveal">
                 <summary>How do contracts work?</summary>
-                <p>You sign either a monthly or an annual contract — use the toggle above to compare the two. Annual contracts are billed upfront at a discount off the monthly per-property rate; monthly contracts are billed every month at the standard rate. Either way, pricing scales with the number of properties in your portfolio, not with document volume.</p>
+                <p>You sign either a monthly or an annual contract — use the toggle above to compare the two. Annual contracts are billed upfront at a discount off the monthly rate; monthly contracts are billed every month at the standard rate. Pricing is flat per team, not per property or per document.</p>
             </details>
             <details class="faq-item reveal">
                 <summary>Is there a pilot?</summary>
-                <!-- TODO: confirm the real pilot policy/terms — no pilot
-                     program is documented anywhere in this codebase yet,
-                     so this is deliberately non-committal rather than
-                     inventing specific terms. -->
-                <p>Ask us during your demo about starting with a subset of your portfolio before rolling out to the rest — we can talk through what makes sense for your deal flow. <!-- TODO: confirm real pilot policy/terms --></p>
+                <p>Yes — early testers get a free pilot before committing to a paid plan. Ask us during your demo to set it up.</p>
             </details>
             <details class="faq-item reveal">
                 <summary>How accurate is the extraction?</summary>
@@ -111,12 +134,7 @@
             </details>
             <details class="faq-item reveal">
                 <summary>How is our data secured and isolated?</summary>
-                <!-- TODO: confirm/document the actual multi-tenant
-                     isolation model before making a stronger isolation
-                     claim -- no per-customer database or tenant-scoping
-                     architecture is documented in this codebase today,
-                     so this deliberately stays to what's actually true. -->
-                <p>Your documents and the data extracted from them are stored under your account and are never shared with, or resold to, a third party. You can delete any document and its extracted data at any time, and no credentials or secrets are ever stored in our codebase — only in environment configuration. <!-- TODO: confirm/document the specific multi-tenant data isolation model --></p>
+                <p>Your documents and the data extracted from them are stored under your account and are never shared with, or resold to, a third party. Each team's documents and results are only visible to that team's members. You can delete any document and its extracted data at any time, and no credentials or secrets are ever stored in our codebase — only in environment configuration.</p>
             </details>
             <details class="faq-item reveal">
                 <summary>Do you use our documents to train AI?</summary>
@@ -142,14 +160,23 @@
         </div>
     </section>
 
-    <!-- ===================== Footer ===================== -->
     </main>
 
     <footer class="landing-footer">
         <div class="footer-inner">
             <div class="footer-top">
                 <div class="footer-brand">
-                    <svg width="20" height="20" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5"/></svg>
+                    <svg class="footer-logo-mark" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <rect x="1" y="1" width="6" height="6" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.3"/>
+                        <rect x="9" y="1" width="6" height="6" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.3"/>
+                        <rect x="17" y="1" width="6" height="6" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.3"/>
+                        <rect x="1" y="9" width="6" height="6" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.3"/>
+                        <rect x="9" y="9" width="6" height="6" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.3"/>
+                        <rect x="17" y="9" width="6" height="6" rx="1.4" fill="#b68a4e"/>
+                        <rect x="1" y="17" width="6" height="6" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.3"/>
+                        <rect x="9" y="17" width="6" height="6" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.3"/>
+                        <rect x="17" y="17" width="6" height="6" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.3"/>
+                    </svg>
                     Abstractly
                 </div>
                 <div class="footer-links">
@@ -165,6 +192,7 @@
     <script src="config.js"></script>
     <script src="pricing-config.js"></script>
     <script src="pricing.js"></script>
+    <script src="vendor/lenis.min.js"></script>
     <script src="landing.js"></script>
 </body>
 </html>
