@@ -38,6 +38,7 @@ UNIT_TESTS = [
     "test_portfolio.py",
     "test_comparison.py",
     "test_rent_roll_export.py",
+    "test_frontend_api_routing.py",
     "test_report.py",
     "test_dashboard_features.py",
     "test_waitlist_email.py",

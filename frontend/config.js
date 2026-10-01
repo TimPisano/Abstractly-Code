@@ -48,6 +48,14 @@ const API_BASE_URL = (() => {
     if (host === 'abstractly-demo.onrender.com') {
         return 'https://abstractly-demo-api.onrender.com';
     }
+    // Same idea for the beta-tester deployment (DEPLOYMENT.md's "Tester
+    // deployment"): its own backend and empty database. Without this
+    // branch the tester site fell through to the production API below,
+    // which its CSP connect-src blocks anyway. Every frontend/API pair
+    // in render.yaml is checked by tests/test_frontend_api_routing.py.
+    if (host === 'abstractly-tester.onrender.com') {
+        return 'https://abstractly-tester-api.onrender.com';
+    }
     // The real deployed backend -- see render.yaml and DEPLOYMENT.md
     // for exactly how this URL is provisioned and why it's this
     // specific name.
