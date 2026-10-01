@@ -48,6 +48,20 @@ const API_BASE_URL = (() => {
     if (host === 'abstractly-demo.onrender.com') {
         return 'https://abstractly-demo-api.onrender.com';
     }
+    // Same reasoning as the demo deployment above, for the tester
+    // deployment (render.yaml's abstractly-tester / abstractly-tester-api
+    // pair) -- its own isolated backend/database for handing the real
+    // product to one outside tester at a time, not the production
+    // database. Without this branch, the tester frontend fell through
+    // to the production backend URL below and every API call broke:
+    // blocked by this frontend's own CSP connect-src (which only allows
+    // abstractly-tester-api.onrender.com), and would have also failed
+    // the production backend's CORS/CSRF origin checks (which only
+    // allow the production frontend's origin) even if the CSP didn't
+    // catch it first.
+    if (host === 'abstractly-tester.onrender.com') {
+        return 'https://abstractly-tester-api.onrender.com';
+    }
     // The real deployed backend -- see render.yaml and DEPLOYMENT.md
     // for exactly how this URL is provisioned and why it's this
     // specific name.
