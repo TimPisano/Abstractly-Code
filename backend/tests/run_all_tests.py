@@ -87,6 +87,8 @@ UNIT_TESTS = [
     "test_lease_field_editing.py",
     "test_task_workflow_extensions.py",
     "test_table_upload_extraction.py",
+    "test_usage_limits.py",
+    "test_leases_sample_precomputed.py",
 ]
 
 LIVE_API_TESTS = [

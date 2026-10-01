@@ -61,6 +61,7 @@ def issue_token(user: dict) -> str:
         "name": user["name"],
         "role": user["role"],
         "is_owner": bool(user.get("is_owner", False)),
+        "team_id": user.get("team_id"),
     })
 
 
@@ -78,6 +79,7 @@ def _user_from_bearer_token():
         "name": data.get("name"),
         "role": data.get("role"),
         "is_owner": bool(data.get("is_owner", False)),
+        "team_id": data.get("team_id"),
     }
 
 # A precomputed bcrypt hash of a fixed, never-issued dummy password --
@@ -127,7 +129,7 @@ def verify_password(email: str, password: str):
 
 def current_user():
     """
-    The logged-in user's {"id", "email", "name", "role", "is_owner"},
+    The logged-in user's {"id", "email", "name", "role", "is_owner", "team_id"},
     or None if there's no session. Reads straight from the signed
     session cookie, or an Authorization: Bearer token (see
     issue_token) -- token checked first, cookie as fallback, since a
@@ -139,6 +141,8 @@ def current_user():
     (an old cookie from before the owner console existed) -- correct,
     since owner status is only ever granted explicitly (see
     require_owner) and such a session was never granted it.
+    team_id defaults to None for old sessions; a fresh login always
+    populates it from the user row.
     """
     token_user = _user_from_bearer_token()
     if token_user is not None:
@@ -151,6 +155,7 @@ def current_user():
         "name": session.get("name"),
         "role": session.get("role"),
         "is_owner": bool(session.get("is_owner", False)),
+        "team_id": session.get("team_id"),
     }
 
 

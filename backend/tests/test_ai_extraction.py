@@ -71,6 +71,10 @@ def _fresh_temp_db():
     tmp.close()
     database.configure(tmp.name)
     database.init_db()
+    # Matches the fabricated session's user_id=1 with a real row --
+    # usage_events.user_id/team_id are FK-constrained, so a session
+    # pointing at a nonexistent user_id fails on any upload-route call.
+    database.create_user("a@example.com", "A", "x", role="analyst")
     return tmp.name
 
 
@@ -254,7 +258,7 @@ def test_resolve_engine_flag_behavior():
 def _analyst_client():
     client = app.test_client()
     with client.session_transaction() as sess:
-        sess.update({"user_id": 1, "email": "a@example.com", "name": "A", "role": "analyst"})
+        sess.update({"user_id": 1, "email": "a@example.com", "name": "A", "role": "analyst", "team_id": 1})
     return client
 
 

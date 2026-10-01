@@ -197,6 +197,102 @@ def _migrate_tasks_table_add_priority(conn: sqlite3.Connection) -> None:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_priority ON tasks(priority)")
 
 
+def _migrate_teams_table(conn: sqlite3.Connection) -> None:
+    """
+    Creates the `teams` table if it doesn't exist. This is a new table
+    introduced to support per-team quota management and usage tracking.
+    Existing deployments (single-tenant) have no teams yet; they get a
+    'Legacy' team via _migrate_teams_create_legacy_team() immediately after.
+    """
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS teams (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            monthly_document_quota INTEGER,
+            monthly_page_quota INTEGER,
+            monthly_budget_usd REAL,
+            budget_alert_50_sent_month TEXT,
+            budget_alert_80_sent_month TEXT,
+            created_at TEXT NOT NULL
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_teams_created_at ON teams(created_at)")
+
+
+def _migrate_teams_create_legacy_team(conn: sqlite3.Connection) -> None:
+    """
+    On first migration, creates a single 'Legacy' team and points every
+    existing user at it. Idempotent: if the Legacy team already exists,
+    does nothing.
+    """
+    existing = conn.execute("SELECT id FROM teams WHERE name='Legacy' LIMIT 1").fetchone()
+    if existing:
+        return
+
+    conn.execute(
+        "INSERT INTO teams (name, created_at) VALUES ('Legacy', ?)",
+        (datetime.now(timezone.utc).isoformat(),)
+    )
+
+
+def _migrate_users_add_team_id(conn: sqlite3.Connection) -> None:
+    """
+    Adds `team_id` FK to users table. Every existing user is migrated to
+    the 'Legacy' team (created by _migrate_teams_create_legacy_team).
+    New users created before any team exists (shouldn't happen in practice
+    after first boot, but defensive) temporarily get NULL team_id until
+    an admin assigns them to a team.
+    """
+    existing_columns = {row["name"] for row in conn.execute("PRAGMA table_info(users)").fetchall()}
+    if "team_id" not in existing_columns:
+        conn.execute("ALTER TABLE users ADD COLUMN team_id INTEGER")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_users_team_id ON users(team_id)")
+        legacy_team = conn.execute("SELECT id FROM teams WHERE name='Legacy' LIMIT 1").fetchone()
+        if legacy_team:
+            conn.execute("UPDATE users SET team_id = ? WHERE team_id IS NULL", (legacy_team[0],))
+
+
+def _migrate_usage_events_table(conn: sqlite3.Connection) -> None:
+    """
+    Creates the `usage_events` table for logging extraction attempts
+    (successful or failed). One row per extraction, not a running counter.
+    Monthly usage is always computed fresh from summing/counting rows.
+    """
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS usage_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            team_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            lease_id INTEGER,
+            pages INTEGER,
+            input_tokens INTEGER,
+            output_tokens INTEGER,
+            estimated_cost_usd REAL,
+            event_type TEXT NOT NULL DEFAULT 'extraction',
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (team_id) REFERENCES teams(id),
+            FOREIGN KEY (user_id) REFERENCES users(id),
+            FOREIGN KEY (lease_id) REFERENCES leases(id) ON DELETE SET NULL
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_usage_events_team_id_created_at ON usage_events(team_id, created_at)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_usage_events_user_id_created_at ON usage_events(user_id, created_at)")
+
+
+def _migrate_leases_add_content_hash(conn: sqlite3.Connection) -> None:
+    """
+    Adds `content_hash` (SHA256 hex) to leases table for deduplication.
+    Existing leases get NULL (they don't have a hash precomputed) -- the
+    dedup check simply won't find them as "already uploaded." New uploads
+    immediately populate content_hash so re-uploading the exact same file
+    within the same team will be caught and reused.
+    """
+    existing_columns = {row["name"] for row in conn.execute("PRAGMA table_info(leases)").fetchall()}
+    if "content_hash" not in existing_columns:
+        conn.execute("ALTER TABLE leases ADD COLUMN content_hash TEXT")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_leases_content_hash ON leases(content_hash)")
+
+
 def _migrate_discrepancies_table_drop_lease_fk(conn: sqlite3.Connection) -> None:
     """
     Rebuilds an already-existing `discrepancies` table that still has
@@ -327,10 +423,16 @@ def _seed_first_admin_user(conn: sqlite3.Connection) -> None:
     if not email or not password_hash:
         return
 
+    # Seeded before this runs, by _migrate_teams_create_legacy_team's
+    # earlier call in init_db() -- the admin gets a real team_id like
+    # any other user, not NULL, so usage-limit checks apply to them too.
+    legacy_team = conn.execute("SELECT id FROM teams WHERE name='Legacy' LIMIT 1").fetchone()
+    legacy_team_id = legacy_team[0] if legacy_team else None
+
     conn.execute(
-        "INSERT INTO users (email, name, password_hash, role, status, created_at, created_by_user_id, is_owner) "
-        "VALUES (?, 'Admin', ?, 'admin', 'active', ?, NULL, 1)",
-        (email, password_hash, datetime.now(timezone.utc).isoformat()),
+        "INSERT INTO users (email, name, password_hash, role, status, created_at, created_by_user_id, is_owner, team_id) "
+        "VALUES (?, 'Admin', ?, 'admin', 'active', ?, NULL, 1, ?)",
+        (email, password_hash, datetime.now(timezone.utc).isoformat(), legacy_team_id),
     )
 
 
@@ -354,6 +456,7 @@ def init_db() -> None:
             )
         """)
         _migrate_schema(conn)
+        _migrate_leases_add_content_hash(conn)
         # get_amendments()'s `WHERE base_lease_id = ?` (called by
         # get_effective_lease/get_effective_fields, both on the
         # single-lease read path AND once per row during a rent-roll
@@ -402,6 +505,8 @@ def init_db() -> None:
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_pageviews_created_at ON pageviews(created_at)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_pageviews_session_id ON pageviews(session_id)")
+        _migrate_teams_table(conn)
+        _migrate_teams_create_legacy_team(conn)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS activity_log (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -502,7 +607,9 @@ def init_db() -> None:
         _migrate_users_table_add_previous_login_at(conn)
         _migrate_users_table_add_is_owner(conn)
         _migrate_users_table_add_discrepancies_last_viewed_at(conn)
+        _migrate_users_add_team_id(conn)
         _seed_first_admin_user(conn)
+        _migrate_usage_events_table(conn)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS password_reset_tokens (
                 token_hash TEXT PRIMARY KEY,
@@ -780,11 +887,13 @@ def reset_db() -> None:
         conn.execute("DROP TABLE IF EXISTS alerts")
         conn.execute("DROP TABLE IF EXISTS discrepancy_resolutions")
         conn.execute("DROP TABLE IF EXISTS discrepancies")
+        conn.execute("DROP TABLE IF EXISTS usage_events")
         conn.execute("DROP TABLE IF EXISTS leases")
         conn.execute("DROP TABLE IF EXISTS waitlist_signups")
         conn.execute("DROP TABLE IF EXISTS demo_requests")
         conn.execute("DROP TABLE IF EXISTS activity_log")
         conn.execute("DROP TABLE IF EXISTS users")
+        conn.execute("DROP TABLE IF EXISTS teams")
         conn.execute("DROP TABLE IF EXISTS assignments")
         conn.execute("DROP TABLE IF EXISTS assistant_conversations")
         conn.execute("DROP TABLE IF EXISTS messages")
@@ -1919,7 +2028,8 @@ def get_pageview_summary(days: int = 30) -> Dict[str, Any]:
 # ----------------------------------------------------------------------
 
 def create_user(
-    email: str, name: str, password_hash: str, role: str = "viewer", created_by_user_id: Optional[int] = None
+    email: str, name: str, password_hash: str, role: str = "viewer",
+    created_by_user_id: Optional[int] = None, team_id: Optional[int] = None
 ) -> Dict[str, Any]:
     """
     Returns {"status": "created", "id": ...} on success, or
@@ -1928,13 +2038,22 @@ def create_user(
     reason: a UNIQUE-constraint collision here is an expected,
     friendly outcome (an admin fat-fingering an add-member form twice,
     or two admins racing to add the same person), not a server error.
+
+    team_id defaults to the 'Legacy' team when not given -- every new
+    user should have a real team_id in practice (usage-limit checks
+    treat a NULL team_id as "not onboarded yet" and block uploads), so
+    an admin only needs to pass a specific team_id when onboarding a
+    new tester org into its own team.
     """
     conn = get_connection()
     try:
+        if team_id is None:
+            legacy_team = conn.execute("SELECT id FROM teams WHERE name='Legacy' LIMIT 1").fetchone()
+            team_id = legacy_team[0] if legacy_team else None
         cur = conn.execute(
-            "INSERT INTO users (email, name, password_hash, role, status, created_at, created_by_user_id) "
-            "VALUES (?, ?, ?, ?, 'active', ?, ?)",
-            (email.strip().lower(), name, password_hash, role, datetime.now(timezone.utc).isoformat(), created_by_user_id),
+            "INSERT INTO users (email, name, password_hash, role, status, created_at, created_by_user_id, team_id) "
+            "VALUES (?, ?, ?, ?, 'active', ?, ?, ?)",
+            (email.strip().lower(), name, password_hash, role, datetime.now(timezone.utc).isoformat(), created_by_user_id, team_id),
         )
         conn.commit()
         return {"status": "created", "id": cur.lastrowid}
