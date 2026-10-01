@@ -196,8 +196,12 @@ iPhone.
 
 ## Free-tier behavior you should know about
 
-You chose the free tier for now, which means two things worth knowing
-before a real call with a prospect:
+Until you complete "Adding persistent storage" below, `abstractly-api`
+and `abstractly-tester-api` still behave like free tier in production
+(the plan/disk are declared in `render.yaml`, but that declaration
+doesn't retroactively change an already-running service by itself —
+see that section for why). Two things worth knowing before a real call
+with a prospect:
 
 1. **The backend spins down after 15 minutes of no traffic**, and takes
    ~30-60 seconds to wake back up on the next request. If you haven't
@@ -205,27 +209,47 @@ before a real call with a prospect:
    it's already warm — otherwise the first page load during the call
    will hang briefly.
 2. **Uploaded lease data does not persist** across a restart or
-   redeploy (see "Adding persistent storage later" below for the
+   redeploy (see "Adding persistent storage" below for the
    fix). Treat the live site as a demo environment for now: re-upload
    your demo lease fresh before an important call rather than relying
    on data uploaded days ago still being there.
 
-Neither of these requires any action now — just know they're the
-tradeoff of "free."
+Neither requires any action right this moment — just know they're the
+tradeoff of "free" until the upgrade below is actually applied.
 
-## Adding persistent storage later
+## Adding persistent storage (production + tester)
 
-When you're ready to stop losing data on restart (recommended before
-using this with a real prospect's real data, not just a demo):
+`render.yaml` already declares a "starter" plan, a persistent disk,
+and `DB_PATH` for both `abstractly-api` and `abstractly-tester-api` —
+no code change is needed either way (`app/api.py` already reads
+`DB_PATH` at startup and points `database.py` at it). Pushing that
+file alone doesn't provision anything on an already-running service,
+though — do this once per service, in the Render dashboard, to
+actually make it take effect:
 
-1. Render dashboard → `abstractly-api` service → "Settings" → change
-   the plan from "Free" to "Starter" (currently ~$7/month).
-2. Same service → "Disks" → "Add Disk" → name it `abstractly-data`,
-   mount path `/app/data`, size 1 GB (currently ~$0.25/month).
-3. Environment tab → add `DB_PATH` = `/app/data/lease_portfolio.db`.
-4. Save — Render redeploys automatically. That's the entire upgrade;
-   no code change is needed (the app already reads `DB_PATH` at
-   startup — see `app/api.py`).
+For **each** of `abstractly-api` and `abstractly-tester-api`:
+
+1. That service → "Settings" → change the plan from "Free" to
+   "Starter" (~$7/month per service — Render only allows a disk on a
+   paid plan).
+2. Same service → "Disks" → "Add Disk" → name it exactly what
+   `render.yaml` uses (`abstractly-data` for `abstractly-api`,
+   `abstractly-tester-data` for `abstractly-tester-api`), mount path
+   `/app/data`, size 1 GB (~$0.25/month per service).
+3. "Environment" tab → confirm `DB_PATH` = `/app/data/lease_portfolio.db`
+   is present (a Blueprint sync after this push may already have
+   added it — add it manually if not).
+4. Save — Render redeploys automatically.
+
+**Cost: ~$7.25/month per service, ~$14.50/month for both.** Render
+also gives a Starter+ service with an attached disk automatic daily
+snapshots (retained ~7 days) at no extra charge — see "Database backups
+and restore" below for what that does and doesn't cover.
+
+`abstractly-demo-api` is deliberately left on the free tier with no
+disk — its data resetting on every restart/idle spindown is a feature
+(the seeded demo data re-populates itself for free), not something to
+fix. Don't apply the steps above to it.
 
 ## Logging and monitoring
 
@@ -410,11 +434,12 @@ separate deployment in the first place: this app has no per-account
 data isolation within one deployment (every logged-in user reads the
 same shared `leases` table — see the demo section above), so a tester
 account added to `abstractly-api` itself would see every real
-customer's leases, not a sandbox of their own. Free tier, same
-tradeoff as prod and demo: the tester's uploads are wiped on restart
-or 15-minute idle spindown — fine for a short trial; see "Adding
-persistent storage later" above if a given tester run needs to
-outlive that.
+customer's leases, not a sandbox of their own. `render.yaml` now
+declares a "starter" plan + persistent disk for this service, same as
+prod (see "Adding persistent storage" below) — until you actually
+apply that in the dashboard, though, this service still behaves like
+free tier: the tester's uploads are wiped on restart or 15-minute idle
+spindown.
 
 **Deploying it:**
 
