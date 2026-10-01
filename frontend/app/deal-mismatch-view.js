@@ -20,6 +20,10 @@ const DISCREPANCY_TYPE_LABELS = {
     concession_missing: 'Concession Missing from Rent Roll',
     dates_mismatch: 'Lease Dates Mismatch',
     tenant_mismatch: 'Tenant Name Mismatch',
+    t12_income_gap: 'Rent Roll vs. T12 Income',
+    t12_occupancy_mismatch: 'Rent Roll vs. T12 Occupancy',
+    t12_concession_gap: 'T12 Concessions Reported',
+    t12_bad_debt_trend: 'T12 Bad Debt Trend',
 };
 
 const _DM_SEVERITY_RANK = { high: 3, medium: 2, low: 1 };
@@ -35,10 +39,15 @@ const DealMismatch = {
             <div class="health-metric"><div class="skeleton skeleton-text"></div><div class="health-metric-label">Income Impact</div></div>
         `;
         try {
-            const data = await Api.dealMismatchReport();
+            const t12File = document.getElementById('dealMismatchT12File')?.files?.[0];
+            const materialityPct = document.getElementById('dealMismatchMaterialityPct')?.value || '3.0';
+            const data = await Api.dealMismatchReport({ t12File, materialityThresholdPct: materialityPct });
             this.lastData = data;
             this.renderSummary(data);
             this.renderTable(data);
+            if (data.rent_roll_vs_actual_collections) {
+                this.renderT12Section(data);
+            }
         } catch (err) {
             document.getElementById('dealMismatchContent').innerHTML = `<p class="error-text">Failed to load the Deal Mismatch Report: ${escapeHtml(err.message)}</p>`;
         }
@@ -158,6 +167,56 @@ const DealMismatch = {
         `;
     },
 
+    renderT12Section(data) {
+        const el = document.getElementById('dealMismatchContent');
+        const t12Rows = data.rent_roll_vs_actual_collections || [];
+        if (!t12Rows || t12Rows.length === 0) {
+            return;
+        }
+
+        const t12Overstatement = data.estimated_income_overstatement_from_t12;
+        let headline;
+        if (t12Overstatement == null) {
+            headline = 'No dollar-quantified T12 findings.';
+        } else if (t12Overstatement > 0) {
+            headline = `Rent roll <b>overstates</b> actual collections by <b>$${Math.round(t12Overstatement).toLocaleString()}</b>.`;
+        } else {
+            headline = `Rent roll <b>understates</b> actual collections by <b>$${Math.round(Math.abs(t12Overstatement)).toLocaleString()}</b>.`;
+        }
+
+        const ordered = [...t12Rows].sort((a, b) => {
+            const rankDiff = (_DM_SEVERITY_RANK[b.severity] || 0) - (_DM_SEVERITY_RANK[a.severity] || 0);
+            if (rankDiff !== 0) return rankDiff;
+            return (a.unit || '').localeCompare(b.unit || '');
+        });
+
+        const t12Html = `
+            <div style="margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--color-border, #ddd);">
+                <h3 style="margin: 0 0 12px 0; font-size: 16px; font-weight: 600;">Rent Roll vs. Actual Collections (T12 Cross-Check)</h3>
+                <p style="margin: 0 0 12px 0; font-size: 14px;">${headline}</p>
+                <div class="table-scroll">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Unit</th>
+                                <th>Type</th>
+                                <th>Rent Roll</th>
+                                <th>Lease/T12</th>
+                                <th>Source</th>
+                                <th>Severity</th>
+                                <th>Annual Impact</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${ordered.map(row => this._rowHtml(row)).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+        el.innerHTML += t12Html;
+    },
+
     async _download(format) {
         const btnId = format === 'pdf' ? 'dealMismatchExportPdfBtn' : 'dealMismatchExportExcelBtn';
         const btn = document.getElementById(btnId);
@@ -165,14 +224,12 @@ const DealMismatch = {
         btn.disabled = true;
         btn.textContent = 'Generating...';
         try {
+            const t12File = document.getElementById('dealMismatchT12File')?.files?.[0];
+            const materialityPct = document.getElementById('dealMismatchMaterialityPct')?.value || '3.0';
             const response = format === 'pdf'
-                ? await Api.exportDealMismatchReportPdf()
-                : await Api.exportDealMismatchReportExcel();
+                ? await Api.exportDealMismatchReportPdf({ t12File, materialityThresholdPct: materialityPct })
+                : await Api.exportDealMismatchReportExcel({ t12File, materialityThresholdPct: materialityPct });
             const blob = await response.blob();
-            // Content-Disposition isn't readable cross-origin -- see
-            // export-modal.js's identical comment for why a
-            // client-built fallback name is used instead of trusting
-            // the header.
             const ext = format === 'pdf' ? 'pdf' : 'xlsx';
             const fallbackName = `deal_mismatch_report_portfolio.${ext}`;
             const filename = filenameFromResponse(response, fallbackName);

@@ -63,6 +63,8 @@ UNIT_TESTS = [
     "test_t12_import.py",
     "test_t12_reconciliation_api.py",
     "test_t12_synthetic_fixture.py",
+    "test_t12_statement.py",
+    "test_deal_mismatch_t12.py",
     "test_audit_trail.py",
     "test_discrepancies.py",
     "test_portfolio_history.py",
