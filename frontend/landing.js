@@ -265,13 +265,20 @@ if ('IntersectionObserver' in window) {
             vec2 drift = vec2(sin(u_time * 0.13), cos(u_time * 0.09)) * 22.0 * (1.0 - u_reduced);
             vec2 lightPos = u_mouse + drift;
 
-            // Tall, soft elliptical falloff -- "a spotlight shining
-            // through the ribs," not a circular pool of light. Scaled
-            // by u_scrollFade (eased in JS from scroll position, never
-            // a step) so the light dims smoothly as you scroll instead
-            // of stopping dead at any fixed point on the page.
-            vec2 d = (uv - lightPos) / vec2(u_resolution.x * 0.16, u_resolution.y * 0.8);
-            float glow = exp(-dot(d, d) * 2.4) * u_scrollFade;
+            // True circular spotlight centered on the cursor: distance is
+            // measured in viewport-HEIGHT units (both axes divided by
+            // u_resolution.y) so a wide or narrow viewport can't stretch
+            // it into an oval -- a radius means the same thing regardless
+            // of aspect ratio. smoothstep gives a soft falloff with zero
+            // slope at the boundary (brightest dead center, genuinely
+            // nothing felt at the edge -- no visible ring), scaled by
+            // u_scrollFade (eased in JS from scroll position, never a
+            // step) so the light also dims smoothly as you scroll.
+            vec2 normUv = uv / u_resolution.y;
+            vec2 normLight = lightPos / u_resolution.y;
+            float dist = distance(normUv, normLight);
+            const float RADIUS = 0.375; // ~37.5% of viewport height
+            float glow = (1.0 - smoothstep(0.0, RADIUS, dist)) * u_scrollFade;
 
             // Subtle per-rib shimmer, only visible where glow is present.
             float shimmer = 0.5 + 0.5 * sin(u_time * 2.2 + ribIndex * 1.7);
@@ -333,11 +340,14 @@ if ('IntersectionObserver' in window) {
     let height = 0;
     let mouseMoved = false;
 
-    // Idle default sits near the top-center of the viewport (there's no
-    // single "hero" to bias toward anymore -- this is the whole page's
-    // background). Recomputed on resize as long as the cursor hasn't
-    // actually moved yet, so it never drifts to a stale pixel position
-    // after a viewport resize.
+    // Idle default rests just behind the headline (the hero's left
+    // column) rather than dead center, so the circle has somewhere
+    // deliberate to sit before the cursor ever touches the page.
+    // Recomputed on resize as long as the cursor hasn't actually moved
+    // yet, so it never drifts to a stale pixel position after a
+    // viewport resize.
+    const IDLE_X_FRACTION = 0.3;
+    const IDLE_Y_FRACTION = 0.4;
     let targetX = 0;
     let targetY = 0;
     let easedX = 0;
@@ -353,8 +363,8 @@ if ('IntersectionObserver' in window) {
         canvas.style.height = `${height}px`;
         gl.viewport(0, 0, canvas.width, canvas.height);
         if (!mouseMoved) {
-            targetX = canvas.width * 0.5;
-            targetY = canvas.height * 0.32;
+            targetX = canvas.width * IDLE_X_FRACTION;
+            targetY = canvas.height * IDLE_Y_FRACTION;
             easedX = targetX;
             easedY = targetY;
         }
@@ -391,7 +401,7 @@ if ('IntersectionObserver' in window) {
     }
 
     if (prefersReducedMotion) {
-        render(canvas.width * 0.5, canvas.height * 0.32, 0, true, 1.0);
+        render(canvas.width * IDLE_X_FRACTION, canvas.height * IDLE_Y_FRACTION, 0, true, 1.0);
         canvas.classList.add('is-ready');
         return;
     }
@@ -409,8 +419,8 @@ if ('IntersectionObserver' in window) {
 
         document.documentElement.addEventListener('mouseleave', () => {
             mouseMoved = false;
-            targetX = canvas.width * 0.5;
-            targetY = canvas.height * 0.32;
+            targetX = canvas.width * IDLE_X_FRACTION;
+            targetY = canvas.height * IDLE_Y_FRACTION;
         });
     }
 
