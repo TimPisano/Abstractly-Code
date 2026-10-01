@@ -194,8 +194,8 @@ class FieldExtractor:
              "confidence": "high"/"medium"/"low" or None}
         """
         result = {
-            "tenant": self._extract_defined_party(pages, ("Tenant", "Lessee", "Renter"), self._party_label_patterns("tenant", "lessee", "renter")),
-            "landlord": self._extract_defined_party(pages, ("Landlord", "Lessor"), self._party_label_patterns("landlord", "lessor")),
+            "tenant": self._extract_defined_party(pages, ("Tenant", "Lessee", "Renter", "Resident"), self._party_label_patterns("tenant", "lessee", "renter")),
+            "landlord": self._extract_defined_party(pages, ("Landlord", "Lessor", "Owner"), self._party_label_patterns("landlord", "lessor")),
             "rent_amount": self._extract_rent(pages),
             "lease_start_date": self._extract_start_date(pages),
             "lease_end_date": self._extract_end_date(pages),
@@ -726,10 +726,10 @@ class FieldExtractor:
         {"landlords": [...]}, or both.
         """
         tenants = self._find_all_party_values(
-            pages, ("Tenant", "Lessee", "Renter"), self._party_label_patterns("tenant", "lessee", "renter")
+            pages, ("Tenant", "Lessee", "Renter", "Resident"), self._party_label_patterns("tenant", "lessee", "renter")
         )
         landlords = self._find_all_party_values(
-            pages, ("Landlord", "Lessor"), self._party_label_patterns("landlord", "lessor")
+            pages, ("Landlord", "Lessor", "Owner"), self._party_label_patterns("landlord", "lessor")
         )
 
         result: Dict[str, Any] = {}
@@ -780,10 +780,10 @@ class FieldExtractor:
             return []
 
         tenant_occurrences = self._find_all_party_occurrences(
-            pages, ("Tenant", "Lessee", "Renter"), self._party_label_patterns("tenant", "lessee", "renter")
+            pages, ("Tenant", "Lessee", "Renter", "Resident"), self._party_label_patterns("tenant", "lessee", "renter")
         )
         landlord_occurrences = self._find_all_party_occurrences(
-            pages, ("Landlord", "Lessor"), self._party_label_patterns("landlord", "lessor")
+            pages, ("Landlord", "Lessor", "Owner"), self._party_label_patterns("landlord", "lessor")
         )
         tenant_pages = {page for _value, page in self._dedupe_party_occurrences(tenant_occurrences)}
         landlord_pages = {page for _value, page in self._dedupe_party_occurrences(landlord_occurrences)}
