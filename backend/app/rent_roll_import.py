@@ -356,10 +356,22 @@ def _parse_import_currency(value: Any) -> Optional[float]:
     text = _cell_to_str(value)
     if text is None:
         return None
-    strict = parse_currency(text)  # handles "$1,200.00" using the existing, already-tested parser
+    strict = parse_currency(text)  # handles "$1,200.00" (and "-$1,200.00"/"($1,200.00)") using the existing, already-tested parser
     if strict is not None:
         return strict
-    match = re.search(r"[\d,]+(?:\.\d+)?", text)  # fall back to a bare number with no "$"
+    # Fall back to a bare number with no "$" -- same negative handling as
+    # parse_currency (leading "-", or wrapping parens as accounting
+    # notation for a credit/negative amount), see that function's
+    # docstring for why silently dropping the sign is dangerous here.
+    paren_match = re.search(r"\(\s*([\d,]+(?:\.\d+)?)\s*\)", text)
+    if paren_match:
+        if re.match(r"[A-Za-z]", text[paren_match.end():]):
+            return None
+        try:
+            return -float(paren_match.group(1).replace(",", ""))
+        except ValueError:
+            return None
+    match = re.search(r"(-\s?)?([\d,]+(?:\.\d+)?)", text)
     if not match:
         return None
     # Same OCR-truncation guard as normalize.parse_currency (see its own
@@ -369,7 +381,8 @@ def _parse_import_currency(value: Any) -> Optional[float]:
     if re.match(r"[A-Za-z]", text[match.end():]):
         return None
     try:
-        return float(match.group(0).replace(",", ""))
+        amount = float(match.group(2).replace(",", ""))
+        return -amount if match.group(1) else amount
     except ValueError:
         return None
 

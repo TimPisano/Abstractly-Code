@@ -129,6 +129,144 @@ def test_corrupt_pdf_is_422_not_500():
     print("✓ test_corrupt_pdf_is_422_not_500: PASS")
 
 
+# Gap 1: empty file on /leases/import-rent-roll
+
+def test_empty_rent_roll_csv_is_4xx_with_clear_error():
+    db, _ = _fresh_temp_db()
+    try:
+        r = _post_file(_analyst(), "/leases/import-rent-roll", "empty.csv", data=b"")
+        assert r.status_code in (400, 422), r.status_code
+        body = r.get_json()
+        assert "empty" in body.get("error", "").lower() or "no" in body.get("error", "").lower()
+        assert "Traceback" not in str(body)
+    finally:
+        os.unlink(db)
+    print("✓ test_empty_rent_roll_csv_is_4xx_with_clear_error: PASS")
+
+
+def test_empty_rent_roll_xlsx_is_4xx_with_clear_error():
+    db, _ = _fresh_temp_db()
+    try:
+        r = _post_file(_analyst(), "/leases/import-rent-roll", "empty.xlsx", data=b"")
+        assert r.status_code in (400, 422), r.status_code
+        body = r.get_json()
+        assert "error" in body
+        assert "Traceback" not in str(body)
+    finally:
+        os.unlink(db)
+    print("✓ test_empty_rent_roll_xlsx_is_4xx_with_clear_error: PASS")
+
+
+# Gap 2: corrupted XLSX
+
+def test_corrupt_xlsx_on_rent_roll_import_is_4xx_not_500():
+    db, _ = _fresh_temp_db()
+    try:
+        # Garbage bytes with .xlsx extension
+        garbage = b"PK\x03\x04" + bytes(range(256)) * 2  # looks like a zip header but is garbage
+        r = _post_file(_analyst(), "/leases/import-rent-roll", "corrupt.xlsx", data=garbage)
+        assert r.status_code in (400, 422), r.status_code
+        body = r.get_json()
+        assert "error" in body
+        assert "Traceback" not in str(body)
+        # Error message should be plain English, not a raw exception
+        error_msg = body.get("error", "")
+        assert not error_msg.startswith("(") and not error_msg.startswith("<"), \
+            f"error looks like raw exception repr: {error_msg}"
+    finally:
+        os.unlink(db)
+    print("✓ test_corrupt_xlsx_on_rent_roll_import_is_4xx_not_500: PASS")
+
+
+# Gap 3: password-protected XLSX (OLE2 magic header)
+
+def test_password_protected_xlsx_is_4xx_with_clear_error():
+    db, _ = _fresh_temp_db()
+    try:
+        # OLE2/CFB magic header D0 CF 11 E0 A1 B1 1A E1 (password-protected Excel format)
+        ole2_header = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + b"\x00" * 100
+        r = _post_file(_analyst(), "/leases/import-rent-roll", "protected.xlsx", data=ole2_header)
+        assert r.status_code in (400, 422), r.status_code
+        body = r.get_json()
+        error_msg = body.get("error", "").lower()
+        # Ideally says "password-protected", but at minimum a clear error
+        assert "error" in body
+        assert "Traceback" not in str(body)
+    finally:
+        os.unlink(db)
+    print("✓ test_password_protected_xlsx_is_4xx_with_clear_error: PASS")
+
+
+# Gap 4: rent roll with zero matching leases
+
+def test_rent_roll_with_no_matching_leases_produces_all_unit_no_lease():
+    db, _ = _fresh_temp_db()
+    try:
+        c = _analyst()
+        # Import a rent roll with no lease PDFs on file at all
+        rows = [["Tenant", "Unit", "Rent"], ["A", "101", "$1000"]]
+        import csv as csv_mod
+        buf = io.StringIO()
+        csv_mod.writer(buf).writerows(rows)
+        resp = c.post(
+            "/leases/import-rent-roll",
+            data={"file": (io.BytesIO(buf.getvalue().encode()), "test.csv")},
+            content_type="multipart/form-data"
+        )
+        assert resp.status_code == 201, resp.get_json()
+
+        # Now generate the deal mismatch report
+        report_resp = c.post("/portfolio/deal-mismatch-report")
+        assert report_resp.status_code == 200, report_resp.get_json()
+        report_data = report_resp.get_json()
+        discrepancies = report_data.get("discrepancies", [])
+
+        # All should be unit_no_lease
+        unit_no_lease = [d for d in discrepancies if d["discrepancy_type"] == "unit_no_lease"]
+        assert len(unit_no_lease) > 0, "expected at least one unit_no_lease finding"
+        assert len(unit_no_lease) == len(discrepancies), "all findings should be unit_no_lease"
+
+        # PDF and Excel exports should succeed too (non-trivial size)
+        pdf_resp = c.post("/portfolio/deal-mismatch-report.pdf")
+        assert pdf_resp.status_code == 200
+        assert len(pdf_resp.data) > 500, "PDF should have non-trivial content"
+
+        xlsx_resp = c.post("/portfolio/deal-mismatch-report.xlsx")
+        assert xlsx_resp.status_code == 200
+        assert len(xlsx_resp.data) > 500, "XLSX should have non-trivial content"
+    finally:
+        os.unlink(db)
+    print("✓ test_rent_roll_with_no_matching_leases_produces_all_unit_no_lease: PASS")
+
+
+# Gap 5: huge file (2000 units)
+
+def test_huge_rent_roll_file_imports_successfully():
+    db, _ = _fresh_temp_db()
+    try:
+        c = _analyst()
+        # Generate 2000-unit CSV
+        rows = [["Tenant", "Unit", "Rent"]]
+        for i in range(1, 2001):
+            rows.append([f"Tenant {i}", f"{i:04d}", f"${1000 + (i % 1000)}.00"])
+
+        import csv as csv_mod
+        buf = io.StringIO()
+        csv_mod.writer(buf).writerows(rows)
+
+        resp = c.post(
+            "/leases/import-rent-roll",
+            data={"file": (io.BytesIO(buf.getvalue().encode()), "huge.csv")},
+            content_type="multipart/form-data"
+        )
+        assert resp.status_code == 201, resp.get_json()
+        leases = resp.get_json().get("leases", [])
+        assert len(leases) == 2000, f"expected 2000, got {len(leases)}"
+    finally:
+        os.unlink(db)
+    print("✓ test_huge_rent_roll_file_imports_successfully: PASS")
+
+
 if __name__ == "__main__":
     test_missing_file_is_400_on_every_upload_route()
     test_disallowed_extension_is_rejected_server_side()
@@ -136,4 +274,10 @@ if __name__ == "__main__":
     test_oversized_upload_is_413()
     test_empty_file_gets_a_clear_error_not_a_crash()
     test_corrupt_pdf_is_422_not_500()
+    test_empty_rent_roll_csv_is_4xx_with_clear_error()
+    test_empty_rent_roll_xlsx_is_4xx_with_clear_error()
+    test_corrupt_xlsx_on_rent_roll_import_is_4xx_not_500()
+    test_password_protected_xlsx_is_4xx_with_clear_error()
+    test_rent_roll_with_no_matching_leases_produces_all_unit_no_lease()
+    test_huge_rent_roll_file_imports_successfully()
     print("\nAll upload validation tests passed.")
