@@ -297,6 +297,352 @@ def parse_csv_t12(file_bytes: bytes, filename: str) -> Dict[str, Any]:
     )
 
 
+# ----------------------------------------------------------------------
+# Full line-item extraction for loan underwriting (purely additive)
+# ----------------------------------------------------------------------
+#
+# Everything above this line is unchanged and stays that way:
+# parse_t12_rows extracts exactly ONE number (actual collected rental
+# income) because that's all compute_t12_reconciliation needs, and that
+# function's contract is depended on by the live T-12 cross-check route.
+#
+# The loan underwriting module (app/loan_underwriting.py) needs the whole
+# statement instead -- you cannot build an underwritten NOI from a single
+# income line, because NOI is income MINUS the expense stack. So the
+# functions below read every labeled row and sort the ones underwriting
+# cares about into canonical buckets.
+#
+# This is additive rather than a rewrite on purpose: the narrow function
+# keeps its exact behavior (and its deliberate refusal to treat "Gross
+# Potential Rent" as income), while the wide one reuses the same
+# _match_t12_columns / _row_annual_total / _find_t12_header_row helpers,
+# so there is still exactly ONE place in this codebase that understands
+# what shape a T-12 file is.
+
+# Canonical underwriting buckets -> row-label aliases. Matched longest-
+# alias-first (see _classify_line_item) because several are prefixes of
+# each other: "total operating expenses" must win over "operating
+# expenses", and "total other income" over "other income", or a section
+# subtotal gets filed as a detail line and double-counted.
+_UNDERWRITING_LINE_ITEM_ALIASES: Dict[str, List[str]] = {
+    "gross_potential_rent": [
+        "gross potential rent", "gross potential income", "gross scheduled rent",
+        "gross market rent", "potential gross rent", "market rent",
+    ],
+    "vacancy_loss": ["vacancy loss", "vacancy and credit loss", "vacancy credit loss", "vacancy"],
+    "loss_to_lease": ["loss to lease"],
+    "concessions": ["concessions", "rent concessions", "concession"],
+    "bad_debt": [
+        "bad debt collection loss", "bad debt and collection loss", "bad debt",
+        "collection loss", "write offs", "bad debt expense",
+    ],
+    "net_rental_income": ["net rental income billed", "net rental income"],
+    "total_rent_collected": ["total rent collected", "total collections", "rent collected"],
+    "total_other_income": ["total other income", "other income total"],
+    "total_operating_expenses": [
+        "total operating expenses", "total operating expense", "total expenses", "total opex",
+    ],
+    "management_fee": [
+        "property management fee", "management fee", "management fees", "property management fees",
+    ],
+    "net_operating_income": ["net operating income noi", "net operating income", "noi"],
+}
+
+# Deduction buckets: always stored as a POSITIVE magnitude regardless of
+# how the file expressed them.
+#
+# This isn't cosmetic. An .xlsx T-12 stores vacancy loss as the float
+# -107685.39, but a CSV export of the same statement may write it
+# "(107,685.39)" -- and _parse_t12_currency's regex fallback strips the
+# parentheses along with the sign, yielding +107685.39. Taking abs() of
+# every deduction makes all three spellings (-107685.39, 107685.39,
+# "(107,685.39)") behave identically, so a CSV and an XLSX of the same
+# statement can't produce two different NOIs. app/loan_underwriting.py's
+# build_underwritten_noi subtracts these, and documents that it expects
+# positive magnitudes -- this is the boundary that guarantees it.
+_DEDUCTION_BUCKETS = {
+    "vacancy_loss", "loss_to_lease", "concessions", "bad_debt",
+    "total_operating_expenses", "management_fee",
+}
+
+
+def _classify_line_item(normalized_label: str) -> Optional[str]:
+    """
+    Which underwriting bucket a row label belongs to, or None for a row
+    that isn't one of the canonical lines (an individual expense detail
+    line, a section header, a blank spacer).
+
+    Exact match wins first, then longest-alias-first substring matching.
+    Real T-12 labels carry parenthetical qualifiers -- the demo
+    statement's own fee line reads "Management Fee (3% of Total Income)"
+    and its NOI line reads "NET OPERATING INCOME (NOI)" -- so substring
+    matching is required, not optional. Longest-first ordering is what
+    keeps "Total Operating Expenses" from matching the shorter
+    "operating expenses" of some other row first.
+    """
+    alias_to_bucket: List[tuple] = []
+    for bucket, aliases in _UNDERWRITING_LINE_ITEM_ALIASES.items():
+        for alias in aliases:
+            alias_to_bucket.append((_normalize_header(alias), bucket))
+
+    for alias_norm, bucket in alias_to_bucket:
+        if normalized_label == alias_norm:
+            return bucket
+
+    for alias_norm, bucket in sorted(alias_to_bucket, key=lambda pair: -len(pair[0])):
+        if re.search(rf"\b{re.escape(alias_norm)}\b", normalized_label):
+            return bucket
+    return None
+
+
+def parse_t12_line_items(
+    headers: List[Any],
+    rows: List[List[Any]],
+    filename: str,
+    row_numbers: Optional[List[int]] = None,
+) -> List[Dict[str, Any]]:
+    """
+    Every data row that has both a label and a usable annual figure, in
+    file order, as:
+
+        {"label", "normalized_label", "bucket", "annual_amount",
+         "source": {"row", "file", "quote"}}
+
+    `bucket` is the canonical underwriting bucket or None for a detail
+    row. Detail rows are kept rather than dropped -- a credit memo shows
+    the individual expense lines (payroll, taxes, insurance, R&M), and
+    each needs its own source row citation.
+
+    Section header rows ("INCOME", "OPERATING EXPENSES") have no numbers
+    and so fall out naturally via `_row_annual_total` returning None. No
+    exception is raised for a file with no recognizable rows at all --
+    that judgment belongs to build_t12_financials, which knows which
+    buckets are actually required.
+
+    `source` carries a ROW, not a page: a T-12 is a spreadsheet, and this
+    module will not invent a page number for one. Same {row, file, quote}
+    shape parse_t12_rows already returns, so downstream provenance
+    handling is identical for both paths.
+    """
+    column_mapping = _match_t12_columns(headers)
+    if "total" not in column_mapping and len(column_mapping.get("months", {})) < 12:
+        raise T12ImportError(
+            "Couldn't find a column to compute an annual total from in this file's "
+            "header row -- expected either a \"Total\"/\"Annual\" column, or all 12 "
+            "month columns (Jan through Dec) to sum."
+        )
+
+    line_items: List[Dict[str, Any]] = []
+    for row_index, row in enumerate(rows):
+        if not row:
+            continue
+        label_raw = row[0]
+        label_str = str(label_raw).strip() if label_raw is not None else ""
+        if not label_str:
+            continue
+
+        amount = _row_annual_total(row, column_mapping)
+        if amount is None:
+            continue
+
+        normalized_label = _normalize_header(label_str)
+        row_num = row_numbers[row_index] if row_numbers is not None else row_index + 2
+
+        line_items.append({
+            "label": label_str,
+            "normalized_label": normalized_label,
+            "bucket": _classify_line_item(normalized_label),
+            "annual_amount": amount,
+            "source": {"row": row_num, "file": filename, "quote": label_str},
+        })
+
+    return line_items
+
+
+def build_t12_financials(line_items: List[Dict[str, Any]], unit_count: int = 0) -> Dict[str, Any]:
+    """
+    Folds parse_t12_line_items' output into the exact input shape
+    app/loan_underwriting.py's `underwrite()` expects, plus a parallel
+    provenance map so every figure can cite its source row.
+
+    Returns:
+        {
+          "t12_inputs":  {gross_potential_rent, loss_to_lease, concessions,
+                          bad_debt, other_income,
+                          operating_expenses_ex_management, unit_count,
+                          historical_noi},
+          "sources":     {<same keys>: {"row", "file", "quote"}},
+          "line_items":  the full list, detail rows included,
+          "warnings":    list of human-readable strings,
+        }
+
+    The one genuinely load-bearing computation here:
+
+        operating_expenses_ex_management
+            = total_operating_expenses - management_fee
+
+    A T-12's expense total INCLUDES the management fee the property
+    actually paid. The underwriting engine applies its own management fee
+    assumption on top. Pass the raw total through and the property is
+    charged a management fee twice -- on the demo statement that's
+    $59,899.54 of phantom expense and a correspondingly understated NOI,
+    with nothing in the output to hint at it. So the actual fee is
+    subtracted out here, at the boundary, and reported separately
+    (`management_fee_removed`) so the adjustment is visible rather than
+    buried inside a net number.
+
+    When no management fee line is found, the total passes through
+    unchanged and a warning says so -- the alternative (silently assuming
+    some fee was embedded and guessing at it) would be fabrication. The
+    caller decides whether an un-stripped total is acceptable; this
+    function won't make that call quietly.
+
+    No bucket is defaulted to 0.0 when absent. A missing Gross Potential
+    Rent line means underwriting genuinely cannot proceed, and a zero
+    there would produce a confidently wrong $0 NOI instead of an error.
+    """
+    by_bucket: Dict[str, Dict[str, Any]] = {}
+    for item in line_items:
+        bucket = item["bucket"]
+        # First occurrence wins: a T-12 can repeat a label (e.g. a
+        # per-section subtotal echoed in a summary block at the bottom),
+        # and the first is the one inside the statement proper.
+        if bucket and bucket not in by_bucket:
+            by_bucket[bucket] = item
+
+    warnings: List[str] = []
+
+    def _amount(bucket: str) -> Optional[float]:
+        item = by_bucket.get(bucket)
+        if item is None:
+            return None
+        value = item["annual_amount"]
+        return abs(value) if bucket in _DEDUCTION_BUCKETS else value
+
+    gross_potential_rent = _amount("gross_potential_rent")
+    total_operating_expenses = _amount("total_operating_expenses")
+    management_fee = _amount("management_fee")
+
+    if gross_potential_rent is None:
+        warnings.append(
+            "No Gross Potential Rent line found. Underwritten NOI cannot be built "
+            "without it -- the whole build-up starts from gross potential rent."
+        )
+    if total_operating_expenses is None:
+        warnings.append(
+            "No Total Operating Expenses line found. Underwritten NOI cannot be built "
+            "without the expense stack."
+        )
+
+    operating_expenses_ex_management = None
+    management_fee_removed = None
+    if total_operating_expenses is not None:
+        if management_fee is not None:
+            operating_expenses_ex_management = round(total_operating_expenses - management_fee, 2)
+            management_fee_removed = management_fee
+        else:
+            operating_expenses_ex_management = total_operating_expenses
+            warnings.append(
+                "No management fee line found in the T-12's operating expenses, so the "
+                "expense total was used as-is. If a management fee IS embedded in that "
+                "total, the underwritten management fee assumption will double-count it "
+                "-- check the statement before relying on the NOI."
+            )
+
+    t12_inputs = {
+        "gross_potential_rent": gross_potential_rent,
+        "loss_to_lease": _amount("loss_to_lease") or 0.0,
+        "concessions": _amount("concessions") or 0.0,
+        "bad_debt": _amount("bad_debt") or 0.0,
+        "other_income": _amount("total_other_income") or 0.0,
+        "operating_expenses_ex_management": operating_expenses_ex_management,
+        "unit_count": unit_count,
+        "historical_noi": _amount("net_operating_income"),
+        "total_rent_collected": _amount("total_rent_collected"),
+        "net_rental_income_billed": _amount("net_rental_income"),
+    }
+
+    sources = {
+        key: by_bucket[bucket]["source"]
+        for key, bucket in [
+            ("gross_potential_rent", "gross_potential_rent"),
+            ("loss_to_lease", "loss_to_lease"),
+            ("concessions", "concessions"),
+            ("bad_debt", "bad_debt"),
+            ("other_income", "total_other_income"),
+            ("operating_expenses_ex_management", "total_operating_expenses"),
+            ("historical_noi", "net_operating_income"),
+            ("total_rent_collected", "total_rent_collected"),
+            ("net_rental_income_billed", "net_rental_income"),
+        ]
+        if bucket in by_bucket
+    }
+
+    return {
+        "t12_inputs": t12_inputs,
+        "sources": sources,
+        "line_items": line_items,
+        "management_fee_removed": management_fee_removed,
+        "warnings": warnings,
+    }
+
+
+def _numbered_rows_from_csv(file_bytes: bytes) -> List[tuple]:
+    text = file_bytes.decode("utf-8-sig", errors="replace")
+    reader = csv.reader(io.StringIO(text))
+    return [(i, row) for i, row in enumerate(reader, start=1) if any(cell.strip() for cell in row)]
+
+
+def _numbered_rows_from_xlsx(file_bytes: bytes) -> List[tuple]:
+    try:
+        workbook = load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
+    except Exception as exc:
+        raise T12ImportError(f"Couldn't read this file as an Excel workbook: {exc}")
+    sheet = workbook.active
+    return [
+        (i, list(row)) for i, row in enumerate(sheet.iter_rows(values_only=True), start=1)
+        if any(cell is not None and str(cell).strip() for cell in row)
+    ]
+
+
+def parse_t12_financials(file_bytes: bytes, filename: str, unit_count: int = 0) -> Dict[str, Any]:
+    """
+    One call, file format to underwriting inputs: dispatches on the
+    filename extension, finds the header row, extracts every line item,
+    and folds them into canonical buckets with provenance.
+
+    Raises T12ImportError for an unsupported extension, an empty file, or
+    one with no usable annual-total column -- the same fatal cases
+    parse_csv_t12/parse_xlsx_t12 already raise on, so the API route can
+    handle both paths identically.
+    """
+    lowered = (filename or "").lower()
+    if lowered.endswith(".csv"):
+        numbered_rows = _numbered_rows_from_csv(file_bytes)
+    elif lowered.endswith((".xlsx", ".xlsm")):
+        numbered_rows = _numbered_rows_from_xlsx(file_bytes)
+    else:
+        raise T12ImportError(
+            "Unsupported T-12 file type -- upload a .csv or .xlsx operating statement."
+        )
+
+    if not numbered_rows:
+        raise T12ImportError("This file is empty -- nothing to import.")
+
+    row_contents = [row for _, row in numbered_rows]
+    header_idx = _find_t12_header_row(row_contents)
+    headers = list(row_contents[header_idx])
+    data_entries = numbered_rows[header_idx + 1:]
+
+    line_items = parse_t12_line_items(
+        headers,
+        [row for _, row in data_entries],
+        filename,
+        row_numbers=[n for n, _ in data_entries],
+    )
+    return build_t12_financials(line_items, unit_count=unit_count)
+
+
 def parse_xlsx_t12(file_bytes: bytes, filename: str) -> Dict[str, Any]:
     """Reads an .xlsx T12's bytes and parses it via parse_t12_rows. Uses the first (active) worksheet. Raises T12ImportError for a genuinely empty or unreadable file."""
     try:
