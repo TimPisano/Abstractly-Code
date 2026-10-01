@@ -4,11 +4,21 @@ Last verified against git: **2026-10-01, evening** (`git fetch --all`,
 every branch/worktree walked individually). "+a / −b" = commits ahead of
 / behind `main`.
 
-**Local `main` is 9 commits ahead of `origin/main`** (the three merges
-below happened locally but were never pushed). `render.yaml` deploys
-every service from `origin`'s `main`, so **none of this is live yet** —
+**Local `main` is ahead of `origin/main`** (the three merges below
+happened locally but were never pushed). `render.yaml` deploys every
+service from `origin`'s `main`, so **none of this is live yet** —
 prod/tester/demo are still running old code. Push only when the user
 explicitly says so in that session (CLAUDE.md rule 2).
+
+**Other sessions are active right now, concurrently with this pass:**
+while writing this file, `229ab23` (the Book a Demo boolean-units fix,
+cherry-picked from `feature/landing-positioning`'s `391b49f`) landed
+directly on local `main`; `feature/pricing-page` gained a new commit
+(`0a0d7a2`, "Declare persistent disk for prod + tester backends in
+render.yaml" — possibly progress on the storage blocker below, not yet
+verified); and `feature/team-isolation`'s worktree moved. Exact commit
+SHAs/counts below are a snapshot — run the `status` skill to refresh
+before trusting them precisely.
 
 ## Done (merged into local main)
 
@@ -28,7 +38,7 @@ explicitly says so in that session (CLAUDE.md rule 2).
 | Branch | Worktree | What it does | Status |
 |---|---|---|---|
 | `feature/pricing-page` (round 2) | `~/dev/projects/abstractly-pricing` | Flat per-team pricing ($499/$399, $1,250/$999, Enterprise), fluted-glass WebGL hero, sticky header, Lenis, new logo | +11 / −6 vs. main, pushed to origin. Clean worktree. Frontend only. Confirm it's finished iterating before merging. |
-| `feature/landing-positioning` (round 2) | `~/dev/projects/abstractly-landing` | Reject boolean `units` in Book a Demo (backend + test); scroll-linked fluted-glass shader, dark theme | +17 / −2 vs. main, pushed to origin. **Worktree has uncommitted changes** to `background-fx.js`, `index.html`, `landing.css`, `pricing.html` — commit or discard before this is actually reviewable. Overlaps pricing-page round 2 heavily (same files, both add a fluted-glass background); recommend cherry-picking only the Book a Demo fix and dropping the shader work in favor of pricing-page's hero. |
+| `feature/landing-positioning` (round 2) | `~/dev/projects/abstractly-landing` | Scroll-linked fluted-glass shader, dark theme. (Its Book a Demo boolean-`units` fix, `391b49f`, is **already on `main`** as cherry-pick `229ab23` — done, don't re-merge it.) | Pushed to origin. **Worktree has uncommitted changes** to `background-fx.js`, `index.html`, `landing.css`, `pricing.html` — commit or discard before this is reviewable. Overlaps pricing-page round 2 heavily (same files, both add a fluted-glass background); pick one hero, not both. |
 
 ### Recommended merge order (one at a time; smoke test the tester deployment after each — but see the push note at the top, nothing reaches the live deployments until `main` is pushed)
 
