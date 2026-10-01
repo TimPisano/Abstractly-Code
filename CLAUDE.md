@@ -66,11 +66,16 @@ the old per-property placeholder prices. See TASKS.md.)
   (`ROLE_RANK`), enforced with `@require_role('analyst')` etc.;
   `is_owner` is a separate flag (`@require_owner`) and is never implied
   by `admin`.
-- **Tenancy today:** there is **no `team_id` / teams table on `main`**.
-  Isolation is currently *per deployment* (that is why tester and demo are
-  separate Render services). A `teams` table + `team_id` arrives with
-  `feature/usage-limits`, and `feature/loan-underwriting` plans its own.
-  Converge on one model (see TASKS.md) rather than adding a third.
+- **Tenancy today:** `main` now has a `teams` table and `users.team_id`
+  (merged from `feature/usage-limits`), but it's **billing/quota scope
+  only** — `team_id` only ever touches `usage_events` and the `/teams`
+  admin routes, never a `WHERE` clause on `leases`, `discrepancies`,
+  `alerts`, or `tasks`. There is still **no document-level isolation**:
+  any logged-in user on a deployment can read/edit any other user's
+  leases. Isolation between *firms* is still per-deployment (why tester
+  and demo are separate Render services). `feature/team-isolation` is
+  the active branch extending `team_id` to document tables; converge on
+  its `team_id` (not a second `account_id`/`teams` schema) — see TASKS.md.
 
 ### Render services (`render.yaml`, Blueprint)
 
@@ -108,8 +113,11 @@ pytest is also installed in the venv. More detail: `docs/LOCAL_DEV.md`.
 `docs/OPERATIONS.md`, `docs/HARDENING_LOG.md`,
 `docs/TESTER_VERIFICATION_CHECKLIST.md`, `PLAN.md` (the active branch's
 plan; each worktree may have its own).
-Subagents in `.claude/agents/`: `engineer`, `reviewer`, `accuracy-tester`,
-`product-strategist`, `outreach` (drafts only, never sends).
+Subagents in `.claude/agents/`: `engineer`, `reviewer`, `qa-tester`,
+`security-auditor`, `ui-checker`, `accuracy-tester`, `product-strategist`,
+`outreach` (drafts only, never sends).
+Skills in `.claude/skills/`: `start-task`, `ship-branch`, `review-branch`,
+`merge-branch`, `status`, `session-handoff` — see **The Loop** below.
 
 ## Standing rules for every session
 
@@ -122,10 +130,11 @@ Subagents in `.claude/agents/`: `engineer`, `reviewer`, `accuracy-tester`,
    `git worktree list` first.
 3. **Enforce team-level data isolation and correct roles on every route
    and query** you add or touch: scope every query by the caller's team and
-   put an explicit `@require_role(...)` on every route. Because `main` has
-   no team model yet, if a change needs isolation that doesn't exist on
-   your branch, say so and build on the agreed teams model. Never silently
-   ship an unscoped route.
+   put an explicit `@require_role(...)` on every route. `main`'s `team_id`
+   today only covers billing/quota, not documents — if a change needs
+   document-level isolation that doesn't exist yet, say so explicitly and
+   build on `feature/team-isolation`'s model rather than inventing a new
+   one. Never silently ship an unscoped route.
 4. **Never commit secrets, `.env` files, `*.db` files, or real customer
    data.** Use fictional data such as the **Maple Ridge** demo deal
    (`backend/benchmark_data/demo_deal/`, not yet committed; it lands with
@@ -143,6 +152,38 @@ Subagents in `.claude/agents/`: `engineer`, `reviewer`, `accuracy-tester`,
    `poppler` installed locally (e.g. `test_real_ocr.py`, `test_ocr_fallback.py`)
    fail on machines without them. Don't treat those as new breakage, but do
    report any *other* failure.
+
+(The ECC GateGuard hook may block your first Bash/Edit/Write call each
+session with a "Fact-Forcing Gate" asking you to restate the request and
+what the command verifies. Answer its questions plainly and retry — it's
+a one-time check per tool per session, not a blocker to work around.)
+
+## The Loop
+
+Every feature, on its own branch and worktree, follows the same cycle.
+The matching skill (in parens) automates each step — invoke it instead
+of improvising the sequence by hand.
+
+1. Claim the task in `TASKS.md` — move it into **In progress**. (`start-task`)
+2. Create its branch + worktree under `~/dev/projects/`. (`start-task`)
+3. Write `PLAN.md` in the worktree and **stop for the user's approval**
+   before touching code. (`start-task`)
+4. Build.
+5. Run tests and fix until green.
+6. If anything UI-facing changed, visual-check it with headless
+   Playwright screenshots (never the user's real browser). (`ship-branch`
+   → `ui-checker`)
+7. Commit and push the branch. (`ship-branch`)
+8. Hand off to the `reviewer` subagent. (`ship-branch`, or `review-branch`
+   to also run `security-auditor`)
+9. Fix anything it flags, re-review if the fix is non-trivial.
+10. Wait for the user to explicitly approve the merge — never assume it.
+11. Merge into `main` and push `main`. (`merge-branch`)
+12. Run the smoke test. (`merge-branch`)
+13. Update `TASKS.md` and remove the worktree. (`merge-branch`)
+
+Use `status` any time to check where things stand, and `session-handoff`
+before a session ends mid-task so the next one can resume cold.
 
 ## Conventions
 
