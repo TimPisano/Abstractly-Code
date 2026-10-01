@@ -14,8 +14,8 @@
  *    to a blurred dark bar (see landing.css's body.scrolled .site-header).
  *  - Mobile nav: opens/closes the slide-down panel on narrow viewports.
  *  - Sitewide cursor-reactive light bands: a fixed, viewport-sized
- *    canvas behind every section (see #siteCanvas in both HTML files
- *    and .site-bg/.site-canvas in landing.css).
+ *    canvas behind every section (see #siteGlCanvas in both HTML files
+ *    and .site-bg/.site-gl-canvas in landing.css).
  *  - Hero Deal Mismatch Report count-up.
  *  - Pricing preview teaser (index.html only), rendered from
  *    PRICING_CONFIG so it can never drift from the real pricing page.
@@ -181,38 +181,47 @@ if ('IntersectionObserver' in window) {
 })();
 
 /**
- * ===================== Hero: fluted-glass WebGL shader =====================
- * index.html only (#hero / #heroGlCanvas aren't present on pricing.html).
+ * ===================== Sitewide fluted-glass WebGL shader =====================
+ * Runs on every page that has #siteGlCanvas (index.html and
+ * pricing.html alike) -- a single `position: fixed` canvas sized to the
+ * viewport, painted behind the whole page (see .site-gl-canvas in
+ * landing.css), never scoped to the hero or any other single section.
  * Evenly spaced vertical "ribs," each shaded like a rounded glass
  * cylinder (soft highlight + darker grooves between them), lit by a
  * point light that eases toward the cursor and never snaps. Ribs near
  * the light glow in the accent color; brightness falls off smoothly
  * with distance. A slow perpetual idle drift keeps it visibly alive
  * when the cursor is still, and a faint per-rib shimmer plays across
- * lit ribs. All of this lives in the fragment shader below -- the JS
- * here only compiles/links it, feeds it u_mouse/u_time each frame, and
- * decides whether to run a loop at all.
+ * lit ribs.
  *
- * CSS fallback: `.hero`'s own background (landing.css) already paints a
- * static approximation of this same design (off-center radial glow +
- * matching rib spacing). #heroGlCanvas starts at opacity:0 and only
- * fades in once WebGL actually initializes and compiles successfully
- * (`.is-ready`) -- so a browser with no WebGL support, or where shader
- * compilation fails for any reason, silently keeps the CSS version
- * permanently instead of showing a blank hero.
+ * The light's overall intensity (u_scrollFade) eases from full at the
+ * top of the page down to a faint floor over the first 1.5 screen
+ * heights of scroll, then holds at that floor -- never a hard cutoff,
+ * and the glow plus cursor-follow keep running all the way to the
+ * bottom of the page, because this is the one and only background
+ * layer for the entire site, not something confined to the hero.
  *
- * Touch devices and prefers-reduced-motion: per the brief, these get a
- * single still WebGL frame with the light centered (not the plainer CSS
- * fallback) -- that's a true-to-design static render, not a downgrade,
- * and it costs one draw call, not an animation loop.
+ * CSS fallback: .site-bg (landing.css) already paints a static
+ * approximation of this same design (soft top glow + matching rib
+ * spacing) across the whole viewport. #siteGlCanvas starts at
+ * opacity:0 and only fades in once WebGL actually initializes and
+ * compiles successfully (`.is-ready`) -- so a browser with no WebGL
+ * support, or where shader compilation fails for any reason, silently
+ * keeps the CSS version permanently instead of showing nothing.
+ *
+ * prefers-reduced-motion gets a single still WebGL frame with the light
+ * centered, at full intensity, and no further updates -- a true-to-
+ * design static render, not a downgrade, and it costs one draw call,
+ * not an animation loop. Touch / coarse-pointer devices still get the
+ * animated loop (idle drift, shimmer, and scroll-driven fade) just
+ * without cursor-follow, since there's no cursor to follow.
  */
 (function () {
-    const hero = document.getElementById('hero');
-    const canvas = document.getElementById('heroGlCanvas');
-    if (!hero || !canvas) return;
+    const canvas = document.getElementById('siteGlCanvas');
+    if (!canvas) return;
 
     const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
-    if (!gl) return; // no WebGL -- .hero's own CSS background stays the permanent look
+    if (!gl) return; // no WebGL -- .site-bg's own CSS background stays the permanent look
 
     const VERT_SRC = `
         attribute vec2 a_position;
@@ -229,6 +238,7 @@ if ('IntersectionObserver' in window) {
         uniform vec2 u_mouse;
         uniform float u_time;
         uniform float u_reduced;
+        uniform float u_scrollFade;
 
         const float RIB_COUNT = 34.0;
         const vec3 ACCENT = vec3(0.7137, 0.5412, 0.3059);
@@ -256,9 +266,12 @@ if ('IntersectionObserver' in window) {
             vec2 lightPos = u_mouse + drift;
 
             // Tall, soft elliptical falloff -- "a spotlight shining
-            // through the ribs," not a circular pool of light.
+            // through the ribs," not a circular pool of light. Scaled
+            // by u_scrollFade (eased in JS from scroll position, never
+            // a step) so the light dims smoothly as you scroll instead
+            // of stopping dead at any fixed point on the page.
             vec2 d = (uv - lightPos) / vec2(u_resolution.x * 0.16, u_resolution.y * 0.8);
-            float glow = exp(-dot(d, d) * 2.4);
+            float glow = exp(-dot(d, d) * 2.4) * u_scrollFade;
 
             // Subtle per-rib shimmer, only visible where glow is present.
             float shimmer = 0.5 + 0.5 * sin(u_time * 2.2 + ribIndex * 1.7);
@@ -277,7 +290,7 @@ if ('IntersectionObserver' in window) {
         gl.shaderSource(shader, src);
         gl.compileShader(shader);
         if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-            console.warn('Abstractly hero shader failed to compile:', gl.getShaderInfoLog(shader));
+            console.warn('Abstractly site shader failed to compile:', gl.getShaderInfoLog(shader));
             gl.deleteShader(shader);
             return null;
         }
@@ -286,14 +299,14 @@ if ('IntersectionObserver' in window) {
 
     const vertShader = compileShader(gl.VERTEX_SHADER, VERT_SRC);
     const fragShader = compileShader(gl.FRAGMENT_SHADER, FRAG_SRC);
-    if (!vertShader || !fragShader) return; // falls back to .hero's CSS background
+    if (!vertShader || !fragShader) return; // falls back to .site-bg's CSS background
 
     const program = gl.createProgram();
     gl.attachShader(program, vertShader);
     gl.attachShader(program, fragShader);
     gl.linkProgram(program);
     if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-        console.warn('Abstractly hero shader failed to link:', gl.getProgramInfoLog(program));
+        console.warn('Abstractly site shader failed to link:', gl.getProgramInfoLog(program));
         return;
     }
     gl.useProgram(program);
@@ -311,38 +324,43 @@ if ('IntersectionObserver' in window) {
     const uMouse = gl.getUniformLocation(program, 'u_mouse');
     const uTime = gl.getUniformLocation(program, 'u_time');
     const uReduced = gl.getUniformLocation(program, 'u_reduced');
+    const uScrollFade = gl.getUniformLocation(program, 'u_scrollFade');
 
     const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const hasFinePointer = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
-    const isStatic = prefersReducedMotion || !hasFinePointer;
 
     let width = 0;
     let height = 0;
+    let mouseMoved = false;
+
+    // Idle default sits near the top-center of the viewport (there's no
+    // single "hero" to bias toward anymore -- this is the whole page's
+    // background). Recomputed on resize as long as the cursor hasn't
+    // actually moved yet, so it never drifts to a stale pixel position
+    // after a viewport resize.
+    let targetX = 0;
+    let targetY = 0;
+    let easedX = 0;
+    let easedY = 0;
 
     function resize() {
-        const rect = hero.getBoundingClientRect();
         const dpr = Math.min(window.devicePixelRatio || 1, 2); // capped per the brief
-        width = rect.width;
-        height = rect.height;
+        width = window.innerWidth;
+        height = window.innerHeight;
         canvas.width = Math.round(width * dpr);
         canvas.height = Math.round(height * dpr);
         canvas.style.width = `${width}px`;
         canvas.style.height = `${height}px`;
         gl.viewport(0, 0, canvas.width, canvas.height);
+        if (!mouseMoved) {
+            targetX = canvas.width * 0.5;
+            targetY = canvas.height * 0.32;
+            easedX = targetX;
+            easedY = targetY;
+        }
     }
 
     resize();
-
-    // Resting position is behind the deal-card side of the hero, not
-    // dead center -- keeps the light away from the headline column by
-    // default (the interactive case still follows the cursor anywhere,
-    // including over the text; that's handled separately by .hero-copy's
-    // scrim in landing.css). The reduced-motion/touch still frame below
-    // stays literally centered, per the brief.
-    let targetX = canvas.width * 0.68;
-    let targetY = canvas.height * 0.4;
-    let easedX = targetX;
-    let easedY = targetY;
 
     let resizeTimer = null;
     window.addEventListener('resize', () => {
@@ -350,33 +368,52 @@ if ('IntersectionObserver' in window) {
         resizeTimer = setTimeout(resize, 150);
     });
 
-    function render(mx, my, time, reduced) {
+    // Eases from 1.0 (full intensity) at the top of the page down to
+    // MIN_SCROLL_INTENSITY (a faint floor, never fully off) by 1.5
+    // screen heights of scroll, via a smoothstep -- a continuous curve,
+    // not a step, so there is no point on the page where the light's
+    // brightness changes abruptly. Holds at the floor for any scroll
+    // beyond that, all the way to the bottom of the page.
+    const MIN_SCROLL_INTENSITY = 0.16;
+    function computeScrollFade() {
+        const t = Math.min(1, window.scrollY / (window.innerHeight * 1.5));
+        const eased = t * t * (3 - 2 * t);
+        return 1 - eased * (1 - MIN_SCROLL_INTENSITY);
+    }
+
+    function render(mx, my, time, reduced, scrollFade) {
         gl.uniform2f(uResolution, canvas.width, canvas.height);
         gl.uniform2f(uMouse, mx, my);
         gl.uniform1f(uTime, time);
         gl.uniform1f(uReduced, reduced ? 1.0 : 0.0);
+        gl.uniform1f(uScrollFade, scrollFade);
         gl.drawArrays(gl.TRIANGLES, 0, 3);
     }
 
-    if (isStatic) {
-        render(canvas.width * 0.5, canvas.height * 0.4, 0, true);
+    if (prefersReducedMotion) {
+        render(canvas.width * 0.5, canvas.height * 0.32, 0, true, 1.0);
         canvas.classList.add('is-ready');
         return;
     }
 
-    hero.addEventListener('mousemove', (e) => {
-        const rect = hero.getBoundingClientRect();
-        const dpr = canvas.width / width;
-        targetX = (e.clientX - rect.left) * dpr;
-        targetY = (e.clientY - rect.top) * dpr;
-    });
+    // Cursor-follow only makes sense with an actual pointer -- touch
+    // devices still get the idle drift + shimmer + scroll-driven fade
+    // below, just without a light that chases a finger.
+    if (hasFinePointer) {
+        window.addEventListener('mousemove', (e) => {
+            mouseMoved = true;
+            const dpr = canvas.width / width;
+            targetX = e.clientX * dpr;
+            targetY = e.clientY * dpr;
+        });
 
-    hero.addEventListener('mouseleave', () => {
-        targetX = canvas.width * 0.68;
-        targetY = canvas.height * 0.4;
-    });
+        document.documentElement.addEventListener('mouseleave', () => {
+            mouseMoved = false;
+            targetX = canvas.width * 0.5;
+            targetY = canvas.height * 0.32;
+        });
+    }
 
-    let heroVisible = true;
     let rafId = null;
     let lastTime = performance.now();
     // Exponential, frame-rate-independent easing: reaches ~95% of the
@@ -385,7 +422,7 @@ if ('IntersectionObserver' in window) {
     const EASE_TAU = 0.16;
 
     function loop(now) {
-        if (!heroVisible || document.hidden) {
+        if (document.hidden) {
             rafId = null;
             return;
         }
@@ -394,7 +431,7 @@ if ('IntersectionObserver' in window) {
         const k = 1 - Math.exp(-dt / EASE_TAU);
         easedX += (targetX - easedX) * k;
         easedY += (targetY - easedY) * k;
-        render(easedX, easedY, now / 1000, false);
+        render(easedX, easedY, now / 1000, false, computeScrollFade());
         rafId = requestAnimationFrame(loop);
     }
 
@@ -403,17 +440,9 @@ if ('IntersectionObserver' in window) {
         if (rafId === null) rafId = requestAnimationFrame(loop);
     }
 
-    // Render only while the hero is actually on screen.
-    if ('IntersectionObserver' in window) {
-        const io = new IntersectionObserver((entries) => {
-            entries.forEach((entry) => {
-                heroVisible = entry.isIntersecting;
-                if (heroVisible) startLoop();
-            });
-        }, { threshold: 0 });
-        io.observe(hero);
-    }
-
+    // The canvas is `position: fixed` and covers the whole page, so
+    // unlike the old hero-scoped version there's no "is it on screen"
+    // check to gate the loop on -- only tab visibility matters.
     document.addEventListener('visibilitychange', () => {
         if (!document.hidden) startLoop();
     });

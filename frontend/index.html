@@ -27,9 +27,13 @@
 <body>
     <a class="skip-link" href="#mainContent">Skip to content</a>
 
-    <!-- Fixed, faint, sitewide continuation of the hero's rib texture
-         (pure CSS, no JS) -- see .site-bg in landing.css. -->
+    <!-- Fixed, sitewide background: .site-bg is the pure-CSS base layer,
+         #siteGlCanvas is the live WebGL layer painted over it once ready
+         (see landing.js / landing.css). Both cover the whole viewport
+         and sit behind every section -- there is no separate hero
+         background, so there's nothing to create a seam against. -->
     <div class="site-bg" aria-hidden="true"></div>
+    <canvas class="site-gl-canvas" id="siteGlCanvas" aria-hidden="true"></canvas>
 
     <div class="announcement-bar">
         Now onboarding beta testers. <a href="#book-demo">Book a demo &rarr;</a>
@@ -39,15 +43,9 @@
         <nav class="landing-nav">
             <a href="index.html" class="landing-brand">
                 <svg class="landing-logo-mark" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                    <rect x="1" y="1" width="6" height="6" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.3"/>
-                    <rect x="9" y="1" width="6" height="6" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.3"/>
-                    <rect x="17" y="1" width="6" height="6" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.3"/>
-                    <rect x="1" y="9" width="6" height="6" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.3"/>
-                    <rect x="9" y="9" width="6" height="6" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.3"/>
-                    <rect x="17" y="9" width="6" height="6" rx="1.4" fill="#b68a4e"/>
-                    <rect x="1" y="17" width="6" height="6" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.3"/>
-                    <rect x="9" y="17" width="6" height="6" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.3"/>
-                    <rect x="17" y="17" width="6" height="6" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.3"/>
+                    <rect x="1" y="1" width="22" height="22" rx="6" fill="#b68a4e"/>
+                    <rect x="6" y="8.8" width="12" height="2.4" rx="1.2" fill="#0a0a0b"/>
+                    <rect x="7.5" y="14.3" width="7" height="2.4" rx="1.2" fill="#0a0a0b"/>
                 </svg>
                 Abstractly
             </a>
@@ -85,8 +83,6 @@
 
     <!-- ===================== Hero ===================== -->
     <header class="hero" id="hero">
-        <canvas class="hero-gl-canvas" id="heroGlCanvas"></canvas>
-
         <div class="hero-inner hero-inner-split reveal">
             <div class="hero-copy">
                 <span class="eyebrow">Built for multifamily syndicators</span>
@@ -153,7 +149,7 @@
     <section class="problem" id="problem">
         <div class="section-heading reveal">
             <span class="eyebrow">The Problem</span>
-            <h2>Rent Rolls Drift From The Leases That Back Them</h2>
+            <h2>Rent rolls drift from the leases that back them</h2>
             <p>Not a hypothetical — here's real output from the reconciliation engine, run against a real test lease and a rent roll built to disagree with it. Same severity, dollar-impact, and source-citation format the product produces on your own documents.</p>
         </div>
 
@@ -202,7 +198,7 @@
     <section class="how-it-works" id="how-it-works">
         <div class="section-heading reveal">
             <span class="eyebrow">How It Works</span>
-            <h2>Two Files In. Every Mismatch Out.</h2>
+            <h2>Two files in. Every mismatch out.</h2>
         </div>
         <div class="steps-grid">
             <div class="step-card reveal">
@@ -227,7 +223,7 @@
     <section class="differentiator" id="why-multifamily">
         <div class="section-heading reveal">
             <span class="eyebrow">Built For Multifamily</span>
-            <h2>Built For Hundreds Of Units, Not A Handful Of Tenants</h2>
+            <h2>Built for hundreds of units, not a handful of tenants</h2>
             <p>Most lease-review tools were built for commercial CRE — a handful of long, heavily negotiated leases per building. Multifamily is a different problem entirely.</p>
         </div>
         <div class="differentiator-grid">
@@ -256,7 +252,7 @@
     <section class="trust" id="trust">
         <div class="section-heading reveal">
             <span class="eyebrow">Trust &amp; Security</span>
-            <h2>What's Actually True Today</h2>
+            <h2>What's actually true today</h2>
         </div>
         <div class="trust-grid">
             <div class="trust-item reveal">
@@ -291,7 +287,7 @@
     <section class="pricing-preview" id="pricing-preview">
         <div class="section-heading reveal">
             <span class="eyebrow">Pricing</span>
-            <h2>Straightforward Monthly Pricing</h2>
+            <h2>Straightforward monthly pricing</h2>
             <p>Three tiers, flat monthly or annual per team. Every plan starts with a real walkthrough, not a self-serve checkout.</p>
         </div>
         <!-- Rendered by landing.js from PRICING_CONFIG (pricing-config.js)
@@ -307,7 +303,7 @@
     <section class="faq" id="faq">
         <div class="section-heading reveal">
             <span class="eyebrow">FAQ</span>
-            <h2>Questions We'd Ask Too</h2>
+            <h2>Questions we'd ask too</h2>
         </div>
         <div class="faq-list">
             <details class="faq-item reveal">
@@ -390,15 +386,9 @@
             <div class="footer-top">
                 <div class="footer-brand">
                     <svg class="footer-logo-mark" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                        <rect x="1" y="1" width="6" height="6" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.3"/>
-                        <rect x="9" y="1" width="6" height="6" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.3"/>
-                        <rect x="17" y="1" width="6" height="6" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.3"/>
-                        <rect x="1" y="9" width="6" height="6" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.3"/>
-                        <rect x="9" y="9" width="6" height="6" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.3"/>
-                        <rect x="17" y="9" width="6" height="6" rx="1.4" fill="#b68a4e"/>
-                        <rect x="1" y="17" width="6" height="6" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.3"/>
-                        <rect x="9" y="17" width="6" height="6" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.3"/>
-                        <rect x="17" y="17" width="6" height="6" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.3"/>
+                        <rect x="1" y="1" width="22" height="22" rx="6" fill="#b68a4e"/>
+                        <rect x="6" y="8.8" width="12" height="2.4" rx="1.2" fill="#0a0a0b"/>
+                        <rect x="7.5" y="14.3" width="7" height="2.4" rx="1.2" fill="#0a0a0b"/>
                     </svg>
                     Abstractly
                 </div>

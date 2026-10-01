@@ -69,12 +69,6 @@ html, body {
 
 body {
     overflow-x: hidden;
-    /* A static, cheap (CSS-only, no JS cost) radial glow for extra
-       depth near the top of the page, independent of the canvas layer
-       below -- stays put regardless of scroll since it's on body, not
-       an animated element. */
-    background-image: radial-gradient(ellipse 70rem 40rem at 50% -10%, rgba(var(--lux-accent-rgb), 0.16), transparent 70%);
-    background-repeat: no-repeat;
 }
 
 /* No `scroll-behavior: smooth` here -- Lenis (vendor/lenis.min.js) now
@@ -82,30 +76,60 @@ body {
    + lenis.scrollTo). Running native smooth-scroll at the same time
    would fight Lenis's own rAF-driven easing on every anchor jump. */
 
-/* ===================== Fixed sitewide fluted-glass texture ===================== */
+/* ===================== Fixed sitewide fluted-glass background ===================== */
 
-/* A faint, deliberately CHEAP (pure CSS, no JS/canvas/WebGL) continuation
-   of the hero's rib pattern behind every other section -- fixed to the
-   viewport so it never needs to cover more than what's on screen, and
-   static/non-interactive by design (only the hero gets the cursor-reactive
-   WebGL treatment; re-running a shader or even a Canvas2D animation loop
-   sitewide for a "faint background texture" would be real, unnecessary
-   cost for very little visible gain this far from the cursor anyway). */
+/* This pair (.site-bg underneath, .site-gl-canvas on top) is the ONLY
+   background for the entire site -- every section, header, and wrapper
+   below is transparent and lets this show through. Both are
+   `position: fixed`, sized to the viewport, and sit behind everything
+   (negative z-index) so there is exactly one light source and one rib
+   texture for the whole page, never a second one scoped to a single
+   section. That's what makes a hero-to-rest-of-page seam impossible by
+   construction: there's no second box with its own background to
+   create an edge against.
+
+   .site-bg is the permanent, pure-CSS base: a static rib texture + a
+   soft top glow, visible on its own when WebGL is unavailable, and
+   otherwise fully painted over by the canvas once it's ready. */
 .site-bg {
     position: fixed;
     inset: 0;
-    z-index: 0;
+    z-index: -2;
     pointer-events: none;
-    background-image: repeating-linear-gradient(
-        90deg,
-        rgba(var(--lux-accent-rgb), 0.05) 0px,
-        rgba(var(--lux-accent-rgb), 0.05) 1px,
-        transparent 1px,
-        transparent calc(100% / 34)
-    );
+    background-color: #09090a;
+    background-image:
+        radial-gradient(ellipse 60% 65% at 50% 18%, rgba(var(--lux-accent-rgb), 0.18), transparent 72%),
+        repeating-linear-gradient(
+            90deg,
+            rgba(var(--lux-accent-rgb), 0.05) 0px,
+            rgba(var(--lux-accent-rgb), 0.05) 1px,
+            transparent 1px,
+            transparent calc(100% / 34)
+        );
 }
 
-/* Every top-level section sits above the fixed texture. */
+/* The live WebGL layer (landing.js): same rib pattern, lit by a point
+   light that eases toward the cursor and fades toward a faint floor as
+   you scroll down (never a hard cutoff -- see u_scrollFade in the
+   fragment shader). Starts at opacity:0 and only fades in once WebGL
+   actually compiles (`.is-ready`), so a browser with no WebGL support
+   just keeps showing .site-bg underneath, permanently. */
+.site-gl-canvas {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    transition: opacity 0.7s ease;
+    pointer-events: none;
+}
+
+.site-gl-canvas.is-ready {
+    opacity: 1;
+}
+
+/* Every top-level section sits above the fixed background layers. */
 .announcement-bar,
 .site-header,
 main,
@@ -153,19 +177,19 @@ main,
 /* ===================== Announcement bar ===================== */
 
 .announcement-bar {
-    background: var(--lux-black);
-    border-bottom: 1px solid var(--lux-line-dark);
+    background: transparent;
+    border-bottom: 1px solid var(--lux-line-dark-faint);
     text-align: center;
-    padding: 0.625rem 1.5rem;
-    font-size: 0.8125rem;
-    font-weight: 500;
+    padding: 0.4375rem 1.5rem;
+    font-size: 0.75rem;
+    font-weight: 400;
     letter-spacing: 0.01em;
-    color: rgba(246, 243, 236, 0.72);
+    color: rgba(246, 243, 236, 0.55);
 }
 
 .announcement-bar a {
     color: var(--lux-accent-text);
-    font-weight: 700;
+    font-weight: 600;
     text-decoration: none;
     border-bottom: 1px solid rgba(143, 108, 58, 0.5);
 }
@@ -185,19 +209,17 @@ main,
     transition: background-color 0.3s ease, border-color 0.3s ease, backdrop-filter 0.3s ease;
 }
 
-/* A light blur (4px, not the 10-12px a "frosted glass" look usually
-   uses) deliberately kept cheap: backdrop-filter forces a recompute of
-   everything visually behind the header on every repaint, and the
-   canvas behind it is animating continuously. A previous version of
-   this page hit a real, measured jank bug from exactly this combination
-   over a much larger area (see landing.js's history) -- this is the
-   same risk at a smaller, header-sized scale, mitigated by using a
-   small radius and pairing it with near-opaque background color (most
-   of the "frosted" read comes from the opacity, not the blur). */
+/* A moderate blur (8px) over a mostly-opaque background -- most of the
+   "frosted glass" read comes from the opacity, not the blur radius, so
+   this stays cheap even with a continuously-animating canvas behind it
+   (backdrop-filter forces a recompute of everything visually behind the
+   header on every repaint; a previous version of this page hit a real,
+   measured jank bug from exactly this combination over a much larger
+   area -- same risk here, at header-sized scale). */
 body.scrolled .site-header {
-    background: rgba(10, 10, 11, 0.86);
-    backdrop-filter: blur(4px);
-    -webkit-backdrop-filter: blur(4px);
+    background: rgba(9, 9, 10, 0.78);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
     border-bottom-color: var(--lux-line-dark);
 }
 
@@ -208,105 +230,76 @@ body.scrolled .site-header {
     gap: 1.5rem;
     max-width: 1280px;
     margin: 0 auto;
-    padding: 1.125rem 1.5rem;
+    padding: 1rem 1.5rem;
 }
 
 .landing-brand {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    font-weight: 800;
+    font-weight: 600;
     font-size: 1.0625rem;
-    letter-spacing: -0.01em;
+    letter-spacing: -0.02em;
     color: var(--lux-ivory);
     white-space: nowrap;
+    text-decoration: none;
 }
 
-/* ---- Logo mark: a 3x3 rent-roll grid with one cell caught/highlighted
-   in the accent color -- the product's whole premise (a mismatch found
-   in a grid of otherwise-uniform rows) as a mark, not a generic
-   building icon. currentColor drives the 8 outlined cells (so it always
-   matches --landing-brand's text color); the highlighted cell is a
-   fixed accent fill, not currentColor, since it's a brand color, not a
-   text color that should adapt. ---- */
+/* ---- Logo mark: a rounded square in the accent color holding two
+   short horizontal lines, the bottom one shorter and offset -- two
+   records being reconciled, the product's whole premise, as a mark.
+   Solid fills only (no hairline strokes) so it stays crisp at 16px,
+   including as the favicon (see favicon.svg, same mark). ---- */
 .landing-logo-mark {
-    width: 1.5rem;
-    height: 1.5rem;
+    width: 1.375rem;
+    height: 1.375rem;
     flex-shrink: 0;
-    color: var(--lux-ivory);
 }
 
 .landing-nav-links {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 2rem;
-    font-size: 0.8125rem;
+    gap: 2.25rem;
+    font-size: 0.9375rem;
     font-weight: 500;
-    letter-spacing: 0.03em;
+    letter-spacing: 0.01em;
     color: rgba(246, 243, 236, 0.65);
 }
 
 .landing-nav-links a {
-    position: relative;
     text-decoration: none;
     transition: color 0.2s ease;
     white-space: nowrap;
-    padding-bottom: 0.25rem;
-}
-
-.landing-nav-links a::after {
-    content: '';
-    position: absolute;
-    left: 0;
-    right: 100%;
-    bottom: 0;
-    height: 1px;
-    background: var(--lux-accent);
-    transition: right 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .landing-nav-links a:hover {
     color: var(--lux-ivory);
 }
 
-.landing-nav-links a:hover::after {
-    right: 0;
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .landing-nav-links a::after {
-        transition: none;
-    }
-}
-
 .landing-nav-actions {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
+    gap: 1.25rem;
     justify-self: end;
 }
 
 .nav-client-login {
-    padding: 0.5rem 1.125rem;
-    font-size: 0.8125rem;
-    font-weight: 600;
+    font-size: 0.875rem;
+    font-weight: 500;
     text-decoration: none;
-    border: 1px solid var(--lux-line-dark);
-    border-radius: var(--radius-sm);
-    color: rgba(246, 243, 236, 0.85);
+    color: rgba(246, 243, 236, 0.65);
     white-space: nowrap;
-    transition: border-color 0.2s ease, color 0.2s ease;
+    transition: color 0.2s ease;
 }
 
 .nav-client-login:hover {
-    border-color: var(--lux-accent);
     color: var(--lux-ivory);
 }
 
 .nav-book-demo {
-    padding: 0.5rem 1.125rem;
-    font-size: 0.8125rem;
+    padding: 0.5625rem 1.25rem;
+    font-size: 0.875rem;
     font-weight: 600;
     text-decoration: none;
     white-space: nowrap;
@@ -341,34 +334,12 @@ body.scrolled .site-header {
 
 /* ===================== Hero ===================== */
 
-/* The CSS fallback lives directly on .hero (always present, painted
-   first) so a browser with no WebGL support -- or where shader compile/
-   link fails -- simply never sees #heroGlCanvas reach opacity:1 and
-   this stays the permanent appearance. A soft off-center radial "light"
-   plus the same rib spacing the shader uses, so the fallback reads as
-   the same design, not a degraded one. */
+/* No background of its own -- the hero is transparent and shows the
+   sitewide .site-bg/.site-gl-canvas fixed layers straight through, so
+   there's nothing here to create a seam against the section below it. */
 .hero {
     position: relative;
-    overflow: hidden;
     padding: 4.5rem 1.5rem 6rem;
-    background-color: #09090a;
-    background-image:
-        radial-gradient(ellipse 45% 80% at 50% 38%, rgba(var(--lux-accent-rgb), 0.18), transparent 70%),
-        repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.035) 0px, rgba(255, 255, 255, 0.035) 1px, transparent 1px, transparent calc(100% / 34));
-}
-
-.hero-gl-canvas {
-    position: absolute;
-    inset: 0;
-    z-index: 0;
-    width: 100%;
-    height: 100%;
-    opacity: 0;
-    transition: opacity 0.7s ease;
-}
-
-.hero-gl-canvas.is-ready {
-    opacity: 1;
 }
 
 .hero-inner {
