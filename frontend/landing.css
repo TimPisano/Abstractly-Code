@@ -63,12 +63,22 @@
     --border-color: var(--lux-line-dark);
 }
 
-html, body {
+/* Background lives ONLY on html -- body and every section are
+   transparent. This matters: body is a plain, non-positioned box (no
+   position/z-index of its own), so if body ALSO had an explicit
+   background, that background would paint as normal in-flow content,
+   which happens AFTER (on top of) negative-z-index positioned
+   descendants in the root stacking context's paint order -- it would
+   silently cover the fixed canvas below even though the canvas is
+   behind every section content-wise. One source of truth for the dark
+   base color avoids that trap entirely. */
+html {
     background: var(--lux-black);
 }
 
 body {
     overflow-x: hidden;
+    background: transparent;
 }
 
 /* No `scroll-behavior: smooth` here -- Lenis (vendor/lenis.min.js) now
@@ -81,20 +91,17 @@ body {
 /* This pair (.site-bg underneath, .site-gl-canvas on top) is the ONLY
    background for the entire site -- every section, header, and wrapper
    below is transparent and lets this show through. Both are
-   `position: fixed`, sized to the viewport, and sit behind everything
-   (negative z-index) so there is exactly one light source and one rib
-   texture for the whole page, never a second one scoped to a single
-   section. That's what makes a hero-to-rest-of-page seam impossible by
-   construction: there's no second box with its own background to
-   create an edge against.
-
-   .site-bg is the permanent, pure-CSS base: a static rib texture + a
-   soft top glow, visible on its own when WebGL is unavailable, and
-   otherwise fully painted over by the canvas once it's ready. */
+   `position: fixed`, sized to the viewport. Deliberately NOT negative
+   z-index (see the html/body comment above for why that's fragile) --
+   instead both sit at z-index:0 (site-bg painting first by DOM order,
+   canvas on top of it), and .site-content below wraps literally every
+   other section at z-index:1, so the stacking order is a flat,
+   unambiguous 0 / 0 / 1 comparison within one stacking context, not a
+   negative-vs-non-positioned-box footgun. */
 .site-bg {
     position: fixed;
     inset: 0;
-    z-index: -2;
+    z-index: 0;
     pointer-events: none;
     background-color: #09090a;
     background-image:
@@ -117,7 +124,7 @@ body {
 .site-gl-canvas {
     position: fixed;
     inset: 0;
-    z-index: -1;
+    z-index: 0;
     width: 100%;
     height: 100%;
     opacity: 0;
@@ -129,11 +136,9 @@ body {
     opacity: 1;
 }
 
-/* Every top-level section sits above the fixed background layers. */
-.announcement-bar,
-.site-header,
-main,
-.landing-footer {
+/* Wraps every section (announcement bar, header, main, footer) in one
+   container at z-index:1, above both fixed background layers. */
+.site-content {
     position: relative;
     z-index: 1;
 }

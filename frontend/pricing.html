@@ -30,6 +30,11 @@
     <div class="site-bg" aria-hidden="true"></div>
     <canvas class="site-gl-canvas" id="siteGlCanvas" aria-hidden="true"></canvas>
 
+    <!-- Everything else (announcement bar, header, main, footer) sits
+         inside this single z-index:1 wrapper, above both fixed
+         background layers -- see .site-content in landing.css. -->
+    <div class="site-content">
+
     <div class="announcement-bar">
         Now onboarding beta testers. <a href="index.html#book-demo">Book a demo &rarr;</a>
     </div>
@@ -177,6 +182,8 @@
             <p class="footer-copy">&copy; 2026 Abstractly. All rights reserved.</p>
         </div>
     </footer>
+
+    </div><!-- /.site-content -->
 
     <script src="config.js"></script>
     <script src="pricing-config.js"></script>
