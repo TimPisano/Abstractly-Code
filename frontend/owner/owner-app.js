@@ -663,19 +663,21 @@ const Teams = {
             <h2>${escapeHtml(t.name)}</h2>
             <p>Status: <span class="owner-status-pill owner-status-${escapeHtml(t.status)}">${escapeHtml(t.status)}</span> &middot; Created ${escapeHtml(formatDate(t.created_at))}</p>
             <h3 style="margin-top:1.5rem;">Members</h3>
-            <table class="owner-table">
-                <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th></tr></thead>
-                <tbody>
-                    ${t.members.map(m => `
-                        <tr>
-                            <td>${escapeHtml(m.name)}</td>
-                            <td>${escapeHtml(m.email)}</td>
-                            <td>${escapeHtml(m.role)}</td>
-                            <td><span class="owner-status-pill owner-status-${escapeHtml(m.status)}">${escapeHtml(m.status)}</span></td>
-                        </tr>
-                    `).join('')}
-                </tbody>
-            </table>
+            <div style="overflow-x:auto;">
+                <table class="owner-table">
+                    <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th></tr></thead>
+                    <tbody>
+                        ${t.members.map(m => `
+                            <tr>
+                                <td>${escapeHtml(m.name)}</td>
+                                <td>${escapeHtml(m.email)}</td>
+                                <td>${escapeHtml(m.role)}</td>
+                                <td><span class="owner-status-pill owner-status-${escapeHtml(m.status)}">${escapeHtml(m.status)}</span></td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
             <div class="owner-modal-actions">
                 ${t.status === 'active'
                     ? `<button class="btn-danger" id="deactivateTeamBtn">Deactivate Team</button>`
