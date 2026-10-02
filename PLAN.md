@@ -27,17 +27,28 @@ an oversight (the previous `PLAN.md` raised it as an open question and
 `test_teams_and_assignments.py` is about team *members* and task
 assignment, not tenancy — it does not imply isolation exists.
 
-**Decision (confirmed with you):** this module introduces a real
-`teams` table and a `team_id` on its own new tables, and enforces team
-scoping plus roles on **every route it adds**. Existing lease /
-rent-roll / memo routes are untouched and remain unscoped.
+**Decision (revised mid-build, on your instruction):** this branch
+creates and modifies **no** users / teams / tenant tables or columns at
+all. A separate branch owns the team data model and will merge
+independently; adding a second one here — even a schema-identical one —
+was the wrong call, and I've reverted it.
 
-I'll say this plainly in `SUMMARY.md` and in the module docstring: the
-application as a whole still has **no** per-team data isolation. This
-module's isolation covers loan requests, assumptions and T-12
-snapshots only. That is not a product-level "your data is isolated per
-team" claim and must not become a homepage trust pillar on the strength
-of this branch.
+So the underwriting feature is scoped to the data model that exists on
+`main` today, which is single-tenant. What this branch *does* enforce is
+**roles** — an explicit `@require_role(...)` on every route it adds,
+which is the half of the requirement the current data model can actually
+support.
+
+`SUMMARY.md` states plainly that this module is **not** team-isolated,
+and `_migrate_loan_underwriting_tables`' docstring names the exact
+retrofit: add `team_id INTEGER NOT NULL` to the two tables plus a
+composite index, then add the `team_id = ?` predicate to the queries in
+`loan_request.py`. Every query is deliberately funnelled through one
+pair of helpers (`_require_request` / `list_loan_requests`) so that
+retrofit is a small reviewable diff, not an audit of every call site.
+
+This must not become a homepage "data isolated per team" trust claim on
+the strength of this branch — it isn't one.
 
 ### 2. `t12_import.py` extracts exactly one number, and nothing is persisted
 
@@ -107,13 +118,13 @@ without touching Flask.
 | File | Purpose |
 |---|---|
 | `app/loan_underwriting.py` | **Pure-Python engine. No AI, no DB, no Flask.** Every formula. |
-| `app/loan_request.py` | Persistence + team/role scoping for loan requests and assumptions. |
+| `app/loan_request.py` | Persistence for loan requests, assumptions and T-12 snapshots. All queries funnelled through two helpers so tenancy can be retrofitted in one place. |
 | `app/t12_import.py` | *Extended* (additive only): full line-item parse + canonical financial map. |
 | `app/credit_memo_template.py` | **The swappable template, alone in its own file** (requirement 4). Section order, headings, which sections are AI-narrated vs engine-only. |
 | `app/credit_memo.py` | Assembles engine output + AI narrative into the template. |
 | `app/credit_memo_export.py` | Word (.docx) renderer via `python-docx` (already a dependency, 1.2.0). |
-| `app/database.py` | *Extended*: `teams`, `team_members`, `loan_requests`, `t12_snapshots`. |
-| `app/api.py` | Routes, all flag-gated + `@require_role` + team-scoped. |
+| `app/database.py` | *Extended, additively*: `loan_requests` + `t12_snapshots` only. **No users/teams/tenant schema touched.** |
+| `app/api.py` | Routes, all flag-gated + `@require_role`. |
 
 Tests: `tests/test_loan_underwriting.py` (formulas, hand-calculated),
 `tests/test_loan_request_api.py` (routes, flag, roles, isolation),
@@ -272,7 +283,7 @@ Export: `.docx`.
 
 ---
 
-## Routes — all flag-gated, role-checked, team-scoped
+## Routes — all flag-gated and role-checked (not team-scoped; see above)
 
 | Route | Role |
 |---|---|
@@ -284,13 +295,15 @@ Export: `.docx`.
 | `GET /loan-underwriting/requests/<id>/underwriting` | viewer |
 | `POST /loan-underwriting/requests/<id>/credit-memo.docx` | analyst |
 
-Every read and write filters by the caller's `team_id`. A cross-team id
-returns **404**, not 403 — an id's existence in another team shouldn't
-be confirmable. `test_route_authorization.py` already sweeps
-`app.url_map` for unauthenticated mutating routes, so these are picked
-up by that existing test automatically; I'm adding explicit
-cross-team-isolation tests on top, since that sweep checks auth, not
-scoping.
+Every route carries an explicit `@require_role(...)`.
+`test_route_authorization.py` already sweeps `app.url_map` and hits every
+mutating route with no session, so these are covered by that existing
+test automatically.
+
+There is **no** team filter on these queries, because there is no team
+model on this branch to filter by — see the revised decision above. The
+retrofit point is documented in `_migrate_loan_underwriting_tables` and
+in `SUMMARY.md`.
 
 ---
 
@@ -319,8 +332,11 @@ Then run the suite until green, write `SUMMARY.md` in plain English
 
 ## Explicitly not doing
 
-- Not retrofitting team isolation onto existing routes (your call; large
-  separate project).
+- Not creating or modifying any users/teams/tenant table or column —
+  another branch owns that model and merges separately.
+- Not retrofitting team isolation onto existing routes.
+- Not claiming this module is team-isolated. It isn't, and `SUMMARY.md`
+  says so.
 - Not changing `parse_t12_rows`, `compute_t12_reconciliation`, or any
   existing behaviour — all T-12 work is additive.
 - Not letting AI compute, round, or restate a single number.

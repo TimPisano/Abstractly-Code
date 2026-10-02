@@ -27,6 +27,7 @@ import csv
 import hashlib
 import io
 import logging
+import functools
 import os
 import re
 import secrets
@@ -62,7 +63,11 @@ from app.rent_roll_import import (
     RentRollImportError, parse_csv_rent_roll, parse_xlsx_rent_roll, parse_rent_roll_file,
 )
 from app.rent_roll_table_extract import ALL_RENT_ROLL_EXTENSIONS
-from app.t12_import import T12ImportError, parse_csv_t12, parse_xlsx_t12
+from app.t12_import import T12ImportError, parse_csv_t12, parse_xlsx_t12, parse_t12_financials
+from app import loan_request as loan_request_store
+from app.loan_request import LoanRequestError
+from app.credit_memo import build_credit_memo_data, CreditMemoError
+from app.credit_memo_export import generate_credit_memo_docx
 from app.portfolio import (
     FIELD_NAMES,
     field_value,
@@ -222,6 +227,20 @@ ALLOWED_EXTENSIONS = set(document_extractor.SUPPORTED_EXTENSIONS.keys())
 # itself. Defaults to False/off, so any environment that doesn't
 # explicitly set it (including a real deployment) gets the real gate.
 LOCAL_DEV_MODE = os.environ.get('LOCAL_DEV_MODE', '').strip().lower() in ('1', 'true', 'yes')
+
+# Loan underwriting module (app/loan_underwriting.py and friends).
+# DEFAULTS OFF: current beta testers must see no change at all from this
+# branch, so every /loan-underwriting/* route 404s unless an environment
+# explicitly opts in. Read once at process start from the environment,
+# never from a request, same as LOCAL_DEV_MODE above -- a client cannot
+# turn this on for itself.
+#
+# Read through a function rather than captured in a module constant,
+# because the test suite flips it with monkeypatch/os.environ per test
+# and a constant evaluated at import time would freeze whichever value
+# happened to be set when app.api was first imported.
+def loan_underwriting_enabled() -> bool:
+    return os.environ.get('LOAN_UNDERWRITING_ENABLED', '').strip().lower() in ('1', 'true', 'yes')
 
 logger = logging.getLogger(__name__)
 
@@ -3727,6 +3746,273 @@ def portfolio_deal_mismatch_report_excel():
         excel_bytes,
         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         headers={"Content-Disposition": f"attachment; filename=deal_mismatch_report_{safe_name}.xlsx"},
+    )
+
+
+# ----------------------------------------------------------------------
+# Loan underwriting module -- ALL routes feature-flagged off by default
+# ----------------------------------------------------------------------
+#
+# Every route below returns 404 unless LOAN_UNDERWRITING_ENABLED is set
+# (see loan_underwriting_enabled()). 404 rather than 403, matching the
+# reasoning require_owner() already documents in app/auth.py: a 403 would
+# confirm to a caller that a hidden feature exists here. With the flag
+# off, these paths are indistinguishable from URLs that were never built.
+#
+# Roles: every route carries an explicit @require_role. Reads require
+# 'viewer', writes and exports require 'analyst' -- generating a credit
+# memo is a document that leaves the building, so it is not a viewer
+# action.
+#
+# NO TEAM SCOPING, and this is deliberate rather than forgotten: `main`'s
+# data model has no team column, and a separate branch owns that work.
+# These routes therefore inherit the app's existing single-tenant posture
+# -- one deployment is one customer. See app/loan_request.py's docstring
+# and SUMMARY.md for exactly where the team predicate attaches once that
+# model lands.
+
+def _require_loan_underwriting_flag(view_fn):
+    """Route decorator: 404s the route entirely unless the feature flag is on. Put OUTSIDE @require_role so an anonymous caller also just sees 404, learning nothing about the feature or about auth."""
+    @functools.wraps(view_fn)
+    def wrapped(*args, **kwargs):
+        if not loan_underwriting_enabled():
+            return jsonify({"error": "Not found"}), 404
+        return view_fn(*args, **kwargs)
+    return wrapped
+
+
+def _loan_request_payload() -> dict:
+    """Accepts a JSON body or form fields, same tolerance the rest of this API shows -- the app/ client posts JSON, while a curl/demo caller usually posts form fields."""
+    if request.is_json:
+        return request.get_json(silent=True) or {}
+    return {key: value for key, value in request.form.items()}
+
+
+@app.route('/loan-underwriting/requests', methods=['POST'])
+@_require_loan_underwriting_flag
+@require_role('analyst')
+def create_loan_underwriting_request():
+    """
+    Saves a loan request against a deal (a property address). Optional
+    `assumptions` and `constraints` objects override the documented
+    defaults; anything omitted is stored explicitly at its default so the
+    saved request can't silently change meaning if a default changes
+    later.
+    """
+    body = _loan_request_payload()
+    terms = {key: value for key, value in body.items() if key not in ("assumptions", "constraints")}
+    try:
+        saved = loan_request_store.create_loan_request(
+            terms=terms,
+            assumptions=body.get("assumptions"),
+            constraints=body.get("constraints"),
+            created_by_user_id=(current_user() or {}).get("id"),
+        )
+    except LoanRequestError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    database.insert_activity(
+        "loan_request_created",
+        f"Created loan request for {saved['property_address']} ({saved['loan_amount']:,.0f})",
+    )
+    return jsonify(saved), 201
+
+
+@app.route('/loan-underwriting/requests', methods=['GET'])
+@_require_loan_underwriting_flag
+@require_role()
+def list_loan_underwriting_requests():
+    """Every saved loan request, newest first. Optional ?property_address= narrows to one building using the same normalization the deal key uses."""
+    property_address = (request.args.get('property_address') or '').strip() or None
+    return jsonify({"requests": loan_request_store.list_loan_requests(property_address)}), 200
+
+
+@app.route('/loan-underwriting/requests/<int:request_id>', methods=['GET'])
+@_require_loan_underwriting_flag
+@require_role()
+def get_loan_underwriting_request(request_id):
+    """One loan request, with its stored assumptions and constraints."""
+    saved = loan_request_store.get_loan_request(request_id)
+    if saved is None:
+        return jsonify({"error": "Loan request not found"}), 404
+    return jsonify(saved), 200
+
+
+@app.route('/loan-underwriting/requests/<int:request_id>', methods=['PUT'])
+@_require_loan_underwriting_flag
+@require_role('analyst')
+def update_loan_underwriting_request(request_id):
+    """Patches loan terms. Only supplied fields change."""
+    try:
+        saved = loan_request_store.update_loan_request(
+            request_id,
+            terms=_loan_request_payload(),
+            updated_by_user_id=(current_user() or {}).get("id"),
+        )
+    except LoanRequestError as exc:
+        message = str(exc)
+        return jsonify({"error": message}), (404 if "not found" in message else 400)
+    return jsonify(saved), 200
+
+
+@app.route('/loan-underwriting/requests/<int:request_id>/assumptions', methods=['PUT'])
+@_require_loan_underwriting_flag
+@require_role('analyst')
+def update_loan_underwriting_assumptions(request_id):
+    """
+    Edits the underwriting assumptions (vacancy, management fee,
+    replacement reserves) and/or the sizing constraints (target DSCR, max
+    LTV, min debt yield). Merges onto stored values, so editing one
+    doesn't reset the others.
+    """
+    body = _loan_request_payload()
+    try:
+        saved = loan_request_store.update_assumptions(
+            request_id,
+            assumptions=body.get("assumptions"),
+            constraints=body.get("constraints"),
+            updated_by_user_id=(current_user() or {}).get("id"),
+        )
+    except LoanRequestError as exc:
+        message = str(exc)
+        return jsonify({"error": message}), (404 if "not found" in message else 400)
+    return jsonify(saved), 200
+
+
+@app.route('/loan-underwriting/requests/<int:request_id>/t12', methods=['POST'])
+@_require_loan_underwriting_flag
+@require_role('analyst')
+def upload_loan_underwriting_t12(request_id):
+    """
+    Uploads the T-12 operating statement this request underwrites
+    against, parses its full line-item stack, and snapshots the parsed
+    figures (see loan_request.save_t12_snapshot).
+
+    The uploaded file itself is never stored -- only the parsed figures
+    and the row each came from, matching the app's existing
+    delete-after-processing posture for uploaded documents.
+
+    Returns any parsing warnings alongside the snapshot rather than
+    swallowing them: "no management fee line found" changes how much a
+    reader should trust the resulting NOI, so it has to reach them.
+    """
+    if 'file' not in request.files:
+        return jsonify({"error": "No file uploaded -- attach the T-12 as 'file'."}), 400
+    uploaded = request.files['file']
+    if not uploaded.filename:
+        return jsonify({"error": "No file selected."}), 400
+
+    try:
+        existing = loan_request_store._require_request(request_id)
+    except LoanRequestError as exc:
+        return jsonify({"error": str(exc)}), 404
+
+    try:
+        parsed = parse_t12_financials(
+            uploaded.read(), uploaded.filename, unit_count=existing.get("unit_count") or 0
+        )
+    except T12ImportError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    # Refuse BEFORE saving if the statement lacks a line the NOI build-up
+    # genuinely requires. A file can parse structurally and still be
+    # useless -- a stray CSV whose header happens to contain a
+    # Total-column alias reads as a valid statement with zero recognizable
+    # line items. Storing that snapshot would leave a dead row attached to
+    # the request and defer the real failure to the underwriting call,
+    # where the cause is much harder to see. Fail here, naming what's
+    # missing, so the analyst knows it's the file.
+    required = parsed["t12_inputs"]
+    if required.get("gross_potential_rent") is None or required.get("operating_expenses_ex_management") is None:
+        return jsonify({
+            "error": (
+                "This file parsed, but it's missing line items the NOI build-up requires "
+                "(gross potential rent and total operating expenses). Check it's really a "
+                "T-12 operating statement."
+            ),
+            "warnings": parsed["warnings"],
+        }), 400
+
+    snapshot = loan_request_store.save_t12_snapshot(
+        request_id, parsed, uploaded.filename, uploaded_by_user_id=(current_user() or {}).get("id")
+    )
+    database.insert_activity(
+        "loan_underwriting_t12_uploaded",
+        f"Uploaded T-12 '{uploaded.filename}' for loan request {request_id}",
+    )
+    return jsonify({
+        "snapshot": {
+            "id": snapshot["id"],
+            "filename": snapshot["filename"],
+            "uploaded_at": snapshot["uploaded_at"],
+            "t12_inputs": snapshot["t12_inputs"],
+            "sources": snapshot["sources"],
+            "management_fee_removed": snapshot["management_fee_removed"],
+        },
+        "warnings": snapshot["warnings"],
+    }), 201
+
+
+@app.route('/loan-underwriting/requests/<int:request_id>/underwriting', methods=['GET'])
+@_require_loan_underwriting_flag
+@require_role()
+def get_loan_underwriting_result(request_id):
+    """
+    The full underwriting result: NOI build-up, debt service, ratios,
+    maximum loan by each constraint with the binding one named, all five
+    stress tests, every assumption with its label and unit, and every
+    input number with its source citation.
+
+    400 (not 500) when no T-12 has been uploaded yet, or when the
+    uploaded one lacked a line the build-up requires -- that's a caller
+    situation with a clear fix, and the error message says which.
+    """
+    try:
+        return jsonify(loan_request_store.build_underwriting(request_id)), 200
+    except LoanRequestError as exc:
+        message = str(exc)
+        return jsonify({"error": message}), (404 if "not found" in message else 400)
+
+
+@app.route('/loan-underwriting/requests/<int:request_id>/credit-memo.docx', methods=['POST'])
+@_require_loan_underwriting_flag
+@require_role('analyst')
+def export_loan_underwriting_credit_memo(request_id):
+    """
+    The credit memo as a Word document. Every figure comes from the
+    engine; only the narrative sections are AI-drafted, and the
+    recommendation is always a placeholder for a credit officer to
+    complete (see app/credit_memo_template.py).
+
+    Word rather than PDF because a bank analyst edits this document --
+    they add the sponsor section and write the recommendation themselves.
+
+    If narrative generation fails (no API key, API error), the memo still
+    renders with all tables intact and a visible note saying the prose
+    wasn't generated. The numbers are the part a lender needs.
+    """
+    try:
+        underwriting = loan_request_store.build_underwriting(request_id)
+    except LoanRequestError as exc:
+        message = str(exc)
+        return jsonify({"error": message}), (404 if "not found" in message else 400)
+
+    try:
+        memo = build_credit_memo_data(underwriting)
+        docx_bytes = generate_credit_memo_docx(memo)
+    except CreditMemoError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    label = underwriting["loan_request"].get("deal_name") or underwriting["loan_request"]["property_address"]
+    safe_name = re.sub(r'[^A-Za-z0-9_.-]', '_', label)
+    database.insert_activity(
+        "loan_credit_memo_exported",
+        f"Exported credit memo (Word) for loan request {request_id} -- {label}",
+    )
+    return Response(
+        docx_bytes,
+        mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        headers={"Content-Disposition": f"attachment; filename=credit_memo_{safe_name}.docx"},
     )
 
 

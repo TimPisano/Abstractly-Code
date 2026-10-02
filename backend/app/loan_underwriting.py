@@ -678,6 +678,122 @@ def run_stress_tests(
 # Top-level entry point
 # ----------------------------------------------------------------------
 
+# ----------------------------------------------------------------------
+# Sensitivity grid -- DSCR across a range of rates and occupancy levels
+# ----------------------------------------------------------------------
+
+# Defaults chosen to bracket a realistic deal: five rate points spanning
+# -100bp to +300bp around the loan's actual rate, and four occupancy
+# bands a lender would actually ask about. Both are overridable.
+DEFAULT_RATE_DELTAS_BPS = [-100, 0, 100, 200, 300]
+DEFAULT_OCCUPANCY_LEVELS_PCT = [85.0, 90.0, 95.0, 100.0]
+
+
+def build_dscr_sensitivity_grid(
+    t12_inputs: Dict[str, Any],
+    loan_terms: Dict[str, Any],
+    assumptions: Dict[str, float],
+    rate_deltas_bps: Optional[List[int]] = None,
+    occupancy_levels_pct: Optional[List[float]] = None,
+) -> Dict[str, Any]:
+    """
+    A full matrix, not five discrete named cases like run_stress_tests:
+    one row per interest rate, one column per occupancy level, each cell
+    the resulting DSCR (and the NOI and max loan behind it). This is what
+    lets a credit officer see not just "what if rate rises 100bp" but
+    "what combination of rate and occupancy is where this deal actually
+    breaks" -- the interaction between the two, which five independent
+    single-variable stresses can't show.
+
+    Occupancy, not vacancy, is the axis -- that's the number a lender
+    actually asks about ("what if we're only 90% occupied"), and each
+    level converts to `vacancy_pct = 100 - occupancy_pct` before reusing
+    build_underwritten_noi, so the NOI build-up stays the single place
+    that understands vacancy.
+
+    The rate axis is floored at 0.0 -- a rate delta that would push the
+    tested rate negative is clamped rather than evaluating the
+    amortization formula with a negative rate, which has no real-loan
+    meaning for this product. In practice this only matters for an
+    already near-zero base rate, not a realistic multifamily deal.
+
+    Reuses build_underwritten_noi and compute_debt_service for every
+    cell, so a correctness fix to either formula automatically applies
+    here -- this function contains no arithmetic of its own beyond
+    assembling the grid.
+
+    Returns:
+        {
+          "rate_deltas_bps": [...],
+          "occupancy_levels_pct": [...],
+          "rows": [
+            {"annual_rate_pct": float, "rate_delta_bps": int,
+             "cells": [
+               {"occupancy_pct", "vacancy_pct", "underwritten_noi",
+                "annual_debt_service", "dscr"},
+               ...
+             ]},
+            ...
+          ],
+        }
+    """
+    rate_deltas_bps = rate_deltas_bps if rate_deltas_bps is not None else DEFAULT_RATE_DELTAS_BPS
+    occupancy_levels_pct = (
+        occupancy_levels_pct if occupancy_levels_pct is not None else DEFAULT_OCCUPANCY_LEVELS_PCT
+    )
+    base_rate = loan_terms["annual_rate_pct"]
+
+    rows: List[Dict[str, Any]] = []
+    for delta_bps in rate_deltas_bps:
+        rate = max(0.0, round(base_rate + delta_bps / 100.0, 4))
+
+        cells: List[Dict[str, Any]] = []
+        for occupancy_pct in occupancy_levels_pct:
+            vacancy_pct = round(100.0 - occupancy_pct, 4)
+            cell_assumptions = {**assumptions, "vacancy_pct": vacancy_pct}
+
+            noi_build_up = build_underwritten_noi(
+                gross_potential_rent=t12_inputs.get("gross_potential_rent", 0.0),
+                loss_to_lease=t12_inputs.get("loss_to_lease", 0.0),
+                concessions=t12_inputs.get("concessions", 0.0),
+                bad_debt=t12_inputs.get("bad_debt", 0.0),
+                other_income=t12_inputs.get("other_income", 0.0),
+                operating_expenses_ex_management=t12_inputs.get("operating_expenses_ex_management", 0.0),
+                unit_count=t12_inputs.get("unit_count", 0),
+                **cell_assumptions,
+            )
+            noi = noi_build_up["underwritten_noi"]
+
+            debt_service = compute_debt_service(
+                loan_amount=loan_terms["loan_amount"],
+                annual_rate_pct=rate,
+                amortization_years=loan_terms["amortization_years"],
+                interest_only_months=loan_terms.get("interest_only_months", 0),
+            )
+            ads = debt_service["annual_debt_service_amortizing"]
+            dscr = round(noi / ads, 4) if ads else None
+
+            cells.append({
+                "occupancy_pct": occupancy_pct,
+                "vacancy_pct": vacancy_pct,
+                "underwritten_noi": noi,
+                "annual_debt_service": ads,
+                "dscr": dscr,
+            })
+
+        rows.append({
+            "annual_rate_pct": rate,
+            "rate_delta_bps": delta_bps,
+            "cells": cells,
+        })
+
+    return {
+        "rate_deltas_bps": rate_deltas_bps,
+        "occupancy_levels_pct": occupancy_levels_pct,
+        "rows": rows,
+    }
+
+
 def underwrite(
     loan_terms: Dict[str, Any],
     t12_inputs: Dict[str, Any],
@@ -760,6 +876,11 @@ def underwrite(
         assumptions=assumptions,
         constraints=constraints,
     )
+    sensitivity_grid = build_dscr_sensitivity_grid(
+        t12_inputs={**t12_inputs, "unit_count": unit_count},
+        loan_terms=loan_terms,
+        assumptions=assumptions,
+    )
 
     return {
         "loan_terms": dict(loan_terms),
@@ -772,5 +893,6 @@ def underwrite(
         "ratios": ratios,
         "sizing": sizing,
         "stress_tests": stress_tests,
+        "sensitivity_grid": sensitivity_grid,
         "sources": sources or {},
     }

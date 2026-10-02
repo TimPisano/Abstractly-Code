@@ -334,6 +334,100 @@ def _seed_first_admin_user(conn: sqlite3.Connection) -> None:
     )
 
 
+def _migrate_loan_underwriting_tables(conn: sqlite3.Connection) -> None:
+    """
+    The two tables behind the loan underwriting module (see
+    app/loan_underwriting.py and app/loan_request.py).
+
+    NO TENANCY COLUMN, DELIBERATELY. Neither table has a team_id, and
+    this module creates and modifies no users/teams/tenant schema at all.
+    A separate branch owns the team data model, and that work merges
+    independently -- so this feature is scoped to the data model that
+    exists on main today, which is single-tenant: one deployment is one
+    customer, and every logged-in user sees every row.
+
+    WHERE TEAM ISOLATION PLUGS IN LATER (one place per table, by design):
+    add `team_id INTEGER NOT NULL` to both tables plus an index on
+    (team_id, normalized_property_address), then add the `team_id = ?`
+    predicate to every query in app/loan_request.py. Those queries are
+    deliberately funnelled through a single pair of helpers
+    (_require_request / list_loan_requests) precisely so that retrofit is
+    a small, reviewable diff rather than an audit of every call site.
+    Until then these tables are NOT isolated, and SUMMARY.md says so
+    plainly rather than implying a boundary that isn't there.
+
+    `t12_snapshots` exists because of a real constraint in this codebase:
+    compute_t12_reconciliation's docstring states that a T-12 "is NOT
+    persisted anywhere... nothing about the T12 itself survives past this
+    one response." That's fine for a one-shot cross-check, but a saved
+    loan request has to be reproducible -- regenerate a credit memo next
+    week and it must show the same NOI it showed today, with the same
+    source citations. So the PARSED FIGURES are snapshotted here.
+
+    What is NOT stored: the uploaded file itself. The app's existing
+    privacy posture is that an uploaded document is deleted after
+    processing and only extracted values plus source citations are kept
+    (see api.py's upload path). A T-12 is financial data about a real
+    property; snapshotting the raw workbook would quietly break that
+    posture for a new document type. Figures and row citations only.
+    """
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS loan_requests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            deal_name TEXT,
+            property_address TEXT NOT NULL,
+            normalized_property_address TEXT NOT NULL,
+            loan_amount REAL NOT NULL,
+            annual_rate_pct REAL NOT NULL,
+            amortization_years REAL NOT NULL,
+            term_years REAL,
+            interest_only_months INTEGER NOT NULL DEFAULT 0,
+            purchase_price REAL,
+            appraised_value REAL,
+            unit_count INTEGER,
+            assumptions_json TEXT NOT NULL,
+            constraints_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            created_by_user_id INTEGER,
+            updated_at TEXT,
+            updated_by_user_id INTEGER,
+            FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
+            FOREIGN KEY (updated_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+        )
+    """)
+    # Every list query is "requests, optionally for this one building,"
+    # keyed by the normalized address (the deal key -- see
+    # loan_request.py). When tenancy lands this becomes a composite
+    # (team_id, normalized_property_address) index.
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_loan_requests_address "
+        "ON loan_requests(normalized_property_address)"
+    )
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS t12_snapshots (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            loan_request_id INTEGER NOT NULL,
+            filename TEXT NOT NULL,
+            uploaded_at TEXT NOT NULL,
+            uploaded_by_user_id INTEGER,
+            t12_inputs_json TEXT NOT NULL,
+            sources_json TEXT NOT NULL,
+            line_items_json TEXT NOT NULL,
+            warnings_json TEXT NOT NULL,
+            management_fee_removed REAL,
+            FOREIGN KEY (loan_request_id) REFERENCES loan_requests(id) ON DELETE CASCADE,
+            FOREIGN KEY (uploaded_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+        )
+    """)
+    # Newest-first per request: get_latest_t12_snapshot orders by
+    # uploaded_at DESC, and re-uploading a corrected T-12 is routine.
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_t12_snapshots_request_uploaded "
+        "ON t12_snapshots(loan_request_id, uploaded_at DESC)"
+    )
+
+
 def init_db() -> None:
     """Create tables if they don't already exist, and migrate any existing `leases` table to the current schema. Safe to call repeatedly."""
     conn = get_connection()
@@ -766,6 +860,13 @@ def init_db() -> None:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_activity_log_lease_id ON activity_log(lease_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_lease_tags_tag ON lease_tags(tag)")
 
+        # Loan underwriting module (feature-flagged off by default; see
+        # api.py's LOAN_UNDERWRITING_ENABLED). The tables are created
+        # regardless of the flag -- creating an empty table costs nothing,
+        # and gating schema on a runtime flag means flipping the flag on a
+        # running deployment would hit "no such table" until a restart.
+        _migrate_loan_underwriting_tables(conn)
+
         conn.commit()
     finally:
         conn.close()
@@ -798,6 +899,11 @@ def reset_db() -> None:
         conn.execute("DROP TABLE IF EXISTS expense_entries")
         conn.execute("DROP TABLE IF EXISTS ai_extraction_runs")
         conn.execute("DROP TABLE IF EXISTS training_rounds")
+        # Child before parent: t12_snapshots FKs loan_requests, so it has
+        # to go first or the drop fails with foreign_keys=ON
+        # (get_connection sets that PRAGMA).
+        conn.execute("DROP TABLE IF EXISTS t12_snapshots")
+        conn.execute("DROP TABLE IF EXISTS loan_requests")
         conn.commit()
     finally:
         conn.close()

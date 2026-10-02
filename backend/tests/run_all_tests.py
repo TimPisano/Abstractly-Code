@@ -84,6 +84,18 @@ UNIT_TESTS = [
     "test_lease_field_editing.py",
     "test_task_workflow_extensions.py",
     "test_table_upload_extraction.py",
+    # Loan underwriting module (feature-flagged off by default). The
+    # formula tests need no flag and no server; the API tests set the
+    # flag themselves per test and unset it afterwards. The demo-deal
+    # test SKIPS cleanly when benchmark_data/demo_deal/ isn't present,
+    # since that fixture lands with fix/rent-roll-hardening rather than
+    # this branch.
+    "test_loan_underwriting.py",
+    "test_loan_underwriting_three_deals.py",
+    "test_sensitivity_grid.py",
+    "test_loan_request_api.py",
+    "test_credit_memo.py",
+    "test_loan_underwriting_demo_deal.py",
 ]
 
 LIVE_API_TESTS = [
