@@ -96,6 +96,19 @@ def parse_currency(value: Optional[str]) -> Optional[float]:
     "$6,250.00" -> 6250.0 ; "$1,000,000 per occurrence" -> 1000000.0
     Returns None if no dollar amount is found.
 
+    Negative/credit amounts are preserved, not silently made positive --
+    found via QA hardening (2026-10): a minus sign on either side of the
+    "$" ("-$50.00" from a source cell, or "$-50.00" -- which is what
+    rent_roll_import.py's own f"${{rent:,.2f}}" round-trip serialization
+    produces for a negative value, so both orders have to be recognized
+    for a negative rent to survive being re-parsed later) or parenthesized
+    accounting notation ("($50.00)", wrapping ONLY the dollar amount -- a
+    trailing unrelated parenthetical like "$50.00 (prorated)" is not
+    treated as negative) all mean a real credit/negative rent line, and
+    silently reporting the magnitude as a positive number would flip the
+    sign of a dollar figure feeding directly into the Deal Mismatch
+    Report's income-impact totals.
+
     Rejects a match immediately followed by a letter with no separator
     (found via stress-testing OCR-garbled rent rolls, 2026-09): OCR
     routinely confuses a digit for a letter mid-number ("$1,2OO.00" for
@@ -109,13 +122,22 @@ def parse_currency(value: Optional[str]) -> Optional[float]:
     """
     if not value:
         return None
-    match = re.search(r"\$\s?([\d,]+(?:\.\d+)?)", value)
+    paren_match = re.search(r"\(\s*\$\s?([\d,]+(?:\.\d+)?)\s*\)", value)
+    if paren_match:
+        if re.match(r"[A-Za-z]", value[paren_match.end():]):
+            return None
+        try:
+            return -float(paren_match.group(1).replace(",", ""))
+        except ValueError:
+            return None
+    match = re.search(r"(-)?\s?\$\s?(-)?\s?([\d,]+(?:\.\d+)?)", value)
     if match and re.match(r"[A-Za-z]", value[match.end():]):
         return None
     if not match:
         return None
     try:
-        return float(match.group(1).replace(",", ""))
+        amount = float(match.group(3).replace(",", ""))
+        return -amount if (match.group(1) or match.group(2)) else amount
     except ValueError:
         return None
 

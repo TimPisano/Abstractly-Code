@@ -145,10 +145,35 @@ def test_extract_route_requires_login():
     print("✓ test_extract_route_requires_login: PASS")
 
 
+# The headline introspection test above only walks POST/PUT/PATCH/DELETE
+# routes (_MUTATING) -- these three rent-roll reads are GET-only
+# (@require_role(), still gated, just never a "mutation") so they fall
+# outside that sweep entirely and had no coverage of their own.
+_RENT_ROLL_GET_ROUTES = [
+    "/portfolio/rent-roll-reconciliation",
+    "/portfolio/rent-roll.csv",
+    "/portfolio/rent-roll.xlsx",
+]
+
+
+def test_rent_roll_get_routes_require_login():
+    """GET /portfolio/rent-roll-reconciliation, rent-roll.csv, and rent-roll.xlsx are all @require_role()-gated reads of the same lease/rent-roll data every mutating route in this file already gets checked for -- confirm an anonymous caller is rejected here too, since the headline introspection test above never looks at GET routes at all."""
+    db = _fresh_temp_db()
+    try:
+        anon = app.test_client()
+        for path in _RENT_ROLL_GET_ROUTES:
+            resp = anon.get(path)
+            assert resp.status_code == 401, (path, resp.status_code)
+    finally:
+        os.unlink(db)
+    print("✓ test_rent_roll_get_routes_require_login: PASS")
+
+
 if __name__ == "__main__":
     test_every_mutating_route_rejects_an_anonymous_caller()
     test_viewer_cannot_do_analyst_actions()
     test_analyst_cannot_do_admin_actions()
     test_non_owner_gets_404_on_owner_routes()
     test_extract_route_requires_login()
+    test_rent_roll_get_routes_require_login()
     print("\nAll route authorization tests passed.")
