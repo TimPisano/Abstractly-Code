@@ -84,13 +84,23 @@ def _authed_client():
         legacy_team = conn.execute("SELECT id FROM teams WHERE name='Legacy' LIMIT 1").fetchone()
     finally:
         conn.close()
+    team_id = legacy_team[0] if legacy_team else None
+    # usage_events.user_id is FK-constrained to a real `users` row (same
+    # gate as team_id above) -- a fresh temp DB has none yet, so the
+    # faked session below needs a matching real user, same convention
+    # every other test file's _authed_client()/_fresh_temp_db() already
+    # follows (see e.g. test_lease_naming_and_tags.py).
+    from app.auth import hash_password
+    existing = database.get_user_by_email("test-analyst@example.com")
+    if not existing:
+        database.create_user("test-analyst@example.com", "Test Analyst", hash_password("x"), role="analyst", team_id=team_id)
     client = app.test_client()
     with client.session_transaction() as sess:
         sess["user_id"] = 1
         sess["email"] = "test-analyst@example.com"
         sess["name"] = "Test Analyst"
         sess["role"] = "analyst"
-        sess["team_id"] = legacy_team[0] if legacy_team else None
+        sess["team_id"] = team_id
     return client
 
 
@@ -148,7 +158,7 @@ def test_demo_deal_16unit_subset_matches_expected_findings_exactly():
 
         # Exact-findings assertion, anchored to the demo deal's own
         # documented as-of date (see module docstring re: date drift).
-        data = build_deal_mismatch_report_data(today=DEMO_AS_OF)
+        data = build_deal_mismatch_report_data(team_id=1, today=DEMO_AS_OF)
         by_type = {}
         for row in data["discrepancies"]:
             by_type.setdefault(row["discrepancy_type"], []).append(row)
@@ -264,7 +274,7 @@ def test_demo_deal_120unit_file_adds_only_background_no_lease_rows():
         # handling) -- not a bug, confirmed by inspecting the fixture.
         assert rr_result["imported_count"] == 114, rr_result
 
-        data = build_deal_mismatch_report_data(today=DEMO_AS_OF)
+        data = build_deal_mismatch_report_data(team_id=1, today=DEMO_AS_OF)
         by_type = {}
         for row in data["discrepancies"]:
             by_type.setdefault(row["discrepancy_type"], []).append(row)

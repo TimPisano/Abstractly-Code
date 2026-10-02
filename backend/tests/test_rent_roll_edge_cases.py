@@ -28,7 +28,7 @@ def _fresh_temp_db():
 def _analyst():
     c = app.test_client()
     with c.session_transaction() as s:
-        s.update({"user_id": 1, "email": "a@x.com", "name": "A", "role": "analyst"})
+        s.update({"user_id": 1, "email": "a@x.com", "name": "A", "role": "analyst", "team_id": 1})
     return c
 
 
