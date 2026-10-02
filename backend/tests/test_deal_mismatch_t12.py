@@ -224,7 +224,7 @@ def test_build_deal_mismatch_report_with_t12():
     ]
     t12_data = _sample_t12_data(annual_rental_income=100000.0)
     with mock.patch("app.deal_mismatch.get_all_effective_leases", return_value=leases):
-        report = build_deal_mismatch_report_data(t12_data=t12_data)
+        report = build_deal_mismatch_report_data(team_id=1, t12_data=t12_data)
 
     assert "t12_source" in report
     assert "rent_roll_vs_actual_collections" in report
@@ -242,7 +242,7 @@ def test_build_deal_mismatch_report_without_t12():
         _rent_roll_lease("123 Main St", "Tenant A", "100000.00", lease_id=1),
     ]
     with mock.patch("app.deal_mismatch.get_all_effective_leases", return_value=leases):
-        report = build_deal_mismatch_report_data()
+        report = build_deal_mismatch_report_data(team_id=1)
 
     assert "t12_source" not in report
     assert "rent_roll_vs_actual_collections" not in report

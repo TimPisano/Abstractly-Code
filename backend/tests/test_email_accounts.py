@@ -42,6 +42,7 @@ def _client_for(user_id, role="analyst"):
     client = app.test_client()
     with client.session_transaction() as sess:
         sess["user_id"] = user_id
+        sess["team_id"] = 1
         sess["email"] = user["email"]
         sess["name"] = user["name"]
         sess["role"] = role
@@ -274,6 +275,7 @@ def test_refresh_skipped_when_token_not_near_expiry():
             token_encryption.encrypt_token("refresh-tok"),
             (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
             "gmail.send",
+        team_id=1,
         )
         account = database.get_linked_email_account(account_id)
         http = FakeHttp()  # no scripted responses -- must not be called
@@ -298,6 +300,7 @@ def test_refresh_happens_when_token_expired_and_updates_db():
             token_encryption.encrypt_token("refresh-tok"),
             (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat(),
             "gmail.send",
+        team_id=1,
         )
         account = database.get_linked_email_account(account_id)
         http = FakeHttp()
@@ -325,6 +328,7 @@ def test_send_email_as_gmail_uses_valid_token():
             token_encryption.encrypt_token("refresh-tok"),
             (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
             "gmail.send",
+        team_id=1,
         )
         http = FakeHttp()
         http.script("gmail.googleapis.com/gmail/v1/users/me/messages/send", FakeResponse(200, {"id": "msg-1"}))
@@ -350,6 +354,7 @@ def test_send_email_provider_failure_raises_clean_error():
             token_encryption.encrypt_token("refresh-tok"),
             (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
             "gmail.send",
+        team_id=1,
         )
         http = FakeHttp()
         http.script("gmail.googleapis.com/gmail/v1/users/me/messages/send", FakeResponse(403, {"error": "insufficient scope"}, text="insufficient scope"))
@@ -375,6 +380,7 @@ def test_disconnect_deletes_row_even_if_revoke_call_throws():
             token_encryption.encrypt_token("refresh-tok"),
             (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
             "gmail.send",
+        team_id=1,
         )
         account = database.get_linked_email_account(account_id)
 
@@ -443,11 +449,13 @@ def test_list_route_only_shows_own_accounts():
             a, "google", "alice@gmail.com",
             token_encryption.encrypt_token("x"), token_encryption.encrypt_token("y"),
             (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(), "gmail.send",
+        team_id=1,
         )
         database.upsert_linked_email_account(
             b, "google", "bob@gmail.com",
             token_encryption.encrypt_token("x"), token_encryption.encrypt_token("y"),
             (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(), "gmail.send",
+        team_id=1,
         )
         client_a = _client_for(a)
         resp = client_a.get("/email-accounts")
@@ -469,6 +477,7 @@ def test_delete_route_isolation_a_cannot_disconnect_bs_account():
             b, "google", "bob@gmail.com",
             token_encryption.encrypt_token("x"), token_encryption.encrypt_token("y"),
             (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(), "gmail.send",
+        team_id=1,
         )
         client_a = _client_for(a)
         resp = client_a.delete(f"/email-accounts/{bs_account_id}")
@@ -494,6 +503,7 @@ def test_send_route_validation_and_isolation():
             b, "google", "bob@gmail.com",
             token_encryption.encrypt_token("x"), token_encryption.encrypt_token("y"),
             (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(), "gmail.send",
+        team_id=1,
         )
         client_a = _client_for(a)
         resp = client_a.post(f"/email-accounts/{bs_account_id}/send", json={"to": "x@example.com", "subject": "s", "body": "b"})
@@ -503,6 +513,7 @@ def test_send_route_validation_and_isolation():
             a, "google", "alice@gmail.com",
             token_encryption.encrypt_token("x"), token_encryption.encrypt_token("y"),
             (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(), "gmail.send",
+        team_id=1,
         )
         resp = client_a.post(f"/email-accounts/{as_account_id}/send", json={"to": "", "subject": "s", "body": "b"})
         assert resp.status_code == 400, "missing recipient must be rejected"

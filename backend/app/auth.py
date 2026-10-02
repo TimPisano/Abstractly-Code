@@ -102,13 +102,16 @@ def hash_password(password: str) -> str:
 def verify_password(email: str, password: str):
     """
     Returns the matching user dict on success (only for an 'active'
-    user), None otherwise -- including for a real, correct password on
-    a 'deactivated' account, which must fail exactly like a wrong
+    user on an 'active' team), None otherwise -- including for a real,
+    correct password on a 'deactivated' account OR a deactivated team
+    (every user in a deactivated team is blocked, even one whose own
+    status is still 'active'), which must fail exactly like a wrong
     password from the caller's point of view, not a different kind of
     error that would confirm the email exists.
     """
     user = database.get_user_by_email((email or "").strip().lower())
-    if not user or user["status"] != "active":
+    team_deactivated = bool(user) and user.get("team_id") is not None and database.is_team_deactivated(user["team_id"])
+    if not user or user["status"] != "active" or team_deactivated:
         try:
             bcrypt.checkpw((password or "").encode("utf-8"), _DUMMY_HASH.encode("utf-8"))
         except (ValueError, TypeError):
@@ -157,6 +160,28 @@ def current_user():
         "is_owner": bool(session.get("is_owner", False)),
         "team_id": session.get("team_id"),
     }
+
+
+def current_team_id() -> int:
+    """
+    The logged-in user's team_id -- the real multi-tenant boundary
+    every route that reads or writes team-owned data (leases,
+    discrepancies, alerts, comments, tasks, ...) must scope its queries
+    by. Never trust a client-supplied team_id; it always comes from
+    here. Raises RuntimeError if there's no session or the session
+    predates team isolation -- deliberately not a silent None return,
+    since a caller that got None and forgot to check would otherwise
+    run an unscoped, cross-tenant query (see DECISIONS.md's "Real
+    multi-tenant data isolation" entry on why team_id has no
+    Optional/default anywhere in this codebase). Every route already
+    goes through require_role/require_owner first, which 401s with no
+    session, so in practice this is only ever called when current_user()
+    is known to be non-None.
+    """
+    user = current_user()
+    if user is None or user.get("team_id") is None:
+        raise RuntimeError("current_team_id() called with no logged-in team -- the route is missing a require_role/require_owner check before it")
+    return user["team_id"]
 
 
 def require_role(min_role: str = "viewer"):

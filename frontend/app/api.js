@@ -94,6 +94,10 @@ const Api = {
         return apiRequest('/leases/sample', { method: 'POST' });
     },
 
+    loadSampleDeal() {
+        return apiRequest('/sample-deal/load', { method: 'POST' });
+    },
+
     uploadLeasesBatch(files) {
         const formData = new FormData();
         for (const file of files) formData.append('files', file);

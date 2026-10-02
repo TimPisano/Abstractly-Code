@@ -208,12 +208,31 @@ def test_synthetic_fixtures_round_trip_through_the_real_import_route():
     response shape all work end to end for PMS-shaped files specifically,
     the same way test_rent_roll_import_api.py already does for the
     generic broker-CSV case.
+
+    Points database.py at its own isolated temp SQLite file first (same
+    convention every sibling *_api.py test file uses) -- found via QA
+    hardening (2026-10) that this test previously relied on ambient
+    database.py global state left over from whichever test happened to
+    run before it in the same pytest process: fine in isolation, but in
+    a full-suite run, if the preceding test's own temp db file had
+    already been deleted by ITS teardown, this route hit a dangling path
+    that sqlite3 silently recreated with no schema at all, producing a
+    real "no such table: leases" 500 instead of the 201 this test
+    expects -- a real, reproducible, order-dependent failure, not a flake.
     """
+    import tempfile
     from app.api import app
+    from app import database
+
+    tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+    tmp.close()
+    database.configure(tmp.name)
+    database.init_db()
 
     client = app.test_client()
     with client.session_transaction() as sess:
         sess["user_id"] = 1
+        sess["team_id"] = 1
         sess["email"] = "test-analyst@example.com"
         sess["name"] = "Test Analyst"
         sess["role"] = "analyst"
@@ -237,6 +256,7 @@ def test_synthetic_fixtures_round_trip_through_the_real_import_route():
     finally:
         for lease_id in created_ids:
             client.delete(f"/leases/{lease_id}")
+        os.unlink(tmp.name)
 
     print("✓ test_synthetic_fixtures_round_trip_through_the_real_import_route: PASS")
 

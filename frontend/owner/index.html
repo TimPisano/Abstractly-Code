@@ -25,19 +25,33 @@
         </header>
 
         <nav class="owner-tabs">
-            <button class="owner-tab active" data-tab="accounts">Accounts</button>
-            <button class="owner-tab" data-tab="teams">Teams</button>
+            <button class="owner-tab active" data-tab="teams">Teams</button>
+            <button class="owner-tab" data-tab="accounts">Accounts</button>
             <button class="owner-tab" data-tab="finance">Revenue &amp; Expenses</button>
             <button class="owner-tab" data-tab="quality">Extraction Quality</button>
             <button class="owner-tab" data-tab="analytics">Analytics</button>
         </nav>
 
         <main class="owner-main">
+            <!-- ===================== Teams ===================== -->
+            <section class="owner-panel active" id="panel-teams">
+                <div class="owner-panel-header">
+                    <h1>Teams</h1>
+                    <p class="owner-panel-subtitle">Every customer firm is its own team, with its own isolated workspace — no team can see another team's leases, reports, or members.</p>
+                </div>
+
+                <div class="owner-filters">
+                    <button class="btn-primary" id="createTeamBtn">+ Create Team</button>
+                </div>
+
+                <div id="teamsContent"><p class="loading-inline"><span class="spinner-small"></span> Loading teams…</p></div>
+            </section>
+
             <!-- ===================== Accounts ===================== -->
-            <section class="owner-panel active" id="panel-accounts">
+            <section class="owner-panel" id="panel-accounts">
                 <div class="owner-panel-header">
                     <h1>Accounts</h1>
-                    <p class="owner-panel-subtitle">Every login in the system. Not separate customer tenants — everyone shares the same portfolio today.</p>
+                    <p class="owner-panel-subtitle">Every login across every team. For a single team's roster, open it from the Teams tab instead.</p>
                 </div>
 
                 <div class="owner-filters">
@@ -53,21 +67,6 @@
                 </div>
 
                 <div id="accountsContent"><p class="loading-inline"><span class="spinner-small"></span> Loading accounts…</p></div>
-            </section>
-
-            <!-- ===================== Teams ===================== -->
-            <section class="owner-panel" id="panel-teams">
-                <div class="owner-panel-header">
-                    <h1>Teams</h1>
-                    <p class="owner-panel-subtitle">Every customer team's monthly quotas -- document/page extraction limits, Anthropic spend budget, and the deal assistant's own credit allowance. Changes apply immediately.</p>
-                </div>
-
-                <form id="createTeamForm" class="owner-entry-form">
-                    <input type="text" id="newTeamName" class="text-input" placeholder="New team name" required aria-label="New team name">
-                    <button type="submit" class="btn-primary">Create Team</button>
-                </form>
-
-                <div id="teamsContent"><p class="loading-inline"><span class="spinner-small"></span> Loading teams&hellip;</p></div>
             </section>
 
             <!-- ===================== Finance ===================== -->
@@ -164,6 +163,30 @@
         <div class="owner-modal">
             <button class="owner-modal-close" id="accountModalClose">&times;</button>
             <div id="accountModalContent"></div>
+        </div>
+    </div>
+
+    <!-- ===================== Team detail modal ===================== -->
+    <div class="owner-modal-overlay" id="teamModalOverlay" style="display:none;">
+        <div class="owner-modal">
+            <button class="owner-modal-close" id="teamModalClose">&times;</button>
+            <div id="teamModalContent"></div>
+        </div>
+    </div>
+
+    <!-- ===================== Create team modal ===================== -->
+    <div class="owner-modal-overlay" id="createTeamModalOverlay" style="display:none;">
+        <div class="owner-modal">
+            <button class="owner-modal-close" id="createTeamModalClose">&times;</button>
+            <h2>Create a new team</h2>
+            <p class="owner-panel-subtitle">Creates an empty, isolated workspace and its first admin login. You never see or set their password — they set it themselves via a one-time setup link (expires in 7 days).</p>
+            <form id="createTeamForm" class="owner-entry-form" style="flex-direction:column; align-items:stretch; gap:0.75rem;">
+                <input type="text" id="newFirmName" class="text-input" placeholder="Firm name" required aria-label="Firm name">
+                <input type="text" id="newAdminName" class="text-input" placeholder="First admin's name" required aria-label="First admin's name">
+                <input type="email" id="newAdminEmail" class="text-input" placeholder="First admin's email" required aria-label="First admin's email">
+                <button type="submit" class="btn-primary">Create Team</button>
+            </form>
+            <div id="createTeamResult"></div>
         </div>
     </div>
 

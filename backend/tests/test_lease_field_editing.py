@@ -36,6 +36,7 @@ def _client_as(role, email, name, user_id):
     client = app.test_client()
     with client.session_transaction() as sess:
         sess["user_id"] = user_id
+        sess["team_id"] = 1
         sess["email"] = email
         sess["name"] = name
         sess["role"] = role
@@ -66,7 +67,7 @@ def _fields(**overrides):
 
 
 def _make_lease(**field_overrides):
-    return database.insert_lease("lease.pdf", _fields(**field_overrides), display_name="Test Lease")
+    return database.insert_lease("lease.pdf", _fields(**field_overrides), display_name="Test Lease", team_id=1)
 
 
 def _patch_field_entry(lease_id, field_name, **overrides):
@@ -88,6 +89,7 @@ def _make_discrepancy(lease_id, field="rent_amount"):
     return database.upsert_discrepancy(
         "lease_risk_flag", f"lease_risk:{lease_id}:field_mismatch:{field}:0", "field_mismatch",
         f"{field} looks wrong", {"lease_amount": 5000}, lease_id=lease_id, severity="high",
+    team_id=1,
     )
 
 
@@ -100,14 +102,15 @@ def test_update_lease_field_mutates_extracted_fields_and_logs_edit():
     try:
         lease_id = _make_lease(rent_amount="$4,000.00")
         new_entry = database.update_lease_field(
-            lease_id, "rent_amount", "$5,000.00", edited_by="Alice", edited_by_email="alice@example.com", note="Corrected from lease p.3"
+            lease_id, "rent_amount", "$5,000.00", edited_by="Alice", edited_by_email="alice@example.com", note="Corrected from lease p.3",
+        team_id=1,
         )
         assert new_entry["value"] == "$5,000.00"
         assert new_entry["source"] is None, "a manual edit has no page/quote citation to fabricate"
         assert new_entry["confidence"] == "high"
         assert new_entry["manually_verified"] is True
 
-        lease = database.get_lease(lease_id)
+        lease = database.get_lease(lease_id, team_id=1)
         assert lease["extracted_fields"]["rent_amount"]["value"] == "$5,000.00", \
             "the actual lease record must reflect the edit, not just the response"
 
@@ -129,12 +132,12 @@ def test_update_lease_field_can_clear_to_none_with_manually_verified_flag():
     db_path = _fresh_temp_db()
     try:
         lease_id = _make_lease(cam_charges="$500.00")
-        new_entry = database.update_lease_field(lease_id, "cam_charges", None, edited_by="Bob")
+        new_entry = database.update_lease_field(lease_id, "cam_charges", None, edited_by="Bob", team_id=1)
         assert new_entry["value"] is None
         assert new_entry["manually_verified"] is True, \
             "a human-confirmed absence must be distinguishable from extraction never having tried"
 
-        lease = database.get_lease(lease_id)
+        lease = database.get_lease(lease_id, team_id=1)
         assert lease["extracted_fields"]["cam_charges"]["value"] is None
     finally:
         os.unlink(db_path)
@@ -153,7 +156,7 @@ def test_mark_field_verified_preserves_value_and_source():
         lease_id = _make_lease(tenant="Fog City Robotics")
         _patch_field_entry(lease_id, "tenant", confidence="medium")
 
-        new_entry = database.mark_field_verified(lease_id, "tenant", edited_by="Alice", edited_by_email="alice@example.com")
+        new_entry = database.mark_field_verified(lease_id, "tenant", edited_by="Alice", edited_by_email="alice@example.com", team_id=1)
         assert new_entry["value"] == "Fog City Robotics"
         assert new_entry["source"] == {"page": 1, "quote": "...Fog City Robotics..."}, \
             "the original citation must survive a verify -- there's nothing wrong with it to erase"
@@ -179,7 +182,7 @@ def test_mark_field_verified_clears_stale_validation_note():
             validation_reason="ocr_clarity",
         )
 
-        new_entry = database.mark_field_verified(lease_id, "rent_amount", edited_by="Bob")
+        new_entry = database.mark_field_verified(lease_id, "rent_amount", edited_by="Bob", team_id=1)
         assert "validation_note" not in new_entry
         assert "validation_reason" not in new_entry
         assert new_entry["confidence"] == "high"
@@ -192,7 +195,7 @@ def test_mark_field_verified_no_value_is_a_noop():
     db_path = _fresh_temp_db()
     try:
         lease_id = _make_lease()  # every field not-found
-        result = database.mark_field_verified(lease_id, "rent_amount", edited_by="Alice")
+        result = database.mark_field_verified(lease_id, "rent_amount", edited_by="Alice", team_id=1)
         assert result is None, "confirming a genuinely absent field isn't what this is for"
         assert database.get_lease_field_edits(lease_id=lease_id) == []
     finally:
@@ -203,7 +206,7 @@ def test_mark_field_verified_no_value_is_a_noop():
 def test_update_lease_field_nonexistent_lease_returns_none():
     db_path = _fresh_temp_db()
     try:
-        assert database.update_lease_field(999999, "rent_amount", "$1", edited_by="X") is None
+        assert database.update_lease_field(999999, "rent_amount", "$1", edited_by="X", team_id=1) is None
     finally:
         os.unlink(db_path)
     print("✓ test_update_lease_field_nonexistent_lease_returns_none: PASS")
@@ -213,9 +216,9 @@ def test_get_lease_field_edits_filters_and_ordering():
     db_path = _fresh_temp_db()
     try:
         lease_id = _make_lease()
-        database.update_lease_field(lease_id, "rent_amount", "$1", edited_by="A")
-        database.update_lease_field(lease_id, "cam_charges", "$2", edited_by="A")
-        database.update_lease_field(lease_id, "rent_amount", "$3", edited_by="A")
+        database.update_lease_field(lease_id, "rent_amount", "$1", edited_by="A", team_id=1)
+        database.update_lease_field(lease_id, "cam_charges", "$2", edited_by="A", team_id=1)
+        database.update_lease_field(lease_id, "rent_amount", "$3", edited_by="A", team_id=1)
 
         all_edits = database.get_lease_field_edits(lease_id=lease_id)
         assert [e["new_value"]["value"] for e in all_edits] == ["$1", "$2", "$3"], "oldest first"
@@ -276,6 +279,7 @@ def test_patch_field_route_resolves_to_governing_amendment_not_base():
         base_id = _make_lease(rent_amount="$4,000.00", tenant="Acme Corp")
         amendment_id = database.insert_lease(
             "amendment.pdf", _fields(rent_amount="$4,500.00"), document_type="amendment", base_lease_id=base_id,
+        team_id=1,
         )
 
         # Confirm the amendment really does govern the effective value first.
@@ -290,7 +294,7 @@ def test_patch_field_route_resolves_to_governing_amendment_not_base():
             "must edit the document that actually governs the field, not blindly the base lease id from the URL"
 
         # The base row itself must be untouched.
-        base_row = database.get_lease(base_id)
+        base_row = database.get_lease(base_id, team_id=1)
         assert base_row["extracted_fields"]["rent_amount"]["value"] == "$4,000.00"
 
         # The EFFECTIVE value everywhere must now reflect the edit.
@@ -308,7 +312,7 @@ def test_patch_field_route_resolves_to_governing_amendment_not_base():
         resp2 = client.patch(f"/leases/{base_id}/fields/tenant", json={"value": "Acme Corporation LLC"})
         assert resp2.status_code == 200
         assert resp2.get_json()["edited_document_id"] == base_id
-        assert database.get_lease(base_id)["extracted_fields"]["tenant"]["value"] == "Acme Corporation LLC"
+        assert database.get_lease(base_id, team_id=1)["extracted_fields"]["tenant"]["value"] == "Acme Corporation LLC"
     finally:
         os.unlink(db_path)
     print("✓ test_patch_field_route_resolves_to_governing_amendment_not_base: PASS")
@@ -347,6 +351,7 @@ def test_verify_field_route_resolves_to_governing_amendment_not_base():
         base_id = _make_lease(rent_amount="$4,000.00")
         amendment_id = database.insert_lease(
             "amendment.pdf", _fields(rent_amount="$4,500.00"), document_type="amendment", base_lease_id=base_id,
+        team_id=1,
         )
         _patch_field_entry(amendment_id, "rent_amount", confidence="medium")
 
@@ -354,11 +359,11 @@ def test_verify_field_route_resolves_to_governing_amendment_not_base():
         assert resp.status_code == 200, resp.get_json()
         assert resp.get_json()["edited_document_id"] == amendment_id, \
             "must verify the document that actually governs the field, not blindly the base lease id from the URL"
-        assert database.get_lease(amendment_id)["extracted_fields"]["rent_amount"]["confidence"] == "high"
-        assert database.get_lease(amendment_id)["extracted_fields"]["rent_amount"]["manually_verified"] is True
+        assert database.get_lease(amendment_id, team_id=1)["extracted_fields"]["rent_amount"]["confidence"] == "high"
+        assert database.get_lease(amendment_id, team_id=1)["extracted_fields"]["rent_amount"]["manually_verified"] is True
 
         # The base row itself must be untouched -- verify landed on the amendment.
-        base_row = database.get_lease(base_id)
+        base_row = database.get_lease(base_id, team_id=1)
         assert base_row["extracted_fields"]["rent_amount"]["value"] == "$4,000.00"
         assert not base_row["extracted_fields"]["rent_amount"].get("manually_verified")
     finally:
@@ -516,15 +521,15 @@ def test_complete_task_tied_to_open_discrepancy_requires_confirmation():
         client = _client_for(analyst, "analyst")
         lease_id = _make_lease(rent_amount="$4,000.00")
         disc_id = _make_discrepancy(lease_id)
-        task = tasks_module.create_task_from_discrepancy(disc_id, admin, assigned_to_user_id=analyst)
+        task = tasks_module.create_task_from_discrepancy(disc_id, admin, team_id=1, assigned_to_user_id=analyst)
         task_id = task["id"]
 
         # Marking done WITHOUT confirming the source must be rejected, task stays open.
         resp = client.post(f"/tasks/{task_id}/status", json={"status": "done"})
         assert resp.status_code == 400, resp.get_json()
         assert resp.get_json()["discrepancy_id"] == disc_id
-        assert database.get_task(task_id)["status"] != "done"
-        assert database.get_discrepancy(disc_id)["status"] == "open"
+        assert database.get_task(task_id, team_id=1)["status"] != "done"
+        assert database.get_discrepancy(disc_id, team_id=1)["status"] == "open"
     finally:
         os.unlink(db_path)
     print("✓ test_complete_task_tied_to_open_discrepancy_requires_confirmation: PASS")
@@ -537,7 +542,7 @@ def test_complete_task_resolves_discrepancy_when_confirmed():
         client = _client_for(analyst, "analyst")
         lease_id = _make_lease(rent_amount="$4,000.00")
         disc_id = _make_discrepancy(lease_id)
-        task = tasks_module.create_task_from_discrepancy(disc_id, admin, assigned_to_user_id=analyst)
+        task = tasks_module.create_task_from_discrepancy(disc_id, admin, team_id=1, assigned_to_user_id=analyst)
         task_id = task["id"]
 
         # Correct the field, then complete the task with confirmation.
@@ -552,8 +557,8 @@ def test_complete_task_resolves_discrepancy_when_confirmed():
         assert data["discrepancy"]["status"] == "resolved"
 
         # Real, permanent DB state.
-        assert database.get_task(task_id)["status"] == "done"
-        assert database.get_discrepancy(disc_id)["status"] == "resolved"
+        assert database.get_task(task_id, team_id=1)["status"] == "done"
+        assert database.get_discrepancy(disc_id, team_id=1)["status"] == "resolved"
         resolutions = database.get_discrepancy_resolutions(disc_id)
         assert resolutions[-1]["resolved_by"] == "Analyst User"
         assert resolutions[-1]["correct_source"] == "lease_document"
@@ -587,7 +592,7 @@ def test_complete_task_removed_from_active_list():
         client = _client_for(analyst, "analyst")
         lease_id = _make_lease(rent_amount="$4,000.00")
         disc_id = _make_discrepancy(lease_id)
-        task = tasks_module.create_task_from_discrepancy(disc_id, admin, assigned_to_user_id=analyst)
+        task = tasks_module.create_task_from_discrepancy(disc_id, admin, team_id=1, assigned_to_user_id=analyst)
         task_id = task["id"]
 
         open_before = client.get(f"/tasks?assigned_to={analyst}&status=open").get_json()
@@ -614,7 +619,7 @@ def test_complete_task_already_resolved_discrepancy_needs_no_confirmation():
         client = _client_for(analyst, "analyst")
         lease_id = _make_lease(rent_amount="$4,000.00")
         disc_id = _make_discrepancy(lease_id)
-        task = tasks_module.create_task_from_discrepancy(disc_id, admin, assigned_to_user_id=analyst)
+        task = tasks_module.create_task_from_discrepancy(disc_id, admin, team_id=1, assigned_to_user_id=analyst)
         task_id = task["id"]
 
         # Someone else resolves the discrepancy directly, outside this task.
@@ -623,7 +628,7 @@ def test_complete_task_already_resolved_discrepancy_needs_no_confirmation():
         resp = client.post(f"/tasks/{task_id}/status", json={"status": "done"})
         assert resp.status_code == 200, resp.get_json()
         assert resp.get_json()["discrepancy_resolved_now"] is False, "nothing left to resolve -- already resolved"
-        assert database.get_task(task_id)["status"] == "done"
+        assert database.get_task(task_id, team_id=1)["status"] == "done"
     finally:
         os.unlink(db_path)
     print("✓ test_complete_task_already_resolved_discrepancy_needs_no_confirmation: PASS")
@@ -653,12 +658,12 @@ def test_reopening_a_task_does_not_touch_discrepancy():
         client = _client_for(analyst, "analyst")
         lease_id = _make_lease(rent_amount="$4,000.00")
         disc_id = _make_discrepancy(lease_id)
-        task = tasks_module.create_task_from_discrepancy(disc_id, admin, assigned_to_user_id=analyst)
+        task = tasks_module.create_task_from_discrepancy(disc_id, admin, team_id=1, assigned_to_user_id=analyst)
         task_id = task["id"]
 
         resp = client.post(f"/tasks/{task_id}/status", json={"status": "in_progress"})
         assert resp.status_code == 200
-        assert database.get_discrepancy(disc_id)["status"] == "open", "only completing (done) triggers the resolution requirement"
+        assert database.get_discrepancy(disc_id, team_id=1)["status"] == "open", "only completing (done) triggers the resolution requirement"
     finally:
         os.unlink(db_path)
     print("✓ test_reopening_a_task_does_not_touch_discrepancy: PASS")
@@ -682,6 +687,7 @@ def test_task_detail_lease_view_follows_resubmission_to_current_version():
         new_lease_id = database.insert_lease(
             "lease_v2.pdf", _fields(rent_amount="$4,500.00"),
             status="active", supersedes_lease_id=old_lease_id, version_number=2,
+        team_id=1,
         )
         database.repoint_lease_references(old_lease_id, new_lease_id)
         database.supersede_lease(old_lease_id)

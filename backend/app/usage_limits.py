@@ -128,18 +128,18 @@ def find_duplicate_upload(team_id: int, content_hash: str) -> Optional[Dict[str,
     conn = database.get_connection()
     try:
         row = conn.execute(
-            "SELECT id FROM leases WHERE content_hash = ? AND status = 'active' LIMIT 1",
-            (content_hash,)
+            "SELECT id FROM leases WHERE content_hash = ? AND status = 'active' AND team_id = ? LIMIT 1",
+            (content_hash, team_id)
         ).fetchone()
         if not row:
             return None
 
         lease_id = row[0]
-        lease = database.get_lease(lease_id)
+        lease = database.get_lease(lease_id, team_id)
         if lease:
             return {
                 "id": lease["id"],
-                "fields": database.get_effective_fields(lease_id),
+                "fields": database.get_effective_fields(lease_id, team_id),
                 "display_name": lease.get("display_name", ""),
                 "source_page_start": lease.get("source_page_start"),
                 "source_page_end": lease.get("source_page_end"),

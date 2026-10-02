@@ -39,6 +39,7 @@ def _authed_client():
     client = app.test_client()
     with client.session_transaction() as sess:
         sess["user_id"] = 1
+        sess["team_id"] = 1
         sess["email"] = "test-analyst@example.com"
         sess["name"] = "Test Analyst"
         sess["role"] = "analyst"
@@ -76,8 +77,8 @@ def test_tenant_concentration_route_empty_portfolio():
 def test_tenant_concentration_route_real_leases():
     db_path = _fresh_temp_db()
     try:
-        database.insert_lease("a.pdf", _fields(tenant="Big Tenant", rent_amount="$8,000.00"))
-        database.insert_lease("b.pdf", _fields(tenant="Small Tenant", rent_amount="$2,000.00"))
+        database.insert_lease("a.pdf", _fields(tenant="Big Tenant", rent_amount="$8,000.00"), team_id=1)
+        database.insert_lease("b.pdf", _fields(tenant="Small Tenant", rent_amount="$2,000.00"), team_id=1)
 
         client = _authed_client()
         resp = client.get("/portfolio/tenant-concentration")
@@ -100,12 +101,13 @@ def test_tenant_concentration_route_reflects_amendments():
     """An amendment that changes the tenant's rent must be reflected -- the route reads get_all_effective_leases(), not raw base leases."""
     db_path = _fresh_temp_db()
     try:
-        base_id = database.insert_lease("base.pdf", _fields(tenant="Amended Tenant", rent_amount="$5,000.00"))
+        base_id = database.insert_lease("base.pdf", _fields(tenant="Amended Tenant", rent_amount="$5,000.00"), team_id=1)
         database.insert_lease(
             "amendment.pdf",
             _fields(rent_amount="$7,500.00"),  # rent increase, tenant name not restated in the amendment
             document_type="amendment",
             base_lease_id=base_id,
+        team_id=1,
         )
 
         client = _authed_client()

@@ -35,6 +35,7 @@ def _client_as(role, email="test@example.com", name="Test User", user_id=1):
     client = app.test_client()
     with client.session_transaction() as sess:
         sess["user_id"] = user_id
+        sess["team_id"] = 1
         sess["email"] = email
         sess["name"] = name
         sess["role"] = role
@@ -288,13 +289,13 @@ def test_upsert_assignment_reassign_resets_status():
         admin_id, analyst_id = _real_users()
         second_analyst_id = database.create_user("second@example.com", "Second Analyst", hash_password("password123"), role="analyst")["id"]
 
-        a1 = database.upsert_assignment("lease", "1", analyst_id, admin_id)
+        a1 = database.upsert_assignment("lease", "1", analyst_id, admin_id, team_id=1)
         database.update_assignment_status(a1, "resolved", admin_id)
-        assert database.get_assignment(a1)["status"] == "resolved"
+        assert database.get_assignment(a1, team_id=1)["status"] == "resolved"
 
-        a2 = database.upsert_assignment("lease", "1", second_analyst_id, admin_id)
+        a2 = database.upsert_assignment("lease", "1", second_analyst_id, admin_id, team_id=1)
         assert a2 == a1, "same target -- must update the SAME row, not create a second one"
-        reloaded = database.get_assignment(a1)
+        reloaded = database.get_assignment(a1, team_id=1)
         assert reloaded["status"] == "assigned", "reassigning must reset status, not inherit 'resolved'"
         assert reloaded["assigned_to_user_id"] == second_analyst_id
     finally:
@@ -306,7 +307,7 @@ def test_assignments_routes_full_lifecycle():
     db_path = _fresh_temp_db()
     try:
         admin_id, analyst_id = _real_users()
-        lease_id = database.insert_lease("base.pdf", _fields(tenant="Acme Corp"))
+        lease_id = database.insert_lease("base.pdf", _fields(tenant="Acme Corp"), team_id=1)
         admin_client = _client_for_real_user(admin_id, "admin")
 
         resp = admin_client.post("/assignments", json={"target_type": "lease", "target": lease_id, "assigned_to_user_id": analyst_id, "note": "check this"})
@@ -340,7 +341,7 @@ def test_assignments_routes_require_at_least_analyst_for_writes():
     try:
         admin_id, analyst_id = _real_users()
         viewer_id = database.create_user("viewer@example.com", "Viewer User", hash_password("password123"), role="viewer")["id"]
-        lease_id = database.insert_lease("base.pdf", _fields(tenant="Acme Corp"))
+        lease_id = database.insert_lease("base.pdf", _fields(tenant="Acme Corp"), team_id=1)
 
         viewer_client = _client_for_real_user(viewer_id, "viewer")
         resp = viewer_client.post("/assignments", json={"target_type": "lease", "target": lease_id, "assigned_to_user_id": analyst_id})
@@ -384,7 +385,7 @@ def test_concurrent_assignment_of_same_target_does_not_500():
 
         def race(i):
             try:
-                aid = database.upsert_assignment("lease", "1", analyst_id, admin_id)
+                aid = database.upsert_assignment("lease", "1", analyst_id, admin_id, team_id=1)
                 with lock:
                     ids.append(aid)
             except Exception as e:
@@ -412,19 +413,20 @@ def test_compute_today_view_includes_enriched_assignments_and_alerts():
     db_path = _fresh_temp_db()
     try:
         admin_id, analyst_id = _real_users()
-        lease_id = database.insert_lease("base.pdf", _fields(tenant="Acme Corp", rent_amount="$5,000.00"))
+        lease_id = database.insert_lease("base.pdf", _fields(tenant="Acme Corp", rent_amount="$5,000.00"), team_id=1)
         disc_id = database.upsert_discrepancy(
             discrepancy_type="lease_risk_flag", natural_key="k1", category="missing_clause", message="m", details={}, lease_id=lease_id,
+        team_id=1,
         )
         # lease_id/discrepancy_id passed explicitly, same as the real
         # /assignments route does -- upsert_assignment doesn't infer
         # them from target_key itself, only the API layer does that
         # derivation (see create_assignment_route in api.py).
-        database.upsert_assignment("lease", str(lease_id), analyst_id, admin_id, lease_id=lease_id)
-        database.upsert_assignment("discrepancy", str(disc_id), analyst_id, admin_id, discrepancy_id=disc_id)
-        database.upsert_alert(alert_type="lease_expiration", natural_key="a1", severity="high", title="t", message="m", details={})
+        database.upsert_assignment("lease", str(lease_id), analyst_id, admin_id, lease_id=lease_id, team_id=1)
+        database.upsert_assignment("discrepancy", str(disc_id), analyst_id, admin_id, discrepancy_id=disc_id, team_id=1)
+        database.upsert_alert(alert_type="lease_expiration", natural_key="a1", severity="high", title="t", message="m", details={}, team_id=1)
 
-        view = compute_today_view(analyst_id)
+        view = compute_today_view(analyst_id, team_id=1)
         assert view["summary"]["total_open_assignments"] == 2
         assert view["summary"]["assigned_lease_count"] == 1
         assert view["summary"]["assigned_discrepancy_count"] == 1
@@ -435,7 +437,7 @@ def test_compute_today_view_includes_enriched_assignments_and_alerts():
 
         # resolving the assignment must remove it from Today
         database.update_assignment_status(view["assigned_leases"][0]["id"], "resolved", admin_id)
-        view2 = compute_today_view(analyst_id)
+        view2 = compute_today_view(analyst_id, team_id=1)
         assert view2["summary"]["assigned_lease_count"] == 0
     finally:
         os.unlink(db_path)

@@ -70,6 +70,7 @@ def _client_as(role, email="test@example.com", name="Test User", user_id=1, team
     client = app.test_client()
     with client.session_transaction() as sess:
         sess["user_id"] = user_id
+        sess["team_id"] = 1
         sess["email"] = email
         sess["name"] = name
         sess["role"] = role
@@ -100,8 +101,8 @@ def _mock_anthropic_client(tool_input):
 def test_build_portfolio_context_includes_real_lease_data():
     db_path = _fresh_temp_db()
     try:
-        database.insert_lease("lease.pdf", _fields(tenant="Acme Corp", rent_amount="$5,000.00", square_footage="2,000 sq ft"))
-        leases = database.get_all_effective_leases()
+        database.insert_lease("lease.pdf", _fields(tenant="Acme Corp", rent_amount="$5,000.00", square_footage="2,000 sq ft"), team_id=1)
+        leases = database.get_all_effective_leases(team_id=1)
         context = assistant.build_portfolio_context(leases, [], [])
         assert "Acme Corp" in context
         assert "$5,000.00" in context
@@ -119,8 +120,8 @@ def test_build_portfolio_context_caps_large_portfolios_and_says_so():
         assistant.MAX_LEASES_IN_CONTEXT = 3
         try:
             for i in range(5):
-                database.insert_lease(f"lease{i}.pdf", _fields(tenant=f"Tenant {i}"))
-            leases = database.get_all_effective_leases()
+                database.insert_lease(f"lease{i}.pdf", _fields(tenant=f"Tenant {i}"), team_id=1)
+            leases = database.get_all_effective_leases(team_id=1)
             context = assistant.build_portfolio_context(leases, [], [])
             assert "Tenant 0" in context and "Tenant 1" in context and "Tenant 2" in context
             assert "Tenant 4" not in context, "must not exceed the cap"
@@ -135,13 +136,13 @@ def test_build_portfolio_context_caps_large_portfolios_and_says_so():
 def test_build_portfolio_context_summarizes_discrepancies_and_alerts_by_severity():
     db_path = _fresh_temp_db()
     try:
-        lease_id = database.insert_lease("lease.pdf", _fields(tenant="Acme"))
-        database.upsert_discrepancy(discrepancy_type="lease_risk_flag", natural_key="k1", category="missing_clause", message="m", details={}, lease_id=lease_id, severity="high")
-        database.upsert_discrepancy(discrepancy_type="lease_risk_flag", natural_key="k2", category="missing_clause", message="m2", details={}, lease_id=lease_id, severity="medium")
-        database.upsert_alert(alert_type="lease_expiration", natural_key="a1", severity="high", title="Expiring soon", message="m", details={})
+        lease_id = database.insert_lease("lease.pdf", _fields(tenant="Acme"), team_id=1)
+        database.upsert_discrepancy(discrepancy_type="lease_risk_flag", natural_key="k1", category="missing_clause", message="m", details={}, lease_id=lease_id, severity="high", team_id=1)
+        database.upsert_discrepancy(discrepancy_type="lease_risk_flag", natural_key="k2", category="missing_clause", message="m2", details={}, lease_id=lease_id, severity="medium", team_id=1)
+        database.upsert_alert(alert_type="lease_expiration", natural_key="a1", severity="high", title="Expiring soon", message="m", details={}, team_id=1)
 
-        leases = database.get_all_effective_leases()
-        context = assistant.build_portfolio_context(leases, database.list_discrepancies(), database.list_alerts())
+        leases = database.get_all_effective_leases(team_id=1)
+        context = assistant.build_portfolio_context(leases, database.list_discrepancies(team_id=1), database.list_alerts(team_id=1))
         assert "OPEN DISCREPANCIES: 2 total" in context
         assert "1 high" in context and "1 medium" in context
         assert "ACTIVE ALERTS: 1 total" in context
@@ -193,9 +194,9 @@ def test_validate_navigation_leaves_informational_and_clarifying_untouched():
 def test_ask_assistant_returns_informational_grounded_in_real_data():
     db_path = _fresh_temp_db()
     try:
-        database.insert_lease("lease.pdf", _fields(tenant="Acme Corp", rent_amount="$5,000.00"))
+        database.insert_lease("lease.pdf", _fields(tenant="Acme Corp", rent_amount="$5,000.00"), team_id=1)
         fake_client = _mock_anthropic_client({"response_type": "informational", "answer": "Acme Corp pays $5,000/month."})
-        result = assistant.ask_assistant("what's the rent on the Acme lease?", client=fake_client)
+        result = assistant.ask_assistant("what's the rent on the Acme lease?", team_id=1, client=fake_client)
         assert result["response_type"] == "informational"
         assert "5,000" in result["answer"]
 
@@ -216,7 +217,7 @@ def test_ask_assistant_api_failure_raises_assistant_error():
         fake_client = mock.Mock()
         fake_client.messages.create.side_effect = anthropic.APIConnectionError(request=mock.Mock())
         try:
-            assistant.ask_assistant("anything", client=fake_client)
+            assistant.ask_assistant("anything", team_id=1, client=fake_client)
             assert False, "must raise AssistantError, not let the raw SDK exception propagate"
         except assistant.AssistantError:
             pass

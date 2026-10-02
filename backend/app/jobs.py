@@ -39,7 +39,7 @@ _redis_conn = redis.from_url(REDIS_URL)
 extraction_queue = Queue(EXTRACTION_QUEUE_NAME, connection=_redis_conn)
 
 
-def run_deferred_extraction(filename, items):
+def run_deferred_extraction(filename, items, team_id):
     """
     Extract each pending lease's fields and persist the result. `items`
     is a list of plain dicts (lease_id, sub_pages, date_candidates,
@@ -86,9 +86,10 @@ def run_deferred_extraction(filename, items):
             database.insert_activity(
                 "lease_uploaded",
                 f"Finished processing {filename}" + (f" ({completed} lease(s))" if completed > 1 else ""),
+                team_id,
                 lease_id=items[0]["lease_id"],
             )
         if failed:
-            database.insert_activity("lease_processing_failed", f"Extraction failed for {failed} lease(s) from {filename}")
+            database.insert_activity("lease_processing_failed", f"Extraction failed for {failed} lease(s) from {filename}", team_id)
     except Exception:
         logger.exception("Post-extraction activity log failed (non-fatal)")

@@ -36,6 +36,16 @@ if (new URLSearchParams(window.location.search).get('reset') === '1') {
     window.history.replaceState({}, '', window.location.pathname);
 }
 
+// team-setup.js sends a brand-new team's first admin here as ?setup=1
+// after they set their own password -- same "visible proof it worked"
+// pattern as ?reset=1 above.
+if (new URLSearchParams(window.location.search).get('setup') === '1') {
+    const messageEl = document.getElementById('loginMessage');
+    messageEl.textContent = "You're all set. Sign in with the password you just created.";
+    messageEl.classList.add('is-success');
+    window.history.replaceState({}, '', window.location.pathname);
+}
+
 // api.js's apiRequest sends people here as ?expired=1 on any 401 (see
 // its own comment for why that always means session expiry in this
 // app). Same pattern as ?reset=1 above -- land with a clear reason

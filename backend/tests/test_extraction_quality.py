@@ -110,7 +110,7 @@ def test_quality_trend_shows_round_progression_and_production_daily():
 def _client(role="analyst", is_owner=False):
     c = app.test_client()
     with c.session_transaction() as s:
-        s.update({"user_id": 1, "email": "a@example.com", "name": "A", "role": role, "is_owner": is_owner})
+        s.update({"user_id": 1, "email": "a@example.com", "name": "A", "role": role, "is_owner": is_owner, "team_id": 1})
     return c
 
 

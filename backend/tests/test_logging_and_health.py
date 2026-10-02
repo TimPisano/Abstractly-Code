@@ -97,7 +97,7 @@ def test_request_logging_skips_health_and_logs_5xx_at_error():
     try:
         c = app.test_client()
         with c.session_transaction() as s:
-            s.update({"user_id": 1, "email": "a@x.com", "name": "A", "role": "analyst"})
+            s.update({"user_id": 1, "email": "a@x.com", "name": "A", "role": "analyst", "team_id": 1})
 
         c.get("/health")
         assert "/health ->" not in getlog(), "the constant health-check hit is not logged"

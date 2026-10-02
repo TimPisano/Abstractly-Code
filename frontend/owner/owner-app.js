@@ -599,98 +599,193 @@ const Analytics = {
     },
 };
 
-/* ===================== Teams =====================
- * Quota management for every customer team, including the deal
- * assistant's monthly_assistant_credit_usd -- the "adjustable per team
- * from the admin page" requirement. Uses the plain GET/PATCH /teams
- * routes (now @require_owner()-gated, see api.py) rather than the
- * richer GET /owner/teams feature/team-isolation adds (team user/lease
- * counts, last-activity) -- that route doesn't exist on this branch
- * yet; once merged, this panel could switch to it for the extra usage
- * columns, but quota editing itself is fully functional today via
- * plain /teams.
- */
+/* ===================== Teams panel ===================== */
+
 const Teams = {
-    _teams: [],
+    teams: [],
 
     async load() {
         const content = document.getElementById('teamsContent');
-        content.innerHTML = '<p class="loading-inline"><span class="spinner-small"></span> Loading teams&hellip;</p>';
+        content.innerHTML = '<p class="loading-inline" role="status"><span class="spinner-small"></span> Loading teams…</p>';
         try {
-            this._teams = await ownerFetch('/teams');
+            this.teams = await ownerFetch('/owner/teams');
             this.render();
         } catch (err) {
-            content.innerHTML = `<p class="owner-panel-subtitle">${escapeHtml(err.message)}</p>`;
+            content.innerHTML = `<p class="error-text">Failed to load teams: ${escapeHtml(err.message)}</p>`;
         }
     },
 
     render() {
         const content = document.getElementById('teamsContent');
-        if (this._teams.length === 0) {
-            content.innerHTML = '<p class="owner-panel-subtitle">No teams yet.</p>';
+        if (this.teams.length === 0) {
+            content.innerHTML = '<p class="owner-empty">No teams yet — create the first one above.</p>';
             return;
         }
         content.innerHTML = `
             <table class="owner-table">
-                <thead><tr>
-                    <th>Team</th>
-                    <th>Monthly documents</th>
-                    <th>Monthly pages</th>
-                    <th>Monthly budget ($)</th>
-                    <th>Monthly assistant credit ($)</th>
-                    <th></th>
-                </tr></thead>
+                <thead>
+                    <tr><th>Team</th><th>Status</th><th>Users</th><th>Leases</th><th>Last activity</th></tr>
+                </thead>
                 <tbody>
-                    ${this._teams.map(t => `
-                        <tr data-team-id="${t.id}">
-                            <td>${escapeHtml(t.name)}</td>
-                            <td><input type="number" class="text-input" data-field="monthly_document_quota" value="${t.monthly_document_quota ?? ''}" placeholder="default"></td>
-                            <td><input type="number" class="text-input" data-field="monthly_page_quota" value="${t.monthly_page_quota ?? ''}" placeholder="default"></td>
-                            <td><input type="number" step="0.01" class="text-input" data-field="monthly_budget_usd" value="${t.monthly_budget_usd ?? ''}" placeholder="default"></td>
-                            <td><input type="number" step="0.01" class="text-input" data-field="monthly_assistant_credit_usd" value="${t.monthly_assistant_credit_usd ?? ''}" placeholder="default"></td>
-                            <td><button type="button" class="btn-secondary" data-save-team="${t.id}">Save</button></td>
+                    ${this.teams.map(t => `
+                        <tr>
+                            <td><span class="owner-row-link" data-id="${t.id}">${escapeHtml(t.name)}</span></td>
+                            <td><span class="owner-status-pill owner-status-${escapeHtml(t.status)}">${escapeHtml(t.status)}</span></td>
+                            <td>${t.user_count}</td>
+                            <td>${t.lease_count}</td>
+                            <td>${t.last_activity_at ? escapeHtml(formatDate(t.last_activity_at)) : '—'}</td>
                         </tr>
                     `).join('')}
                 </tbody>
             </table>
-            <p class="owner-panel-subtitle">Blank = use the plan-wide default from <code>usage_limits_config.py</code>.</p>
         `;
-        content.querySelectorAll('[data-save-team]').forEach(btn => {
-            btn.addEventListener('click', () => this.save(btn.dataset.saveTeam));
+        content.querySelectorAll('.owner-row-link').forEach(el => {
+            el.addEventListener('click', () => this.openDetail(parseInt(el.dataset.id, 10)));
         });
     },
 
-    async save(teamId) {
-        const row = document.querySelector(`tr[data-team-id="${teamId}"]`);
-        const body = {};
-        row.querySelectorAll('[data-field]').forEach(input => {
-            const raw = input.value.trim();
-            body[input.dataset.field] = raw === '' ? null : parseFloat(raw);
-        });
+    async openDetail(id) {
+        const overlay = document.getElementById('teamModalOverlay');
+        const body = document.getElementById('teamModalContent');
+        overlay.style.display = 'flex';
+        body.innerHTML = '<p class="loading-inline" role="status"><span class="spinner-small"></span> Loading…</p>';
         try {
-            await ownerFetch(`/teams/${teamId}`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body),
-            });
-            showToast('Team quotas updated.');
-            this.load();
+            const team = await ownerFetch(`/owner/teams/${id}`);
+            this.renderDetail(team);
         } catch (err) {
-            showToast(err.message, 'error');
+            body.innerHTML = `<p class="error-text">${escapeHtml(err.message)}</p>`;
         }
     },
 
-    async create(name) {
+    renderDetail(t) {
+        const body = document.getElementById('teamModalContent');
+        body.innerHTML = `
+            <h2>${escapeHtml(t.name)}</h2>
+            <p>Status: <span class="owner-status-pill owner-status-${escapeHtml(t.status)}">${escapeHtml(t.status)}</span> &middot; Created ${escapeHtml(formatDate(t.created_at))}</p>
+            <h3 style="margin-top:1.5rem;">Members</h3>
+            <table class="owner-table">
+                <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th></tr></thead>
+                <tbody>
+                    ${t.members.map(m => `
+                        <tr>
+                            <td>${escapeHtml(m.name)}</td>
+                            <td>${escapeHtml(m.email)}</td>
+                            <td>${escapeHtml(m.role)}</td>
+                            <td><span class="owner-status-pill owner-status-${escapeHtml(m.status)}">${escapeHtml(m.status)}</span></td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+            <h3 style="margin-top:1.5rem;">Monthly quotas</h3>
+            <p class="owner-panel-subtitle">Blank = use the plan-wide default from <code>usage_limits_config.py</code>. Includes the deal assistant's own credit allowance, separate from the extraction budget.</p>
+            <div class="owner-entry-row" id="teamQuotaFields">
+                <label>Documents <input type="number" class="text-input" data-field="monthly_document_quota" value="${t.monthly_document_quota ?? ''}" placeholder="default"></label>
+                <label>Pages <input type="number" class="text-input" data-field="monthly_page_quota" value="${t.monthly_page_quota ?? ''}" placeholder="default"></label>
+                <label>Budget ($) <input type="number" step="0.01" class="text-input" data-field="monthly_budget_usd" value="${t.monthly_budget_usd ?? ''}" placeholder="default"></label>
+                <label>Assistant credit ($) <input type="number" step="0.01" class="text-input" data-field="monthly_assistant_credit_usd" value="${t.monthly_assistant_credit_usd ?? ''}" placeholder="default"></label>
+            </div>
+            <div class="owner-modal-actions">
+                <button class="btn-primary" id="saveTeamQuotasBtn">Save Quotas</button>
+                ${t.status === 'active'
+                    ? `<button class="btn-danger" id="deactivateTeamBtn">Deactivate Team</button>`
+                    : `<button class="btn-secondary" id="reactivateTeamBtn">Reactivate Team</button>`}
+            </div>
+        `;
+        // Quota editing uses the plain PATCH /teams/<id> route (now
+        // @require_owner()-gated -- see api.py), kept alongside the
+        // richer /owner/teams/* provisioning routes above rather than
+        // folded into them, since it's a different concern (ongoing
+        // quota adjustment vs. one-time team creation/deactivation).
+        document.getElementById('saveTeamQuotasBtn').addEventListener('click', async () => {
+            const body = {};
+            document.querySelectorAll('#teamQuotaFields [data-field]').forEach(input => {
+                const raw = input.value.trim();
+                body[input.dataset.field] = raw === '' ? null : parseFloat(raw);
+            });
+            try {
+                await ownerFetch(`/teams/${t.id}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body),
+                });
+                showToast('Team quotas updated.');
+            } catch (err) {
+                showToast(err.message, 'error');
+            }
+        });
+        const deactivateBtn = document.getElementById('deactivateTeamBtn');
+        if (deactivateBtn) {
+            deactivateBtn.addEventListener('click', async () => {
+                if (!(await confirmDialog({
+                    title: 'Deactivate this team?',
+                    message: `Every member of ${t.name} will be unable to log in until you reactivate the team, even if their own account is still active.`,
+                    confirmText: 'Deactivate',
+                    danger: true,
+                }))) return;
+                try {
+                    await ownerFetch(`/owner/teams/${t.id}/deactivate`, { method: 'POST' });
+                    showToast(`${t.name} deactivated.`);
+                    this.closeModal();
+                    this.load();
+                } catch (err) {
+                    showToast(err.message, 'error');
+                }
+            });
+        }
+        const reactivateBtn = document.getElementById('reactivateTeamBtn');
+        if (reactivateBtn) {
+            reactivateBtn.addEventListener('click', async () => {
+                try {
+                    await ownerFetch(`/owner/teams/${t.id}/reactivate`, { method: 'POST' });
+                    showToast(`${t.name} reactivated.`);
+                    this.closeModal();
+                    this.load();
+                } catch (err) {
+                    showToast(err.message, 'error');
+                }
+            });
+        }
+    },
+
+    closeModal() {
+        document.getElementById('teamModalOverlay').style.display = 'none';
+    },
+
+    openCreateModal() {
+        document.getElementById('createTeamForm').reset();
+        document.getElementById('createTeamResult').innerHTML = '';
+        document.getElementById('createTeamModalOverlay').style.display = 'flex';
+    },
+
+    closeCreateModal() {
+        document.getElementById('createTeamModalOverlay').style.display = 'none';
+    },
+
+    async submitCreate(e) {
+        e.preventDefault();
+        const resultEl = document.getElementById('createTeamResult');
+        const firm_name = document.getElementById('newFirmName').value.trim();
+        const admin_name = document.getElementById('newAdminName').value.trim();
+        const admin_email = document.getElementById('newAdminEmail').value.trim();
+        resultEl.innerHTML = '';
         try {
-            await ownerFetch('/teams', {
+            const result = await ownerFetch('/owner/teams', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name }),
+                body: JSON.stringify({ firm_name, admin_name, admin_email }),
             });
-            showToast(`Team "${name}" created.`);
+            if (result.emailed) {
+                resultEl.innerHTML = `<p class="owner-callout" style="margin-top:1rem;">Team created. A setup link was emailed to ${escapeHtml(admin_email)}.</p>`;
+            } else {
+                resultEl.innerHTML = `
+                    <p class="owner-callout" style="margin-top:1rem;">Team created. Email sending isn't configured (or failed) — copy this one-time setup link and send it to ${escapeHtml(admin_email)} yourself. It expires in 7 days and can only be used once.</p>
+                    <div class="owner-entry-row"><input type="text" class="text-input" readonly value="${escapeHtml(result.setup_url)}" id="setupUrlField" onclick="this.select()"></div>
+                `;
+            }
+            showToast(`Team "${firm_name}" created.`);
             this.load();
         } catch (err) {
-            showToast(err.message, 'error');
+            resultEl.innerHTML = `<p class="error-text">${escapeHtml(err.message)}</p>`;
         }
     },
 };
@@ -700,8 +795,8 @@ const Teams = {
 function switchTab(tab) {
     document.querySelectorAll('.owner-tab').forEach(el => el.classList.toggle('active', el.dataset.tab === tab));
     document.querySelectorAll('.owner-panel').forEach(el => el.classList.toggle('active', el.id === `panel-${tab}`));
-    if (tab === 'accounts') Accounts.load();
     if (tab === 'teams') Teams.load();
+    if (tab === 'accounts') Accounts.load();
     if (tab === 'finance') Finance.load();
     if (tab === 'quality') ExtractionQuality.load();
     if (tab === 'analytics') Analytics.load();
@@ -747,13 +842,15 @@ async function initOwnerConsole() {
         if (e.target.id === 'accountModalOverlay') Accounts.closeModal();
     });
 
-    document.getElementById('createTeamForm').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const input = document.getElementById('newTeamName');
-        const name = input.value.trim();
-        if (!name) return;
-        await Teams.create(name);
-        input.value = '';
+    document.getElementById('createTeamBtn').addEventListener('click', () => Teams.openCreateModal());
+    document.getElementById('createTeamModalClose').addEventListener('click', () => Teams.closeCreateModal());
+    document.getElementById('createTeamModalOverlay').addEventListener('click', (e) => {
+        if (e.target.id === 'createTeamModalOverlay') Teams.closeCreateModal();
+    });
+    document.getElementById('createTeamForm').addEventListener('submit', (e) => Teams.submitCreate(e));
+    document.getElementById('teamModalClose').addEventListener('click', () => Teams.closeModal());
+    document.getElementById('teamModalOverlay').addEventListener('click', (e) => {
+        if (e.target.id === 'teamModalOverlay') Teams.closeModal();
     });
 
     document.getElementById('revenueForm').addEventListener('submit', async (e) => {
@@ -807,7 +904,7 @@ async function initOwnerConsole() {
         window.location.href = 'login.html';
     });
 
-    Accounts.load();
+    Teams.load();
 }
 
 initOwnerConsole();

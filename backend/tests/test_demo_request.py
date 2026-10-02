@@ -175,6 +175,28 @@ def test_invalid_units_rejected():
     print("✓ test_invalid_units_rejected: PASS")
 
 
+def test_boolean_units_rejected():
+    """
+    bool is technically an int subclass in Python, so True/False could
+    otherwise slip through int(units_raw) as 1/0 and pass the range check
+    -- a separate test (not folded into test_invalid_units_rejected's loop)
+    since two extra requests there would trip the per-IP rate limit.
+    """
+    db_path = _fresh_temp_db()
+    try:
+        client = app.test_client()
+        for bad_units in [True, False]:
+            body = {**_VALID_BODY, "units": bad_units}
+            resp = client.post("/demo-request", json=body)
+            assert resp.status_code == 400, f"{bad_units!r} should have been rejected"
+
+        assert database.get_all_demo_requests() == []
+    finally:
+        os.unlink(db_path)
+
+    print("✓ test_boolean_units_rejected: PASS")
+
+
 def test_overlong_message_is_truncated_not_rejected():
     db_path = _fresh_temp_db()
     try:
@@ -324,6 +346,7 @@ if __name__ == "__main__":
     test_missing_company_rejected()
     test_invalid_email_format_rejected()
     test_invalid_units_rejected()
+    test_boolean_units_rejected()
     test_overlong_message_is_truncated_not_rejected()
     test_honeypot_field_silently_discards_submission()
     test_submission_succeeds_with_no_email_credentials_configured()

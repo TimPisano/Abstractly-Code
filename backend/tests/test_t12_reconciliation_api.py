@@ -42,6 +42,7 @@ def _authed_client():
     client = app.test_client()
     with client.session_transaction() as sess:
         sess["user_id"] = 1
+        sess["team_id"] = 1
         sess["email"] = "test-analyst@example.com"
         sess["name"] = "Test Analyst"
         sess["role"] = "analyst"
@@ -130,8 +131,8 @@ def test_t12_route_real_leases_plus_real_t12_flags_a_real_discrepancy():
     db_path = _fresh_temp_db()
     try:
         client = _authed_client()
-        database.insert_lease("acme_lease.pdf", _pdf_fields(tenant="Acme Corp", address="700 Retail Plaza, Suite 100", rent="$10,000.00"))
-        database.insert_lease("beta_lease.pdf", _pdf_fields(tenant="Beta LLC", address="700 Retail Plaza, Suite 200", rent="$8,000.00"))
+        database.insert_lease("acme_lease.pdf", _pdf_fields(tenant="Acme Corp", address="700 Retail Plaza, Suite 100", rent="$10,000.00"), team_id=1)
+        database.insert_lease("beta_lease.pdf", _pdf_fields(tenant="Beta LLC", address="700 Retail Plaza, Suite 200", rent="$8,000.00"), team_id=1)
         # rent roll annual = (10000+8000)*12 = 216000
 
         file_bytes = _csv_bytes([
@@ -184,7 +185,7 @@ def test_t12_route_no_matching_leases_returns_honest_not_found():
     db_path = _fresh_temp_db()
     try:
         client = _authed_client()
-        database.insert_lease("unrelated.pdf", _pdf_fields(tenant="Unrelated Co", address="999 Other Ave", rent="$5,000.00"))
+        database.insert_lease("unrelated.pdf", _pdf_fields(tenant="Unrelated Co", address="999 Other Ave", rent="$5,000.00"), team_id=1)
 
         file_bytes = _csv_bytes([["Line Item", "Total"], ["Total Rental Income", "120000"]])
         resp = client.post(

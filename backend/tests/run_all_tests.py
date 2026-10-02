@@ -78,6 +78,7 @@ UNIT_TESTS = [
     "test_performance.py",
     "test_rent_roll_shape_detection.py",
     "test_teams_and_assignments.py",
+    "test_team_isolation.py",
     "test_owner_console.py",
     "test_assistant.py",
     "test_messaging.py",
@@ -90,6 +91,19 @@ UNIT_TESTS = [
     "test_usage_limits.py",
     "test_leases_sample_precomputed.py",
     "test_deal_assistant_credit_and_citations.py",
+    # Pre-existing files found missing from this list during QA hardening
+    # (2026-10) -- previously flagged as "pending commit" in
+    # docs/HARDENING_LOG.md SS3.3 / docs/TESTER_VERIFICATION_CHECKLIST.md
+    # SS3.3 but never actually landed. All pass standalone.
+    "test_analytics.py",
+    "test_deal_mismatch.py",
+    "test_demo_request.py",
+    "test_obligations.py",
+    "test_rent_roll_multiformat.py",
+    # New this QA hardening pass (2026-10).
+    "test_demo_deal_golden.py",
+    "test_rent_roll_edge_cases.py",
+    "test_field_extractor_party_names.py",
 ]
 
 LIVE_API_TESTS = [

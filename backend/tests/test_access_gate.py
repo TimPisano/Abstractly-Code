@@ -49,6 +49,7 @@ def _login_as_admin(client):
     """GET /waitlist and POST /waitlist/<id>/approve now require an admin-role session (see app/auth.py's require_role) -- set directly via session_transaction() rather than driving a real login POST through bcrypt for every test that needs one."""
     with client.session_transaction() as sess:
         sess["user_id"] = 1
+        sess["team_id"] = 1
         sess["email"] = "timmypisano24@gmail.com"
         sess["name"] = "Test Admin"
         sess["role"] = "admin"

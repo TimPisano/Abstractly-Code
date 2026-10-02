@@ -63,6 +63,7 @@ def main():
                     category="cat",
                     message=f"msg from thread {i}",
                     details={"i": i},
+                team_id=1,
                 )
                 with lock:
                     ids.append(result_id)
@@ -86,7 +87,7 @@ def main():
 
         # ---- Concurrent upsert_alert, including the auto_resolved -> active transition ----
         print("\n--- Concurrent upsert_alert on the same natural_key, from auto_resolved ---")
-        database.upsert_alert(alert_type="t", natural_key="alert_key_1", severity="high", title="T", message="M", details={})
+        database.upsert_alert(alert_type="t", natural_key="alert_key_1", severity="high", title="T", message="M", details={}, team_id=1)
         conn = database.get_connection()
         conn.execute("UPDATE alerts SET status = 'auto_resolved' WHERE natural_key = ?", ("alert_key_1",))
         conn.commit()
@@ -100,6 +101,7 @@ def main():
                 result_id = database.upsert_alert(
                     alert_type="t", natural_key="alert_key_1", severity="high", title="T",
                     message=f"M{i}", details={"i": i},
+                team_id=1,
                 )
                 with lock:
                     alert_ids.append(result_id)
@@ -131,6 +133,7 @@ def main():
         disc_id = database.upsert_discrepancy(
             discrepancy_type="test_type", natural_key="resolved_key_1", category="cat",
             message="original", details={},
+        team_id=1,
         )
         database.resolve_discrepancy(disc_id, correct_source="lease_document", note="reviewed", resolved_by="Jane")
 
@@ -141,6 +144,7 @@ def main():
                 database.upsert_discrepancy(
                     discrepancy_type="test_type", natural_key="resolved_key_1", category="cat",
                     message=f"resync {i}", details={"i": i},
+                team_id=1,
                 )
             except Exception as e:
                 with lock:

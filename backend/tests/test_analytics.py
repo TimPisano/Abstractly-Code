@@ -29,6 +29,7 @@ def _client_as_owner():
     client = app.test_client()
     with client.session_transaction() as sess:
         sess["user_id"] = 1
+        sess["team_id"] = 1
         sess["email"] = "owner@example.com"
         sess["name"] = "Test Owner"
         sess["role"] = "admin"
