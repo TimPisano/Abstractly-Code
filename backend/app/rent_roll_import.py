@@ -171,7 +171,10 @@ _CONCESSION_NON_AMOUNT_WORDS = {
 
 
 def _is_concession_non_amount_header(normalized_header: str) -> bool:
-    return bool(set(normalized_header.split()) & _CONCESSION_NON_AMOUNT_WORDS)
+    # "Concession Per Month" / "Concession a Month" IS the dollar amount --
+    # only a bare "month(s)" means a count column.
+    stripped = re.sub(r"\b(?:per|a|each|every)\s+month\b", " ", normalized_header)
+    return bool(set(stripped.split()) & _CONCESSION_NON_AMOUNT_WORDS)
 
 
 def _is_market_rent_header(normalized_header: str) -> bool:

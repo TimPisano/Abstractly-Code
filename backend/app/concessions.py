@@ -220,34 +220,57 @@ _CONTINGENCY_WORDS = re.compile(
 # Rent INCREASES phrased with the same verbs ("increase by $50 per month")
 # are escalations, not concessions.
 _ESCALATION_WORDS = re.compile(r"\b(?:increase[sd]?|escalat\w*)\b", re.IGNORECASE)
-# A prepaid month or deposit APPLIED to a later month ("one month's rent
+# A deposit or prepaid month APPLIED to a later month ("one month's rent
 # as a security deposit, credited toward the last month's rent") is the
 # resident's own money, not a concession -- a free-rent reading of it
-# would invent a full month of overstated income (review finding,
-# fix/concession-detection).
+# would invent a full month of overstated income AND hide a real rent gap
+# behind a fake net effective rent (review finding, fix/concession-
+# detection). Requires a deposit/prepaid word: "rent is payable in
+# advance" boilerplate and "a $1,000 concession credited against the last
+# month" are NOT this. Skipped entirely when the sentence itself names a
+# concession, credit, special or incentive.
 _PREPAID_APPLIED = re.compile(
-    r"\b(?:deposit|prepaid|pre-paid|prepay\w*|advance)\b[^.;]{0,160}?\b(?:credited|applied)\s+(?:toward|towards|against|to)\b"
-    r"|\b(?:credited|applied)\s+(?:toward|towards|against|to)\s+(?:the\s+)?(?:last|final)\s+month",
+    r"\b(?:deposit|prepaid|pre-paid|prepay\w*|prepayment)\b[^.;]{0,160}?\b(?:credited|applied)\s+(?:toward|towards|against|to)\b",
     re.IGNORECASE,
 )
+_CONCESSION_NAMED = re.compile(
+    r"\b(?:concessions?|credit|special|incentive|discount|abate\w*|free)\b", re.IGNORECASE,
+)
 # Negated grants ("Resident shall not receive any free rent") -- checked in
-# the words just before a match. "Provided Tenant is not then in default,
-# rent shall be abated..." is a CONDITION on a real concession, not a
-# negation of it.
+# the words just before a match.
 _NEGATION_BEFORE = re.compile(
-    r"\b(?:shall|will|does|do|is|are|was|were)\s+not\b(?!\s+(?:then\s+)?(?:in\s+default|delinquent))|\bnot\s+(?:entitled|eligible)\b|\bno\s+(?:concessions?|free\s+rent|discounts?|credits?)\b|\bnever\b",
+    r"\b(?:shall|will|does|do|is|are|was|were)\s+not\b|\bnot\s+(?:entitled|eligible)\b"
+    r"|\bno\s+(?:concessions?|free\s+rent|discounts?|credits?)\b|\bnever\b",
+    re.IGNORECASE,
+)
+# ...unless the "not" sits in a CONDITION on the concession ("Provided
+# Tenant is not then in default / does not default / shall not have
+# breached, rent shall be abated") -- that's a real, conditional grant.
+_CONDITION_WORDS = re.compile(
+    r"\b(?:provided|so\s+long\s+as|as\s+long\s+as|if|unless|on\s+condition)\b|\bdefault\w*|\bbreach\w*|\bdelinquen\w*",
     re.IGNORECASE,
 )
 # Discounts and credits on something other than rent (parking, utilities,
-# the deposit, an early-payment discount). Only trusted as a RENT
-# concession if the sentence also talks about rent itself.
+# the deposit, pet rent, an early-payment discount). Judged from the words
+# right around the match -- the clause it's in -- not the whole sentence,
+# so a real special that also mentions a waived application fee still
+# counts, while "parking is $50 per month, discounted by $10" doesn't.
 _NON_RENT_WORDS = re.compile(
     r"\b(?:parking|garage|carport|storage|utilit\w*|water|electric\w*|cable|internet|pet|deposit|amenity|"
-    r"early\s+payment|prompt\s+payment|paid\s+early|processing|convenience|fee)\b",
+    r"early\s+payment|prompt\s+payment|paid\s+(?:early|on\s+time|by|on\s+or\s+before|before)|processing|convenience|fee)\b",
     re.IGNORECASE,
 )
-# "rent" the noun, not the verb ("may rent a parking space").
-_RENT_WORD = re.compile(r"\b(?<!may )(?<!to )(?<!can )rent\b(?!\s+(?:a|an|the|one|two|additional|another)\b)", re.IGNORECASE)
+# "rent" the noun meaning the unit's rent -- not the verb ("may rent a
+# parking space") and not "pet rent" / "parking rent" / "storage rent".
+_RENT_WORD = re.compile(
+    r"\b(?<!may )(?<!to )(?<!can )(?<!pet )(?<!parking )(?<!storage )(?<!garage )rent\b"
+    r"(?!\s+(?:a|an|the|one|two|additional|another)\b)",
+    re.IGNORECASE,
+)
+# Words in the match itself that make it unmistakably a leasing concession.
+_TRIGGER_IN_MATCH = re.compile(
+    r"\b(?:move[- ]in|look[- ]and[- ]lease|special|leasing|renewal|retention|signing|concessions?)\b", re.IGNORECASE,
+)
 
 _RECAPTURE_WORDS = re.compile(
     r"\b(?:repay|reimburse|recaptur\w*|become[s]?\s+(?:immediately\s+)?due|forfeit\w*|charged\s+back|clawback|claw\s+back)\b",
@@ -403,14 +426,34 @@ def _overlaps(span: Tuple[int, int], taken: List[Tuple[int, int]]) -> bool:
 # ----------------------------------------------------------------------
 
 def _negated(sentence: str, start: int) -> bool:
-    return bool(_NEGATION_BEFORE.search(sentence[max(0, start - 60):start]))
+    window = sentence[max(0, start - 60):start]
+    return bool(_NEGATION_BEFORE.search(window)) and not _CONDITION_WORDS.search(window)
+
+
+def _about_something_else(sentence: str, start: int, end: int) -> bool:
+    """
+    True when a $/% discount or credit match is about a non-rent charge.
+    Looks at the match itself, up to 45 characters before it, and the rest
+    of its own clause after it (to the next comma/semicolon): a non-rent
+    word there wins unless "rent" (the noun) sits closer to the match.
+    """
+    matched = sentence[start:end]
+    if _TRIGGER_IN_MATCH.search(matched) or _RENT_WORD.search(matched):
+        return False
+    after = re.split(r"[,;]", sentence[end:], maxsplit=1)[0]
+    if _NON_RENT_WORDS.search(after):
+        return True
+    before = sentence[max(0, start - 45):start]
+    non_rent = [m.end() for m in _NON_RENT_WORDS.finditer(before)]
+    rent = [m.end() for m in _RENT_WORD.finditer(before)]
+    return bool(non_rent) and (not rent or non_rent[-1] > rent[-1])
 
 
 def _parse_sentence(sentence: str) -> List[Dict[str, Any]]:
-    if _CONTINGENCY_WORDS.search(sentence) or _PREPAID_APPLIED.search(sentence):
+    if _CONTINGENCY_WORDS.search(sentence):
         return []
-    # Discounts/credits must be about rent; free-rent patterns already say "rent"/"free".
-    money_ok = not (_NON_RENT_WORDS.search(sentence) and not _RENT_WORD.search(sentence))
+    if _PREPAID_APPLIED.search(sentence) and not _CONCESSION_NAMED.search(sentence):
+        return []
 
     found: List[Tuple[int, int, Dict[str, Any]]] = []  # (start, end, item)
     taken: List[Tuple[int, int]] = []
@@ -433,10 +476,10 @@ def _parse_sentence(sentence: str) -> List[Dict[str, Any]]:
             found.append((m.start(), m.end(), item))
             taken.append(m.span())
 
-    if money_ok and not _ESCALATION_WORDS.search(sentence):
+    if not _ESCALATION_WORDS.search(sentence):
         for pattern in _RECURRING_PATTERNS:
             for m in pattern.finditer(sentence):
-                if _overlaps(m.span(), taken) or _negated(sentence, m.start()):
+                if _overlaps(m.span(), taken) or _negated(sentence, m.start()) or _about_something_else(sentence, m.start(), m.end()):
                     continue
                 gd = m.groupdict()
                 amount = parse_currency(gd.get("amount")) if gd.get("amount") else None
@@ -452,9 +495,9 @@ def _parse_sentence(sentence: str) -> List[Dict[str, Any]]:
                 found.append((m.start(), m.end(), item))
                 taken.append(m.span())
 
-    for idx, pattern in enumerate(_ONE_TIME_PATTERNS if money_ok else []):
+    for idx, pattern in enumerate(_ONE_TIME_PATTERNS):
         for m in pattern.finditer(sentence):
-            if _overlaps(m.span(), taken) or _negated(sentence, m.start()):
+            if _overlaps(m.span(), taken) or _negated(sentence, m.start()) or _about_something_else(sentence, m.start(), m.end()):
                 continue
             # "$X credit ... per month" is a recurring discount the patterns
             # above didn't recognize the exact wording of -- don't misread

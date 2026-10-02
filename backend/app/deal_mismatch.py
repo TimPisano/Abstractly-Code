@@ -986,18 +986,22 @@ def _concession_summary(leases: List[Dict[str, Any]], today: date) -> Dict[str, 
     any concession couldn't be priced, rather than a silently low total.
     """
     priced = []
+    unreadable = 0
     for lease in leases:
         if _is_rent_roll_import(lease) or _is_expired(lease, today):
             continue
         effective = effective_rent_for_lease(lease, today)
         if effective:
             priced.append(effective)
-    if not priced:
+        elif _unreadable_concession_value(lease):
+            unreadable += 1
+    if not priced and not unreadable:
         return {"leases_with_concessions": 0, "annualized_concession_value": 0.0}
     values = [e["annualized_concession_value"] for e in priced]
+    complete = not unreadable and all(v is not None for v in values)
     return {
-        "leases_with_concessions": len(priced),
-        "annualized_concession_value": round(sum(values), 2) if all(v is not None for v in values) else None,
+        "leases_with_concessions": len(priced) + unreadable,
+        "annualized_concession_value": round(sum(values), 2) if complete else None,
     }
 
 

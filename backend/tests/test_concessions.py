@@ -774,6 +774,65 @@ def test_review_same_shape_different_trigger_not_collapsed():
     print("✓ test_review_same_shape_different_trigger_not_collapsed: PASS")
 
 
+# ----------------------------------------------------------------------
+# Reviewer round 2 -- the round-1 guards must not drop real concessions
+# ----------------------------------------------------------------------
+
+def test_review2_guards_keep_real_concessions():
+    cases = {
+        "Resident receives a $500 move-in special, and the $150 application fee is waived.": ("one_time_credit", 500.0),
+        "Rent is payable in advance on the first day of each month, and a $500 move-in concession will be applied to the first month's rent.": ("one_time_credit", 500.0),
+        "The $1,000 concession shall be credited against the last month's rent.": ("one_time_credit", 1000.0),
+        "As a move-in incentive, a concession of $600 will be credited toward the final month of the term.": ("one_time_credit", 600.0),
+        "The security deposit is $500, and Base Rent is reduced by $50.00 per month for the full term.": ("recurring_discount", 50.0),
+    }
+    for text, (kind, amount) in cases.items():
+        items = _items(text)
+        assert len(items) == 1 and items[0]["kind"] == kind, (text, items)
+        assert amount in (items[0].get("one_time_amount"), items[0].get("monthly_amount")), (text, items)
+    print("✓ test_review2_guards_keep_real_concessions: PASS")
+
+
+def test_review2_conditional_not_is_a_condition_not_a_negation():
+    for text, months in (
+        ("Provided Tenant does not default, Tenant shall receive one month free.", 1),
+        ("So long as Tenant is not in material default, Base Rent shall be abated for the first two (2) months.", 2),
+        ("Provided Tenant is not then in breach of this Lease, Base Rent shall be abated for the first two (2) months.", 2),
+        ("Provided Tenant shall not have defaulted, Base Rent shall be abated for the first three (3) months.", 3),
+    ):
+        items = _items(text)
+        assert len(items) == 1 and items[0]["free_months"] == months, (text, items)
+    assert _items("Resident shall not receive one month free.") == []
+    print("✓ test_review2_conditional_not_is_a_condition_not_a_negation: PASS")
+
+
+def test_review2_remaining_non_rent_discounts_ignored():
+    for text in (
+        "Rent paid by the 1st receives a 5% discount; otherwise a late fee applies.",
+        "Monthly rent is $1,200 and parking is $50 per month, discounted by $10 per month for a second car.",
+        "Pet rent of $25 per month is discounted by $10 per month.",
+    ):
+        assert _items(text) == [], (text, _items(text))
+    print("✓ test_review2_remaining_non_rent_discounts_ignored: PASS")
+
+
+def test_review2_concession_per_month_header_is_the_amount():
+    for header in ("Concession Per Month", "Concession Amt Per Month", "Concession / Mo", "Monthly Concession"):
+        result = parse_rent_roll_rows(["Unit", "Tenant", "Rent", header], [["101", "Pat", "1200", "75"]], "rr.csv", "1 Elm St")
+        assert result["column_mapping"].get("concessions") == 3, (header, result["column_mapping"])
+    print("✓ test_review2_concession_per_month_header_is_the_amount: PASS")
+
+
+def test_review2_summary_is_none_when_a_concession_is_unreadable():
+    unreadable = {"value": "Reduced rent during renovation", "source": None, "confidence": "low"}
+    leases = [
+        _doc(1, concession_text=I204_TEXT, property_address="1 A St, Suite 1", rent_amount="$1,720.00", **TERM_12),
+        {"id": 2, "filename": "b.pdf", "extracted_fields": {**_fields(property_address="1 A St, Suite 2", rent_amount="$1,500.00", **TERM_12), "concessions": unreadable}},
+    ]
+    assert dm._concession_summary(leases, AS_OF) == {"leases_with_concessions": 2, "annualized_concession_value": None}
+    print("✓ test_review2_summary_is_none_when_a_concession_is_unreadable: PASS")
+
+
 if __name__ == "__main__":
     test_parse_single_free_month_with_trigger_and_calendar_month()
     test_parse_recurring_discount_with_duration_and_explicit_range()
@@ -823,4 +882,9 @@ if __name__ == "__main__":
     test_review_late_starting_discount_priced_from_its_start()
     test_review_half_month_free_current_rent_is_half()
     test_review_same_shape_different_trigger_not_collapsed()
+    test_review2_guards_keep_real_concessions()
+    test_review2_conditional_not_is_a_condition_not_a_negation()
+    test_review2_remaining_non_rent_discounts_ignored()
+    test_review2_concession_per_month_header_is_the_amount()
+    test_review2_summary_is_none_when_a_concession_is_unreadable()
     print("\nAll concession tests passed.")
