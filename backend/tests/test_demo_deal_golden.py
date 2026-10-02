@@ -46,8 +46,8 @@ from app.deal_mismatch import build_deal_mismatch_report_data
 
 DEMO_DIR = os.path.join(os.path.dirname(__file__), '..', 'benchmark_data', 'demo_deal')
 LEASES_DIR = os.path.join(DEMO_DIR, 'leases')
-RENT_ROLL_16 = os.path.join(DEMO_DIR, 'rent_roll', 'maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv')
-RENT_ROLL_120 = os.path.join(DEMO_DIR, 'rent_roll', 'maple_ridge_rent_roll_120unit_appfolio.csv')
+RENT_ROLL_16 = os.path.join(DEMO_DIR, 'rent_roll', 'maple_ridge_rent_roll_demo_subset_16unit.xlsx')
+RENT_ROLL_120 = os.path.join(DEMO_DIR, 'rent_roll', 'maple_ridge_rent_roll_120unit.xlsx')
 EXPECTED_FINDINGS_PATH = os.path.join(DEMO_DIR, 'expected_findings.json')
 PROPERTY_ADDRESS = "4500 Maple Ridge Trail, Dallas, TX 75248"
 DEMO_AS_OF = date(2026, 8, 31)
