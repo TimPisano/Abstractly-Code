@@ -13,11 +13,13 @@ All output is computed bottom-up from the unit inventory defined here
 and README.md can never silently drift out of sync with each other.
 Run: venv/bin/python benchmark_data/demo_deal/generate_demo_deal.py
 """
+import argparse
+import calendar
 import csv
 import json
 import os
 import random
-from datetime import date
+from datetime import date, timedelta
 
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
@@ -36,16 +38,78 @@ PROPERTY_ADDRESS = "4500 Maple Ridge Trail, Dallas, TX 75248"
 OWNER_ENTITY = "Maple Ridge Apartments Owner, LLC"
 MANAGEMENT_CO = "Cordant Residential Management, LLC"
 
-RENT_ROLL_AS_OF = date(2026, 8, 31)
-T12_MONTHS = [
-    (2025, 9), (2025, 10), (2025, 11), (2025, 12),
-    (2026, 1), (2026, 2), (2026, 3), (2026, 4),
-    (2026, 5), (2026, 6), (2026, 7), (2026, 8),
-]
 MONTH_NAMES = ["January", "February", "March", "April", "May", "June",
                "July", "August", "September", "October", "November", "December"]
 
+# Do NOT change this seed. Background-unit rents (and therefore GPR, the
+# whole T-12, and every dollar figure quoted in README.md) are drawn from
+# it; a different seed silently rewrites all of them.
 RNG_SEED = "maple-ridge-demo-2026"
+
+
+# ----------------------------------------------------------------------
+# Dates are RELATIVE TO THE DAY THIS SCRIPT RUNS, not hardcoded calendar
+# dates. Every lease term, rent-roll "as of" line, and T-12 month is
+# derived from TODAY via the month-offset helpers below.
+#
+# Why: the planted "expired_but_occupied" issue at C203/H104 only works
+# if those two leases have ended and the other 13 have NOT, measured
+# against whatever "today" is when someone runs the demo.
+# detect_expired_but_occupied() in app/deal_mismatch.py defaults to
+# date.today(), and the real POST /portfolio/deal-mismatch-report route
+# never overrides it. With absolute dates the fixture rotted: once
+# wall-clock today passed the old 2026-08-31 anchor, clean control units
+# started reading as expired too and the demo showed issues it wasn't
+# supposed to have. Regenerate (see README "Regenerating") whenever the
+# committed package has aged out -- test_demo_deal_golden.py's freshness
+# test tells you when.
+# ----------------------------------------------------------------------
+TODAY = date.today()
+
+
+def _shift_month(d, months):
+    """The same day-of-month `months` away from d's month, clamped to a
+    valid day (so a 31st shifted into February lands on the 28th/29th)."""
+    total = (d.year * 12 + (d.month - 1)) + months
+    year, month = divmod(total, 12)
+    month += 1
+    return date(year, month, min(d.day, calendar.monthrange(year, month)[1]))
+
+
+def _month_start(anchor, months_offset):
+    """First day of the month `months_offset` months from anchor's month."""
+    return _shift_month(anchor.replace(day=1), months_offset)
+
+
+def _month_end(anchor, months_offset):
+    """Last day of the month `months_offset` months from anchor's month."""
+    d = _month_start(anchor, months_offset)
+    return d.replace(day=calendar.monthrange(d.year, d.month)[1])
+
+
+# A rent roll is pulled at a month close, so the package's "as of" date is
+# the last day of the month before today -- always in the recent past,
+# exactly like a real seller's rent roll handed over mid-month.
+RENT_ROLL_AS_OF = TODAY.replace(day=1) - timedelta(days=1)
+
+# The T-12 is the twelve months ending with (and including) the as-of month.
+T12_MONTHS = [
+    (d.year, d.month)
+    for d in (_month_start(RENT_ROLL_AS_OF, k) for k in range(-11, 1))
+]
+
+# Every documented lease runs a 12-month term, identified by the month its
+# term ENDS, expressed as an offset from the as-of month. Negative = the
+# term already ended (the planted expired-but-occupied units); positive =
+# still in force.
+#
+# MIN_LIVE_END_OFFSET exists because the as-of date is itself in the past
+# (end of last month). A lease ending at offset 0 or +1 would be expired,
+# or within days of expiring, against real wall-clock today -- so every
+# lease that is supposed to read as CURRENT ends at least two months out.
+# _assert_planted_issues_hold_today() enforces this at generation time.
+MIN_LIVE_END_OFFSET = 2
+LEASE_TERM_MONTHS = 12
 
 UNIT_TYPES = {
     "studio": {"sqft": 500, "beds": 0, "baths": 1, "market_rent": 1075},
@@ -132,109 +196,97 @@ def _building_of(unit_id):
 # separately, so they cannot disagree with each other by accident --
 # only the disagreements defined here on purpose.
 # ----------------------------------------------------------------------
+#
+# `end_offset` is the number of months from the rent-roll as-of month to
+# the month the 12-month term ENDS. Negative = already expired. Prose
+# fields are templates: any date they mention is filled in from the
+# computed dates by _resolve_documented_units() so the sentences can
+# never contradict the PDF's own Lease Term section.
 DOCUMENTED_UNITS = [
     # -- rent_mismatch: rent roll shows MORE rent than the signed lease --
     {
-        "unit_id": "B104", "issue": "rent_mismatch",
-        "lease_start": date(2025, 9, 1), "lease_end": date(2026, 8, 31),
+        "unit_id": "B104", "issue": "rent_mismatch", "end_offset": 2,
         "lease_rent": 1285.00, "rent_roll_rent": 1360.00,
-        "rr_lease_to": date(2026, 8, 31),
         "note": "Rent roll was bumped for a renewal offer that was never countersigned; the signed lease still controls at the lower rate.",
     },
     {
-        "unit_id": "D203", "issue": "rent_mismatch",
-        "lease_start": date(2026, 3, 1), "lease_end": date(2027, 2, 28),
+        "unit_id": "D203", "issue": "rent_mismatch", "end_offset": 6,
         "lease_rent": 1300.00, "rent_roll_rent": 1420.00,
-        "rr_lease_to": date(2027, 2, 28),
         "note": "Rent roll figure appears to be the unit's market/asking rent, mistakenly entered into the actual-rent column.",
     },
     {
-        "unit_id": "G204", "issue": "rent_mismatch",
-        "lease_start": date(2025, 11, 1), "lease_end": date(2026, 10, 31),
+        "unit_id": "G204", "issue": "rent_mismatch", "end_offset": 4,
         "lease_rent": 1695.00, "rent_roll_rent": 1955.00,
-        "rr_lease_to": date(2026, 10, 31),
         "note": "Largest rent overstatement in the file -- looks like a transposed rent roll row from a different unit type.",
     },
     {
-        "unit_id": "J303", "issue": "rent_mismatch",
-        "lease_start": date(2026, 6, 1), "lease_end": date(2027, 5, 31),
+        "unit_id": "J303", "issue": "rent_mismatch", "end_offset": 9,
         "lease_rent": 1975.00, "rent_roll_rent": 2075.00,
-        "rr_lease_to": date(2027, 5, 31),
         "note": "Rent roll wasn't corrected after a $100/month concession-expiration date was miscalculated.",
     },
-    # -- expired_but_occupied: lease has ended, rent roll still shows a paying tenant --
+    # -- expired_but_occupied: lease has ended, rent roll still shows a
+    # paying tenant. These two are the ONLY units with a negative
+    # end_offset, and the rent roll deliberately leaves "Lease To" blank
+    # for them (rr_lease_to_blank) -- that blank is what makes the row
+    # look like an un-renewed holdover rather than a current lease.
     {
-        "unit_id": "C203", "issue": "expired_but_occupied",
-        "lease_start": date(2025, 3, 1), "lease_end": date(2026, 2, 28),
+        "unit_id": "C203", "issue": "expired_but_occupied", "end_offset": -6,
         "lease_rent": 1290.00, "rent_roll_rent": 1290.00,
-        "rr_lease_to": None,
-        "note": "No renewal or new lease on file since the original term ended February 28, 2026; rent roll still carries the tenant as current.",
+        "rr_lease_to_blank": True,
+        "note": "No renewal or new lease on file since the original term ended {lease_end_long}; rent roll still carries the tenant as current.",
     },
     {
-        "unit_id": "H104", "issue": "expired_but_occupied",
-        "lease_start": date(2025, 6, 1), "lease_end": date(2026, 5, 31),
+        "unit_id": "H104", "issue": "expired_but_occupied", "end_offset": -3,
         "lease_rent": 1720.00, "rent_roll_rent": 1720.00,
-        "rr_lease_to": None,
-        "note": "No renewal or new lease on file since the original term ended May 31, 2026; rent roll still carries the tenant as current.",
+        "rr_lease_to_blank": True,
+        "note": "No renewal or new lease on file since the original term ended {lease_end_long}; rent roll still carries the tenant as current.",
     },
     # -- concession_missing: lease grants a concession the rent roll doesn't reflect --
     {
-        "unit_id": "A104", "issue": "concession_missing",
-        "lease_start": date(2025, 10, 1), "lease_end": date(2026, 9, 30),
+        "unit_id": "A104", "issue": "concession_missing", "end_offset": 3,
         "lease_rent": 1075.00, "rent_roll_rent": 1075.00,
-        "rr_lease_to": date(2026, 9, 30),
-        "concession": "One (1) month of Base Rent (the first full calendar month, October 2025) is abated as a move-in incentive.",
+        "concession": "One (1) month of Base Rent (the first full calendar month, {start_month}) is abated as a move-in incentive.",
         "concession_annual_value": 1075.00,
         "note": "Rent roll shows the full $1,075 scheduled rent with no notation of the one-month move-in concession the lease actually grants.",
     },
     {
-        "unit_id": "E301", "issue": "concession_missing",
-        "lease_start": date(2026, 4, 1), "lease_end": date(2027, 3, 31),
+        "unit_id": "E301", "issue": "concession_missing", "end_offset": 7,
         "lease_rent": 1290.00, "rent_roll_rent": 1290.00,
-        "rr_lease_to": date(2027, 3, 31),
-        "concession": "Base Rent is reduced by $100.00 per month for the first six (6) months of the Lease Term (April 2026 through September 2026) as a renewal incentive.",
+        "concession": "Base Rent is reduced by $100.00 per month for the first six (6) months of the Lease Term ({start_month} through {start_month_plus_5}) as a renewal incentive.",
         "concession_annual_value": 600.00,
         "note": "Rent roll shows the full $1,290 scheduled rent with no notation of the six-month, $100/month renewal concession.",
     },
     {
-        "unit_id": "I204", "issue": "concession_missing",
-        "lease_start": date(2026, 1, 1), "lease_end": date(2026, 12, 31),
+        "unit_id": "I204", "issue": "concession_missing", "end_offset": 5,
         "lease_rent": 1720.00, "rent_roll_rent": 1720.00,
-        "rr_lease_to": date(2026, 12, 31),
         "concession": "Base Rent is reduced by $75.00 per month for the full twelve (12) month Lease Term as a retention incentive.",
         "concession_annual_value": 900.00,
         "note": "Rent roll shows the full $1,720 scheduled rent with no notation of the twelve-month, $75/month retention concession.",
     },
     # -- clean negative controls: rent roll and lease agree exactly --
     {
-        "unit_id": "A102", "issue": "clean",
-        "lease_start": date(2026, 7, 1), "lease_end": date(2027, 6, 30),
-        "lease_rent": 1075.00, "rent_roll_rent": 1075.00, "rr_lease_to": date(2027, 6, 30),
+        "unit_id": "A102", "issue": "clean", "end_offset": 10,
+        "lease_rent": 1075.00, "rent_roll_rent": 1075.00,
     },
     {
-        "unit_id": "B303", "issue": "clean",
-        "lease_start": date(2026, 2, 1), "lease_end": date(2027, 1, 31),
-        "lease_rent": 1310.00, "rent_roll_rent": 1310.00, "rr_lease_to": date(2027, 1, 31),
+        "unit_id": "B303", "issue": "clean", "end_offset": 5,
+        "lease_rent": 1310.00, "rent_roll_rent": 1310.00,
     },
     {
-        "unit_id": "D104", "issue": "clean",
-        "lease_start": date(2025, 12, 1), "lease_end": date(2026, 11, 30),
-        "lease_rent": 1285.00, "rent_roll_rent": 1285.00, "rr_lease_to": date(2026, 11, 30),
+        "unit_id": "D104", "issue": "clean", "end_offset": 3,
+        "lease_rent": 1285.00, "rent_roll_rent": 1285.00,
     },
     {
-        "unit_id": "G303", "issue": "clean",
-        "lease_start": date(2026, 5, 1), "lease_end": date(2027, 4, 30),
-        "lease_rent": 1725.00, "rent_roll_rent": 1725.00, "rr_lease_to": date(2027, 4, 30),
+        "unit_id": "G303", "issue": "clean", "end_offset": 8,
+        "lease_rent": 1725.00, "rent_roll_rent": 1725.00,
     },
     {
-        "unit_id": "H204", "issue": "clean",
-        "lease_start": date(2025, 9, 1), "lease_end": date(2026, 8, 31),
-        "lease_rent": 1710.00, "rent_roll_rent": 1710.00, "rr_lease_to": date(2026, 8, 31),
+        "unit_id": "H204", "issue": "clean", "end_offset": 12,
+        "lease_rent": 1710.00, "rent_roll_rent": 1710.00,
     },
     {
-        "unit_id": "J102", "issue": "clean",
-        "lease_start": date(2026, 4, 1), "lease_end": date(2027, 3, 31),
-        "lease_rent": 1990.00, "rent_roll_rent": 1990.00, "rr_lease_to": date(2027, 3, 31),
+        "unit_id": "J102", "issue": "clean", "end_offset": 7,
+        "lease_rent": 1990.00, "rent_roll_rent": 1990.00,
     },
 ]
 
@@ -243,10 +295,68 @@ DOCUMENTED_UNITS = [
 NO_LEASE_UNIT = {
     "unit_id": "F203",
     "tenant": "Marcus Boone",
-    "lease_from": date(2026, 5, 1),
-    "lease_to": date(2027, 4, 30),
+    "end_offset": 8,
     "rent_roll_rent": 1710.00,
 }
+
+
+def _resolve_documented_units(as_of):
+    """Turn each unit's `end_offset` into real dates and fill its prose
+    templates, so the lease PDF, the rent roll, the README's narrative
+    and expected_findings.json all quote the same computed dates."""
+    resolved = []
+    for doc in DOCUMENTED_UNITS:
+        u = dict(doc)
+        lease_end = _month_end(as_of, doc["end_offset"])
+        lease_start = _month_start(as_of, doc["end_offset"] - (LEASE_TERM_MONTHS - 1))
+        u["lease_start"] = lease_start
+        u["lease_end"] = lease_end
+        u["rr_lease_to"] = None if doc.get("rr_lease_to_blank") else lease_end
+        ctx = {
+            "lease_end_long": _fmt_date_long(lease_end),
+            "start_month": lease_start.strftime("%B %Y"),
+            "start_month_plus_5": _shift_month(lease_start, 5).strftime("%B %Y"),
+        }
+        for field in ("note", "concession"):
+            if field in u:
+                u[field] = u[field].format(**ctx)
+        resolved.append(u)
+    return resolved
+
+
+def _resolve_no_lease_unit(as_of):
+    nl = dict(NO_LEASE_UNIT)
+    nl["lease_to"] = _month_end(as_of, nl["end_offset"])
+    nl["lease_from"] = _month_start(as_of, nl["end_offset"] - (LEASE_TERM_MONTHS - 1))
+    return nl
+
+
+def _assert_planted_issues_hold_today(documented, no_lease, today):
+    """The fixture's whole value is that exactly the planted issues fire.
+    Two of them are date-dependent, so verify against real wall-clock
+    today at generation time rather than trusting the offsets by eye."""
+    for u in documented:
+        if u["issue"] == "expired_but_occupied":
+            assert u["lease_end"] < today, (
+                f"{u['unit_id']} is planted as expired_but_occupied but its term ends "
+                f"{u['lease_end']}, which is not before today ({today})."
+            )
+        else:
+            assert u["lease_end"] > today, (
+                f"{u['unit_id']} must still be in force today ({today}) or it will be "
+                f"wrongly reported as expired, but its term ends {u['lease_end']}. "
+                f"Raise its end_offset to at least {MIN_LIVE_END_OFFSET}."
+            )
+            assert u["end_offset"] >= MIN_LIVE_END_OFFSET, (
+                f"{u['unit_id']} has end_offset {u['end_offset']}; every non-expired unit "
+                f"needs at least {MIN_LIVE_END_OFFSET} so it stays current for a demo run "
+                f"a few weeks after generation."
+            )
+    assert no_lease["lease_to"] > today, (
+        f"F203 (unit_no_lease) must read as a current tenancy; its term ends "
+        f"{no_lease['lease_to']}, not after today ({today})."
+    )
+
 
 DOCUMENTED_IDS = {u["unit_id"] for u in DOCUMENTED_UNITS} | {NO_LEASE_UNIT["unit_id"]}
 
@@ -263,6 +373,14 @@ def _fmt_date_long(d):
     return d.strftime("%B %-d, %Y") if os.name != "nt" else d.strftime("%B %d, %Y").replace(" 0", " ")
 
 
+# Resolved once, here (rather than inside each writer), so every output
+# file in one run is built from the identical set of dates. Defined after
+# _fmt_date_long because the prose templates are filled using it.
+RESOLVED_DOCUMENTED_UNITS = _resolve_documented_units(RENT_ROLL_AS_OF)
+RESOLVED_NO_LEASE_UNIT = _resolve_no_lease_unit(RENT_ROLL_AS_OF)
+_assert_planted_issues_hold_today(RESOLVED_DOCUMENTED_UNITS, RESOLVED_NO_LEASE_UNIT, TODAY)
+
+
 # ----------------------------------------------------------------------
 # Build the full 120-unit inventory: the 16 documented units above, plus
 # 104 deterministically-generated "background" units that fill out the
@@ -273,7 +391,7 @@ def _fmt_date_long(d):
 def build_units():
     units = {}
 
-    for doc in DOCUMENTED_UNITS:
+    for doc in RESOLVED_DOCUMENTED_UNITS:
         unit_id = doc["unit_id"]
         utype = UNIT_TYPES[BUILDING_TYPE[_building_of(unit_id)]]
         units[unit_id] = {
@@ -294,7 +412,7 @@ def build_units():
             "issue": doc["issue"],
         }
 
-    nl = NO_LEASE_UNIT
+    nl = RESOLVED_NO_LEASE_UNIT
     utype = UNIT_TYPES[BUILDING_TYPE[_building_of(nl["unit_id"])]]
     units[nl["unit_id"]] = {
         "unit_id": nl["unit_id"],
@@ -554,7 +672,7 @@ def _lease_paragraphs(unit_id, u, doc):
 
 def write_lease_pdfs(units):
     manifest = []
-    for doc in DOCUMENTED_UNITS:
+    for doc in RESOLVED_DOCUMENTED_UNITS:
         unit_id = doc["unit_id"]
         u = units[unit_id]
         slug = u["tenant"].lower().replace(" ", "_").replace(".", "").replace("-", "_")
@@ -787,7 +905,7 @@ def write_t12_xlsx(path, t12):
 # ----------------------------------------------------------------------
 def build_expected_findings(units, t12):
     findings = []
-    for doc in DOCUMENTED_UNITS:
+    for doc in RESOLVED_DOCUMENTED_UNITS:
         unit_id = doc["unit_id"]
         u = units[unit_id]
         if doc["issue"] == "rent_mismatch":
@@ -821,7 +939,7 @@ def build_expected_findings(units, t12):
                 "detected_by": "NOT YET DETECTED -- detect_concession_missing is a stub pending Phase 2 (multifamily `concessions` field); see README",
             })
 
-    nl = NO_LEASE_UNIT
+    nl = RESOLVED_NO_LEASE_UNIT
     findings.append({
         "discrepancy_type": "unit_no_lease", "unit_id": nl["unit_id"],
         "rent_roll_value": nl["tenant"], "lease_value": None,
@@ -852,7 +970,18 @@ def build_expected_findings(units, t12):
     }
 
 
-def main():
+def main(out_dir=None, quiet=False):
+    """Write the whole package. `out_dir` redirects every output file to
+    a different directory (test_demo_deal_golden.py regenerates into a
+    temp dir so its assertions never depend on how stale the committed
+    copy is); omitted, it writes this directory in place."""
+    global OUT_DIR, LEASE_DIR, RENT_ROLL_DIR, T12_DIR
+    if out_dir is not None:
+        OUT_DIR = os.path.abspath(out_dir)
+        LEASE_DIR = os.path.join(OUT_DIR, "leases")
+        RENT_ROLL_DIR = os.path.join(OUT_DIR, "rent_roll")
+        T12_DIR = os.path.join(OUT_DIR, "t12")
+
     os.makedirs(LEASE_DIR, exist_ok=True)
     os.makedirs(RENT_ROLL_DIR, exist_ok=True)
     os.makedirs(T12_DIR, exist_ok=True)
@@ -880,6 +1009,11 @@ def main():
     with open(os.path.join(OUT_DIR, "expected_findings.json"), "w") as f:
         json.dump(expected, f, indent=2, default=str)
 
+    if quiet:
+        return expected
+
+    print(f"Generated for today = {TODAY.isoformat()} "
+          f"(rent roll as of {RENT_ROLL_AS_OF.isoformat()})")
     print(f"Units generated: {len(units)}")
     print(f"Lease PDFs written: {len(lease_manifest)}")
     print(f"GPR (annual): {_fmt_money(t12['gpr_annual'])}")
@@ -890,7 +1024,14 @@ def main():
     print(f"T-12 total rent collected (annual): {_fmt_money(t12['totals']['collected_rent'])}")
     print(f"T-12 NOI (annual): {_fmt_money(t12['totals']['noi'])}")
     print(f"Total planted annual income overstatement: {_fmt_money(expected['total_planted_annual_income_overstatement'])}")
+    return expected
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--out-dir",
+        help="write the package here instead of alongside this script",
+    )
+    args = parser.parse_args()
+    main(out_dir=args.out_dir)

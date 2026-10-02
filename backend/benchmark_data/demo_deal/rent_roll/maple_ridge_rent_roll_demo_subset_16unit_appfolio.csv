@@ -1,21 +1,21 @@
 Maple Ridge Apartments
 Rent Roll (FABRICATED DEMO DATA -- not a real property)
-As of 08/31/2026
+As of 09/30/2026
 
 Property,Unit,Unit Type,Tenant,Status,Unit SF,Market Rent,Rent Charge,Deposit,Lease From,Lease To
-"4500 Maple Ridge Trail, Dallas, TX 75248",A102,Studio/1BA,Jordan Boone,Current,500,1075.00,1075.00,1075.00,07/01/2026,06/30/2027
-"4500 Maple Ridge Trail, Dallas, TX 75248",A104,Studio/1BA,Perpetua Zabrinsky,Current,500,1075.00,1075.00,1075.00,10/01/2025,09/30/2026
-"4500 Maple Ridge Trail, Dallas, TX 75248",B104,1BR/1BA,Magnolia Fennimore,Current,700,1285.00,1360.00,1360.00,09/01/2025,08/31/2026
-"4500 Maple Ridge Trail, Dallas, TX 75248",B303,1BR/1BA,Delphine Ordway,Current,700,1315.00,1310.00,1310.00,02/01/2026,01/31/2027
-"4500 Maple Ridge Trail, Dallas, TX 75248",C203,1BR/1BA,Chester Tigerstrom,Current,700,1300.00,1290.00,1290.00,03/01/2025,
-"4500 Maple Ridge Trail, Dallas, TX 75248",D104,1BR/1BA,Juniper Foss,Current,700,1285.00,1285.00,1285.00,12/01/2025,11/30/2026
-"4500 Maple Ridge Trail, Dallas, TX 75248",D203,1BR/1BA,Omar Ostrander,Current,700,1300.00,1420.00,1420.00,03/01/2026,02/28/2027
-"4500 Maple Ridge Trail, Dallas, TX 75248",E301,1BR/1BA,Fiona Rourke,Current,700,1315.00,1290.00,1290.00,04/01/2026,03/31/2027
-"4500 Maple Ridge Trail, Dallas, TX 75248",F203,2BR/2BA,Marcus Boone,Current,1050,1710.00,1710.00,1710.00,05/01/2026,04/30/2027
-"4500 Maple Ridge Trail, Dallas, TX 75248",G204,2BR/2BA,Junia Levine,Current,1050,1710.00,1955.00,1955.00,11/01/2025,10/31/2026
-"4500 Maple Ridge Trail, Dallas, TX 75248",G303,2BR/2BA,Sonny Bostwick,Current,1050,1725.00,1725.00,1725.00,05/01/2026,04/30/2027
-"4500 Maple Ridge Trail, Dallas, TX 75248",H104,2BR/2BA,Ellery Fairweather,Current,1050,1695.00,1720.00,1720.00,06/01/2025,
-"4500 Maple Ridge Trail, Dallas, TX 75248",H204,2BR/2BA,Camille Vasilenko,Current,1050,1710.00,1710.00,1710.00,09/01/2025,08/31/2026
-"4500 Maple Ridge Trail, Dallas, TX 75248",I204,2BR/2BA,Miriam Petrosyan,Current,1050,1710.00,1720.00,1720.00,01/01/2026,12/31/2026
-"4500 Maple Ridge Trail, Dallas, TX 75248",J102,3BR/2BA,Camille Pellikaan,Current,1250,1975.00,1990.00,1990.00,04/01/2026,03/31/2027
-"4500 Maple Ridge Trail, Dallas, TX 75248",J303,3BR/2BA,Silas Vasilenko,Current,1250,2005.00,2075.00,2075.00,06/01/2026,05/31/2027
+"4500 Maple Ridge Trail, Dallas, TX 75248",A102,Studio/1BA,Jordan Boone,Current,500,1075.00,1075.00,1075.00,08/01/2026,07/31/2027
+"4500 Maple Ridge Trail, Dallas, TX 75248",A104,Studio/1BA,Perpetua Zabrinsky,Current,500,1075.00,1075.00,1075.00,01/01/2026,12/31/2026
+"4500 Maple Ridge Trail, Dallas, TX 75248",B104,1BR/1BA,Magnolia Fennimore,Current,700,1285.00,1360.00,1360.00,12/01/2025,11/30/2026
+"4500 Maple Ridge Trail, Dallas, TX 75248",B303,1BR/1BA,Delphine Ordway,Current,700,1315.00,1310.00,1310.00,03/01/2026,02/28/2027
+"4500 Maple Ridge Trail, Dallas, TX 75248",C203,1BR/1BA,Chester Tigerstrom,Current,700,1300.00,1290.00,1290.00,04/01/2025,
+"4500 Maple Ridge Trail, Dallas, TX 75248",D104,1BR/1BA,Juniper Foss,Current,700,1285.00,1285.00,1285.00,01/01/2026,12/31/2026
+"4500 Maple Ridge Trail, Dallas, TX 75248",D203,1BR/1BA,Omar Ostrander,Current,700,1300.00,1420.00,1420.00,04/01/2026,03/31/2027
+"4500 Maple Ridge Trail, Dallas, TX 75248",E301,1BR/1BA,Fiona Rourke,Current,700,1315.00,1290.00,1290.00,05/01/2026,04/30/2027
+"4500 Maple Ridge Trail, Dallas, TX 75248",F203,2BR/2BA,Marcus Boone,Current,1050,1710.00,1710.00,1710.00,06/01/2026,05/31/2027
+"4500 Maple Ridge Trail, Dallas, TX 75248",G204,2BR/2BA,Junia Levine,Current,1050,1710.00,1955.00,1955.00,02/01/2026,01/31/2027
+"4500 Maple Ridge Trail, Dallas, TX 75248",G303,2BR/2BA,Sonny Bostwick,Current,1050,1725.00,1725.00,1725.00,06/01/2026,05/31/2027
+"4500 Maple Ridge Trail, Dallas, TX 75248",H104,2BR/2BA,Ellery Fairweather,Current,1050,1695.00,1720.00,1720.00,07/01/2025,
+"4500 Maple Ridge Trail, Dallas, TX 75248",H204,2BR/2BA,Camille Vasilenko,Current,1050,1710.00,1710.00,1710.00,10/01/2026,09/30/2027
+"4500 Maple Ridge Trail, Dallas, TX 75248",I204,2BR/2BA,Miriam Petrosyan,Current,1050,1710.00,1720.00,1720.00,03/01/2026,02/28/2027
+"4500 Maple Ridge Trail, Dallas, TX 75248",J102,3BR/2BA,Camille Pellikaan,Current,1250,1975.00,1990.00,1990.00,05/01/2026,04/30/2027
+"4500 Maple Ridge Trail, Dallas, TX 75248",J303,3BR/2BA,Silas Vasilenko,Current,1250,2005.00,2075.00,2075.00,07/01/2026,06/30/2027

@@ -81,7 +81,25 @@ matches the README exactly. PDF and Excel exports both succeed
 background units with no sample lease PDF -- exactly the documented,
 expected artifact the README calls out, not a bug.
 
-### Found, not fixed: demo-deal date drift (flagging clearly)
+### Found, not fixed at the time — **FIXED since, on `fix/demo-deal-relative-dates`**
+
+> **Update:** this was fixed exactly as the recommendation below proposed.
+> `generate_demo_deal.py` now computes every date from `date.today()` at
+> generation time: each documented unit is defined by an `end_offset` (months
+> from the as-of month to the end of its 12-month term), the rent roll's as-of
+> date is the last day of the previous month, and `T12_MONTHS` is the twelve
+> months ending there. The README's prose was resynced to relative language,
+> and all three concession/holdover sentences are now filled in from the
+> computed dates rather than hand-typed. Every dollar amount is unchanged
+> (verified figure by figure against `expected_findings.json`). The generator
+> asserts at run time that exactly C203 and H104 are expired as of today and
+> that every other unit is still current. `test_demo_deal_golden.py` no longer
+> pins `today` at all: it regenerates the package into a temp dir and asserts
+> with real wall-clock today, plus a dedicated freshness test that fails with
+> re-run instructions once the *committed* copy ages out. The original
+> write-up is kept below for the record.
+
+#### Original finding: demo-deal date drift (flagging clearly)
 
 The demo deal's lease dates are ~16 units' worth of hand-placed absolute
 calendar dates (`date(2025, 9, 1)`, etc.), anchored to a hardcoded
