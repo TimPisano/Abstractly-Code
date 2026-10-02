@@ -29,7 +29,7 @@ Last reconciled with git: **2026-10-01 20:15 CDT** (by `chore/agent-os`).
 
 | Branch | Worktree | +/− main | State |
 |---|---|---|---|
-| `chore/agent-os` | `~/dev/projects/abstractly-agent-os` | see git | Loop step 8 — pushed, reviewer run. Agent system rebuild (CLAUDE.md, TASKS.md, agents, skills, hooks, guide). No app code. |
+| `chore/agent-os` | `~/dev/projects/abstractly-agent-os` | +3 / 0 | Loop step 10 — pushed, reviewed (FIX FIRST, all fixed), waiting for your merge. Agent system rebuild (CLAUDE.md, TASKS.md, agents, skills, hooks, guide). No app code. |
 | `feature/team-isolation` | `~/dev/projects/abstractly-teams` | 0 / −7 | **Active in another session.** ~47 uncommitted files incl. an unresolved merge conflict in `database.py`; no commits yet; not pushed. Extends `usage-limits`' `team_id` to document tables. Don't touch. |
 | `feature/loan-underwriting` | `~/dev/projects/abstractly-loan` | +2 / −16 | ~19 uncommitted files (`api.py`, `database.py`, tests, plan); not pushed. Feature-flagged off. Merge **after** team isolation (its plan defers all tenancy to it). Another session may be active — don't touch. |
 | `feature/deal-assistant` | `~/dev/projects/abstractly-assistant` | 0 / −7 | Worktree only, nothing built. Not started. |
@@ -44,7 +44,7 @@ Last reconciled with git: **2026-10-01 20:15 CDT** (by `chore/agent-os`).
 - Plan: the user's own session prompt (no separate plan file; user-specified scope).
 - Loop step: 10 — waiting for the user's merge decision.
 - Last update: 2026-10-01 by the agent-os session.
-- Verified: `python3 .claude/hooks/test_guard.py` (all cases pass); headless screenshot tool run against the local marketing site and PNGs opened; self-test of start-task / status / prompt-builder on a fake task.
+- Verified: `python3 .claude/hooks/test_guard.py` (59/59 cases pass); reviewer subagent FIX FIRST → all 5 findings fixed with regression tests; headless screenshot tool run against the local marketing site and PNGs opened; self-test of start-task / status / prompt-builder on a fake task.
 - Not verified: hooks firing inside a live Claude session (they activate only once this branch is checked out / merged; first session after merge should run one blocked command to confirm).
 - Next action: user reviews; merger session runs `/merge-branch chore/agent-os`. On merge, **TASKS.md will conflict** with the primary checkout's uncommitted edits: keep this file's structure, then run `/status` to fold back anything newer.
 - Waiting on user: merge approval; GateGuard decision.

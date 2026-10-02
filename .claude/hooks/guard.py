@@ -184,14 +184,33 @@ def unwrap(words):
 GIT_GLOBAL_WITH_ARG = {"-C", "-c", "--git-dir", "--work-tree", "--namespace"}
 
 
-def parse_git(words, cwd):
-    """For a `git ...` word list return (dir, subcommand, args) or None."""
+def expand(path, shell_vars):
+    """Expand $VAR / ${VAR} using assignments earlier in the same command
+    (WT=/x; git -C "$WT" ...) and the environment. Returns None if a
+    variable can't be resolved, so callers don't guess the directory."""
+    def sub(m):
+        name = m.group(1) or m.group(2)
+        val = shell_vars.get(name, os.environ.get(name))
+        if val is None:
+            raise KeyError(name)
+        return val
+    try:
+        out = os.path.expanduser(re.sub(r"\$\{(\w+)\}|\$(\w+)", sub, path))
+    except KeyError:
+        return None
+    return None if "$" in out or "`" in out else out
+
+
+def parse_git(words, cwd, shell_vars=None):
+    """For a `git ...` word list return (dir, subcommand, args) or None.
+    dir is None when `-C <path>` uses a variable we can't resolve."""
     if not words or os.path.basename(words[0]) != "git":
         return None
     i, d = 1, cwd
     while i < len(words) and words[i].startswith("-"):
         if words[i] == "-C" and i + 1 < len(words):
-            d = os.path.join(d, os.path.expanduser(words[i + 1]))
+            p = expand(words[i + 1], shell_vars or {})
+            d = None if (p is None or d is None) else os.path.join(d, p)
             i += 2
         elif words[i] in GIT_GLOBAL_WITH_ARG:
             i += 2
@@ -320,23 +339,40 @@ def pretool(data):
         deny("Merge approvals and the merge lock are written only by the hooks "
              "when the user types /merge-branch. Don't create or delete them by hand.")
 
+    # VAR=value assignments anywhere in the command, for resolving -C / cd.
+    shell_vars = {}
+    for m in re.finditer(r"(?:^|[\s;&|(])([A-Za-z_]\w*)=(\"[^\"]*\"|'[^']*'|[^\s;&|]+)", command):
+        val = m.group(2).strip("\"'")
+        resolved = expand(val, shell_vars)
+        if resolved is None:
+            shell_vars.pop(m.group(1), None)   # later uses stay unresolvable
+        else:
+            shell_vars[m.group(1)] = resolved
     cur = cwd
     staged_hint = []
     for words in segs:
         if words[0] == "cd" and len(words) > 1:
-            cur = os.path.join(cur, os.path.expanduser(words[1]))
+            p = expand(words[1], shell_vars)
+            cur = None if (p is None or cur is None) else os.path.join(cur, p)
             continue
         if os.path.basename(words[0]) == "gh" and words[1:3] == ["pr", "merge"]:
             g = (cur, "gh-pr-merge", words[3:])   # merges on GitHub, usually into main
         else:
-            g = parse_git(words, cur)
+            g = parse_git(words, cur, shell_vars) if cur is not None else parse_git(words, cwd, shell_vars)
         if not g:
             continue
         d, sub, args = g
+        unknown_dir = d is None or cur is None
+        if unknown_dir:
+            # `git -C "$X"` where $X comes from $(...) etc.: we can't tell which
+            # checkout it is, so assume the worst (main) rather than guess.
+            d = cwd
         info = repo_info(d)
         if not info:
             continue
         top, primary, common, branch = info
+        if unknown_dir:
+            branch = MAIN
 
         if sub == "add":
             staged_hint += positional(args) or ["."]
@@ -373,7 +409,9 @@ def pretool(data):
                     staged = git(d, "diff", "--cached", "--name-only").splitlines() + staged_hint
                 if staged and all(s in ("TASKS.md", "./TASKS.md") for s in staged):
                     continue  # task-board bookkeeping is allowed on main
-            gated, what = True, "`git %s` on main" % sub
+            gated, what = True, ("`git %s` in a directory given by a shell variable the guard "
+                                 "can't resolve (treated as main; use a literal path)" % sub
+                                 if unknown_dir else "`git %s` on main" % sub)
         if not gated:
             continue
 
