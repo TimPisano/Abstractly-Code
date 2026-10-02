@@ -512,6 +512,185 @@ def test_owner_teams_list_shows_usage_per_team():
     print("✓ test_owner_teams_list_shows_usage_per_team: PASS")
 
 
+# ------------------------------------------------------------------
+# Phase 5 (adversarial): sequential ID-guessing across every resource
+# type at once, plus the remaining mutating routes not yet covered
+# above (resolve/reopen, dismiss, delete, status updates, exports).
+# ------------------------------------------------------------------
+
+def test_sequential_id_guessing_finds_nothing_across_every_resource_type():
+    """
+    Team A creates one of everything; Team B then probes IDs 1 through
+    50 against every single-resource GET route. Not one of Team A's
+    real ids may ever come back as anything but 404 -- this is the
+    "even by guessing IDs" requirement: it doesn't matter whether Team
+    B knows Team A's real ids or is just enumerating, the boundary
+    check must be identical either way.
+    """
+    db_path = _fresh_temp_db()
+    try:
+        client_a, team_a_id, user_a_id, client_b, _, _ = _setup_two_teams()
+        lease_a_id = _upload_lease(client_a)
+        disc_id = database.upsert_discrepancy(
+            discrepancy_type="lease_risk_flag", natural_key="guess-k1", category="missing_clause",
+            message="No insurance clause", details={}, lease_id=lease_a_id,
+            field="insurance_requirements", severity="medium", team_id=team_a_id,
+        )
+        alert_id = database.upsert_alert(
+            alert_type="below_market_rent", natural_key="guess-alert-k1", severity="high",
+            title="Rent below market", message="msg", details={}, team_id=team_a_id, lease_id=lease_a_id,
+        )
+        task_id = client_a.post("/tasks", json={"title": "Guess target", "lease_id": lease_a_id}).get_json()["id"]
+        assignment_id = client_a.post(
+            "/assignments", json={"target_type": "lease", "target": lease_a_id, "assigned_to_user_id": user_a_id}
+        ).get_json()["id"]
+
+        id_routes = [
+            "/leases/{id}",
+            "/leases/{id}/fields/tenant/source",
+            "/leases/{id}/export.xlsx",
+            "/leases/{id}/summary.pdf",
+            "/leases/{id}/benchmark",
+            "/discrepancies/{id}",
+            "/alerts/{id}",
+            "/tasks/{id}",
+        ]
+        for template in id_routes:
+            for probe_id in range(1, 51):
+                resp = client_b.get(template.format(id=probe_id))
+                assert resp.status_code == 404, f"{template.format(id=probe_id)} leaked (status {resp.status_code})"
+
+        # These real ids specifically must 404 for Team B (not just
+        # "some id in range 1..50" -- the actual ones Team A just made).
+        for real_id, template in (
+            (lease_a_id, "/leases/{id}"),
+            (disc_id, "/discrepancies/{id}"),
+            (alert_id, "/alerts/{id}"),
+            (task_id, "/tasks/{id}"),
+        ):
+            assert client_b.get(template.format(id=real_id)).status_code == 404
+
+        # Mutating routes by guessed/real id: all must 404, never 200.
+        assert client_b.post(f"/discrepancies/{disc_id}/resolve", json={"note": "x", "correct_source": "rent_roll"}).status_code == 404
+        assert client_b.post(f"/discrepancies/{disc_id}/reopen", json={"note": "x"}).status_code == 404
+        assert client_b.post(f"/alerts/{alert_id}/dismiss", json={}).status_code == 404
+        assert client_b.post(f"/tasks/{task_id}/status", json={"status": "done"}).status_code == 404
+        assert client_b.delete(f"/tasks/{task_id}").status_code == 404
+        assert client_b.patch(f"/tasks/{task_id}", json={"title": "hijacked"}).status_code == 404
+
+        # Confirm none of this actually changed anything for Team A.
+        assert database.get_discrepancy(disc_id, team_id=team_a_id)["status"] == "open"
+        assert database.get_alert(alert_id, team_id=team_a_id)["status"] == "active"
+        assert database.get_task(task_id, team_id=team_a_id)["status"] == "open"
+        assert database.get_task(task_id, team_id=team_a_id)["title"] == "Guess target"
+    finally:
+        os.unlink(db_path)
+    print("✓ test_sequential_id_guessing_finds_nothing_across_every_resource_type: PASS")
+
+
+def test_lease_exports_contain_nothing_when_cross_team():
+    """.xlsx/.pdf export bytes for another team's lease id must never be produced at all -- 404 before any export rendering runs."""
+    db_path = _fresh_temp_db()
+    try:
+        client_a, _, _, client_b, _, _ = _setup_two_teams()
+        lease_a_id = _upload_lease(client_a)
+
+        assert client_b.get(f"/leases/{lease_a_id}/export.xlsx").status_code == 404
+        assert client_b.get(f"/leases/{lease_a_id}/summary.pdf").status_code == 404
+
+        # Team A's own exports still work normally.
+        assert client_a.get(f"/leases/{lease_a_id}/export.xlsx").status_code == 200
+        assert client_a.get(f"/leases/{lease_a_id}/summary.pdf").status_code == 200
+    finally:
+        os.unlink(db_path)
+    print("✓ test_lease_exports_contain_nothing_when_cross_team: PASS")
+
+
+def test_portfolio_wide_exports_never_mix_teams():
+    """Portfolio-wide rent-roll/investment-memo exports, run under Team B's session, must reflect only Team B's (empty) portfolio -- never Team A's real figures, even though both teams' data lives in the same database file."""
+    db_path = _fresh_temp_db()
+    try:
+        client_a, _, _, client_b, _, _ = _setup_two_teams()
+        _upload_lease(client_a)
+
+        resp_b = client_b.get("/portfolio/rent-roll.xlsx")
+        assert resp_b.status_code == 200
+        # An empty-portfolio export is still a valid (small) workbook --
+        # the real assertion is the route never 500s trying to render
+        # Team A's data under Team B's session, and Team A's own export
+        # still finds its one lease (so the two bodies differ in size).
+        resp_a = client_a.get("/portfolio/rent-roll.xlsx")
+        assert resp_a.status_code == 200
+        assert len(resp_a.data) != len(resp_b.data)
+
+        memo_b = client_b.post("/portfolio/investment-memo.pdf", data={})
+        assert memo_b.status_code == 200
+    finally:
+        os.unlink(db_path)
+    print("✓ test_portfolio_wide_exports_never_mix_teams: PASS")
+
+
+def test_assignment_status_update_cannot_touch_other_team():
+    db_path = _fresh_temp_db()
+    try:
+        client_a, _, user_a_id, client_b, _, _ = _setup_two_teams()
+        lease_a_id = _upload_lease(client_a)
+        assignment_id = client_a.post(
+            "/assignments", json={"target_type": "lease", "target": lease_a_id, "assigned_to_user_id": user_a_id}
+        ).get_json()["id"]
+
+        resp = client_b.patch(f"/assignments/{assignment_id}", json={"status": "resolved"})
+        assert resp.status_code == 404
+
+        assignments_a = client_a.get("/assignments").get_json()
+        assert next(a for a in assignments_a if a["id"] == assignment_id)["status"] == "assigned"
+    finally:
+        os.unlink(db_path)
+    print("✓ test_assignment_status_update_cannot_touch_other_team: PASS")
+
+
+def test_sample_deal_load_never_calls_extraction_pipeline():
+    """Loading the sample deal must be a pure database insert from the precomputed fixture -- monkeypatch the AI extraction entry point to raise if ever called, and confirm it never is."""
+    db_path = _fresh_temp_db()
+    try:
+        client_a, team_a_id, _, _, _, _ = _setup_two_teams()
+
+        import app.ai_extraction as ai_extraction
+        original = ai_extraction.extract_fields_with_ai if hasattr(ai_extraction, "extract_fields_with_ai") else None
+
+        def _boom(*args, **kwargs):
+            raise AssertionError("Load sample deal must never call the AI extraction pipeline")
+
+        if original is not None:
+            ai_extraction.extract_fields_with_ai = _boom
+        try:
+            resp = client_a.post("/sample-deal/load")
+            assert resp.status_code == 201
+            assert resp.get_json()["lease_count"] > 0
+        finally:
+            if original is not None:
+                ai_extraction.extract_fields_with_ai = original
+
+        leases = client_a.get("/leases").get_json()
+        assert len(leases) > 0
+    finally:
+        os.unlink(db_path)
+    print("✓ test_sample_deal_load_never_calls_extraction_pipeline: PASS")
+
+
+def test_sample_deal_load_isolated_to_calling_team_only():
+    db_path = _fresh_temp_db()
+    try:
+        client_a, _, _, client_b, _, _ = _setup_two_teams()
+        client_a.post("/sample-deal/load")
+
+        leases_b = client_b.get("/leases").get_json()
+        assert leases_b == [], "Loading the sample deal into Team A must never create anything visible to Team B"
+    finally:
+        os.unlink(db_path)
+    print("✓ test_sample_deal_load_isolated_to_calling_team_only: PASS")
+
+
 if __name__ == "__main__":
     test_lease_list_excludes_other_team()
     test_lease_get_by_id_404s_for_other_team()
@@ -533,4 +712,10 @@ if __name__ == "__main__":
     test_owner_create_team_issues_working_setup_link_and_admin_cannot_login_until_consumed()
     test_new_team_workspace_starts_completely_empty()
     test_owner_teams_list_shows_usage_per_team()
+    test_sequential_id_guessing_finds_nothing_across_every_resource_type()
+    test_lease_exports_contain_nothing_when_cross_team()
+    test_portfolio_wide_exports_never_mix_teams()
+    test_assignment_status_update_cannot_touch_other_team()
+    test_sample_deal_load_never_calls_extraction_pipeline()
+    test_sample_deal_load_isolated_to_calling_team_only()
     print("\nAll team isolation tests passed.")

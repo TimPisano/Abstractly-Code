@@ -58,6 +58,7 @@ from app.document_extractor import DocumentExtractionError
 from app import database
 from app import email_service
 from app import jobs
+from app import sample_deal
 from app.risk_analysis import analyze_lease_risks
 from app.qa_engine import answer_question
 from app.rent_roll_import import (
@@ -1467,6 +1468,24 @@ def import_rent_roll():
     }), 201
 
 
+@app.route('/sample-deal/load', methods=['POST'])
+@require_role('analyst')
+def load_sample_deal_route():
+    """
+    Copies the fictional Maple Ridge demo deal into the caller's own
+    team only -- see app/sample_deal.py. A direct database insert per
+    row from a precomputed fixture; never calls the extraction pipeline
+    or any Anthropic API, regardless of whether this deployment has a
+    funded ANTHROPIC_API_KEY configured, so a team can click this as
+    often as they like at zero cost.
+    """
+    team_id = current_team_id()
+    created_count = sample_deal.load_sample_deal(team_id)
+    database.insert_activity("sample_deal_loaded", f"{current_user()['name']} loaded the Maple Ridge sample deal ({created_count} documents)", team_id)
+    _invalidate_lease_derived_caches()
+    return jsonify({"status": "loaded", "lease_count": created_count}), 201
+
+
 @app.route('/leases', methods=['GET'])
 @require_role()
 def list_leases():
@@ -2643,8 +2662,9 @@ def update_assignment_route(assignment_id):
 @app.route('/assignments/<int:assignment_id>', methods=['DELETE'])
 @require_role('analyst')
 def delete_assignment_route(assignment_id):
-    if not database.delete_assignment(assignment_id):
+    if not database.get_assignment(assignment_id, team_id=current_team_id()):
         return jsonify({"error": "Assignment not found"}), 404
+    database.delete_assignment(assignment_id)
     return jsonify({"status": "deleted"}), 200
 
 
@@ -2864,8 +2884,9 @@ def update_task_status_route(task_id):
 @app.route('/tasks/<int:task_id>', methods=['DELETE'])
 @require_role('analyst')
 def delete_task_route(task_id):
-    if not database.delete_task(task_id):
+    if not database.get_task(task_id, team_id=current_team_id()):
         return jsonify({"error": "Task not found"}), 404
+    database.delete_task(task_id)
     return jsonify({"status": "deleted"}), 200
 
 
