@@ -50,7 +50,13 @@ pushed to origin. **Not merged; `main` not touched.** No backend code changed.
   `backend/.env` seeds an admin. With a fictional admin passed through
   env vars it passes. It's a pre-existing test bug from `74d3237`, and
   it will fail in CI or any fresh worktree.
-- **Reviewer:** _see below_
+- **Reviewer subagent: MERGE.**
+  - Checked 14 specific claims in the help articles against the code (limits, thresholds, error text, role gates, labels, all 15 screen links) and found none wrong.
+  - Confirmed `help-view.js` is safe: only static content is injected, and the search text never reaches the page.
+  - Confirmed every new CSS rule is scoped to `.help-*`, and there are no backend changes, secrets or real data.
+  - Nits, none blocking:
+    - The 16 MB claim will go stale if the Flask limit changes (tracked in HELP_FACTS.md).
+    - "Viewers can download standard exports" wasn't verified button by button.
 
 ## Bugs found (not fixed, out of scope for a docs branch)
 
