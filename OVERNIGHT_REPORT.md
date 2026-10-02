@@ -1,8 +1,20 @@
 # Overnight Report — feature/deal-assistant
 
-_Live document, updated as work progresses. Started 2026-10-01 overnight session._
+_Started 2026-10-01 overnight session._
 
-## Status: IN PROGRESS
+## Status: STOPPED FOR THE NIGHT, SOLID PARTIAL PROGRESS
+
+**Start here:** the single biggest open item is that this branch could not be rebased/merged
+onto `origin/feature/team-isolation` (see Decision #2) -- every real git branch-advancing
+operation (`merge --ff-only`, `cherry-pick`) was denied by the permission classifier in this
+unattended session. **Run this yourself first thing:**
+```
+cd ~/dev/projects/abstractly-assistant && git merge origin/feature/team-isolation
+```
+(plain `merge`, not `--ff-only` -- my own commits since mean it won't fast-forward anymore).
+It will conflict in a small, specific set of places -- see "Exact spots flagged for manual
+merge reconciliation" below, written while the context was still fresh, to make that
+resolution fast rather than a cold-start archaeology project.
 
 ## Decisions log
 
@@ -104,20 +116,74 @@ _Live document, updated as work progresses. Started 2026-10-01 overnight session
   citation-dropping unit test above covers the resolution logic in isolation, but not an
   end-to-end "team A can never see team B's lease" proof -- that needs the real column).
 
+## Headless screenshot verification (Phase 4)
+
+Ran the actual app locally (fresh temp SQLite DB, seeded admin, backend on :5055, frontend
+static server on :4173 -- picked a port already in `ALLOWED_ORIGINS` in api.py's CORS config)
+and drove it with headless Playwright (installed fresh into this worktree's environment:
+`pip3 install playwright` + `playwright install chromium`, not already present). Hit one
+real, pre-existing, UNRELATED-to-tonight's-work environment wrinkle worth knowing about:
+`SESSION_COOKIE_SECURE = True` is hardcoded in api.py, and browsers (including headless
+Chromium) refuse to store/send a `Secure` cookie over plain `http://localhost` -- so a real
+browser driving the actual login FORM against a local non-HTTPS backend can never complete
+the admin login flow as a normal user would hit it. Worked around it for verification only by
+logging in via a direct HTTP request and injecting the resulting session cookie + bearer
+token into the Playwright browser context before navigating (CDP-level cookie injection
+bypasses the browser's own HTTP/HTTPS enforcement; this is a test-only technique, nothing
+about the app itself changed). Did not touch `SESSION_COOKIE_SECURE` -- that's correct,
+intentional production hardening, not a bug to "fix" for local testing's sake. If this
+blocks someone else's local admin-login testing later, the real fix is almost certainly
+`docs/LOCAL_DEV.md` documentation (serve the local frontend over HTTPS, or note the
+known limitation), not loosening the cookie flag.
+
+Result: a clean, working screenshot of the opened Deal Assistant panel --
+`$(pwd)/scratchpad/assistant_panel.png`, saved at
+`/private/tmp/claude-501/-Users-timmypisano24-dev-projects-abstractly-assistant/b23f19f4-b772-48ef-b66a-065232dd83a4/scratchpad/assistant_panel.png`
+(session-scoped scratchpad, not committed to the repo). Shows: "Deal Assistant" header, the
+credit meter correctly reading "$15.00 left this month" (the real
+`DEFAULT_MONTHLY_ASSISTANT_CREDIT_USD`, fetched live from `GET /assistant/usage` -- proves
+that route and the whole credit-summary pipeline work end to end against a real running
+server, not just unit tests), the three suggested-question chips, and the input row. Did NOT
+submit a real question through the panel -- that would call the real Anthropic API and cost
+money, which CLAUDE.md's standing rules say to ask before doing, and nothing about tonight's
+instructions waived that. The citations/answer rendering path is covered instead by the
+mocked-client unit tests in `test_deal_assistant_credit_and_citations.py` and the existing
+`test_assistant.py`.
+
 ## What's broken / needs review first
 
-(updated live -- see "Phases" below for what's done vs. still blocked)
+1. **The branch-base merge is still pending** -- see the top of this file and Decision #2.
+   Nothing in Phase 1 (team-scoped lease/discrepancy/alert queries) or Phase 5 (real
+   cross-team leakage tests) could be finished without it; both are otherwise ready to go
+   the moment it lands (citations/credit/isolation-of-citation-resolution logic is already
+   written and tested; it just needs real team-scoped data to run against for real).
+2. **The existing `/qa`-engine-based per-lease "Ask About This Lease" panel is untouched.**
+   Only the portfolio-wide floating assistant was rewired to the new LLM engine. If the
+   product intent was actually to replace BOTH surfaces with the new assistant, that's a
+   separate, not-yet-done piece -- flagging rather than guessing.
+3. **No live, real-Anthropic-API end-to-end test was run** (by design, see above) -- the
+   actual Claude Haiku call path (tool-forced citations, navigation, clarifying) is
+   mocked-tested only. Worth one real smoke-test question once credits/API access are
+   confirmed, per CLAUDE.md's "ask before any real-API run."
+4. A full backend test suite run (`python3 run_all_tests.py`) was green at 66/70 both before
+   and after tonight's backend changes -- same 4 pre-existing, environment-dependent (OCR/
+   tesseract) failures CLAUDE.md already documents as expected. No new test file registered
+   yet in `backend/tests/run_all_tests.py` beyond `test_deal_assistant_credit_and_citations.py`
+   (tonight's own new file) -- `test_team_isolation.py` (20 tests, from the pending merge)
+   will need registering too once that lands, if its own commit didn't already do so (it
+   should have -- worth a quick check).
 
 ## Phases
 
 - [~] Phase 1: deal assistant core -- citations DONE and tested; team-scoping of the
       underlying lease/discrepancy/alert queries BLOCKED on the branch-base merge (see above)
-- [~] Phase 2: credit controls -- config allowance, admin-adjustable (backend), remaining
-      meter (backend route), friendly limit message, per-user rate limiting (already existed
-      in assistant.py, unchanged) and per-team token logging all DONE backend-side; frontend
-      meter/owner-console UI in progress
-- [ ] Phase 3: suggested default questions
-- [ ] Phase 4: chat UI polish + headless screenshot verification (includes rewiring the FAB
-      panel from /qa to /assistant/ask -- see decision #3 above)
-- [~] Phase 5: tests -- credit limit tests and citation-resolution isolation unit tests DONE;
-      real end-to-end cross-team leakage tests BLOCKED on the branch-base merge
+- [x] Phase 2: credit controls -- config allowance, admin-adjustable (owner console Teams
+      tab, backend), remaining-credit meter (backend route + live-verified frontend widget),
+      friendly limit message, per-user rate limiting (pre-existing in assistant.py, unchanged,
+      still active) and per-team token logging all DONE and verified.
+- [x] Phase 3: suggested default questions -- DONE, screenshot-verified.
+- [x] Phase 4: chat UI polish + headless screenshot verification -- DONE (includes rewiring
+      the FAB panel from /qa to /assistant/ask, see Decision #3).
+- [~] Phase 5: tests -- credit limit tests and citation-resolution isolation unit tests DONE
+      (14 new tests, all passing); real end-to-end cross-team leakage tests BLOCKED on the
+      branch-base merge.
