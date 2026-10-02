@@ -62,6 +62,12 @@ VALID_ROUTES = {
 # happens past the cap.
 MAX_LEASES_IN_CONTEXT = 500
 
+# Per-lease fields the context prints a page citation for -- the ones
+# an informational question is overwhelmingly likely to be about. Not
+# every extracted field (that would bloat the context for little
+# benefit); see build_portfolio_context's docstring.
+CITABLE_FIELDS = ["tenant", "rent_amount", "lease_start_date", "lease_end_date"]
+
 RESPOND_TOOL = {
     "name": "respond_to_user",
     "description": (
@@ -96,6 +102,28 @@ RESPOND_TOOL = {
                 "type": "integer",
                 "description": "Only set when route is 'detail' -- the id of the specific lease to open, from the portfolio data provided. Never invent an id.",
             },
+            "citations": {
+                "type": "array",
+                "description": (
+                    "Required whenever response_type is 'informational' and the answer relies on "
+                    "any specific lease's data (a rent amount, a date, a tenant name, a discrepancy, "
+                    "an alert -- anything traceable to one document). One entry per distinct lease "
+                    "the answer draws from. Leave empty only for a genuinely portfolio-wide answer "
+                    "with no single document to point to (e.g. 'you have 42 leases total')."
+                ),
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "lease_id": {"type": "integer", "description": "The real lease id this citation is about, from the LEASES list below. Never invent one."},
+                        "field": {
+                            "type": "string",
+                            "enum": CITABLE_FIELDS,
+                            "description": "Which field of that lease backs your claim, so the right page gets cited. Omit if the claim is about a discrepancy or alert on that lease rather than a specific field.",
+                        },
+                    },
+                    "required": ["lease_id"],
+                },
+            },
         },
         "required": ["response_type", "answer"],
     },
@@ -105,6 +133,19 @@ RESPOND_TOOL = {
 def _fmt_money(value) -> str:
     parsed = parse_currency(value) if isinstance(value, str) else value
     return f"${parsed:,.2f}" if parsed is not None else "not found"
+
+
+def _citable_field_pages(lease: Dict[str, Any]) -> Dict[str, int]:
+    """{field_name: page_number} for every field in CITABLE_FIELDS that has a real page-level source on file (ai_extraction.py's {"source": {"page": int, "quote": str}} shape) -- the ground truth _resolve_citations checks every model-produced citation against, never trusting the model's own page number."""
+    fields = lease.get("extracted_fields") or {}
+    pages = {}
+    for field_name in CITABLE_FIELDS:
+        entry = fields.get(field_name) or {}
+        source = entry.get("source") or {}
+        page = source.get("page")
+        if isinstance(page, int):
+            pages[field_name] = page
+    return pages
 
 
 def build_portfolio_context(leases: List[Dict[str, Any]], discrepancies: List[Dict[str, Any]], alerts: List[Dict[str, Any]]) -> str:
@@ -132,7 +173,7 @@ def build_portfolio_context(leases: List[Dict[str, Any]], discrepancies: List[Di
             "(portfolio too large to fit all of them). If the question needs the full portfolio, say so in your answer."
         )
     lines.append("")
-    lines.append("LEASES (id | tenant | address | monthly rent | sq ft | start | end):")
+    lines.append("LEASES (id | document | tenant | address | monthly rent | sq ft | start | end | field pages for citations):")
     for lease in leases[:MAX_LEASES_IN_CONTEXT]:
         tenant = field_value(lease, "tenant") or "not found"
         address = field_value(lease, "property_address") or "not found"
@@ -140,7 +181,10 @@ def build_portfolio_context(leases: List[Dict[str, Any]], discrepancies: List[Di
         sqft = field_value(lease, "square_footage") or "not found"
         start = field_value(lease, "lease_start_date") or "not found"
         end = field_value(lease, "lease_end_date") or "not found"
-        lines.append(f"  {lease['id']} | {tenant} | {address} | {rent}/mo | {sqft} | starts {start} | ends {end}")
+        document = lease.get("display_name") or lease.get("filename") or f"lease {lease['id']}"
+        pages = _citable_field_pages(lease)
+        page_str = ", ".join(f"{f}=p{p}" for f, p in pages.items()) or "no page sources on file"
+        lines.append(f"  {lease['id']} | \"{document}\" | {tenant} | {address} | {rent}/mo | {sqft} | starts {start} | ends {end} | {page_str}")
 
     open_discrepancies = [d for d in discrepancies if d["status"] == "open"]
     by_severity: Dict[str, int] = {}
@@ -172,6 +216,7 @@ Today's date is {reference_date.isoformat()}.
 
 RULES:
 - Ground every informational answer in the actual data below. Never invent a number, date, tenant, or clause -- if the data doesn't show it, say it isn't found rather than guessing (this app's whole design principle is "flag missing, don't fabricate" -- your answers must hold to the same standard).
+- Cite your sources: whenever your answer relies on a specific lease's data (a rent figure, a date, a tenant name, a discrepancy, an alert), add a citation for that lease to the citations array -- include `field` when the claim is about one of tenant/rent_amount/lease_start_date/lease_end_date, so the real page number on file gets shown to the user. You do not need to know or guess the page number yourself -- just name the lease_id and field, and the app looks up the real page. Leave citations empty only for a genuinely portfolio-wide claim with no single document behind it (a total count, an average).
 - If a question could refer to more than one lease, or you don't have enough information in the data below to answer confidently, use response_type "clarifying" and ask a specific question back -- do not guess which lease/record they mean.
 - If the user wants to be taken somewhere ("show me...", "take me to...", "open...", "go to..."), use response_type "navigational" with the matching route. For a specific lease, route must be "detail" and lease_id must be a real id from the LEASES list below -- never invent one.
 - Keep answers concise and specific -- cite the actual number/date/name, not a vague summary.
@@ -207,6 +252,49 @@ def _validate_navigation(result: Dict[str, Any], valid_lease_ids: set) -> Dict[s
     return result
 
 
+def _resolve_citations(result: Dict[str, Any], leases_by_id: Dict[int, Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Turns the model's bare {lease_id, field?} citations into real,
+    user-facing {lease_id, document, page, field?} ones -- document
+    name and page number ALWAYS come from the real lease record here,
+    never from anything the model wrote, so a citation shown to the
+    user is never something Claude could hallucinate even partially.
+
+    A citation naming a lease_id outside leases_by_id is dropped
+    outright, never passed through -- this is the hard isolation
+    boundary for the citations feature specifically: leases_by_id is
+    built from this exact question's own (team-scoped) grounding data,
+    so a fabricated or cross-team lease_id simply has no entry to
+    resolve against and silently disappears rather than ever reaching
+    the response. A citation with a field that has no page source on
+    file falls back to the lease's own document without a page number,
+    rather than being dropped entirely -- still names the right
+    document, just honestly omits a page the extraction never recorded.
+    """
+    if result.get("response_type") != "informational":
+        return result
+    raw_citations = result.get("citations") or []
+    resolved = []
+    for c in raw_citations:
+        if not isinstance(c, dict):
+            continue
+        lease = leases_by_id.get(c.get("lease_id"))
+        if lease is None:
+            logger.warning("assistant cited lease_id %r which is not in this question's own grounding data, dropping citation", c.get("lease_id"))
+            continue
+        document = lease.get("display_name") or lease.get("filename") or f"lease {lease['id']}"
+        field = c.get("field") if c.get("field") in CITABLE_FIELDS else None
+        page = _citable_field_pages(lease).get(field) if field else None
+        entry = {"lease_id": lease["id"], "document": document}
+        if field:
+            entry["field"] = field
+        if page is not None:
+            entry["page"] = page
+        resolved.append(entry)
+    result["citations"] = resolved
+    return result
+
+
 def ask_assistant(question: str, client: Optional[anthropic.Anthropic] = None, reference_date: Optional[date] = None) -> Dict[str, Any]:
     """
     The whole pipeline: pull the real portfolio, build the compact
@@ -236,17 +324,26 @@ def ask_assistant(question: str, client: Optional[anthropic.Anthropic] = None, r
         logger.exception("Anthropic API call failed")
         raise AssistantError(str(e)) from e
 
+    # Token counts for usage_limits.log_assistant_usage_event -- stashed
+    # under a leading-underscore key the route pops off before
+    # persisting/returning the conversation, so it never leaks into the
+    # public {response_type, answer, route, lease_id} response shape.
+    token_usage = {"input_tokens": response.usage.input_tokens, "output_tokens": response.usage.output_tokens}
+
     tool_use = next((block for block in response.content if block.type == "tool_use"), None)
     if tool_use is None:
         # Shouldn't happen with tool_choice forcing this exact tool,
         # but fail into a clean clarifying response rather than a
         # KeyError/None-access crash if the API ever returns something
         # unexpected.
-        return {"response_type": "clarifying", "answer": "Sorry, I didn't understand that -- could you rephrase your question?"}
+        return {"response_type": "clarifying", "answer": "Sorry, I didn't understand that -- could you rephrase your question?", "_usage": token_usage}
 
     result = dict(tool_use.input)
     valid_lease_ids = {lease["id"] for lease in leases}
-    return _validate_navigation(result, valid_lease_ids)
+    validated = _validate_navigation(result, valid_lease_ids)
+    validated = _resolve_citations(validated, {lease["id"]: lease for lease in leases})
+    validated["_usage"] = token_usage
+    return validated
 
 
 # ----------------------------------------------------------------------

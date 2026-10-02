@@ -27,6 +27,9 @@ from app.usage_limits_config import (
     COST_PER_INPUT_TOKEN_USD,
     COST_PER_OUTPUT_TOKEN_USD,
     BUDGET_ALERT_THRESHOLD_PCTS,
+    DEFAULT_MONTHLY_ASSISTANT_CREDIT_USD,
+    ASSISTANT_COST_PER_INPUT_TOKEN_USD,
+    ASSISTANT_COST_PER_OUTPUT_TOKEN_USD,
 )
 
 # In-memory rate limiter: {user_id: [timestamp1, timestamp2, ...]}
@@ -255,3 +258,99 @@ def _reset_extraction_rate_limit_for_tests() -> None:
     """
     global _extraction_rate_limit_window
     _extraction_rate_limit_window = {}
+
+
+# ----------------------------------------------------------------------
+# Deal assistant credit -- a separate monthly dollar allowance from the
+# extraction budget above (teams.monthly_assistant_credit_usd, see
+# that column's migration docstring in database.py). Reuses the same
+# usage_events table extraction logging already writes to, distinguished
+# by event_type='assistant_query' (lease_id/pages are always NULL for
+# these rows -- a question isn't tied to one document the way an
+# extraction attempt is).
+# ----------------------------------------------------------------------
+
+def _get_team_assistant_credit(team_id: int) -> float:
+    """Team's monthly_assistant_credit_usd override, or the config default if NULL/no such team."""
+    conn = database.get_connection()
+    try:
+        row = conn.execute(
+            "SELECT monthly_assistant_credit_usd FROM teams WHERE id = ?", (team_id,)
+        ).fetchone()
+        if not row or row[0] is None:
+            return DEFAULT_MONTHLY_ASSISTANT_CREDIT_USD
+        return row[0]
+    finally:
+        conn.close()
+
+
+def get_assistant_usage_summary(team_id: int) -> Dict[str, float]:
+    """
+    {"used_usd", "limit_usd", "remaining_usd"} for the current calendar
+    month -- what the chat UI's remaining-credit meter reads. remaining_usd
+    is floored at 0 (never negative) since a slightly-over-budget team
+    reads better as "$0.00 left" than a confusing negative number.
+    """
+    conn = database.get_connection()
+    try:
+        current_month = datetime.now(timezone.utc).strftime("%Y-%m")
+        used = conn.execute(
+            "SELECT COALESCE(SUM(estimated_cost_usd), 0) FROM usage_events "
+            "WHERE team_id = ? AND event_type = 'assistant_query' AND strftime('%Y-%m', created_at) = ?",
+            (team_id, current_month)
+        ).fetchone()[0]
+        limit_usd = _get_team_assistant_credit(team_id)
+        return {
+            "used_usd": round(used, 4),
+            "limit_usd": round(limit_usd, 4),
+            "remaining_usd": round(max(0.0, limit_usd - used), 4),
+        }
+    finally:
+        conn.close()
+
+
+def check_assistant_credit(team_id: int) -> Optional[str]:
+    """
+    Returns a friendly, user-facing rejection message if the team has
+    used up its monthly assistant credit. None means there's still
+    credit left. Same "plain-English message, caller returns it
+    verbatim in a 403" convention as check_team_quota.
+    """
+    summary = get_assistant_usage_summary(team_id)
+    if summary["used_usd"] >= summary["limit_usd"]:
+        return (
+            f"Your team has used its ${summary['limit_usd']:.2f} monthly assistant credit. "
+            "It renews next month, or an admin can raise your team's limit from the owner console."
+        )
+    return None
+
+
+def log_assistant_usage_event(team_id: int, user_id: int, token_usage: Optional[Dict[str, int]]) -> None:
+    """
+    Logs one assistant question (event_type='assistant_query') with its
+    token counts and estimated cost, using the assistant's own (Haiku-
+    tier) pricing constants -- never COST_PER_INPUT_TOKEN_USD above,
+    which prices the extraction model's tier instead. token_usage is
+    {"input_tokens": N, "output_tokens": N} from the Claude response's
+    .usage, or None if the call never reached the API (shouldn't
+    normally happen for a logged event, but tolerated the same way
+    log_usage_event tolerates it for the regex-engine case).
+    """
+    conn = database.get_connection()
+    try:
+        input_tokens = token_usage.get("input_tokens") if token_usage else None
+        output_tokens = token_usage.get("output_tokens") if token_usage else None
+        estimated_cost = None
+        if input_tokens is not None and output_tokens is not None:
+            estimated_cost = (
+                input_tokens * ASSISTANT_COST_PER_INPUT_TOKEN_USD +
+                output_tokens * ASSISTANT_COST_PER_OUTPUT_TOKEN_USD
+            )
+        conn.execute(
+            "INSERT INTO usage_events (team_id, user_id, lease_id, pages, input_tokens, output_tokens, estimated_cost_usd, event_type, created_at) "
+            "VALUES (?, ?, NULL, NULL, ?, ?, ?, 'assistant_query', ?)",
+            (team_id, user_id, input_tokens, output_tokens, estimated_cost, datetime.now(timezone.utc).isoformat())
+        )
+        conn.commit()
+    finally:
+        conn.close()

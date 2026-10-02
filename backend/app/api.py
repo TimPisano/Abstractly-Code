@@ -2411,11 +2411,24 @@ def get_team_usage():
 
 
 @app.route('/teams', methods=['POST'])
-@require_role('admin')
+@require_owner()
 def create_team():
     """
     Create a new team.
-    Body: {"name", "monthly_document_quota"?, "monthly_page_quota"?, "monthly_budget_usd"?}
+    Body: {"name", "monthly_document_quota"?, "monthly_page_quota"?, "monthly_budget_usd"?, "monthly_assistant_credit_usd"?}
+
+    NOTE for whoever merges this alongside feature/team-isolation: that
+    branch adds a richer POST /owner/teams (creates the team AND its
+    first admin login in one call, with a setup-link email). Once
+    merged, consider whether this bare team-only POST /teams is still
+    needed or should be folded into /owner/teams -- left as-is here
+    rather than guessing at that reconciliation blind. Gated by
+    @require_owner() (not @require_role('admin')) because creating/
+    re-quota-ing ANY team is a cross-tenant action no single customer
+    team's admin should be able to do to another team -- the original
+    @require_role('admin') gate was a real pre-existing bug (any
+    customer admin could already call PATCH /teams/<id> on a team that
+    wasn't theirs).
     """
     body = request.get_json(silent=True) or {}
     name = (body.get('name') or '').strip()
@@ -2431,10 +2444,11 @@ def create_team():
         doc_quota = body.get('monthly_document_quota')
         page_quota = body.get('monthly_page_quota')
         budget = body.get('monthly_budget_usd')
+        assistant_credit = body.get('monthly_assistant_credit_usd')
 
         conn.execute(
-            "INSERT INTO teams (name, monthly_document_quota, monthly_page_quota, monthly_budget_usd, created_at) VALUES (?, ?, ?, ?, ?)",
-            (name, doc_quota, page_quota, budget, datetime.now(timezone.utc).isoformat())
+            "INSERT INTO teams (name, monthly_document_quota, monthly_page_quota, monthly_budget_usd, monthly_assistant_credit_usd, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+            (name, doc_quota, page_quota, budget, assistant_credit, datetime.now(timezone.utc).isoformat())
         )
         conn.commit()
 
@@ -2446,11 +2460,14 @@ def create_team():
 
 
 @app.route('/teams/<int:team_id>', methods=['PATCH'])
-@require_role('admin')
+@require_owner()
 def update_team(team_id):
     """
-    Update a team's quota overrides.
-    Body: any of {"monthly_document_quota", "monthly_page_quota", "monthly_budget_usd"}
+    Update a team's quota overrides, including the deal assistant's
+    monthly_assistant_credit_usd (see that column's migration docstring
+    in database.py). This is the "adjustable per team from the admin
+    page" route the owner console's Teams tab calls.
+    Body: any of {"monthly_document_quota", "monthly_page_quota", "monthly_budget_usd", "monthly_assistant_credit_usd"}
     """
     conn = database.get_connection()
     try:
@@ -2465,6 +2482,8 @@ def update_team(team_id):
             conn.execute("UPDATE teams SET monthly_page_quota = ? WHERE id = ?", (body['monthly_page_quota'], team_id))
         if 'monthly_budget_usd' in body:
             conn.execute("UPDATE teams SET monthly_budget_usd = ? WHERE id = ?", (body['monthly_budget_usd'], team_id))
+        if 'monthly_assistant_credit_usd' in body:
+            conn.execute("UPDATE teams SET monthly_assistant_credit_usd = ? WHERE id = ?", (body['monthly_assistant_credit_usd'], team_id))
         conn.commit()
 
         team = conn.execute("SELECT * FROM teams WHERE id = ?", (team_id,)).fetchone()
@@ -2474,7 +2493,7 @@ def update_team(team_id):
 
 
 @app.route('/teams', methods=['GET'])
-@require_role('admin')
+@require_owner()
 def list_teams():
     """List all teams."""
     conn = database.get_connection()
@@ -3055,16 +3074,53 @@ def assistant_ask():
     if len(question) > 2000:
         return jsonify({"error": "Question is too long (max 2000 characters)."}), 400
 
+    # Checked before ever calling Claude -- a team at its limit never
+    # costs another cent, and gets the friendly message immediately
+    # instead of paying for a call whose answer it then can't afford.
+    # NOTE for whoever merges this alongside feature/team-isolation:
+    # that branch changes the two lines below this comment block to
+    # pass team_id=current_team_id() into ask_assistant and
+    # insert_assistant_conversation -- this credit check is new,
+    # unrelated code inserted just above them, not a conflicting edit
+    # to those same lines.
+    from app import usage_limits
+    team_id = user.get("team_id")
+    if not team_id:
+        return jsonify({"error": "Your account isn't assigned to a team yet. Ask an admin to assign you to a team before using the assistant."}), 403
+    credit_msg = usage_limits.check_assistant_credit(team_id)
+    if credit_msg:
+        return jsonify({"error": credit_msg}), 403
+
     try:
         result = assistant.ask_assistant(question)
     except assistant.AssistantError:
         return jsonify({"error": "The assistant is temporarily unavailable. Please try again in a moment."}), 502
 
+    token_usage = result.pop("_usage", None)
+    usage_limits.log_assistant_usage_event(team_id, user["id"], token_usage)
+
     database.insert_assistant_conversation(
         user["id"], question, result["response_type"], result["answer"],
         route=result.get("route"), route_params=({"lease_id": result["lease_id"]} if result.get("lease_id") is not None else None),
     )
+    result["assistant_usage"] = usage_limits.get_assistant_usage_summary(team_id)
     return jsonify(result), 200
+
+
+@app.route('/assistant/usage', methods=['GET'])
+@require_role()
+def assistant_usage():
+    """
+    {"used_usd", "limit_usd", "remaining_usd"} for the caller's own
+    team, current calendar month -- the chat UI's remaining-credit
+    meter reads this on load, not just after each question.
+    """
+    from app import usage_limits
+    user = current_user()
+    team_id = user.get("team_id")
+    if not team_id:
+        return jsonify({"error": "Your account isn't assigned to a team yet."}), 403
+    return jsonify(usage_limits.get_assistant_usage_summary(team_id)), 200
 
 
 @app.route('/assistant/conversations', methods=['GET'])

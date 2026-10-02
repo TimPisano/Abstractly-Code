@@ -219,6 +219,27 @@ def _migrate_teams_table(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_teams_created_at ON teams(created_at)")
 
 
+def _migrate_teams_table_add_assistant_credit(conn: sqlite3.Connection) -> None:
+    """
+    Adds `monthly_assistant_credit_usd` to the `teams` table -- the
+    deal assistant's own monthly dollar allowance, separate from
+    monthly_budget_usd (that one caps extraction spend; this one caps
+    assistant Q&A spend). NULL means "use
+    usage_limits_config.DEFAULT_MONTHLY_ASSISTANT_CREDIT_USD," same
+    override convention as the other monthly_* columns on this table.
+
+    NOTE for whoever merges this alongside feature/team-isolation's
+    `_migrate_teams_table_add_status`: both are independent single-
+    column ALTER TABLE ADD COLUMN migrations on `teams`, called next to
+    each other in init_db() -- order between them doesn't matter, just
+    make sure both migration functions and both init_db() call sites
+    survive the merge.
+    """
+    existing_columns = {row["name"] for row in conn.execute("PRAGMA table_info(teams)").fetchall()}
+    if "monthly_assistant_credit_usd" not in existing_columns:
+        conn.execute("ALTER TABLE teams ADD COLUMN monthly_assistant_credit_usd REAL")
+
+
 def _migrate_teams_create_legacy_team(conn: sqlite3.Connection) -> None:
     """
     On first migration, creates a single 'Legacy' team and points every
@@ -506,6 +527,7 @@ def init_db() -> None:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_pageviews_created_at ON pageviews(created_at)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_pageviews_session_id ON pageviews(session_id)")
         _migrate_teams_table(conn)
+        _migrate_teams_table_add_assistant_credit(conn)
         _migrate_teams_create_legacy_team(conn)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS activity_log (

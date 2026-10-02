@@ -51,7 +51,7 @@ def _fields(**overrides):
     return result
 
 
-def _client_as(role, email="test@example.com", name="Test User", user_id=1):
+def _client_as(role, email="test@example.com", name="Test User", user_id=1, team_id=1):
     """
     Fake session, no real `users` row behind it -- fine for routes
     that only ever READ the session (role checks, validation that
@@ -60,6 +60,12 @@ def _client_as(role, email="test@example.com", name="Test User", user_id=1):
     never be orphaned, unlike e.g. discrepancies.lease_id), so any
     test that actually reaches insert_assistant_conversation() must
     use _client_for_new_user() below instead, not this.
+
+    team_id defaults to 1 (the Legacy team every fresh _fresh_temp_db()
+    seeds as the first row) so routes that now require a team_id in
+    session -- /assistant/ask's credit check, among others -- see a
+    real one by default; pass team_id=None to specifically exercise the
+    "no team assigned" path.
     """
     client = app.test_client()
     with client.session_transaction() as sess:
@@ -67,13 +73,15 @@ def _client_as(role, email="test@example.com", name="Test User", user_id=1):
         sess["email"] = email
         sess["name"] = name
         sess["role"] = role
+        sess["team_id"] = team_id
     return client
 
 
 def _client_for_new_user(role, email, name="Test User"):
-    """A real `users` row (so FK-constrained writes like assistant_conversations succeed) plus a matching session."""
+    """A real `users` row (so FK-constrained writes like assistant_conversations succeed) plus a matching session, with the real row's own team_id (create_user() defaults new users to the Legacy team)."""
     user_id = database.create_user(email, name, hash_password("password123"), role=role)["id"]
-    return _client_as(role, email=email, name=name, user_id=user_id), user_id
+    team_id = database.get_user(user_id)["team_id"]
+    return _client_as(role, email=email, name=name, user_id=user_id, team_id=team_id), user_id
 
 
 def _mock_anthropic_client(tool_input):
