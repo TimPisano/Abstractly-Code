@@ -160,6 +160,20 @@ def _is_concession_header(normalized_header: str) -> bool:
     return bool(set(normalized_header.split()) & _CONCESSION_WORDS)
 
 
+# A concession column that ISN'T the dollar amount -- "Concession End
+# Date", "Concession Months", "Concession Type". Reading one as dollars
+# turned "2026-03-31" into a $2,026.00/mo concession (review finding,
+# fix/concession-detection), so these are never eligible for `concessions`.
+_CONCESSION_NON_AMOUNT_WORDS = {
+    "date", "start", "end", "expires", "expiration", "thru", "through", "from", "to",
+    "month", "months", "mos", "term", "type", "description", "desc", "code", "reason", "note", "notes",
+}
+
+
+def _is_concession_non_amount_header(normalized_header: str) -> bool:
+    return bool(set(normalized_header.split()) & _CONCESSION_NON_AMOUNT_WORDS)
+
+
 def _is_market_rent_header(normalized_header: str) -> bool:
     words = set(normalized_header.split())
     return "rent" in words and bool(words & _MARKET_RENT_WORDS)
@@ -264,6 +278,8 @@ def _match_columns(headers: List[Any]) -> Dict[str, int]:
                 continue  # see _MARKET_RENT_WORDS / _RATE_NOT_AMOUNT_WORDS -- never eligible for rent_amount, exact match or not
             if field_name == "property" and _is_non_address_property_header(h):
                 continue  # see _NON_ADDRESS_PROPERTY_WORDS -- never eligible for property, exact match or not
+            if field_name == "concessions" and _is_concession_non_amount_header(h):
+                continue  # see _CONCESSION_NON_AMOUNT_WORDS -- a concession date/count/type column is not dollars
             if h in alias_norms:
                 mapping[field_name] = i
                 used_columns.add(i)
@@ -295,6 +311,8 @@ def _match_columns(headers: List[Any]) -> Dict[str, int]:
                     continue  # see _MARKET_RENT_WORDS / _RATE_NOT_AMOUNT_WORDS -- e.g. "Market Rent"/"Rent PSF" must not fall through to the bare "rent" alias
                 if field_name == "property" and _is_non_address_property_header(h):
                     continue  # see _NON_ADDRESS_PROPERTY_WORDS -- e.g. "Property Manager" must not fall through to the bare "property" alias
+                if field_name == "concessions" and _is_concession_non_amount_header(h):
+                    continue  # see _CONCESSION_NON_AMOUNT_WORDS -- e.g. "Concession End Date" must not be read as dollars
                 if pattern.search(h):
                     candidates.append((len(alias_norm), field_name, i))
 

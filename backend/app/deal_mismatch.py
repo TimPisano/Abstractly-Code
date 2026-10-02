@@ -79,6 +79,7 @@ from .concessions import (
     add_months,
     describe_item,
     effective_rent_for_lease,
+    has_unreadable_concession,
     rent_reflects_concession,
     timing_note,
 )
@@ -193,6 +194,12 @@ def _concession_sources(effective: Dict[str, Any]) -> List[Dict[str, Any]]:
             seen.add(key)
             sources.append({"page": item.get("page") or 1, "quote": item["quote"]})
     return sources
+
+
+def _unreadable_concession_value(doc_lease: Dict[str, Any]) -> Optional[str]:
+    """The lease's concession text when one was found but couldn't be priced into a schedule, else None."""
+    entry = (doc_lease.get("extracted_fields") or {}).get("concessions")
+    return entry.get("value") if has_unreadable_concession(entry) else None
 
 
 def _rr_concession_monthly(rr_lease: Dict[str, Any]) -> Optional[float]:
@@ -403,6 +410,9 @@ def detect_concession_missing(leases: List[Dict[str, Any]], today: Optional[date
                 continue
             effective = effective_rent_for_lease(doc_lease, today)
             if not effective:
+                unreadable = _unreadable_concession_value(doc_lease)
+                if unreadable:
+                    rows.extend(_unreadable_concession_missing_rows(group["rent_roll"], doc_lease, unreadable))
                 continue
             for rr_lease in group["rent_roll"]:
                 rr_concession = _rr_concession_monthly(rr_lease)
@@ -441,6 +451,38 @@ def detect_concession_missing(leases: List[Dict[str, Any]], today: Optional[date
     return rows
 
 
+def _unreadable_concession_missing_rows(rent_roll_rows, doc_lease, lease_text):
+    """
+    The lease states a concession nobody could price (see
+    concessions.has_unreadable_concession) and the rent roll shows none:
+    still a concession_missing finding, but with no dollar figure -- the
+    "found, amount unknown" case, never a silent pass and never a guess.
+    """
+    rows = []
+    for rr_lease in rent_roll_rows:
+        rr_concession = _rr_concession_monthly(rr_lease)
+        if rr_concession is not None and rr_concession > 0:
+            continue
+        rows.append({
+            "discrepancy_type": "concession_missing",
+            "unit": _display_unit(rr_lease, doc_lease),
+            "field": "concessions",
+            "rent_roll_value": (field_value(rr_lease, "rent_amount") or "(no rent shown)") + " (no concession shown)",
+            "lease_value": f"{lease_text} (amount couldn't be read automatically -- review the lease)",
+            "source": _field_source(doc_lease, "concessions"),
+            "sources": [],
+            "severity": "medium",
+            "monthly_dollar_impact": None,
+            "annual_dollar_impact": None,
+            "income_direction": "overstate",
+            "rent_roll_lease_id": rr_lease.get("id"),
+            "lease_document_id": doc_lease.get("id"),
+            "effective_rent": None,
+            "note": None,
+        })
+    return rows
+
+
 def detect_concession_mismatch(leases: List[Dict[str, Any]], today: Optional[date] = None) -> List[Dict[str, Any]]:
     """
     The rent roll HAS a concession column showing a non-zero monthly
@@ -468,7 +510,16 @@ def detect_concession_mismatch(leases: List[Dict[str, Any]], today: Optional[dat
                 if rr_concession is None or rr_concession == 0:
                     continue
 
-                if effective is None:
+                unreadable = _unreadable_concession_value(doc_lease) if effective is None else None
+                if unreadable:
+                    # The lease DOES grant something -- just not readably.
+                    # Comparing against "no concession" would be a
+                    # confident wrong answer; report it unpriced instead.
+                    lease_equiv, lease_current = None, None
+                    lease_value = f"{unreadable} (amount couldn't be read automatically -- review the lease)"
+                    sources = []
+                    source = _field_source(doc_lease, "concessions")
+                elif effective is None:
                     lease_equiv, lease_current, lease_value = 0.0, None, "No concession in lease"
                     sources: List[Dict[str, Any]] = []
                     source = _field_source(doc_lease, "rent_amount")

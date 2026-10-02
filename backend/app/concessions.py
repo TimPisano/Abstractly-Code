@@ -125,7 +125,7 @@ _FREE_RENT_PATTERNS = [
     # "One (1) month of Base Rent (the first full calendar month, October 2025) is abated"
     re.compile(
         rf"\b{_num('n')}\s+(?:full\s+)?(?:calendar\s+)?months?(?:'s|’s)?\s+(?:of\s+)?(?:free\s+)?"
-        rf"(?:base\s+|monthly\s+)?rent\b{_GAP}{{0,120}}?\b(?:abated|abate|free|waived|forgiven|credited|at\s+no\s+charge)\b",
+        rf"(?:base\s+|monthly\s+)?rent\b{_GAP}{{0,120}}?\b(?:abated|abate|free|waived|forgiven|at\s+no\s+charge)\b",
         re.IGNORECASE,
     ),
     # "two months free", "1 month free rent", "one month rent-free"
@@ -155,11 +155,11 @@ _RECURRING_PATTERNS = [
     # "Base Rent is reduced by $100.00 per month"
     re.compile(rf"\b(?:reduced|discounted|lowered|decreased)\s+by\s+{_AMOUNT}\s*{_PER_MONTH}", re.IGNORECASE),
     # "$75/mo off", "$50 per month discount", "$100 monthly concession"
-    re.compile(rf"{_AMOUNT}\s*{_PER_MONTH}\s+(?:[a-z\-]+\s+){{0,2}}?(?:discount|concession|reduction|credit|off)\b", re.IGNORECASE),
+    re.compile(rf"{_AMOUNT}\s*{_PER_MONTH}\s+(?:[a-z\-]+\s+){{0,2}}?(?:discount|concession|reduction|credit(?!\s+card)|off)\b", re.IGNORECASE),
     # "$50 off rent each month"
     re.compile(rf"{_AMOUNT}\s+off\s+(?:the\s+)?(?:monthly\s+)?(?:base\s+)?rent\s+(?:per|each|every)\s+month\b", re.IGNORECASE),
     # "a discount of $50 per month", "concession of $100 monthly"
-    re.compile(rf"\b(?:discount|concession|credit|reduction)\s+of\s+{_AMOUNT}\s*{_PER_MONTH}", re.IGNORECASE),
+    re.compile(rf"\b(?:discount|concession|credit(?!\s+card)|reduction)\s+of\s+{_AMOUNT}\s*{_PER_MONTH}", re.IGNORECASE),
     # "monthly concession of $100" -- the leading "monthly" makes it recurring
     re.compile(rf"\bmonthly\s+(?:rent\s+)?(?:discount|concession|credit|reduction)\s+of\s+{_AMOUNT}", re.IGNORECASE),
     # "5% off", "a 10% discount on monthly rent", "reduced by 5%"
@@ -180,14 +180,14 @@ _ONE_TIME_PATTERNS = [
     # "a one-time move-in credit of $500", "concession of $750"
     re.compile(
         rf"\b(?:(?:move[- ]in|leasing|look[- ]and[- ]lease)\s+special|"
-        rf"(?:one[- ]time\s+)?(?:(?:rent|move[- ]in|leasing|renewal|retention|signing)\s+)?(?:credit|concession|discount|rebate))"
+        rf"(?:one[- ]time\s+)?(?:(?:rent|move[- ]in|leasing|renewal|retention|signing)\s+)?(?:credit(?!\s+card)|concession|discount|rebate))"
         rf"\s+(?:in\s+the\s+amount\s+)?of\s+{_AMOUNT}",
         re.IGNORECASE,
     ),
     # "$500 move-in credit", "$250 one-time concession"
     re.compile(
         rf"{_AMOUNT}\s+(?:one[- ]time\s+)?(?:(?:move[- ]in|rent|leasing|renewal|retention|signing)\s+)?"
-        rf"(?:credit|concession|discount|rebate|special)\b",
+        rf"(?:credit(?!\s+card)|concession|discount|rebate|special)\b",
         re.IGNORECASE,
     ),
 ]
@@ -220,6 +220,35 @@ _CONTINGENCY_WORDS = re.compile(
 # Rent INCREASES phrased with the same verbs ("increase by $50 per month")
 # are escalations, not concessions.
 _ESCALATION_WORDS = re.compile(r"\b(?:increase[sd]?|escalat\w*)\b", re.IGNORECASE)
+# A prepaid month or deposit APPLIED to a later month ("one month's rent
+# as a security deposit, credited toward the last month's rent") is the
+# resident's own money, not a concession -- a free-rent reading of it
+# would invent a full month of overstated income (review finding,
+# fix/concession-detection).
+_PREPAID_APPLIED = re.compile(
+    r"\b(?:deposit|prepaid|pre-paid|prepay\w*|advance)\b[^.;]{0,160}?\b(?:credited|applied)\s+(?:toward|towards|against|to)\b"
+    r"|\b(?:credited|applied)\s+(?:toward|towards|against|to)\s+(?:the\s+)?(?:last|final)\s+month",
+    re.IGNORECASE,
+)
+# Negated grants ("Resident shall not receive any free rent") -- checked in
+# the words just before a match. "Provided Tenant is not then in default,
+# rent shall be abated..." is a CONDITION on a real concession, not a
+# negation of it.
+_NEGATION_BEFORE = re.compile(
+    r"\b(?:shall|will|does|do|is|are|was|were)\s+not\b(?!\s+(?:then\s+)?(?:in\s+default|delinquent))|\bnot\s+(?:entitled|eligible)\b|\bno\s+(?:concessions?|free\s+rent|discounts?|credits?)\b|\bnever\b",
+    re.IGNORECASE,
+)
+# Discounts and credits on something other than rent (parking, utilities,
+# the deposit, an early-payment discount). Only trusted as a RENT
+# concession if the sentence also talks about rent itself.
+_NON_RENT_WORDS = re.compile(
+    r"\b(?:parking|garage|carport|storage|utilit\w*|water|electric\w*|cable|internet|pet|deposit|amenity|"
+    r"early\s+payment|prompt\s+payment|paid\s+early|processing|convenience|fee)\b",
+    re.IGNORECASE,
+)
+# "rent" the noun, not the verb ("may rent a parking space").
+_RENT_WORD = re.compile(r"\b(?<!may )(?<!to )(?<!can )rent\b(?!\s+(?:a|an|the|one|two|additional|another)\b)", re.IGNORECASE)
+
 _RECAPTURE_WORDS = re.compile(
     r"\b(?:repay|reimburse|recaptur\w*|become[s]?\s+(?:immediately\s+)?due|forfeit\w*|charged\s+back|clawback|claw\s+back)\b",
     re.IGNORECASE,
@@ -373,16 +402,22 @@ def _overlaps(span: Tuple[int, int], taken: List[Tuple[int, int]]) -> bool:
 # Parsing
 # ----------------------------------------------------------------------
 
+def _negated(sentence: str, start: int) -> bool:
+    return bool(_NEGATION_BEFORE.search(sentence[max(0, start - 60):start]))
+
+
 def _parse_sentence(sentence: str) -> List[Dict[str, Any]]:
-    if _CONTINGENCY_WORDS.search(sentence):
+    if _CONTINGENCY_WORDS.search(sentence) or _PREPAID_APPLIED.search(sentence):
         return []
+    # Discounts/credits must be about rent; free-rent patterns already say "rent"/"free".
+    money_ok = not (_NON_RENT_WORDS.search(sentence) and not _RENT_WORD.search(sentence))
 
     found: List[Tuple[int, int, Dict[str, Any]]] = []  # (start, end, item)
     taken: List[Tuple[int, int]] = []
 
     for pattern in _FREE_RENT_PATTERNS:
         for m in pattern.finditer(sentence):
-            if _overlaps(m.span(), taken):
+            if _overlaps(m.span(), taken) or _negated(sentence, m.start()):
                 continue
             n = _word_to_number(m.groupdict().get("n")) if m.groupdict().get("n") else 1.0
             if not n or n > 24:
@@ -398,10 +433,10 @@ def _parse_sentence(sentence: str) -> List[Dict[str, Any]]:
             found.append((m.start(), m.end(), item))
             taken.append(m.span())
 
-    if not _ESCALATION_WORDS.search(sentence):
+    if money_ok and not _ESCALATION_WORDS.search(sentence):
         for pattern in _RECURRING_PATTERNS:
             for m in pattern.finditer(sentence):
-                if _overlaps(m.span(), taken):
+                if _overlaps(m.span(), taken) or _negated(sentence, m.start()):
                     continue
                 gd = m.groupdict()
                 amount = parse_currency(gd.get("amount")) if gd.get("amount") else None
@@ -417,9 +452,9 @@ def _parse_sentence(sentence: str) -> List[Dict[str, Any]]:
                 found.append((m.start(), m.end(), item))
                 taken.append(m.span())
 
-    for idx, pattern in enumerate(_ONE_TIME_PATTERNS):
+    for idx, pattern in enumerate(_ONE_TIME_PATTERNS if money_ok else []):
         for m in pattern.finditer(sentence):
-            if _overlaps(m.span(), taken):
+            if _overlaps(m.span(), taken) or _negated(sentence, m.start()):
                 continue
             # "$X credit ... per month" is a recurring discount the patterns
             # above didn't recognize the exact wording of -- don't misread
@@ -474,11 +509,11 @@ def _parse_sentence(sentence: str) -> List[Dict[str, Any]]:
     return items
 
 
-def _dedupe_key(item: Dict[str, Any]) -> Tuple:
+def dedupe_key(item: Dict[str, Any]) -> Tuple:
     return (
         item["kind"], item.get("free_months"), item.get("monthly_amount"), item.get("percent"),
         item.get("one_time_amount"), item.get("reduced_to"), item.get("months"), item.get("full_term"),
-        item.get("start_month"),
+        item.get("start_month"), item.get("trigger"),
     )
 
 
@@ -520,7 +555,7 @@ def parse_concessions(pages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         for start, end in _sentences(text):
             sentence = re.sub(r"\s+", " ", text[start:end]).strip()
             for item in _parse_sentence(sentence):
-                key = _dedupe_key(item)
+                key = dedupe_key(item)
                 if key in seen:
                     continue
                 seen.add(key)
@@ -629,6 +664,16 @@ def concession_items_for_entry(entry: Optional[Dict[str, Any]]) -> List[Dict[str
     return parsed
 
 
+def has_unreadable_concession(entry: Optional[Dict[str, Any]]) -> bool:
+    """
+    The lease's `concessions` field says a concession exists, but no
+    schedule can be read out of it (e.g. an AI entry the parser couldn't
+    quantify). Detectors must report this as "concession found, amount
+    unreadable" -- never treat it as "no concession in the lease".
+    """
+    return bool(entry and entry.get("value")) and not concession_items_for_entry(entry)
+
+
 # ----------------------------------------------------------------------
 # Pricing / effective rent
 # ----------------------------------------------------------------------
@@ -643,15 +688,19 @@ def lease_term_months(start: Optional[date], end: Optional[date]) -> Optional[in
 def _item_window(item: Dict[str, Any], lease_start: Optional[date], lease_end: Optional[date],
                  term_months: int) -> Tuple[Optional[date], Optional[date], Optional[float]]:
     """(first day, last day, months) this concession applies, or Nones where the lease doesn't say enough to place it."""
+    explicit_start = _ym_to_date(item.get("start_month"))
+    explicit_end = _ym_to_date(item.get("end_month"))
+
     if item.get("full_term"):
         months = float(term_months)
+        # "$50/mo off starting Nov 2025" with no end: runs from its own
+        # start month to the end of the lease, not the whole term.
+        if explicit_start and lease_end:
+            months = float(max(0, min(term_months, (lease_end.year - explicit_start.year) * 12 + lease_end.month - explicit_start.month + 1)))
     else:
         months = item.get("months")
         if months is not None:
             months = min(float(months), float(term_months))
-
-    explicit_start = _ym_to_date(item.get("start_month"))
-    explicit_end = _ym_to_date(item.get("end_month"))
     span = int(-(-(months or 1) // 1))  # ceil: a half free month still lands in one calendar month
 
     if explicit_start:
@@ -767,7 +816,9 @@ def compute_effective_rent(
             if p["status"] != "active":
                 continue
             if p["kind"] == "free_rent":
-                current = 0.0
+                # Half a month free means half the rent is still owed that month.
+                free = p.get("free_months") or 1
+                current = base_rent * (1 - free) if free < 1 else 0.0
             elif p["kind"] == "recurring_discount" and p["monthly_value"] is not None:
                 current -= p["monthly_value"]
         current_rent = round(max(0.0, current), 2)

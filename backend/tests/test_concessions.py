@@ -364,7 +364,17 @@ def test_ai_engine_unparseable_concession_kept_low_confidence_never_priced_zero(
             "concessions": entry,
         }},
     ]
-    assert dm.detect_concession_missing(leases, AS_OF) == []  # nothing parseable -> no schedule -> no dollar claim
+    # Found-but-unreadable is reported with NO dollar figure -- never as
+    # "no concession", never as $0 (review finding #4).
+    (row,) = dm.detect_concession_missing(leases, AS_OF)
+    assert row["annual_dollar_impact"] is None and row["monthly_dollar_impact"] is None
+    assert "couldn't be read" in row["lease_value"]
+    # ...and a rent roll concession column is NOT compared against "No concession in lease"
+    leases[0] = _rr(property_address=UNIT, tenant="Pat Doe", rent_amount="$1,500.00", rr_concessions="$125.00/mo")
+    (row,) = dm.detect_concession_mismatch(leases, AS_OF)
+    assert row["lease_value"] != "No concession in lease" and "couldn't be read" in row["lease_value"]
+    assert row["annual_dollar_impact"] is None and row["income_direction"] is None
+    assert dm.detect_concession_missing(leases, AS_OF) == []
     print("✓ test_ai_engine_unparseable_concession_kept_low_confidence_never_priced_zero: PASS")
 
 
@@ -671,6 +681,99 @@ def test_report_totals_net_concession_rows_and_summary():
     print("✓ test_report_totals_net_concession_rows_and_summary: PASS")
 
 
+# ----------------------------------------------------------------------
+# Reviewer findings (fix-first round) -- each one reproduced, then fixed
+# ----------------------------------------------------------------------
+
+def test_review_deposit_credited_to_last_month_is_not_free_rent():
+    for text in (
+        "Tenant shall pay one month's rent as a security deposit, which will be credited toward the last month's rent.",
+        "Upon execution of this Lease, one month's rent shall be credited against the final month of the Term.",
+        "Resident has prepaid one (1) month of rent, to be applied toward the last month of the Lease Term.",
+    ):
+        assert _items(text) == [], (text, _items(text))
+    # ...and the hidden-mismatch consequence: a real $125/mo gap must still surface
+    deposit = "Tenant shall pay one month's rent as a security deposit, which will be credited toward the last month's rent."
+    rows = _all_rows(_pair("$1,375.00", "$1,500.00", deposit))
+    assert _types(rows) == ["rent_mismatch"], rows
+    print("✓ test_review_deposit_credited_to_last_month_is_not_free_rent: PASS")
+
+
+def test_review_credit_card_fee_is_not_a_credit():
+    assert _items("A $35 credit card processing fee applies to card payments.") == []
+    assert _items("Payments by credit card of $500 or more incur a 3% fee.") == []
+    print("✓ test_review_credit_card_fee_is_not_a_credit: PASS")
+
+
+def test_review_rent_roll_concession_date_and_count_columns_not_read_as_dollars():
+    headers = ["Unit", "Tenant", "Rent", "Concession End Date", "Concession Months", "Lease End"]
+    result = parse_rent_roll_rows(headers, [["101", "Pat", "1200", "2026-03-31", "1", "2026-12-31"]], "rr.csv", "1 Elm St")
+    assert "concessions" not in result["column_mapping"], result["column_mapping"]
+    assert "concessions" not in result["leases"][0]["extracted_fields"]
+    # the amount column still wins when both are present
+    headers = ["Unit", "Tenant", "Rent", "Concession Type", "Concession", "Concession Start"]
+    result = parse_rent_roll_rows(headers, [["101", "Pat", "1200", "Move-in", "-75", "2026-01-01"]], "rr.csv", "1 Elm St")
+    assert result["column_mapping"]["concessions"] == 4
+    assert result["leases"][0]["extracted_fields"]["concessions"]["value"] == "$75.00/mo"
+    print("✓ test_review_rent_roll_concession_date_and_count_columns_not_read_as_dollars: PASS")
+
+
+def test_review_ai_restated_concession_counted_once():
+    pages = [
+        {"page": 1, "text": "Base Rent is reduced by $100.00 per month for the first six (6) months as a renewal incentive."},
+        {"page": 4, "text": "KEY TERMS: Base Rent is reduced by $100.00 per month for the first six (6) months as a renewal incentive."},
+    ]
+    quote = ("Base Rent is reduced by $100.00 per month for the first six (6) months as a renewal incentive ... "
+             "Base Rent is reduced by $100.00 per month for the first six (6) months as a renewal incentive")
+    entry = ai_extraction.extract_lease_fields(pages, client=_mock_client(_payload(
+        concessions=("$100.00/mo off for the first 6 months (renewal)", "high", quote))))["concessions"]
+    assert len(entry["items"]) == 1, entry["items"]
+    assert len(c.parse_concessions(pages)) == 1  # same answer as the regex engine
+    print("✓ test_review_ai_restated_concession_counted_once: PASS")
+
+
+def test_review_non_rent_discounts_and_negations_ignored():
+    for text in (
+        "Owner provides a utility credit of $50 per month.",
+        "Resident may rent a parking space for $50 per month, discounted by $10 per month for a second vehicle.",
+        "Resident qualifies for a 10% reduction in the security deposit.",
+        "A 5% discount applies for early payment.",
+        "Resident shall not receive one month free or any other concession.",
+        "Resident is not entitled to a $50 per month discount.",
+    ):
+        assert _items(text) == [], (text, _items(text))
+    # "not in default" is a condition on a real concession, not a negation
+    (item,) = _items("Provided Tenant is not then in default under this Agreement, Minimum Rent shall be abated "
+                     "for the first three (3) full calendar months following the Rent Commencement Date.")
+    assert item["free_months"] == 3
+    # a discount that IS about rent still counts even with a fee word nearby
+    assert len(_items("Base Rent is reduced by $25.00 per month for the full term; the $10 pet fee is unchanged.")) == 1
+    print("✓ test_review_non_rent_discounts_and_negations_ignored: PASS")
+
+
+def test_review_late_starting_discount_priced_from_its_start():
+    items = _items("Base Rent is reduced by $50.00 per month starting in April 2026 as a retention incentive.")
+    eff = c.compute_effective_rent(1500.0, items, date(2026, 1, 1), date(2026, 12, 31), AS_OF)
+    assert eff["total_concession_value"] == 450.0, eff  # Apr-Dec = 9 months, not 12
+    print("✓ test_review_late_starting_discount_priced_from_its_start: PASS")
+
+
+def test_review_half_month_free_current_rent_is_half():
+    items = _items("One-half (1/2) month free rent as a look-and-lease special.")
+    eff = c.compute_effective_rent(1200.0, items, date(2026, 8, 1), date(2027, 7, 31), AS_OF)
+    assert eff["current_rent"] == 600.0
+    print("✓ test_review_half_month_free_current_rent_is_half: PASS")
+
+
+def test_review_same_shape_different_trigger_not_collapsed():
+    pages = [
+        {"page": 1, "text": "One (1) month of Base Rent is abated as a move-in incentive."},
+        {"page": 2, "text": "RENEWAL ADDENDUM. One (1) month of Base Rent is abated as a renewal incentive."},
+    ]
+    assert [i["trigger"] for i in c.parse_concessions(pages)] == ["move_in", "renewal"]
+    print("✓ test_review_same_shape_different_trigger_not_collapsed: PASS")
+
+
 if __name__ == "__main__":
     test_parse_single_free_month_with_trigger_and_calendar_month()
     test_parse_recurring_discount_with_duration_and_explicit_range()
@@ -712,4 +815,12 @@ if __name__ == "__main__":
     test_unpriceable_concession_reported_with_no_dollar_figure()
     test_reconciliation_uses_effective_rent_too()
     test_report_totals_net_concession_rows_and_summary()
+    test_review_deposit_credited_to_last_month_is_not_free_rent()
+    test_review_credit_card_fee_is_not_a_credit()
+    test_review_rent_roll_concession_date_and_count_columns_not_read_as_dollars()
+    test_review_ai_restated_concession_counted_once()
+    test_review_non_rent_discounts_and_negations_ignored()
+    test_review_late_starting_discount_priced_from_its_start()
+    test_review_half_month_free_current_rent_is_half()
+    test_review_same_shape_different_trigger_not_collapsed()
     print("\nAll concession tests passed.")

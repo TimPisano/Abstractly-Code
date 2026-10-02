@@ -354,9 +354,17 @@ def _attach_concession_items(entry: Dict[str, Any], pages: List[Dict[str, Any]])
     if entry.get("value") is None:
         return entry
     items: List[Dict[str, Any]] = []
+    seen = set()
     quote = entry.get("source_text") or ""
     for clause in [c.strip() for c in re.split(r"\s*(?:\.\.\.|…)\s*", quote) if c.strip()]:
-        items.extend(concessions.parse_concession_text(clause, _locate_quote_page(clause, pages)))
+        for item in concessions.parse_concession_text(clause, _locate_quote_page(clause, pages)):
+            # The prompt asks for EVERY concession clause, so a summary box
+            # restating section 3A arrives as two clauses -- same dedupe as
+            # the regex engine's parse_concessions, or it'd be counted twice.
+            key = concessions.dedupe_key(item)
+            if key not in seen:
+                seen.add(key)
+                items.append(item)
     if not items:
         page = (entry.get("source") or {}).get("page")
         items = concessions.parse_concession_text(entry["value"], page)
