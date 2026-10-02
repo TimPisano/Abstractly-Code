@@ -69,8 +69,12 @@ the old per-property placeholder prices. See TASKS.md.)
 - **Tenancy today:** there is **no `team_id` / teams table on `main`**.
   Isolation is currently *per deployment* (that is why tester and demo are
   separate Render services). A `teams` table + `team_id` arrives with
-  `feature/usage-limits`, and `feature/loan-underwriting` plans its own.
-  Converge on one model (see TASKS.md) rather than adding a third.
+  `feature/usage-limits` — that is the **one** teams model; don't add a
+  second. (`feature/loan-underwriting` originally planned its own; that
+  was reverted on 2026-10-01 on explicit instruction. It now creates no
+  users/teams/tenant schema at all, and documents where its own two
+  tables gain a `team_id` once the usage-limits model merges — see that
+  branch's `SUMMARY.md` → "Where team isolation plugs in".)
 
 ### Render services (`render.yaml`, Blueprint)
 

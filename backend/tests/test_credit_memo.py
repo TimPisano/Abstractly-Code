@@ -447,6 +447,100 @@ def test_docx_includes_the_assumptions_and_sources_appendices():
     print("✓ test_docx_includes_the_assumptions_and_sources_appendices: PASS")
 
 
+# ----------------------------------------------------------------------
+# Phase 4 polish: cover summary, consistent styling, the sensitivity grid
+# ----------------------------------------------------------------------
+
+def test_docx_has_an_executive_summary_cover_table_before_section_one():
+    """A one-table dashboard the reader sees before anything else -- property, headline ratios, binding constraint."""
+    underwriting = _underwriting()
+    memo = build_credit_memo_data(underwriting, narratives={})
+    document = Document(io.BytesIO(generate_credit_memo_docx(memo)))
+
+    heading_texts = [p.text for p in document.paragraphs if p.style.name.startswith("Heading")]
+    assert "Executive Summary" in heading_texts, heading_texts
+    assert heading_texts.index("Executive Summary") < heading_texts.index("1. Loan Summary and Recommendation")
+
+    cover_table = document.tables[0]
+    cover_text = "\n".join(c.text for row in cover_table.rows for c in row.cells)
+    noi = underwriting["noi_build_up"]["underwritten_noi"]
+    assert f"{noi:,.2f}" in cover_text, cover_text
+    assert "Binding constraint" in cover_text
+    assert "Maximum supportable loan" in cover_text
+    print("✓ test_docx_has_an_executive_summary_cover_table_before_section_one: PASS")
+
+
+def test_docx_table_header_rows_are_shaded_consistently():
+    """Every table's header row carries the same background fill -- the one consistent table look, checked on both the cover and a body table rather than assumed from one example."""
+    memo = build_credit_memo_data(_underwriting(), narratives={})
+    document = Document(io.BytesIO(generate_credit_memo_docx(memo)))
+
+    from docx.oxml.ns import qn
+
+    def header_fill(table):
+        tc_pr = table.rows[0].cells[0]._tc.find(qn("w:tcPr"))
+        shd = tc_pr.find(qn("w:shd")) if tc_pr is not None else None
+        return shd.get(qn("w:fill")) if shd is not None else None
+
+    assert len(document.tables) >= 2
+    fills = {header_fill(t) for t in document.tables[:3]}
+    assert fills == {"1F3A5F"}, fills
+    print("✓ test_docx_table_header_rows_are_shaded_consistently: PASS")
+
+
+def test_docx_includes_the_dscr_sensitivity_grid():
+    """
+    The rate x occupancy matrix from Phase 3 must actually reach the
+    document, in section 6, with its breakeven marker working.
+    """
+    memo = build_credit_memo_data(_underwriting(), narratives={})
+    text = _docx_text(generate_credit_memo_docx(memo))
+
+    assert "DSCR sensitivity: rate vs. occupancy" in text
+    assert "85%" in text and "100%" in text, "occupancy column headers must be present"
+    assert "+300bp" in text, "the worst-case rate row must be labelled"
+    assert "falls below 1.00x" in text, "the breakeven-marker legend must be present"
+    print("✓ test_docx_includes_the_dscr_sensitivity_grid: PASS")
+
+
+def test_sensitivity_grid_table_marks_cells_below_breakeven():
+    """A DSCR below 1.00x in the grid must carry the visible marker, not just a bare number a reader could miss."""
+    from app.loan_underwriting import underwrite as _underwrite_fn
+
+    # A deal structured so at least one grid cell (high rate, low
+    # occupancy) genuinely falls below 1.00x DSCR.
+    terms = {
+        "loan_amount": 10_000_000.0, "annual_rate_pct": 6.0, "amortization_years": 30,
+        "term_years": 10, "interest_only_months": 0,
+        "purchase_price": 12_000_000.0, "appraised_value": 12_500_000.0, "unit_count": 100,
+    }
+    t12 = {
+        "gross_potential_rent": 1_050_000.0, "loss_to_lease": 0.0, "concessions": 0.0,
+        "bad_debt": 0.0, "other_income": 20_000.0,
+        "operating_expenses_ex_management": 350_000.0, "unit_count": 100,
+    }
+    underwriting = _underwrite_fn(terms, t12, assumptions={
+        "vacancy_pct": 5.0, "management_fee_pct": 3.0, "replacement_reserves_per_unit": 250.0,
+    })
+    underwriting["loan_request"] = {"property_address": "1 Marginal Way", "deal_name": "Marginal Deal", "loan_amount": terms["loan_amount"]}
+    underwriting["t12_snapshot"] = {"id": 1, "filename": "t12.csv", "uploaded_at": "2026-10-01T00:00:00+00:00",
+                                    "management_fee_removed": None, "warnings": [], "line_items": [],
+                                    "t12_inputs": {}}
+    underwriting["assumption_rows"] = []
+    underwriting["input_rows"] = []
+    underwriting["rent_roll_analysis"] = {"has_lease_data": False, "total_units_checked": 0,
+                                          "total_discrepancies": 0, "annual_income_overstatement": None,
+                                          "discrepancies": []}
+
+    worst_cell = underwriting["sensitivity_grid"]["rows"][-1]["cells"][0]  # +300bp, 85% occupancy
+    assert worst_cell["dscr"] < 1.0, worst_cell
+
+    memo = build_credit_memo_data(underwriting, narratives={})
+    text = _docx_text(generate_credit_memo_docx(memo))
+    assert " *" in text, "at least one below-breakeven cell must carry the marker"
+    print("✓ test_sensitivity_grid_table_marks_cells_below_breakeven: PASS")
+
+
 if __name__ == "__main__":
     test_template_has_the_standard_bank_structure_in_order()
     test_only_four_sections_are_ai_narrated()
@@ -476,5 +570,10 @@ if __name__ == "__main__":
     test_docx_says_plainly_when_no_leases_are_on_file()
     test_docx_warns_when_narratives_were_not_generated()
     test_docx_includes_the_assumptions_and_sources_appendices()
+
+    test_docx_has_an_executive_summary_cover_table_before_section_one()
+    test_docx_table_header_rows_are_shaded_consistently()
+    test_docx_includes_the_dscr_sensitivity_grid()
+    test_sensitivity_grid_table_marks_cells_below_breakeven()
 
     print("\nAll credit memo tests passed.")

@@ -115,7 +115,7 @@ SECTIONS = [
     {
         "key": "ratios_and_stress",
         "heading": "6. Ratios and Stress Tests",
-        "blocks": ["ratios_table", "max_loan_table", "stress_table"],
+        "blocks": ["ratios_table", "max_loan_table", "stress_table", "sensitivity_grid_table"],
         "narrative": False,
     },
     {

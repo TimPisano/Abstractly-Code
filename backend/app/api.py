@@ -5326,11 +5326,18 @@ def health_check():
 @app.route('/config', methods=['GET'])
 def get_config():
     """Public, read-only flags the frontend needs before it can decide how
-    to render — currently just local_dev_mode, which lets /app's access
-    gate (frontend/app/access-gate.js) know whether to skip itself. Keep
-    this endpoint to flags that are safe for anyone to read; never put a
-    secret or anything env-specific-but-sensitive here."""
-    return jsonify({"local_dev_mode": LOCAL_DEV_MODE}), 200
+    to render — local_dev_mode lets /app's access gate
+    (frontend/app/access-gate.js) know whether to skip itself;
+    loan_underwriting_enabled lets the sidebar know whether to show the
+    Loan Underwriting nav item at all, so a tester on a deployment where
+    the feature is off never sees a nav item that 404s when clicked. Keep
+    this endpoint to flags that are safe for anyone to read, authenticated
+    or not; never put a secret or anything env-specific-but-sensitive
+    here."""
+    return jsonify({
+        "local_dev_mode": LOCAL_DEV_MODE,
+        "loan_underwriting_enabled": loan_underwriting_enabled(),
+    }), 200
 
 
 @app.route('/demo/reset', methods=['POST'])

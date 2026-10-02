@@ -25,14 +25,41 @@ import io
 from typing import Any, Dict, List, Optional
 
 from docx import Document
+from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.oxml.ns import qn
+from docx.oxml import OxmlElement
 from docx.shared import Pt, RGBColor
 
 from .normalize import format_currency
 
-# Muted grey for source citations and caveats -- present and readable,
-# but visually subordinate to the figures themselves.
-_MUTED = RGBColor(0x66, 0x66, 0x66)
+# One consistent palette for the whole document -- a bank memo reads as
+# "considered" partly through restraint: one accent color, used the same
+# way everywhere, rather than a different shade per section.
+_NAVY = RGBColor(0x1F, 0x3A, 0x5F)      # headings, the cover table's accents
+_MUTED = RGBColor(0x66, 0x66, 0x66)     # source citations and caveats
+_HEADER_FILL = "1F3A5F"                  # table header row background (hex, no '#')
+_WHITE = RGBColor(0xFF, 0xFF, 0xFF)      # header row text, against _HEADER_FILL
+
+
+def _shade_cell(cell, hex_color: str) -> None:
+    """
+    Sets a table cell's background fill. python-docx has no public API
+    for cell shading, so this drops to the underlying OOXML element
+    directly -- the standard, documented workaround (there's no other
+    way to do it with this library as of 1.2.0).
+    """
+    shading = OxmlElement("w:shd")
+    shading.set(qn("w:fill"), hex_color)
+    cell._tc.get_or_add_tcPr().append(shading)
+
+
+def _style_heading(paragraph, size: int, color: RGBColor = _NAVY) -> None:
+    """Applies the one consistent heading look (navy, a fixed size) to a paragraph's runs -- used on every heading so the document doesn't drift between a Word-theme blue on some and a default on others."""
+    for run in paragraph.runs:
+        run.font.color.rgb = color
+        run.font.size = Pt(size)
+        run.font.bold = True
 
 
 def _money(value: Optional[float]) -> str:
@@ -48,24 +75,42 @@ def _ratio(value: Optional[float]) -> str:
     return f"{value:.2f}x" if value is not None else "n/a"
 
 
+def _looks_numeric(value: str) -> bool:
+    """True for a cell that's a dollar figure, percentage, ratio, or bare number -- these right-align like a ledger; labels stay left-aligned. Deliberately permissive (checks for digits at all) since a cell may read '$1,234.56', '12.34%', '1.25x', or 'n/a'."""
+    return any(ch.isdigit() for ch in value) and not value.strip().upper() in ("YES", "NO")
+
+
 def _add_table(document: Document, rows: List[List[str]]) -> None:
     """
-    A two-or-more-column table with the first row as a bold header.
-    'Table Grid' is python-docx's only guaranteed-present bordered style;
-    anything else risks a KeyError on a default template.
+    A two-or-more-column table with a shaded, bold-white header row --
+    the one consistent table look used everywhere in this document, so a
+    reader's eye tracks tables the same way from the cover summary
+    through the appendices. 'Table Grid' is python-docx's only
+    guaranteed-present bordered style; anything else risks a KeyError on
+    a default template.
+
+    Numeric-looking cells (dollar figures, percentages, ratios) are
+    right-aligned, same as a bank statement or a ledger -- a column of
+    right-aligned numbers lets a reader compare magnitudes at a glance,
+    which a column of left-aligned ones doesn't.
     """
     if not rows:
         return
     table = document.add_table(rows=len(rows), cols=len(rows[0]))
     table.style = "Table Grid"
+    table.alignment = WD_TABLE_ALIGNMENT.LEFT
     for row_index, row in enumerate(rows):
         for col_index, value in enumerate(row):
             cell = table.cell(row_index, col_index)
             cell.text = str(value)
+            paragraph = cell.paragraphs[0]
             if row_index == 0:
-                for paragraph in cell.paragraphs:
-                    for run in paragraph.runs:
-                        run.bold = True
+                _shade_cell(cell, _HEADER_FILL)
+                for run in paragraph.runs:
+                    run.bold = True
+                    run.font.color.rgb = _WHITE
+            elif col_index > 0 and _looks_numeric(str(value)):
+                paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
     document.add_paragraph()
 
 
@@ -409,6 +454,41 @@ def _render_stress_table(document: Document, memo: Dict[str, Any]) -> None:
     )
 
 
+def _render_sensitivity_grid_table(document: Document, memo: Dict[str, Any]) -> None:
+    """
+    The DSCR sensitivity grid: one row per interest rate, one column per
+    occupancy level. Unlike the five independent stress cases above, this
+    shows the INTERACTION between a rate move and an occupancy drop --
+    which combination is where the deal actually stops covering its debt.
+
+    Each cell below 1.00x is marked so the breakeven frontier is visible
+    at a glance rather than requiring the reader to scan every number.
+    """
+    grid = memo["underwriting"].get("sensitivity_grid")
+    if not grid:
+        return
+
+    document.add_paragraph().add_run("DSCR sensitivity: rate vs. occupancy").bold = True
+    header = ["Rate \\ Occupancy"] + [f"{occ:.0f}%" for occ in grid["occupancy_levels_pct"]]
+    rows = [header]
+    for row in grid["rows"]:
+        delta = row["rate_delta_bps"]
+        delta_label = f"{delta:+d}bp" if delta else "base"
+        rate_label = f"{row['annual_rate_pct']:.2f}% ({delta_label})"
+        cells = [rate_label]
+        for cell in row["cells"]:
+            dscr = cell["dscr"]
+            marker = " *" if (dscr is not None and dscr < 1.0) else ""
+            cells.append(f"{_ratio(dscr)}{marker}")
+        rows.append(cells)
+    _add_table(document, rows)
+    _add_muted(
+        document,
+        "* marks a cell where DSCR falls below 1.00x -- the property does not cover its debt "
+        "service at that combination of rate and occupancy.",
+    )
+
+
 def _render_narrative(document: Document, memo: Dict[str, Any], section_key: str) -> None:
     prose = (memo.get("narratives") or {}).get(section_key)
     if not prose:
@@ -428,7 +508,7 @@ def _render_assumptions_appendix(document: Document, memo: Dict[str, Any]) -> No
     rows = memo["underwriting"].get("assumption_rows") or []
     if not rows:
         return
-    document.add_heading("Appendix A - Assumptions and Constraints Used", level=1)
+    _style_heading(document.add_heading("Appendix A - Assumptions and Constraints Used", level=1), size=14)
     table_rows = [["Assumption", "Value", "Unit", "Type", "Default?"]]
     for row in rows:
         table_rows.append([
@@ -448,7 +528,7 @@ def _render_sources_appendix(document: Document, memo: Dict[str, Any]) -> None:
     rows = memo["underwriting"].get("input_rows") or []
     if not rows:
         return
-    document.add_heading("Appendix B - Input Sources", level=1)
+    _style_heading(document.add_heading("Appendix B - Input Sources", level=1), size=14)
     table_rows = [["Input", "Value", "Origin", "Source"]]
     for row in rows:
         value = row.get("value")
@@ -475,7 +555,63 @@ _BLOCK_RENDERERS = {
     "ratios_table": _render_ratios_table,
     "max_loan_table": _render_max_loan_table,
     "stress_table": _render_stress_table,
+    "sensitivity_grid_table": _render_sensitivity_grid_table,
 }
+
+
+def _render_cover_summary(document: Document, memo: Dict[str, Any]) -> None:
+    """
+    A one-table, at-a-glance dashboard printed before Section 1: the
+    property, the headline ratios, and the binding constraint with the
+    shortfall or headroom called out -- the handful of numbers a credit
+    officer skimming the document wants before reading anything else.
+
+    This does not replace Section 1 (Loan Summary) -- it's a COVER, the
+    thing a reader sees in the three seconds before deciding whether to
+    read on, in the same spirit as an executive summary on a longer
+    report. Every number here also appears, with its full context, in
+    the body.
+    """
+    underwriting = memo["underwriting"]
+    build_up = underwriting["noi_build_up"]
+    ratios = underwriting["ratios"]
+    sizing = underwriting["sizing"]
+    terms = underwriting["loan_terms"]
+    requested = terms.get("loan_amount")
+    maximum = sizing.get("maximum_loan")
+
+    _style_heading(document.add_heading("Executive Summary", level=1), size=14)
+
+    rows = [
+        ["Item", "Value"],
+        ["Property", memo.get("property_address") or "n/a"],
+        ["Deal name", memo.get("deal_name") or "n/a"],
+        ["Units", str(terms.get("unit_count") or "n/a")],
+        ["Loan amount requested", _money(requested)],
+        ["Underwritten NOI", _money(build_up["underwritten_noi"])],
+        ["DSCR (fully amortizing)", _ratio(ratios.get("dscr"))],
+        ["LTV", _pct(ratios.get("ltv_pct"))],
+        ["Debt yield", _pct(ratios.get("debt_yield_pct"))],
+        ["Breakeven occupancy", _pct(ratios.get("breakeven_occupancy_pct"))],
+        ["Binding constraint", sizing.get("binding_constraint_label") or "not determinable"],
+        ["Maximum supportable loan", _money(maximum)],
+    ]
+    _add_table(document, rows)
+
+    if requested is not None and maximum is not None:
+        difference = round(maximum - requested, 2)
+        paragraph = document.add_paragraph()
+        if difference < 0:
+            run = paragraph.add_run(
+                f"The requested loan exceeds the maximum supportable amount by {_money(abs(difference))}."
+            )
+            run.bold = True
+            run.font.color.rgb = _NAVY
+        else:
+            paragraph.add_run(
+                f"The requested loan has {_money(difference)} of headroom below the maximum supportable amount."
+            )
+    document.add_paragraph()
 
 
 def generate_credit_memo_docx(memo: Dict[str, Any]) -> bytes:
@@ -487,16 +623,32 @@ def generate_credit_memo_docx(memo: Dict[str, Any]) -> bytes:
     "[ unrecognized template block ]" marker rather than being skipped --
     a typo in a swapped-in lender template should be obvious in the
     output, not produce a quietly incomplete memo.
+
+    Structure, top to bottom: title, preamble, an Executive Summary cover
+    table, then the eight numbered sections from the template, then the
+    two appendices. One consistent heading color and one consistent
+    table style (shaded header row, right-aligned figures) run through
+    the whole document -- see _style_heading / _add_table.
     """
     document = Document()
 
-    document.add_heading(memo["title"], level=0)
+    # A clean, widely-available body font, applied once at the style
+    # level rather than per-run -- every paragraph that doesn't override
+    # it inherits this, which is what makes the whole document look like
+    # one considered document rather than a patchwork of default fonts.
+    normal_style = document.styles["Normal"]
+    normal_style.font.name = "Calibri"
+    normal_style.font.size = Pt(10.5)
+
+    title = document.add_heading(memo["title"], level=0)
+    _style_heading(title, size=24)
 
     subtitle = document.add_paragraph()
     subtitle.alignment = WD_ALIGN_PARAGRAPH.LEFT
     label = memo.get("deal_name") or memo.get("property_address") or "Loan request"
     run = subtitle.add_run(f"{label}\nPrepared {memo['generated_date']}")
     run.bold = True
+    run.font.size = Pt(12)
 
     _add_muted(document, memo["preamble"])
 
@@ -508,8 +660,11 @@ def generate_credit_memo_docx(memo: Dict[str, Any]) -> bytes:
         )
         run.bold = True
 
+    _render_cover_summary(document, memo)
+
     for section in memo["sections"]:
-        document.add_heading(section["heading"], level=1)
+        heading = document.add_heading(section["heading"], level=1)
+        _style_heading(heading, size=14)
         for block in section["blocks"]:
             if block == "narrative":
                 _render_narrative(document, memo, section["key"])
