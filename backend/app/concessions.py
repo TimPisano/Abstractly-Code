@@ -233,6 +233,9 @@ _PREPAID_APPLIED = re.compile(
     r"\b(?:deposit|prepaid|pre-paid|prepay\w*|prepayment)\b[^.;]{0,160}?\b(?:credited|applied)\s+(?:toward|towards|against|to)\b",
     re.IGNORECASE,
 )
+# "interest-free" / "free of interest" describe how a deposit is held,
+# not a concession -- removed before looking for concession words.
+_INTEREST_FREE = re.compile(r"\binterest[- ]free\b|\bfree\s+of\s+interest\b|\bwithout\s+interest\b", re.IGNORECASE)
 _CONCESSION_NAMED = re.compile(
     r"\b(?:concessions?|credit|special|incentive|discount|abate\w*|free)\b", re.IGNORECASE,
 )
@@ -243,12 +246,14 @@ _NEGATION_BEFORE = re.compile(
     r"|\bno\s+(?:concessions?|free\s+rent|discounts?|credits?)\b|\bnever\b",
     re.IGNORECASE,
 )
-# ...unless the "not" sits in a CONDITION on the concession ("Provided
+# ...unless that "not" is itself about the tenant's default ("Provided
 # Tenant is not then in default / does not default / shall not have
-# breached, rent shall be abated") -- that's a real, conditional grant.
-_CONDITION_WORDS = re.compile(
-    r"\b(?:provided|so\s+long\s+as|as\s+long\s+as|if|unless|on\s+condition)\b|\bdefault\w*|\bbreach\w*|\bdelinquen\w*",
-    re.IGNORECASE,
+# breached, rent shall be abated") -- a condition on a real grant. Judged
+# by what directly FOLLOWS the "not", so a forfeiture clause ("If Tenant
+# defaults, Tenant shall not be entitled to one month free") still reads
+# as a negation of the grant.
+_NOT_ABOUT_DEFAULT = re.compile(
+    r"^\W*(?:[a-z]+\W+){0,3}?(?:default\w*|breach\w*|delinquen\w*)", re.IGNORECASE,
 )
 # Discounts and credits on something other than rent (parking, utilities,
 # the deposit, pet rent, an early-payment discount). Judged from the words
@@ -265,6 +270,10 @@ _NON_RENT_WORDS = re.compile(
 _RENT_WORD = re.compile(
     r"\b(?<!may )(?<!to )(?<!can )(?<!pet )(?<!parking )(?<!storage )(?<!garage )rent\b"
     r"(?!\s+(?:a|an|the|one|two|additional|another)\b)",
+    re.IGNORECASE,
+)
+_APPLIED_TO_DEPOSIT = re.compile(
+    r"\b(?:applied|credited)\s+(?:toward|towards|against|to)\s+(?:the\s+|resident's\s+|tenant's\s+)?(?:security\s+)?deposit\b",
     re.IGNORECASE,
 )
 # Words in the match itself that make it unmistakably a leasing concession.
@@ -427,7 +436,11 @@ def _overlaps(span: Tuple[int, int], taken: List[Tuple[int, int]]) -> bool:
 
 def _negated(sentence: str, start: int) -> bool:
     window = sentence[max(0, start - 60):start]
-    return bool(_NEGATION_BEFORE.search(window)) and not _CONDITION_WORDS.search(window)
+    for m in _NEGATION_BEFORE.finditer(window):
+        if "not" in m.group(0).lower() and _NOT_ABOUT_DEFAULT.match(window[m.end():]):
+            continue  # "is not then in default" -- a condition, not a negation
+        return True
+    return False
 
 
 def _about_something_else(sentence: str, start: int, end: int) -> bool:
@@ -438,12 +451,21 @@ def _about_something_else(sentence: str, start: int, end: int) -> bool:
     word there wins unless "rent" (the noun) sits closer to the match.
     """
     matched = sentence[start:end]
+    # "$200 move-in credit, applied toward the security deposit" reduces
+    # the deposit, not rent -- never priced into effective rent.
+    if _APPLIED_TO_DEPOSIT.search(sentence[end:]):
+        return True
     if _TRIGGER_IN_MATCH.search(matched) or _RENT_WORD.search(matched):
         return False
     after = re.split(r"[,;]", sentence[end:], maxsplit=1)[0]
     if _NON_RENT_WORDS.search(after):
         return True
     before = sentence[max(0, start - 45):start]
+    # A non-rent word in an earlier "... and ..." clause belongs to that
+    # clause ("the application fee is waived and residents receive $50 per
+    # month off"); commas don't cut it ("parking is $50 per month,
+    # discounted by $10" is still about parking).
+    before = re.split(r"\band\b", before)[-1]
     non_rent = [m.end() for m in _NON_RENT_WORDS.finditer(before)]
     rent = [m.end() for m in _RENT_WORD.finditer(before)]
     return bool(non_rent) and (not rent or non_rent[-1] > rent[-1])
@@ -452,7 +474,7 @@ def _about_something_else(sentence: str, start: int, end: int) -> bool:
 def _parse_sentence(sentence: str) -> List[Dict[str, Any]]:
     if _CONTINGENCY_WORDS.search(sentence):
         return []
-    if _PREPAID_APPLIED.search(sentence) and not _CONCESSION_NAMED.search(sentence):
+    if _PREPAID_APPLIED.search(sentence) and not _CONCESSION_NAMED.search(_INTEREST_FREE.sub(" ", sentence)):
         return []
 
     found: List[Tuple[int, int, Dict[str, Any]]] = []  # (start, end, item)
