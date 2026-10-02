@@ -70,30 +70,30 @@
       "unit_id": "A104",
       "rent_roll_value": "$1,075.00 (no concession shown)",
       "lease_value": "One (1) month of Base Rent (the first full calendar month, October 2025) is abated as a move-in incentive.",
-      "monthly_dollar_impact": null,
+      "monthly_dollar_impact": 89.58,
       "annual_dollar_impact": 1075.0,
       "income_direction": "overstate",
-      "detected_by": "NOT YET DETECTED -- detect_concession_missing is a stub pending Phase 2 (multifamily `concessions` field); see README"
+      "detected_by": "Deal Mismatch Report (detect_concession_missing) -- live"
     },
     {
       "discrepancy_type": "concession_missing",
       "unit_id": "E301",
       "rent_roll_value": "$1,290.00 (no concession shown)",
       "lease_value": "Base Rent is reduced by $100.00 per month for the first six (6) months of the Lease Term (April 2026 through September 2026) as a renewal incentive.",
-      "monthly_dollar_impact": null,
+      "monthly_dollar_impact": 50.0,
       "annual_dollar_impact": 600.0,
       "income_direction": "overstate",
-      "detected_by": "NOT YET DETECTED -- detect_concession_missing is a stub pending Phase 2 (multifamily `concessions` field); see README"
+      "detected_by": "Deal Mismatch Report (detect_concession_missing) -- live"
     },
     {
       "discrepancy_type": "concession_missing",
       "unit_id": "I204",
       "rent_roll_value": "$1,720.00 (no concession shown)",
       "lease_value": "Base Rent is reduced by $75.00 per month for the full twelve (12) month Lease Term as a retention incentive.",
-      "monthly_dollar_impact": null,
+      "monthly_dollar_impact": 75.0,
       "annual_dollar_impact": 900.0,
       "income_direction": "overstate",
-      "detected_by": "NOT YET DETECTED -- detect_concession_missing is a stub pending Phase 2 (multifamily `concessions` field); see README"
+      "detected_by": "Deal Mismatch Report (detect_concession_missing) -- live"
     },
     {
       "discrepancy_type": "unit_no_lease",

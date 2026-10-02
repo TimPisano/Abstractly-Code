@@ -155,7 +155,7 @@ _RECURRING_PATTERNS = [
     # "Base Rent is reduced by $100.00 per month"
     re.compile(rf"\b(?:reduced|discounted|lowered|decreased)\s+by\s+{_AMOUNT}\s*{_PER_MONTH}", re.IGNORECASE),
     # "$75/mo off", "$50 per month discount", "$100 monthly concession"
-    re.compile(rf"{_AMOUNT}\s*{_PER_MONTH}\s+(?:rent\s+)?(?:discount|concession|reduction|credit|off)\b", re.IGNORECASE),
+    re.compile(rf"{_AMOUNT}\s*{_PER_MONTH}\s+(?:[a-z\-]+\s+){{0,2}}?(?:discount|concession|reduction|credit|off)\b", re.IGNORECASE),
     # "$50 off rent each month"
     re.compile(rf"{_AMOUNT}\s+off\s+(?:the\s+)?(?:monthly\s+)?(?:base\s+)?rent\s+(?:per|each|every)\s+month\b", re.IGNORECASE),
     # "a discount of $50 per month", "concession of $100 monthly"
@@ -736,7 +736,9 @@ def compute_effective_rent(
                                       as_of's month: base, minus any
                                       recurring discount active then, or
                                       $0 in a free month
-      remaining_concession_value    = concession dollars not yet used as of as_of
+      remaining_concession_value    = concession dollars still to come after
+                                      as_of's month (that month's rent is
+                                      already billed)
 
     Every money figure is None when it can't be computed honestly (no
     base rent, or an item that can't be priced) -- `quantified` is False
@@ -777,7 +779,9 @@ def compute_effective_rent(
             elif p["status"] == "active" and p["end_date"]:
                 if p["kind"] == "recurring_discount" and p["monthly_value"] is not None:
                     end = date.fromisoformat(p["end_date"])
-                    months_left = (end.year - as_of.year) * 12 + end.month - as_of.month + 1
+                    # Months after as_of's own month -- rent for the
+                    # current month is already billed, discount included.
+                    months_left = (end.year - as_of.year) * 12 + end.month - as_of.month
                     rem += p["monthly_value"] * max(0, months_left)
                 else:
                     rem += p["total_value"]

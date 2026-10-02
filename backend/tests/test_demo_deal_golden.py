@@ -194,8 +194,8 @@ def test_demo_deal_16unit_subset_matches_expected_findings_exactly():
         # annualized dollar impact, each citing the lease's concession
         # clause on the page it's on.
         assert len(by_type.get("concession_missing", [])) == 3, by_type.get("concession_missing")
-        got_concessions = {(r["unit"].split("Suite ")[-1], r["annual_dollar_impact"]) for r in by_type["concession_missing"]}
-        want_concessions = {(f["unit_id"], f["annual_dollar_impact"]) for f in expected_by_type["concession_missing"]}
+        got_concessions = {(r["unit"].split("Suite ")[-1], r["monthly_dollar_impact"], r["annual_dollar_impact"]) for r in by_type["concession_missing"]}
+        want_concessions = {(f["unit_id"], f["monthly_dollar_impact"], f["annual_dollar_impact"]) for f in expected_by_type["concession_missing"]}
         assert got_concessions == want_concessions, (got_concessions, want_concessions)
         for r in by_type["concession_missing"]:
             assert r["income_direction"] == "overstate"
