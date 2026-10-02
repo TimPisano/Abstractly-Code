@@ -162,7 +162,14 @@ roll exactly. The Deal Mismatch Report should say nothing about any of them.
 
 ## T-12: collections ~6% below what the rent roll implies
 
-`t12/maple_ridge_t12.xlsx` covers September 2025 through August 2026. Two
+`t12/maple_ridge_t12.xlsx` covers September 2025 through August 2026, with
+an "Annual Summary" panel (Gross Potential Rent through NOI, one row each)
+above the monthly grid, thin borders throughout, and leaf line items
+indented under their section/subtotal so the category subtotals stand out.
+That panel sits strictly above the monthly grid's own column-header row, so
+`app/t12_import.py`'s decorative-header-row auto-detection skips straight
+past it to the real grid, same as it always has — confirmed by parsing the
+regenerated file directly. Two
 lines matter for this story:
 
 - **Net Rental Income Billed: $2,044,072.64/year** — this is what the current

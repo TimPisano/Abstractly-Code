@@ -1034,6 +1034,10 @@ def build_t12(units):
     }
 
 
+_T12_THIN = Side(style="thin", color="B7B7B7")
+_T12_BORDER = Border(left=_T12_THIN, right=_T12_THIN, top=_T12_THIN, bottom=_T12_THIN)
+
+
 def write_t12_xlsx(path, t12):
     wb = Workbook()
     ws = wb.active
@@ -1049,8 +1053,49 @@ def write_t12_xlsx(path, t12):
     ws["A1"].font = Font(bold=True, size=14)
     ws["A2"] = "Trailing 12-Month Operating Statement (T-12) -- FABRICATED DEMO DATA, not a real property"
     ws["A3"] = f"{MONTH_NAMES[T12_MONTHS[0][1]-1]} {T12_MONTHS[0][0]} through {MONTH_NAMES[T12_MONTHS[-1][1]-1]} {T12_MONTHS[-1][0]}"
+    ws["A4"] = f"Prepared {RENT_ROLL_GENERATED.strftime('%m/%d/%Y')}"
+    ws["A4"].font = Font(italic=True, size=9, color="808080")
 
-    header_row = 5
+    # Annual Summary panel, above the monthly grid -- pulled straight
+    # from t12["totals"] (the exact same numbers write_line's own Total
+    # column computes below), not recomputed, so the two can never drift
+    # apart. Placed ABOVE the real monthly header row specifically so
+    # app/t12_import.py's header-row auto-detection (which scans for a
+    # Total/Annual column or 2+ month columns) skips straight past it to
+    # the real grid -- this panel is a 2-column Metric/Amount table with
+    # neither, so it's structurally invisible to the importer, exactly
+    # like the rent roll's own header-block-then-table pattern.
+    summary_row = 6
+    ws.cell(row=summary_row, column=1, value="Annual Summary").font = Font(bold=True, size=11)
+    summary_lines = [
+        ("Gross Potential Rent", t12["totals"]["gpr"]),
+        ("Vacancy Loss", -t12["totals"]["vacancy_loss"]),
+        ("Loss to Lease", -t12["totals"]["loss_to_lease"]),
+        ("Net Rental Income Billed", t12["totals"]["net_rent_billed"]),
+        ("Concessions", -t12["totals"]["concessions"]),
+        ("Bad Debt / Collection Loss", -t12["totals"]["bad_debt"]),
+        ("Total Rent Collected", t12["totals"]["collected_rent"]),
+        ("Total Other Income", t12["totals"]["total_other_income"]),
+        ("TOTAL INCOME", t12["totals"]["total_income"]),
+        ("TOTAL OPERATING EXPENSES", t12["totals"]["total_expenses"]),
+        ("NET OPERATING INCOME (NOI)", t12["totals"]["noi"]),
+        ("Bad Debt as % of Net Rental Income Billed", t12["bad_debt_pct_actual"] / 100),
+    ]
+    row = summary_row + 1
+    for label, value in summary_lines:
+        is_total_line = label.isupper()
+        label_cell = ws.cell(row=row, column=1, value=label)
+        value_cell = ws.cell(row=row, column=2, value=value)
+        if is_total_line:
+            label_cell.font = bold
+            value_cell.font = bold
+        label_cell.border = _T12_BORDER
+        value_cell.border = _T12_BORDER
+        value_cell.alignment = Alignment(horizontal="right")
+        value_cell.number_format = "0.0%" if label.startswith("Bad Debt as %") else money_fmt
+        row += 1
+
+    header_row = row + 1
     ws.cell(row=header_row, column=1, value="Line Item")
     for i, m in enumerate(t12["months"]):
         ws.cell(row=header_row, column=2 + i, value=m["label"])
@@ -1060,6 +1105,7 @@ def write_t12_xlsx(path, t12):
         c.font = header_font
         c.fill = header_fill
         c.alignment = Alignment(horizontal="center")
+        c.border = _T12_BORDER
 
     row = header_row + 1
 
@@ -1068,9 +1114,16 @@ def write_t12_xlsx(path, t12):
         c0 = ws.cell(row=row, column=1, value=label)
         if bold_line or is_total:
             c0.font = bold
+        elif not section:
+            # Leaf line items (not a section header/subtotal/total) are
+            # indented one level so the subtotal/total rows visually
+            # stand out as category subtotals at a glance.
+            c0.alignment = Alignment(indent=1)
         if section:
             for col in range(1, 3 + len(t12["months"])):
-                ws.cell(row=row, column=col).fill = section_fill
+                cell = ws.cell(row=row, column=col)
+                cell.fill = section_fill
+                cell.border = _T12_BORDER
             ws.cell(row=row, column=1).font = bold
             row += 1
             return
@@ -1078,12 +1131,15 @@ def write_t12_xlsx(path, t12):
             val = m[key_or_values] if isinstance(key_or_values, str) else key_or_values[i]
             c = ws.cell(row=row, column=2 + i, value=val)
             c.number_format = money_fmt
+            c.border = _T12_BORDER
             if bold_line or is_total:
                 c.font = bold
         total_val = sum((m[key_or_values] if isinstance(key_or_values, str) else key_or_values[i]) for i, m in enumerate(t12["months"]))
         ct = ws.cell(row=row, column=2 + len(t12["months"]), value=round(total_val, 2))
         ct.number_format = money_fmt
         ct.font = bold
+        ct.border = _T12_BORDER
+        c0.border = _T12_BORDER
         row += 1
 
     write_line("INCOME", None, section=True)
@@ -1113,7 +1169,7 @@ def write_t12_xlsx(path, t12):
     for i in range(len(t12["months"]) + 1):
         ws.column_dimensions[get_column_letter(2 + i)].width = 12
 
-    ws.freeze_panes = "B6"
+    ws.freeze_panes = f"B{header_row + 1}"
     wb.save(path)
 
 
