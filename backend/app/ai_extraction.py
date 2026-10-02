@@ -34,6 +34,8 @@ from typing import Any, Dict, List, Optional
 
 import anthropic
 
+from . import concessions
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_MODEL = os.environ.get("LEASE_EXTRACTION_MODEL", "claude-sonnet-5")
@@ -42,7 +44,7 @@ DEFAULT_MODEL = os.environ.get("LEASE_EXTRACTION_MODEL", "claude-sonnet-5")
 # rubric changes. The training harness records it per round so a trend
 # line can be attributed to a specific prompt revision. History of what
 # changed each version lives in AI_PIPELINE_LOG.md (Phase 4).
-PROMPT_VERSION = "v1"
+PROMPT_VERSION = "v2"  # v2: added the multifamily `concessions` field
 
 # Generous: a long lease produces a lot of output tokens (15 fields,
 # each with a value + a verbatim source quote that can be a full
@@ -67,7 +69,7 @@ _BACKOFF_BASE_SECONDS = 1.5
 # to the model so it knows its view is partial.
 MAX_DOCUMENT_CHARS = 200_000
 
-# The 15 fields, matching app/field_extractor.py's keys exactly so the
+# The extracted fields, matching app/field_extractor.py's keys so the
 # stored structure is engine-independent. Order here is the order the
 # tool schema presents them in.
 LEASE_FIELDS = [
@@ -86,6 +88,12 @@ LEASE_FIELDS = [
     "insurance_requirements",
     "default_cure_period",
     "square_footage",
+    # Multifamily concessions. Not in field_extractor's original 15 --
+    # added alongside the regex engine's own `concessions` field so both
+    # engines produce it. The model only locates and quotes the clause;
+    # concessions.py turns that verbatim quote into the structured
+    # schedule and does every dollar calculation (see _attach_concession_items).
+    "concessions",
 ]
 
 CONFIDENCE_LEVELS = ("high", "medium", "low")
@@ -147,6 +155,7 @@ FIELD_GUIDANCE = {
     "insurance_requirements": "Tenant's required insurance coverage -- the key limits (e.g. \"$2,000,000 per occurrence CGL\"). The headline requirement, not every sub-clause.",
     "default_cure_period": "The time the defaulting party has to cure after written notice of a monetary/general default. Display as \"10 days after written notice\". If monetary and non-monetary differ, report the general/non-monetary one and note the split.",
     "square_footage": "Rentable/leasable area of the premises. Display as \"2,400 sq ft\".",
+    "concessions": "Every rent concession the lease grants the tenant: free months / abated rent, move-in or look-and-lease specials, recurring monthly discounts ($ or % off), and one-time rent credits -- including renewal, retention, military, or employee incentives. For each: the amount, how long it lasts (which months, or the full term), and what triggered it. Display compactly, one concession per clause separated by \"; \", e.g. \"1 month free (move-in, Oct 2025); $100.00/mo off for the first 6 months (renewal)\". source_text MUST quote every concession clause verbatim (join separate clauses with \" ... \"). Do NOT include rent abatement that only applies after casualty/condemnation, late-fee waivers, or rent escalations. Not found if the lease grants no concession.",
 }
 
 
@@ -330,10 +339,44 @@ def _coerce_field_entry(raw: Any, pages: List[Dict[str, Any]]) -> Dict[str, Any]
     return entry
 
 
+def _attach_concession_items(entry: Dict[str, Any], pages: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Give the AI's `concessions` entry the same structured `items` the
+    regex engine stores (see concessions.build_field_entry), by running
+    concessions.py's deterministic parser over the model's verbatim
+    quote -- never over the model's own arithmetic. Each " ... "-joined
+    clause is located on its own page so every item cites the right one.
+    Falls back to the model's display value if the quote alone doesn't
+    parse. If neither does, the value is kept (the model did find
+    something) but flagged: a concession nobody could price must never be
+    reported as $0.
+    """
+    if entry.get("value") is None:
+        return entry
+    items: List[Dict[str, Any]] = []
+    quote = entry.get("source_text") or ""
+    for clause in [c.strip() for c in re.split(r"\s*(?:\.\.\.|…)\s*", quote) if c.strip()]:
+        items.extend(concessions.parse_concession_text(clause, _locate_quote_page(clause, pages)))
+    if not items:
+        page = (entry.get("source") or {}).get("page")
+        items = concessions.parse_concession_text(entry["value"], page)
+        for item in items:
+            # Parsed from the model's paraphrase, not a verbatim quote --
+            # cite the model's quote so a reviewer can check it.
+            item["quote"] = quote or item.get("quote")
+    if items:
+        entry["items"] = items
+    else:
+        entry["confidence"] = "low"
+        entry["validation_note"] = "Concession found, but its amount or duration couldn't be read automatically -- verify against the document."
+    return entry
+
+
 def _parse_tool_payload(payload: Dict[str, Any], pages: List[Dict[str, Any]]) -> Dict[str, Any]:
     result = {}
     for name in LEASE_FIELDS:
         result[name] = _coerce_field_entry(payload.get(name), pages)
+    result["concessions"] = _attach_concession_items(result["concessions"], pages)
     return result
 
 
@@ -467,7 +510,7 @@ def extract_lease_fields(
                       "source_text": str | None,
                       "engine": "ai"}}
 
-    with exactly the 15 keys in LEASE_FIELDS. Raises AIExtractionError
+    with exactly the keys in LEASE_FIELDS (the 15 core fields + concessions). Raises AIExtractionError
     (never a raw exception, never a partial/empty dict) if the call
     fails or the response is unusable.
     """
