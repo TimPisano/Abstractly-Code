@@ -78,6 +78,10 @@ Code settings. If it does sleep, nothing is lost past the last
 
 Each check takes about 0.2s. Test them with `python3 .claude/hooks/test_guard.py`.
 If one blocks something you really want, do that step yourself in a terminal.
+They're a **seatbelt, not a sandbox**. They catch the accidents seen this
+week, including through `bash -c`, `env`, `xargs`, `gh pr merge`, and
+`fetch main:main`. A determined agent writing a script file and running
+it could still get around them, so the CLAUDE.md rules still matter.
 
 ## GateGuard (ECC's "Fact-Forcing Gate"): recommendation
 

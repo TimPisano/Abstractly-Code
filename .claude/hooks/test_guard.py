@@ -48,6 +48,16 @@ cases = [
     ("commit TASKS.md only on main allowed",   False, lambda: bash("git add TASKS.md && git commit -m 'tasks'")),
     ("commit -- TASKS.md on main allowed",     False, lambda: bash("git commit -m 'TASKS: claim x' -- TASKS.md")),
     ("commit -- other file on main blocked",   True,  lambda: bash("git commit -m 'x' -- TASKS.md backend/app/api.py")),
+    # reviewer findings (regressions)
+    ("TASKS commit msg with ( ) ; allowed",    False, lambda: bash("git commit -m 'Update tasks (done); move item' -- TASKS.md")),
+    ("bash -c wrapped push main blocked",      True,  lambda: bash("bash -c \"git push origin main\"", cwd=wt)),
+    ("env-prefixed push main blocked",         True,  lambda: bash("env GIT_TRACE=0 git push origin main", cwd=wt)),
+    ("xargs push main blocked",                True,  lambda: bash("echo x | xargs git push origin main", cwd=wt)),
+    ("gh pr merge blocked",                    True,  lambda: bash("gh pr merge 12 --merge", cwd=wt)),
+    ("fetch origin main:main blocked",         True,  lambda: bash("git fetch origin main:main", cwd=wt)),
+    ("echo mentioning open x.html allowed",    False, lambda: bash("echo 'see open index.html docs'")),
+    ("commit msg mentioning --headed allowed", False, lambda: bash("git commit -m 'ban --headed browsers'", cwd=wt)),
+    ("markdown mentioning headless=False ok",  False, lambda: edit(os.path.join(wt, "docs/x.md"), cwd=wt, content="never use headless=False")),
     ("pull --ff-only on main allowed",         False, lambda: bash("git pull --ff-only")),
     ("heredoc text not parsed as command",     False, lambda: bash("git commit -m \"$(cat <<'EOF'\nnever git push origin main\nEOF\n)\"", cwd=wt)),
     ("switch branch in primary blocked",       True,  lambda: bash("git checkout feature/x")),
@@ -73,7 +83,8 @@ cases = [
     ("'merge' alone does not approve",         True,  lambda: bash("git merge feature/x") if not prompt("should we merge this later?") or True else None),
     # approval flow
     ("/merge-branch records approval",         True,  lambda: "merge approval" in prompt("/merge-branch feature/x")),
-    ("approved session may merge",             False, lambda: bash("git merge feature/x")),
+    ("approved session may merge",             False, lambda: bash("git merge --no-ff -m 'Merge feature/x (approved)' feature/x")),
+    ("approved session can't merge OTHER br",  True,  lambda: bash("git merge feature/other")),
     ("approved session may push main",         False, lambda: bash("git push origin main")),
     ("other session blocked by lock",          True,  lambda: (prompt("/merge-branch feature/x", sid="s2"), bash("git merge feature/x", sid="s2"))[1]),
     ("subagent blocked even when approved",    True,  lambda: bash("git push origin main", agent_id="a9", agent_type="general-purpose")),
@@ -86,9 +97,14 @@ for desc, expect, fn in cases:
     fails += not ok
     print("%s  %s" % ("ok  " if ok else "FAIL", desc))
 
+r0 = subprocess.run([sys.executable, GUARD, "merge-lock", "release"], cwd=primary, capture_output=True, text=True,
+                    env={k: v for k, v in os.environ.items() if k != "CLAUDE_SESSION_ID"})
+ok = r0.returncode != 0 and "not releasing" in r0.stdout
+print("ok  " if ok else "FAIL", " release without session id refused")
+fails_pre = not ok
 r = subprocess.run([sys.executable, GUARD, "merge-lock", "release", "s1"], cwd=primary, capture_output=True, text=True)
 print("ok  " if "released" in r.stdout else "FAIL", " lock release:", r.stdout.strip())
-fails += "released" not in r.stdout
+fails += ("released" not in r.stdout) + fails_pre
 o = run("session-start", dict(cwd=primary, session_id="s3", source="clear", hook_event_name="SessionStart"))
 ctx = o.get("hookSpecificOutput", {}).get("additionalContext", "")
 ok = "PRIMARY CHECKOUT" in ctx and "resume-task" in ctx

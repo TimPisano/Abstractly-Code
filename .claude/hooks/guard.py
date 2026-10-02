@@ -138,23 +138,47 @@ def segments(command):
     # Drop heredoc bodies (commit messages etc.) so their text is not
     # mistaken for commands.
     cmd = re.sub(r"<<-?\s*['\"]?(\w+)['\"]?.*?\n.*?\n\s*\1\b", " ", command, flags=re.S)
-    cmd = re.sub(r"\\\n", " ", cmd)
-    parts = re.split(r"&&|\|\||;|\||\n|\$\(|`|\(|\)", cmd)
-    result = []
-    for p in parts:
-        p = p.strip()
-        if not p:
-            continue
-        try:
-            words = shlex.split(p)
-        except ValueError:
-            words = p.split()
-        # drop leading VAR=value assignments
-        while words and re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", words[0]):
-            words = words[1:]
-        if words:
-            result.append(words)
+    cmd = re.sub(r"\\\n", " ", cmd).replace("`", " ; ")
+    # Quote-aware tokenizing: operators inside quoted strings (a commit
+    # message like "tasks (done); next") stay part of their word.
+    try:
+        lex = shlex.shlex(cmd, posix=True, punctuation_chars=";&|()<>\n")
+        lex.whitespace = " \t\r"
+        lex.whitespace_split = True
+        tokens = list(lex)
+    except ValueError:
+        tokens = re.split(r"\s+", cmd)
+    result, words = [], []
+    for tok in tokens + [";"]:
+        if tok and set(tok) <= set(";&|()<>\n"):
+            if words:
+                result.extend(unwrap(words))
+            words = []
+        elif tok:
+            words.append(tok)
     return result
+
+
+WRAPPERS = {"env", "command", "builtin", "exec", "nohup", "time", "sudo", "xargs", "nice"}
+
+
+def unwrap(words):
+    """Strip VAR=value prefixes and wrapper commands (env, xargs, ...), and
+    re-parse `bash -c "<string>"` so wrapped git commands are still seen."""
+    while words:
+        if re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", words[0]):
+            words = words[1:]
+        elif os.path.basename(words[0]) in WRAPPERS:
+            words = words[1:]
+            while words and words[0].startswith("-"):
+                words = words[1:]
+        else:
+            break
+    if words and os.path.basename(words[0]) in ("bash", "sh", "zsh") and "-c" in words:
+        i = words.index("-c")
+        if i + 1 < len(words):
+            return segments(words[i + 1])
+    return [words] if words else []
 
 
 GIT_GLOBAL_WITH_ARG = {"-C", "-c", "--git-dir", "--work-tree", "--namespace"}
@@ -210,6 +234,8 @@ def touches_main_ref(sub, args):
         return names_main
     if sub == "branch":
         return names_main and any(a in args for a in ("-f", "--force", "-D", "-d", "-M", "-m"))
+    if sub == "fetch":   # `git fetch origin main:main` rewrites local main
+        return any(":" in a and a.split(":")[-1] in (MAIN, "refs/heads/" + MAIN) for a in args)
     return False
 
 
@@ -227,6 +253,10 @@ BROWSER_PATTERNS = [
     (r"playwright\s+(open|codegen|show-report|show-trace)\b", "this Playwright subcommand opens a visible browser"),
     (r"/Applications/(Google Chrome|Safari|Firefox|Chromium)", "launching a browser binary directly"),
 ]
+# Commands that only print/search text: a URL or "--headed" in their
+# arguments isn't a browser launch (e.g. a commit message mentioning it).
+TEXT_CMDS = {"echo", "printf", "git", "grep", "rg", "cat", "sed", "awk", "head", "tail", "wc"}
+CODE_EXT = (".py", ".js", ".mjs", ".cjs", ".ts", ".sh", ".json", ".toml", ".yaml", ".yml")
 HEADED_IN_FILE = re.compile(r"headless\s*[=:]\s*(False|false)\b|['\"]--headed['\"]")
 
 BROWSER_FIX = (" Rule 1 in CLAUDE.md: never open the user's browser. For a visual "
@@ -251,7 +281,8 @@ def pretool(data):
             return
         path = os.path.realpath(os.path.join(cwd, os.path.expanduser(path)))
         body = (ti.get("content") or "") + (ti.get("new_string") or "")
-        if HEADED_IN_FILE.search(body) and not path.endswith("guard.py"):
+        if path.endswith(CODE_EXT) and HEADED_IN_FILE.search(body) \
+                and not path.endswith(("guard.py", "test_guard.py")):
             deny("This edit configures a visible (headed) browser." + BROWSER_FIX)
         info = repo_info(os.path.dirname(path))
         if not info:
@@ -275,9 +306,14 @@ def pretool(data):
         return
     command = ti.get("command") or ""
 
-    for pattern, why in BROWSER_PATTERNS:
-        if re.search(pattern, command):
-            deny("Blocked: %s." % why + BROWSER_FIX)
+    segs = segments(command)
+    for words in segs:
+        if os.path.basename(words[0]) in TEXT_CMDS:
+            continue
+        text = " ".join(words)
+        for pattern, why in BROWSER_PATTERNS:
+            if re.search(pattern, text):
+                deny("Blocked: %s." % why + BROWSER_FIX)
 
     # Nobody hand-edits the approval/lock files; only the hooks do.
     if re.search(r"agent-os/(approvals|merge\.lock)", command) and "guard.py" not in command:
@@ -286,11 +322,14 @@ def pretool(data):
 
     cur = cwd
     staged_hint = []
-    for words in segments(command):
+    for words in segs:
         if words[0] == "cd" and len(words) > 1:
             cur = os.path.join(cur, os.path.expanduser(words[1]))
             continue
-        g = parse_git(words, cur)
+        if os.path.basename(words[0]) == "gh" and words[1:3] == ["pr", "merge"]:
+            g = (cur, "gh-pr-merge", words[3:])   # merges on GitHub, usually into main
+        else:
+            g = parse_git(words, cur)
         if not g:
             continue
         d, sub, args = g
@@ -318,7 +357,9 @@ def pretool(data):
 
         gated = False
         what = ""
-        if sub == "push" and push_targets_main(args, branch):
+        if sub == "gh-pr-merge":
+            gated, what = True, "merge a pull request on GitHub (`gh pr merge`)"
+        elif sub == "push" and push_targets_main(args, branch):
             gated, what = True, "push to main"
         elif touches_main_ref(sub, args):
             gated, what = True, "rewrite the main branch ref"
@@ -346,6 +387,20 @@ def pretool(data):
                  "the words \"approve merge\"). Don't ask them to approve "
                  "something they haven't reviewed; if this wasn't a merge task, "
                  "you're in the wrong checkout or branch." % what)
+        approved = appr.get("branch", "")
+        if sub == "merge" and approved:
+            merging, skip = [], False
+            for a in args:   # drop option values: -m <msg>, -s <strategy>, -X <opt>
+                if skip:
+                    skip = False
+                elif a in ("-m", "--message", "-s", "--strategy", "-X", "--strategy-option", "-F", "--file"):
+                    skip = True
+                elif not a.startswith("-"):
+                    merging.append(a)
+            if merging and merging[0] not in (approved, "origin/" + approved):
+                deny("The user approved merging `%s` in this session, not `%s`. "
+                     "Merge only the branch they named; ask before merging another."
+                     % (approved, merging[0]))
         holder = lock_holder(common)
         if holder and holder.get("session") != session:
             deny("Blocked: another session (%s, since %s) holds the merge lock. "
@@ -389,9 +444,11 @@ def prompt(data):
                                     (data.get("session_id") or "unknown") + ".json"),
                        {"at": time.time(), "branch": m.group(1) if m else "",
                         "prompt": text[:200]})
-            notes.append("[agent-os] The user typed a merge approval in this session, so "
+            notes.append("[agent-os] Session id: %s. " % (data.get("session_id") or "unknown") +
+                         "The user typed a merge approval in this session, so "
                          "the hooks will allow changes to main for the next 2 hours, "
-                         "for the branch the user named only. Use the merge-branch skill. "
+                         "and `git merge` only for the branch the user named. Use the merge-branch skill; "
+                         "release the lock afterwards with that session id. "
                          "If another session holds the merge lock you will be blocked; "
                          "say so and wait.")
 
@@ -483,7 +540,7 @@ def merge_lock(argv):
     elif argv[0] == "release":
         rest = [a for a in argv[1:] if not a.startswith("-")]
         sid = rest[0] if rest else os.environ.get("CLAUDE_SESSION_ID", "")
-        if holder and sid and holder.get("session") != sid and "--force" not in argv:
+        if holder and holder.get("session") != sid and "--force" not in argv:
             print("lock is held by another session (%s); not releasing. Use --force only "
                   "if the user confirms that session is dead." % holder.get("session"))
             sys.exit(1)
