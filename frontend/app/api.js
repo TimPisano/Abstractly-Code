@@ -715,6 +715,66 @@ const Api = {
         return apiRequest('/portfolio/deal-mismatch-report.xlsx', { method: 'POST', body: formData });
     },
 
+    // ---- Deployment config flags (public, unauthenticated -- see
+    // GET /config in api.py). ----
+
+    getConfig() {
+        return apiRequest('/config');
+    },
+
+    // ---- Loan underwriting (backend/app/loan_underwriting.py et al.).
+    // Every route 404s when the backend's LOAN_UNDERWRITING_ENABLED flag
+    // is off -- see Api.getConfig()'s loan_underwriting_enabled, which is
+    // what the nav item's visibility is gated on, so these calls are
+    // only ever attempted when the feature is actually live. ----
+
+    listLoanUnderwritingRequests({ propertyAddress } = {}) {
+        const query = propertyAddress ? `?property_address=${encodeURIComponent(propertyAddress)}` : '';
+        return apiRequest(`/loan-underwriting/requests${query}`);
+    },
+
+    getLoanUnderwritingRequest(requestId) {
+        return apiRequest(`/loan-underwriting/requests/${requestId}`);
+    },
+
+    createLoanUnderwritingRequest(terms) {
+        return apiRequest('/loan-underwriting/requests', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(terms),
+        });
+    },
+
+    updateLoanUnderwritingRequest(requestId, terms) {
+        return apiRequest(`/loan-underwriting/requests/${requestId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(terms),
+        });
+    },
+
+    updateLoanUnderwritingAssumptions(requestId, { assumptions, constraints } = {}) {
+        return apiRequest(`/loan-underwriting/requests/${requestId}/assumptions`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ assumptions, constraints }),
+        });
+    },
+
+    uploadLoanUnderwritingT12(requestId, file) {
+        const formData = new FormData();
+        formData.append('file', file);
+        return apiRequest(`/loan-underwriting/requests/${requestId}/t12`, { method: 'POST', body: formData });
+    },
+
+    getLoanUnderwritingResult(requestId) {
+        return apiRequest(`/loan-underwriting/requests/${requestId}/underwriting`);
+    },
+
+    exportLoanUnderwritingCreditMemo(requestId) {
+        return apiRequest(`/loan-underwriting/requests/${requestId}/credit-memo.docx`, { method: 'POST' });
+    },
+
     // ---- Team management (admin-only on the backend -- see
     // app/auth.py's require_role('admin')). ----
 

@@ -55,19 +55,35 @@ def _login_as_admin(client):
 
 
 def test_config_reports_local_dev_mode_off_by_default():
-    with mock.patch("app.api.LOCAL_DEV_MODE", False):
+    # loan_underwriting_enabled() reads os.environ fresh on every call
+    # (unlike LOCAL_DEV_MODE, a module constant evaluated once at
+    # import) -- popped rather than mock.patch'd for that reason, and
+    # popped regardless of whether this machine's real environment
+    # happens to set it, so this test is deterministic either way.
+    with mock.patch("app.api.LOCAL_DEV_MODE", False), mock.patch.dict(os.environ, {}, clear=False):
+        os.environ.pop("LOAN_UNDERWRITING_ENABLED", None)
         resp = app.test_client().get("/config")
         assert resp.status_code == 200
-        assert resp.get_json() == {"local_dev_mode": False}
+        assert resp.get_json() == {"local_dev_mode": False, "loan_underwriting_enabled": False}
     print("✓ test_config_reports_local_dev_mode_off_by_default: PASS")
 
 
 def test_config_reports_local_dev_mode_on_when_set():
-    with mock.patch("app.api.LOCAL_DEV_MODE", True):
+    with mock.patch("app.api.LOCAL_DEV_MODE", True), mock.patch.dict(os.environ, {}, clear=False):
+        os.environ.pop("LOAN_UNDERWRITING_ENABLED", None)
         resp = app.test_client().get("/config")
         assert resp.status_code == 200
-        assert resp.get_json() == {"local_dev_mode": True}
+        assert resp.get_json() == {"local_dev_mode": True, "loan_underwriting_enabled": False}
     print("✓ test_config_reports_local_dev_mode_on_when_set: PASS")
+
+
+def test_config_reports_loan_underwriting_enabled_when_set():
+    """The flag this view's nav-item visibility is gated on (see frontend/app/app.js's applyFeatureFlags) -- independent of LOCAL_DEV_MODE, since the two flags are unrelated."""
+    with mock.patch("app.api.LOCAL_DEV_MODE", False), mock.patch.dict(os.environ, {"LOAN_UNDERWRITING_ENABLED": "true"}):
+        resp = app.test_client().get("/config")
+        assert resp.status_code == 200
+        assert resp.get_json() == {"local_dev_mode": False, "loan_underwriting_enabled": True}
+    print("✓ test_config_reports_loan_underwriting_enabled_when_set: PASS")
 
 
 def test_check_access_for_unknown_email():
@@ -190,6 +206,7 @@ def test_waitlist_signup_and_admin_approval_flow_unaffected():
 if __name__ == "__main__":
     test_config_reports_local_dev_mode_off_by_default()
     test_config_reports_local_dev_mode_on_when_set()
+    test_config_reports_loan_underwriting_enabled_when_set()
     test_check_access_for_unknown_email()
     test_check_access_for_pending_email()
     test_check_access_for_approved_email()

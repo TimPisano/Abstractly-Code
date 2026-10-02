@@ -862,10 +862,27 @@ function setUserIdentity(name, email) {
 /**
  * App initialization
  */
+/**
+ * Shows/hides nav items gated behind a backend feature flag, so a
+ * deployment where a flagged feature is off never shows a nav item
+ * that 404s on click. Best-effort and non-blocking -- called from
+ * init() without being awaited, since a flag check failing (network
+ * blip) should never delay the app's first render; it just leaves the
+ * flagged items hidden (the safe default) until the next load.
+ */
+async function applyFeatureFlags() {
+    try {
+        const config = await Api.getConfig();
+        const loanUw = document.getElementById('navItemLoanUnderwriting');
+        if (loanUw) loanUw.style.display = config.loan_underwriting_enabled ? '' : 'none';
+    } catch (err) { /* best-effort -- flagged items stay hidden, the safe default */ }
+}
+
 function init() {
     document.querySelectorAll('.nav-item[data-view]').forEach(btn => {
         btn.addEventListener('click', () => showView(btn.dataset.view));
     });
+    applyFeatureFlags();
     document.querySelectorAll('[data-goto]').forEach(btn => {
         btn.addEventListener('click', () => showView(btn.dataset.goto));
     });

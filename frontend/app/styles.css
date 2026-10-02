@@ -4858,3 +4858,188 @@
     margin-top: 0.375rem;
     font-size: 0.8125rem;
 }
+
+/* ===================== Loan Underwriting ===================== */
+
+.loan-uw-detail-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 1.25rem;
+    margin-bottom: 1.5rem;
+    /* Isolates this grid's track-sizing from the view's own enter
+       animation (.view.active's 0.2s transform/opacity fade-in, see
+       above). Diagnosed via headless Playwright: when real content
+       (fetched over a real network round-trip, not a synchronous test
+       simulation) lands inside this auto-fit grid WHILE its ancestor
+       view is still mid-transform, the sidebar's width briefly
+       miscalculates and then self-corrects via its own CSS transition
+       -- a ~120ms cosmetic flicker, confirmed harmless and confirmed
+       to never recur after the view's first render, but worth
+       preventing outright rather than leaving unexplained. `contain:
+       layout` makes this grid a layout containment boundary, so its
+       track sizing can't be influenced by (or influence) an ancestor's
+       transform/layout state -- this is the first view in the app to
+       combine a CSS Grid with `auto-fit` and real async content inside
+       the shared .view.active fade-in, which is why no existing view
+       hit this. */
+    contain: layout;
+}
+
+.loan-uw-panel-wide {
+    grid-column: 1 / -1;
+}
+
+.loan-uw-panel-header h2 {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text-dark);
+    margin: 0;
+}
+
+/* A labeled key/value list for read-only loan terms and the T-12
+   snapshot summary -- same two-column rhythm the rest of the app uses
+   for a lease's extracted-field list, so this doesn't invent a new way
+   to show "label: value" pairs. */
+.loan-uw-kv-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.loan-uw-kv-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    font-size: 0.875rem;
+    padding: 0.375rem 0;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.loan-uw-kv-row:last-child {
+    border-bottom: none;
+}
+
+.loan-uw-kv-label {
+    color: var(--text-medium);
+}
+
+.loan-uw-kv-value {
+    color: var(--text-dark);
+    font-weight: 600;
+    text-align: right;
+}
+
+/* The create/edit terms form, and the assumptions/constraints form --
+   same field grid for both, labeled inputs in rows that wrap on narrow
+   screens rather than a fixed column count. */
+.loan-uw-form {
+    background-color: var(--background);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    padding: 1.25rem;
+    margin-bottom: 1.25rem;
+}
+
+.loan-uw-form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1rem;
+    /* Same containment and same reason as .loan-uw-detail-grid above. */
+    contain: layout;
+}
+
+.loan-uw-field label {
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-medium);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    margin-bottom: 0.375rem;
+}
+
+.loan-uw-field .loan-uw-field-hint {
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: normal;
+    color: var(--text-light);
+    margin-top: 0.25rem;
+}
+
+.loan-uw-form-actions {
+    display: flex;
+    gap: 0.75rem;
+    justify-content: flex-end;
+}
+
+.loan-uw-t12-upload-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-top: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.loan-uw-t12-upload-row input[type="file"] {
+    flex: 1;
+    min-width: 0;
+    font-size: 0.8125rem;
+}
+
+/* Non-fatal T-12 parsing warnings (e.g. "no management fee line found")
+   -- visible, not hidden in a console, but not styled as an error
+   either: the underwriting still produced a usable result. */
+.loan-uw-warning-list {
+    margin-top: 0.75rem;
+    padding: 0.75rem 1rem;
+    background-color: var(--warning-light);
+    border-radius: var(--radius-sm);
+    font-size: 0.8125rem;
+    color: var(--warning-color);
+}
+
+.loan-uw-warning-list ul {
+    margin: 0.375rem 0 0 1.125rem;
+    padding: 0;
+}
+
+/* The binding-constraint callout in the results strip -- same red/green
+   semantic the rest of the app reserves for "this is a problem" vs.
+   "this is fine", applied here to whether the requested loan clears
+   its own maximum. */
+.loan-uw-shortfall {
+    color: var(--error-color);
+    font-weight: 700;
+}
+
+.loan-uw-headroom {
+    color: var(--success-color);
+    font-weight: 600;
+}
+
+/* Results tables reuse .data-table; this just marks the one row per
+   table that "binds" or falls below the DSCR breakeven threshold, same
+   idea as the Word memo's bold "BELOW" callout and asterisk marker. */
+.loan-uw-binding-row {
+    background-color: var(--primary-light);
+    font-weight: 700;
+}
+
+.loan-uw-below-breakeven {
+    color: var(--error-color);
+    font-weight: 700;
+}
+
+.loan-uw-section-heading {
+    font-size: 0.9375rem;
+    font-weight: 700;
+    color: var(--text-dark);
+    margin: 1.5rem 0 0.75rem;
+}
+
+.loan-uw-section-heading:first-child {
+    margin-top: 0;
+}

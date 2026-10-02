@@ -134,6 +134,15 @@
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h8m-8 4h5M7 3.5h10A2.5 2.5 0 0119.5 6v10.5a1 1 0 01-1.6.8l-2.9-2.175a2 2 0 00-1.2-.4H7A2.5 2.5 0 014.5 12V6A2.5 2.5 0 017 3.5z"/></svg>
                         <span class="nav-label">Team Notes</span>
                     </button>
+                    <!-- Hidden by default (inline style, see app.js's
+                         applyFeatureFlags()) until GET /config confirms
+                         loan_underwriting_enabled -- a tester on a
+                         deployment where the backend flag is off must
+                         never see a nav item that 404s when clicked. -->
+                    <button class="nav-item" id="navItemLoanUnderwriting" data-view="loanunderwriting" data-tooltip="Loan Underwriting" type="button" style="display: none;">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 21h18M5 21V7l8-4 8 4v14M9 21V11h6v10"/></svg>
+                        <span class="nav-label">Loan Underwriting</span>
+                    </button>
                 </div>
 
                 <div class="nav-group">
@@ -483,6 +492,84 @@
                 <div class="health-strip" id="dealMismatchSummaryStrip"></div>
 
                 <div id="dealMismatchContent"></div>
+            </section>
+
+            <!-- LOAN UNDERWRITING VIEW -- feature-flagged (see
+                 navItemLoanUnderwriting above); the section itself has
+                 no visibility logic of its own, since .view/.active
+                 already controls whether ANY view shows, and the nav
+                 item being hidden is what stops a caller from ever
+                 navigating here when the backend flag is off. -->
+            <section class="view" id="view-loanunderwriting">
+                <div class="view-header">
+                    <div>
+                        <h1>Loan Underwriting</h1>
+                        <p class="view-subtitle">Underwritten NOI, debt service, DSCR/LTV/debt yield/breakeven, maximum loan by constraint, and stress tests for a multifamily loan request -- every number traced to its source, with a Word credit memo draft</p>
+                    </div>
+                    <div class="view-header-actions" id="loanUwListActions">
+                        <button class="btn-secondary" id="loanUwRefreshBtn" type="button">Refresh</button>
+                        <button class="btn-primary" id="loanUwNewRequestBtn" type="button">New Loan Request</button>
+                    </div>
+                    <div class="view-header-actions" id="loanUwDetailActions" style="display: none;">
+                        <button class="btn-text" id="loanUwBackBtn" type="button">&larr; All loan requests</button>
+                    </div>
+                </div>
+
+                <!-- LIST PANEL -->
+                <div id="loanUwListPanel">
+                    <div id="loanUwNewRequestForm" class="loan-uw-form" style="display: none;"></div>
+                    <div id="loanUwListContent"></div>
+                </div>
+
+                <!-- DETAIL PANEL (one saved request) -->
+                <div id="loanUwDetailPanel" style="display: none;">
+                    <div class="health-strip" id="loanUwSummaryStrip"></div>
+
+                    <div class="loan-uw-detail-grid">
+                        <div class="loan-uw-panel panel">
+                            <div class="loan-uw-panel-header panel-header">
+                                <h2>Loan Terms</h2>
+                                <button class="btn-text" id="loanUwEditTermsBtn" type="button">Edit</button>
+                            </div>
+                            <div id="loanUwTermsContent"></div>
+                            <div id="loanUwTermsForm" class="loan-uw-form" style="display: none;"></div>
+                        </div>
+
+                        <div class="loan-uw-panel panel">
+                            <div class="loan-uw-panel-header panel-header">
+                                <h2>T-12 Operating Statement</h2>
+                            </div>
+                            <div id="loanUwT12Content"></div>
+                            <div class="loan-uw-t12-upload-row">
+                                <input type="file" id="loanUwT12FileInput" accept=".csv,.xlsx,.xlsm">
+                                <button class="btn-secondary" id="loanUwT12UploadBtn" type="button">Upload T-12</button>
+                            </div>
+                            <div id="loanUwT12Warnings"></div>
+                        </div>
+
+                        <div class="loan-uw-panel loan-uw-panel-wide panel">
+                            <div class="loan-uw-panel-header panel-header">
+                                <h2>Assumptions &amp; Constraints</h2>
+                                <button class="btn-text" id="loanUwSaveAssumptionsBtn" type="button">Save</button>
+                            </div>
+                            <p class="view-subtitle">Every assumption is editable. Unsupplied values use the documented defaults.</p>
+                            <div id="loanUwAssumptionsForm"></div>
+                        </div>
+                    </div>
+
+                    <div id="loanUwResultsSection" style="display: none;">
+                        <div class="view-header">
+                            <div>
+                                <h2>Underwriting Result</h2>
+                            </div>
+                            <div class="view-header-actions">
+                                <button class="btn-secondary" id="loanUwRefreshResultBtn" type="button">Refresh</button>
+                                <button class="btn-primary" id="loanUwExportMemoBtn" type="button">Download Credit Memo (Word)</button>
+                            </div>
+                        </div>
+                        <div id="loanUwResultsContent"></div>
+                    </div>
+                </div>
             </section>
 
             <!-- TEAM NOTES VIEW -->
