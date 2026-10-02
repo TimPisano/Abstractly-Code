@@ -34,7 +34,7 @@
         'upload-view.js', 'dashboard-view.js', 'actionitems-view.js', 'alerts-view.js', 'discrepancies-view.js', 'deal-mismatch-view.js', 'team-notes-view.js',
         'detail-view.js', 'timeline-view.js', 'rentroll-view.js', 'comparison-view.js',
         'qa-view.js', 'report-view.js', 'trends-view.js', 'team-view.js', 'tasks-view.js', 'messaging.js',
-        'task-detail-modal.js',
+        'task-detail-modal.js', 'help-content.js', 'help-view.js',
     ];
 
     const bootLoadingEl = document.getElementById('appBootLoading');

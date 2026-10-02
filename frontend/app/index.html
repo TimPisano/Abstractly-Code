@@ -143,6 +143,14 @@
                         <span class="nav-label">Team</span>
                     </button>
                 </div>
+
+                <div class="nav-group">
+                    <div class="nav-group-label nav-label">Help</div>
+                    <button class="nav-item" data-view="help" data-tooltip="Help &amp; Guides" type="button">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        <span class="nav-label">Help &amp; Guides</span>
+                    </button>
+                </div>
             </div>
 
             <div class="sidebar-footer">
@@ -511,6 +519,24 @@
                 <div class="panel" id="teamNotesRoster" style="display:none;"></div>
 
                 <div id="teamNotesFeedContent"></div>
+            </section>
+
+            <!-- HELP & GUIDES VIEW (help-view.js + help-content.js) -->
+            <section class="view" id="view-help">
+                <div class="view-header">
+                    <div>
+                        <h1>Help &amp; Guides</h1>
+                        <p class="view-subtitle">How to check a rent roll against its leases, read the Deal Mismatch Report, and fix upload problems — start with Getting Started</p>
+                    </div>
+                </div>
+
+                <div class="help-layout">
+                    <aside class="help-sidebar panel">
+                        <input type="search" id="helpSearch" class="text-input help-search" placeholder="Search help (e.g. &quot;rent roll&quot;, &quot;export&quot;)" aria-label="Search help articles">
+                        <div id="helpArticleList" class="help-article-list"></div>
+                    </aside>
+                    <article class="help-reader panel" id="helpArticle" aria-live="polite"></article>
+                </div>
             </section>
 
             <!-- PORTFOLIO TRENDS VIEW -->

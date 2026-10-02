@@ -4858,3 +4858,95 @@
     margin-top: 0.375rem;
     font-size: 0.8125rem;
 }
+
+/* ===== Help & Guides view (help-view.js) ===== */
+.help-layout {
+    display: grid;
+    grid-template-columns: minmax(240px, 320px) minmax(0, 1fr);
+    gap: 1.5rem;
+    align-items: start;
+}
+/* Not sticky: an ancestor's overflow already defeats position:sticky in
+   this layout (the main app sidebar has the same problem), so a sticky +
+   max-height list just became a cramped inner scroll box. Full height
+   instead -- the list is about as long as a typical article. */
+.help-sidebar { padding: 1rem; }
+.help-search { width: 100%; box-sizing: border-box; margin-bottom: 0.75rem; }
+.help-group { margin-bottom: 1rem; }
+.help-group-label {
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-light);
+    margin: 0.25rem 0.5rem 0.375rem;
+}
+.help-list-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 0.5rem;
+    padding: 0.5rem 0.625rem;
+    cursor: pointer;
+    font: inherit;
+    color: var(--text-dark);
+}
+.help-list-item:hover { background: var(--slate-50); }
+.help-list-item.active { background: var(--primary-light); border-color: var(--lux-accent-tint-hover); }
+.help-list-title { display: block; font-weight: 600; font-size: 0.875rem; }
+.help-list-summary { display: block; font-size: 0.75rem; color: var(--text-medium); margin-top: 0.125rem; line-height: 1.35; }
+.help-no-results { color: var(--text-medium); font-size: 0.875rem; padding: 0.5rem; }
+
+.help-reader { padding: 2rem 2.25rem; min-width: 0; }
+.help-article-category {
+    font-size: 0.75rem; font-weight: 700; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--lux-accent-text);
+}
+.help-article-title { font-size: 1.5rem; font-weight: 700; margin: 0.25rem 0 1rem; }
+.help-article-body { max-width: 72ch; line-height: 1.65; color: var(--text-dark); }
+.help-article-body h3 { font-size: 1.0625rem; font-weight: 700; margin: 1.75rem 0 0.5rem; }
+.help-article-body p { margin: 0 0 0.875rem; }
+.help-article-body ul, .help-article-body ol { margin: 0 0 1rem; padding-left: 1.4rem; }
+.help-article-body li { margin-bottom: 0.375rem; }
+.help-article-body code {
+    font-size: 0.85em; background: var(--slate-100); padding: 0.1em 0.35em; border-radius: 0.25rem;
+}
+.help-article-body a { color: var(--lux-accent-text); text-decoration: underline; cursor: pointer; }
+.help-article-body table { width: 100%; border-collapse: collapse; margin: 0 0 1.25rem; font-size: 0.875rem; }
+.help-article-body th, .help-article-body td {
+    text-align: left; vertical-align: top; padding: 0.5rem 0.625rem; border-bottom: 1px solid var(--border-color);
+}
+.help-article-body th { background: var(--slate-50); font-weight: 600; }
+.help-callout {
+    border-left: 3px solid var(--lux-accent);
+    background: var(--slate-50);
+    padding: 0.75rem 1rem;
+    border-radius: 0 0.5rem 0.5rem 0;
+    margin: 0 0 1rem;
+}
+.help-callout.warn { border-left-color: var(--warning-color); background: var(--warning-light); }
+.help-table-wrap { overflow-x: auto; }
+
+@media (max-width: 900px) {
+    .help-layout { grid-template-columns: 1fr; }
+    .help-list-summary { display: none; } /* keep the stacked list short so the article isn't far below it */
+    .help-reader { padding: 1.25rem; }
+}
+
+/* Phones: stack each table row into a small card, cells labelled with
+   their column heading (data-label is set by help-view.js). */
+@media (max-width: 600px) {
+    .help-article-body table, .help-article-body tbody,
+    .help-article-body tr, .help-article-body td { display: block; width: auto; }
+    .help-article-body tr:first-child { display: none; }
+    .help-article-body tr { border-bottom: 1px solid var(--border-color); padding: 0.625rem 0; }
+    .help-article-body td { border: 0; padding: 0.125rem 0; }
+    .help-article-body td:first-child { font-weight: 600; }
+    .help-article-body td[data-label]:not(:first-child)::before {
+        content: attr(data-label) ": ";
+        font-weight: 600;
+        color: var(--text-medium);
+    }
+}
