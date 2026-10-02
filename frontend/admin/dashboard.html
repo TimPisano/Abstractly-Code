@@ -645,14 +645,16 @@
 
         <div class="assistant-panel" id="assistantPanel" style="display:none;">
             <div class="assistant-panel-header">
-                <span>Ask Abstractly</span>
+                <span>Deal Assistant</span>
                 <button class="assistant-panel-close" id="assistantCloseBtn" type="button" aria-label="Close assistant">&times;</button>
             </div>
+            <div class="assistant-panel-credit-meter" id="assistantCreditMeter" title="Your team's monthly assistant credit"></div>
             <div class="assistant-panel-messages" id="assistantMessages">
                 <div class="assistant-message assistant-message-bot">
-                    <p>Ask me about your portfolio ("what's the average rent?", "which leases expire in 90 days?") or where to go ("show me the discrepancies", "open the lease for Acme Corp").</p>
+                    <p>Ask me about your team's leases, rent rolls, and reports -- every answer cites the document and page it came from. Or tell me where to go ("show me the discrepancies").</p>
                 </div>
             </div>
+            <div class="assistant-suggested-questions" id="assistantSuggestedQuestions"></div>
             <form class="assistant-panel-input-row" id="assistantForm">
                 <input type="text" id="assistantInput" class="text-input" placeholder="Ask a question..." autocomplete="off">
                 <button class="btn-primary" id="assistantSendBtn" type="submit">Send</button>

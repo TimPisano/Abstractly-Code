@@ -162,6 +162,36 @@ body {
     opacity: 1;
 }
 
+.assistant-panel-credit-meter {
+    padding: 0.5rem 1rem;
+    border-bottom: 1px solid var(--border-color);
+    flex-shrink: 0;
+}
+
+.assistant-credit-meter-label {
+    font-size: 0.75rem;
+    color: var(--text-medium);
+    margin-bottom: 0.25rem;
+}
+
+.assistant-credit-meter-bar {
+    height: 4px;
+    border-radius: var(--radius-full);
+    background: var(--background);
+    overflow: hidden;
+}
+
+.assistant-credit-meter-fill {
+    height: 100%;
+    background: var(--lux-accent);
+    border-radius: var(--radius-full);
+    transition: width 0.2s ease;
+}
+
+.assistant-credit-meter-fill.is-empty {
+    background: var(--error-color);
+}
+
 .assistant-panel-messages {
     flex: 1;
     overflow-y: auto;
@@ -230,6 +260,30 @@ body {
     font-size: 0.8125rem;
     font-weight: 600;
     cursor: pointer;
+}
+
+.assistant-suggested-questions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+    padding: 0 1rem 0.75rem;
+    flex-shrink: 0;
+}
+
+.assistant-suggested-chip {
+    padding: 0.3125rem 0.75rem;
+    border-radius: var(--radius-full);
+    background: var(--background);
+    border: 1px solid var(--border-color);
+    color: var(--text-dark);
+    font-size: 0.75rem;
+    cursor: pointer;
+    text-align: left;
+}
+
+.assistant-suggested-chip:hover {
+    border-color: var(--lux-accent);
+    color: var(--lux-accent);
 }
 
 .assistant-panel-input-row {

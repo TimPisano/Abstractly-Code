@@ -599,12 +599,109 @@ const Analytics = {
     },
 };
 
+/* ===================== Teams =====================
+ * Quota management for every customer team, including the deal
+ * assistant's monthly_assistant_credit_usd -- the "adjustable per team
+ * from the admin page" requirement. Uses the plain GET/PATCH /teams
+ * routes (now @require_owner()-gated, see api.py) rather than the
+ * richer GET /owner/teams feature/team-isolation adds (team user/lease
+ * counts, last-activity) -- that route doesn't exist on this branch
+ * yet; once merged, this panel could switch to it for the extra usage
+ * columns, but quota editing itself is fully functional today via
+ * plain /teams.
+ */
+const Teams = {
+    _teams: [],
+
+    async load() {
+        const content = document.getElementById('teamsContent');
+        content.innerHTML = '<p class="loading-inline"><span class="spinner-small"></span> Loading teams&hellip;</p>';
+        try {
+            this._teams = await ownerFetch('/teams');
+            this.render();
+        } catch (err) {
+            content.innerHTML = `<p class="owner-panel-subtitle">${escapeHtml(err.message)}</p>`;
+        }
+    },
+
+    render() {
+        const content = document.getElementById('teamsContent');
+        if (this._teams.length === 0) {
+            content.innerHTML = '<p class="owner-panel-subtitle">No teams yet.</p>';
+            return;
+        }
+        content.innerHTML = `
+            <table class="owner-table">
+                <thead><tr>
+                    <th>Team</th>
+                    <th>Monthly documents</th>
+                    <th>Monthly pages</th>
+                    <th>Monthly budget ($)</th>
+                    <th>Monthly assistant credit ($)</th>
+                    <th></th>
+                </tr></thead>
+                <tbody>
+                    ${this._teams.map(t => `
+                        <tr data-team-id="${t.id}">
+                            <td>${escapeHtml(t.name)}</td>
+                            <td><input type="number" class="text-input" data-field="monthly_document_quota" value="${t.monthly_document_quota ?? ''}" placeholder="default"></td>
+                            <td><input type="number" class="text-input" data-field="monthly_page_quota" value="${t.monthly_page_quota ?? ''}" placeholder="default"></td>
+                            <td><input type="number" step="0.01" class="text-input" data-field="monthly_budget_usd" value="${t.monthly_budget_usd ?? ''}" placeholder="default"></td>
+                            <td><input type="number" step="0.01" class="text-input" data-field="monthly_assistant_credit_usd" value="${t.monthly_assistant_credit_usd ?? ''}" placeholder="default"></td>
+                            <td><button type="button" class="btn-secondary" data-save-team="${t.id}">Save</button></td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+            <p class="owner-panel-subtitle">Blank = use the plan-wide default from <code>usage_limits_config.py</code>.</p>
+        `;
+        content.querySelectorAll('[data-save-team]').forEach(btn => {
+            btn.addEventListener('click', () => this.save(btn.dataset.saveTeam));
+        });
+    },
+
+    async save(teamId) {
+        const row = document.querySelector(`tr[data-team-id="${teamId}"]`);
+        const body = {};
+        row.querySelectorAll('[data-field]').forEach(input => {
+            const raw = input.value.trim();
+            body[input.dataset.field] = raw === '' ? null : parseFloat(raw);
+        });
+        try {
+            await ownerFetch(`/teams/${teamId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+            showToast('Team quotas updated.');
+            this.load();
+        } catch (err) {
+            showToast(err.message, 'error');
+        }
+    },
+
+    async create(name) {
+        try {
+            await ownerFetch('/teams', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name }),
+            });
+            showToast(`Team "${name}" created.`);
+            this.load();
+        } catch (err) {
+            showToast(err.message, 'error');
+        }
+    },
+};
+
 /* ===================== Tabs ===================== */
 
 function switchTab(tab) {
     document.querySelectorAll('.owner-tab').forEach(el => el.classList.toggle('active', el.dataset.tab === tab));
     document.querySelectorAll('.owner-panel').forEach(el => el.classList.toggle('active', el.id === `panel-${tab}`));
     if (tab === 'accounts') Accounts.load();
+    if (tab === 'teams') Teams.load();
     if (tab === 'finance') Finance.load();
     if (tab === 'quality') ExtractionQuality.load();
     if (tab === 'analytics') Analytics.load();
@@ -648,6 +745,15 @@ async function initOwnerConsole() {
     document.getElementById('accountModalClose').addEventListener('click', () => Accounts.closeModal());
     document.getElementById('accountModalOverlay').addEventListener('click', (e) => {
         if (e.target.id === 'accountModalOverlay') Accounts.closeModal();
+    });
+
+    document.getElementById('createTeamForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const input = document.getElementById('newTeamName');
+        const name = input.value.trim();
+        if (!name) return;
+        await Teams.create(name);
+        input.value = '';
     });
 
     document.getElementById('revenueForm').addEventListener('submit', async (e) => {

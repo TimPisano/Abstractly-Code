@@ -551,6 +551,23 @@ const Api = {
         });
     },
 
+    // The deal assistant -- LLM-backed, team-scoped, cites a document
+    // and page for every claim. Distinct from askQuestion()/`/qa`
+    // above, which is a deterministic, non-LLM engine limited to a
+    // fixed set of lease-field intents and used by the per-lease "Ask
+    // About This Lease" panel, not this portfolio-wide one.
+    askAssistant(question) {
+        return apiRequest('/assistant/ask', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ question }),
+        });
+    },
+
+    assistantUsage() {
+        return apiRequest('/assistant/usage');
+    },
+
     compareLeases(leaseIds) {
         return apiRequest(`/leases/compare?ids=${leaseIds.join(',')}`);
     },
