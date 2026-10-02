@@ -1,30 +1,62 @@
 ---
 name: session-handoff
-description: Before a session ends or is cleared, write the current state of its task into TASKS.md so a fresh session can resume cold.
+description: Save this session's task state into TASKS.md (and push a WIP commit) so the user can /clear, log out, or close the laptop and a fresh session can resume with /resume-task. Use before /clear, when context is getting long, when the user is wrapping up, or before anything that might kill the session.
+argument-hint: "[task/branch — defaults to the current worktree's branch]"
 ---
 
 # session-handoff
 
-Run this proactively near the end of a session that leaves work
-mid-task — don't wait to be asked if context is about to run out or
-the user signals they're wrapping up.
+> `$P` = the primary checkout (normally `~/dev/projects/lease-abstraction`, always on `main`). Each Bash call that uses it starts with
+> `P=$(git rev-parse --path-format=absolute --git-common-dir); P=${P%/.git}`.
+> Task worktrees live beside it: `${P%/*}/abstractly-<topic>`.
 
-## Steps
+Goal: a brand-new session with zero memory of this chat can run
+`/resume-task <branch>` and continue correctly. Write what it can't
+reconstruct from the repo; skip what git already records.
 
-1. Identify the task(s) this session touched that aren't finished
-   (not yet at the end of its Loop step).
-2. For each, update its row in `TASKS.md`'s **In progress** (or
-   wherever it currently sits) with:
-   - The exact Loop step it's at (1–13, per CLAUDE.md's "The Loop").
-   - What's been done so far in concrete terms (files changed, tests
-     passing/failing, what the plan decided) — not "made progress,"
-     specifics a cold session can act on immediately.
-   - What's uncommitted, if anything, and where (worktree path).
-   - The single next action a fresh session should take first.
-3. If a decision got made mid-session that isn't obvious from the code
-   (a scope cut, a design choice between two options, a deliberate
-   deferral), add it to the **Decisions log** — this is exactly the
-   kind of thing that's lost if it only lives in chat history.
-4. Don't pad this with anything derivable from git (commit history,
-   file contents) — only what a fresh session couldn't reconstruct on
-   its own by reading the repo.
+## 1. Make the work durable
+
+In the task's worktree:
+- If there are uncommitted changes worth keeping:
+  `git add -A && git commit -m "WIP: <what state it's in>"` (check
+  `git status` first: no `*.db`, `.env`, screenshots, scratch files).
+- `git push -u origin <branch>` (feature branch only), so a dead laptop
+  doesn't lose it.
+- If it's a half-edit you'd rather not commit, say so in the handoff
+  and leave it uncommitted — but say exactly which files.
+
+## 2. Write the handoff block
+
+In **`$P/TASKS.md`** (primary checkout,
+never the branch copy), replace this task's handoff block:
+
+```markdown
+### <branch>
+- Worktree: ${P%/*}/abstractly-<topic>
+- Goal: <one sentence>
+- Plan: docs/plans/<slug>.md (approved by user? yes/no, when)
+- Loop step: <1-13 + name, e.g. "6 — visual check">
+- Last update: <YYYY-MM-DD HH:MM> by session-handoff
+- Done so far: <concrete: files changed, tests added, what works>
+- Verified: <test result with counts; screenshot dir + what they show>
+- Not working / unknown: <failing tests, unverified claims, suspicions>
+- Uncommitted: <files, or "none">
+- Decisions this session: <scope cuts, design choices, user answers>
+- Next action: <the ONE first thing the next session should do>
+- Waiting on user: <question/approval, or "nothing">
+```
+
+Be honest in **Verified** vs **Not working**: a fix that wasn't seen in
+a screenshot or a test is "unverified", not "done".
+
+Also add durable decisions to the **Decisions log** at the bottom.
+
+## 3. Commit TASKS.md and tell the user
+
+```bash
+P=$(git rev-parse --path-format=absolute --git-common-dir); P=${P%/.git}   # primary checkout
+git -C $P commit -m "TASKS: handoff <branch>" -- TASKS.md
+```
+
+Then tell the user, in two lines: it's safe to /clear (or quit), and the
+exact command for the next session: `/resume-task <branch>`.
