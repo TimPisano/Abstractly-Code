@@ -3190,7 +3190,7 @@ def assistant_ask():
     database.insert_assistant_conversation(
         user["id"], question, result["response_type"], result["answer"],
         route=result.get("route"), route_params=({"lease_id": result["lease_id"]} if result.get("lease_id") is not None else None),
-    team_id=current_team_id(),
+        team_id=current_team_id(),
     )
     result["assistant_usage"] = usage_limits.get_assistant_usage_summary(team_id)
     return jsonify(result), 200

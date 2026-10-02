@@ -1,16 +1,21 @@
 """
-Tests for the deal assistant's two overnight additions:
+Tests for the deal assistant's team-scoping, citations, and credit
+controls:
 
 1. Citations (app/assistant.py's _resolve_citations) -- a citation the
    model names must resolve to the REAL document/page on file, and a
    citation naming a lease_id outside this question's own grounding
-   data must be dropped, never passed through. This is the citation
-   feature's own isolation boundary: as long as callers build
-   leases_by_id from team-scoped data (once feature/team-isolation's
-   leases.team_id lands -- see OVERNIGHT_REPORT.md), a hallucinated or
-   cross-team lease_id here can never resolve to a document/page.
+   data must be dropped, never passed through.
 
-2. Assistant credit (app/usage_limits.py's check_assistant_credit /
+2. Real cross-team isolation through the full ask_assistant pipeline
+   (mocked Claude client, real team-scoped database queries) -- proves
+   a team's own leases never appear in another team's grounding
+   context, and a citation to another team's lease_id can never
+   resolve to a real document/page, complementing
+   test_team_isolation.py's broader route-level isolation coverage
+   with assistant-specific cases that module doesn't cover.
+
+3. Assistant credit (app/usage_limits.py's check_assistant_credit /
    get_assistant_usage_summary / log_assistant_usage_event, plus the
    POST /assistant/ask and GET /assistant/usage routes that use them).
 
@@ -24,6 +29,8 @@ import tempfile
 from unittest import mock
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from anthropic.types import ToolUseBlock
 
 from app.api import app
 from app import database
@@ -71,6 +78,25 @@ def _client_for_new_user(role, email, name="Test User"):
     return _client_as(role, email=email, name=name, user_id=user_id, team_id=team_id), user_id
 
 
+def _setup_two_teams():
+    """Same convention as test_team_isolation.py's own helper. Returns (team_a_id, user_a_id, team_b_id, user_b_id)."""
+    team_a = database.create_team("Team A")
+    team_b = database.create_team("Team B")
+    user_a = database.create_user("admin-a@example.com", "Admin A", hash_password("password123"), role="admin", team_id=team_a["id"])["id"]
+    user_b = database.create_user("admin-b@example.com", "Admin B", hash_password("password123"), role="admin", team_id=team_b["id"])["id"]
+    return team_a["id"], user_a, team_b["id"], user_b
+
+
+def _mock_anthropic_client(tool_input):
+    """Same convention as test_assistant.py's own helper -- a fake anthropic.Anthropic whose messages.create() returns a real ToolUseBlock, with real usage counts so token logging has something real to work with."""
+    fake_response = mock.Mock()
+    fake_response.content = [ToolUseBlock(id="toolu_test", input=tool_input, name="respond_to_user", type="tool_use")]
+    fake_response.usage = mock.Mock(input_tokens=500, output_tokens=100)
+    fake_client = mock.Mock()
+    fake_client.messages.create.return_value = fake_response
+    return fake_client
+
+
 # ------------------------------------------------------------------
 # _resolve_citations
 # ------------------------------------------------------------------
@@ -78,8 +104,9 @@ def _client_for_new_user(role, email, name="Test User"):
 def test_resolve_citations_fills_in_real_document_and_page():
     db_path = _fresh_temp_db()
     try:
-        lease_id = database.insert_lease("acme.pdf", _fields(tenant=("Acme Corp", 2), rent_amount=("$5,000.00", 3)), display_name="Acme Corp Lease")
-        leases_by_id = {lease_id: database.get_effective_lease(lease_id)}
+        team_id = database.create_team("Team A")["id"]
+        lease_id = database.insert_lease("acme.pdf", _fields(tenant=("Acme Corp", 2), rent_amount=("$5,000.00", 3)), team_id, display_name="Acme Corp Lease")
+        leases_by_id = {lease_id: database.get_effective_lease(lease_id, team_id)}
         result = {
             "response_type": "informational", "answer": "Acme pays $5,000/mo.",
             "citations": [{"lease_id": lease_id, "field": "rent_amount"}],
@@ -92,7 +119,7 @@ def test_resolve_citations_fills_in_real_document_and_page():
 
 
 def test_resolve_citations_drops_lease_id_outside_grounding_data():
-    """The hard isolation boundary: a lease_id not in THIS question's own leases_by_id (e.g. a hallucination, or -- once team-scoped -- another team's lease) must never produce a citation."""
+    """The hard isolation boundary: a lease_id not in THIS question's own leases_by_id (a hallucination, or another team's lease) must never produce a citation."""
     result = {
         "response_type": "informational", "answer": "...",
         "citations": [{"lease_id": 999999, "field": "rent_amount"}],
@@ -105,8 +132,9 @@ def test_resolve_citations_drops_lease_id_outside_grounding_data():
 def test_resolve_citations_omits_page_when_field_has_no_source():
     db_path = _fresh_temp_db()
     try:
-        lease_id = database.insert_lease("acme.pdf", _fields(tenant="Acme Corp"), display_name="Acme Corp Lease")
-        leases_by_id = {lease_id: database.get_effective_lease(lease_id)}
+        team_id = database.create_team("Team A")["id"]
+        lease_id = database.insert_lease("acme.pdf", _fields(tenant="Acme Corp"), team_id, display_name="Acme Corp Lease")
+        leases_by_id = {lease_id: database.get_effective_lease(lease_id, team_id)}
         result = {
             "response_type": "informational", "answer": "...",
             "citations": [{"lease_id": lease_id, "field": "rent_amount"}],  # rent_amount was never set -- no source
@@ -122,6 +150,88 @@ def test_resolve_citations_ignores_non_informational_responses():
     result = {"response_type": "navigational", "answer": "Taking you there.", "route": "dashboard"}
     assert assistant._resolve_citations(dict(result), {}) == result
     print("✓ test_resolve_citations_ignores_non_informational_responses: PASS")
+
+
+# ------------------------------------------------------------------
+# Real cross-team isolation through the full ask_assistant pipeline
+# ------------------------------------------------------------------
+
+def test_ask_assistant_never_grounds_in_another_teams_leases():
+    """Team B's question must never even SEE Team A's lease data in the context sent to Claude -- the isolation boundary this whole feature exists to prove."""
+    db_path = _fresh_temp_db()
+    try:
+        team_a_id, _, team_b_id, _ = _setup_two_teams()
+        database.insert_lease("secret.pdf", _fields(tenant=("Confidential Tenant LLC", 1)), team_a_id, display_name="Team A Secret Lease")
+
+        fake_client = _mock_anthropic_client({"response_type": "informational", "answer": "No leases on file."})
+        assistant.ask_assistant("how many leases do I have?", team_id=team_b_id, client=fake_client)
+
+        system_prompt_sent = fake_client.messages.create.call_args.kwargs["system"]
+        assert "Confidential Tenant LLC" not in system_prompt_sent
+        assert "Team A Secret Lease" not in system_prompt_sent
+        assert "0 lease(s) total" in system_prompt_sent
+    finally:
+        os.unlink(db_path)
+    print("✓ test_ask_assistant_never_grounds_in_another_teams_leases: PASS")
+
+
+def test_ask_assistant_citation_to_another_teams_lease_id_never_resolves():
+    """Even if the model somehow produced another team's real lease_id (e.g. a stale id guessed from a prior session, or a prompt-injection attempt in the question text), the citation must resolve to nothing -- not leak that team's document name or page."""
+    db_path = _fresh_temp_db()
+    try:
+        team_a_id, _, team_b_id, _ = _setup_two_teams()
+        leaked_lease_id = database.insert_lease("secret.pdf", _fields(tenant=("Confidential Tenant LLC", 1)), team_a_id, display_name="Team A Secret Lease")
+
+        fake_client = _mock_anthropic_client({
+            "response_type": "informational", "answer": "Found it.",
+            "citations": [{"lease_id": leaked_lease_id, "field": "tenant"}],
+        })
+        result = assistant.ask_assistant("what about lease " + str(leaked_lease_id) + "?", team_id=team_b_id, client=fake_client)
+
+        assert result["citations"] == [], "a citation to another team's real lease_id must still be dropped -- it isn't in this question's own (team B) grounding data"
+    finally:
+        os.unlink(db_path)
+    print("✓ test_ask_assistant_citation_to_another_teams_lease_id_never_resolves: PASS")
+
+
+def test_ask_assistant_navigation_to_another_teams_lease_id_downgrades():
+    """Same boundary for navigation: a 'take me to lease <id>' response naming another team's real lease_id must downgrade to informational, never navigate there (same mechanism as a hallucinated id -- _validate_navigation doesn't distinguish the two, by design)."""
+    db_path = _fresh_temp_db()
+    try:
+        team_a_id, _, team_b_id, _ = _setup_two_teams()
+        leaked_lease_id = database.insert_lease("secret.pdf", _fields(tenant="Confidential Tenant LLC"), team_a_id)
+
+        fake_client = _mock_anthropic_client({
+            "response_type": "navigational", "answer": "Taking you there.",
+            "route": "detail", "lease_id": leaked_lease_id,
+        })
+        result = assistant.ask_assistant("open that lease", team_id=team_b_id, client=fake_client)
+
+        assert result["response_type"] == "informational", "must never navigate team B's session to team A's real lease"
+    finally:
+        os.unlink(db_path)
+    print("✓ test_ask_assistant_navigation_to_another_teams_lease_id_downgrades: PASS")
+
+
+def test_assistant_ask_route_end_to_end_cross_team_isolation():
+    """Full HTTP-route-level proof, real Claude call mocked: Team A has a lease; Team B's real session asks a portfolio-wide question and must get an answer/citations that never reference Team A's data."""
+    db_path = _fresh_temp_db()
+    try:
+        team_a_id, _, team_b_id, user_b_id = _setup_two_teams()
+        database.insert_lease("secret.pdf", _fields(tenant=("Confidential Tenant LLC", 1), rent_amount=("$9,999.00", 2)), team_a_id, display_name="Team A Secret Lease")
+        client_b = _client_as("admin", email="admin-b@example.com", user_id=user_b_id, team_id=team_b_id)
+
+        fake_client = _mock_anthropic_client({"response_type": "informational", "answer": "You have no leases on file yet."})
+        with mock.patch("app.assistant.anthropic.Anthropic", return_value=fake_client):
+            resp = client_b.post("/assistant/ask", json={"question": "how many leases do I have?"})
+
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert "Confidential Tenant LLC" not in body["answer"]
+        assert "9,999" not in body["answer"]
+    finally:
+        os.unlink(db_path)
+    print("✓ test_assistant_ask_route_end_to_end_cross_team_isolation: PASS")
 
 
 # ------------------------------------------------------------------
@@ -178,6 +288,19 @@ def test_assistant_credit_is_separate_from_extraction_budget():
     finally:
         os.unlink(db_path)
     print("✓ test_assistant_credit_is_separate_from_extraction_budget: PASS")
+
+
+def test_assistant_credit_is_separate_per_team():
+    """Team A spending its assistant credit must not touch Team B's balance."""
+    db_path = _fresh_temp_db()
+    try:
+        team_a_id, user_a_id, team_b_id, _ = _setup_two_teams()
+        usage_limits.log_assistant_usage_event(team_a_id, user_a_id, {"input_tokens": 1000000, "output_tokens": 1000000})
+        assert usage_limits.get_assistant_usage_summary(team_a_id)["used_usd"] > 0
+        assert usage_limits.get_assistant_usage_summary(team_b_id)["used_usd"] == 0.0, "Team B's credit must be untouched by Team A's spend"
+    finally:
+        os.unlink(db_path)
+    print("✓ test_assistant_credit_is_separate_per_team: PASS")
 
 
 # ------------------------------------------------------------------
@@ -263,18 +386,17 @@ def test_assistant_ask_route_requires_team_assignment():
 
 
 # ------------------------------------------------------------------
-# /teams routes: owner-only now (closes the pre-existing cross-tenant bug)
+# /teams routes: owner-only now (closes a pre-existing cross-tenant bug)
 # ------------------------------------------------------------------
 
 def test_teams_routes_require_owner_not_just_admin():
     """
-    Pre-existing bug this overnight session fixed: any customer team's
-    admin-role user (role='admin', is_owner=False) could previously
-    create/list/patch ANY team's quotas via @require_role('admin'),
-    which checks role rank only -- never which team the caller belongs
-    to, let alone whether they're Abstractly staff. Must now 404
-    (require_owner's deliberate not-found-not-forbidden response) for
-    a plain team admin.
+    Pre-existing bug this session fixed: any customer team's admin-role
+    user (role='admin', is_owner=False) could previously create/list/
+    patch ANY team's quotas via @require_role('admin'), which checks
+    role rank only -- never which team the caller belongs to, let alone
+    whether they're Abstractly staff. Must now 404 (require_owner's
+    deliberate not-found-not-forbidden response) for a plain team admin.
     """
     db_path = _fresh_temp_db()
     try:
@@ -314,9 +436,14 @@ if __name__ == "__main__":
     test_resolve_citations_drops_lease_id_outside_grounding_data()
     test_resolve_citations_omits_page_when_field_has_no_source()
     test_resolve_citations_ignores_non_informational_responses()
+    test_ask_assistant_never_grounds_in_another_teams_leases()
+    test_ask_assistant_citation_to_another_teams_lease_id_never_resolves()
+    test_ask_assistant_navigation_to_another_teams_lease_id_downgrades()
+    test_assistant_ask_route_end_to_end_cross_team_isolation()
     test_assistant_usage_summary_defaults_to_config_constant()
     test_log_assistant_usage_event_accumulates_cost_and_check_blocks_at_limit()
     test_assistant_credit_is_separate_from_extraction_budget()
+    test_assistant_credit_is_separate_per_team()
     test_assistant_usage_route_requires_login()
     test_assistant_usage_route_returns_summary_for_own_team()
     test_assistant_ask_route_blocks_with_friendly_message_at_credit_limit()

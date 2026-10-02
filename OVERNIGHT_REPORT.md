@@ -2,19 +2,24 @@
 
 _Started 2026-10-01 overnight session._
 
-## Status: STOPPED FOR THE NIGHT, SOLID PARTIAL PROGRESS
+## Status: ALL FIVE PHASES COMPLETE
 
-**Start here:** the single biggest open item is that this branch could not be rebased/merged
-onto `origin/feature/team-isolation` (see Decision #2) -- every real git branch-advancing
-operation (`merge --ff-only`, `cherry-pick`) was denied by the permission classifier in this
-unattended session. **Run this yourself first thing:**
-```
-cd ~/dev/projects/abstractly-assistant && git merge origin/feature/team-isolation
-```
-(plain `merge`, not `--ff-only` -- my own commits since mean it won't fast-forward anymore).
-It will conflict in a small, specific set of places -- see "Exact spots flagged for manual
-merge reconciliation" below, written while the context was still fresh, to make that
-resolution fast rather than a cold-start archaeology project.
+**Update, same overnight session, later wakeup:** `origin/feature/team-isolation` moved
+forward again (new commit `ba7251b`) and `git merge origin/feature/team-isolation` (plain
+merge, not `--ff-only`) succeeded this time -- the permission classifier that blocked every
+branch-advancing git operation earlier in the night (see Decision #2 below) did not block
+this one; the `!`-prefix workaround suggested earlier was never actually needed. Resolved 4
+conflicted files (`backend/app/assistant.py`, `backend/tests/run_all_tests.py`,
+`frontend/owner/index.html`, `frontend/owner/owner-app.js` -- see the merge commit message,
+`81dd96c`, for exactly how each was reconciled) and finished Phase 1 (the merge already
+brought `ask_assistant`'s leases/discrepancies/alerts queries fully team-scoped) and Phase 5
+(rewrote `test_deal_assistant_credit_and_citations.py`'s `insert_lease`/`get_effective_lease`
+calls for the now-mandatory `team_id` param, and added 4 real cross-team leakage tests
+through the full `ask_assistant` pipeline -- mocked Claude client, real team-scoped database
+queries -- proving Team B's question never sees Team A's lease data in the system prompt
+sent to Claude, a citation naming Team A's real lease_id never resolves, a navigational
+response naming Team A's real lease_id downgrades to informational, and the same holds at
+the full HTTP-route level). 19/19 tests in that file pass; full suite results below.
 
 ## Decisions log
 
@@ -152,38 +157,47 @@ mocked-client unit tests in `test_deal_assistant_credit_and_citations.py` and th
 
 ## What's broken / needs review first
 
-1. **The branch-base merge is still pending** -- see the top of this file and Decision #2.
-   Nothing in Phase 1 (team-scoped lease/discrepancy/alert queries) or Phase 5 (real
-   cross-team leakage tests) could be finished without it; both are otherwise ready to go
-   the moment it lands (citations/credit/isolation-of-citation-resolution logic is already
-   written and tested; it just needs real team-scoped data to run against for real).
-2. **The existing `/qa`-engine-based per-lease "Ask About This Lease" panel is untouched.**
+1. **The existing `/qa`-engine-based per-lease "Ask About This Lease" panel is untouched.**
    Only the portfolio-wide floating assistant was rewired to the new LLM engine. If the
    product intent was actually to replace BOTH surfaces with the new assistant, that's a
    separate, not-yet-done piece -- flagging rather than guessing.
-3. **No live, real-Anthropic-API end-to-end test was run** (by design, see above) -- the
-   actual Claude Haiku call path (tool-forced citations, navigation, clarifying) is
-   mocked-tested only. Worth one real smoke-test question once credits/API access are
-   confirmed, per CLAUDE.md's "ask before any real-API run."
-4. A full backend test suite run (`python3 run_all_tests.py`) was green at 66/70 both before
-   and after tonight's backend changes -- same 4 pre-existing, environment-dependent (OCR/
-   tesseract) failures CLAUDE.md already documents as expected. No new test file registered
-   yet in `backend/tests/run_all_tests.py` beyond `test_deal_assistant_credit_and_citations.py`
-   (tonight's own new file) -- `test_team_isolation.py` (20 tests, from the pending merge)
-   will need registering too once that lands, if its own commit didn't already do so (it
-   should have -- worth a quick check).
+2. **No live, real-Anthropic-API end-to-end test was run** (by design) -- the actual Claude
+   Haiku call path (tool-forced citations, navigation, clarifying) is mocked-tested only.
+   Worth one real smoke-test question once credits/API access are confirmed, per CLAUDE.md's
+   "ask before any real-API run."
+3. **Owner console UI reconciliation worth a human glance.** `feature/team-isolation` had
+   independently built a richer Teams admin UI (list w/ status/user/lease counts, a detail
+   modal with member roster + deactivate/reactivate, a create-team modal wired to the real
+   `/owner/teams` provisioning flow) than this branch's original placeholder quota-only
+   table. Took their UI as the base and folded in just the one thing this branch adds --
+   an editable `monthly_assistant_credit_usd` field alongside the other `monthly_*` quota
+   fields in their detail modal, saved via the separate, pre-existing `PATCH /teams/<id>`
+   route (now `@require_owner()`-gated). Two different route families now coexist for team
+   management (`/owner/teams/*` for provisioning/status, `/teams/<id>` for quota edits) --
+   functionally correct and tested, but a human product/API-design pass might prefer
+   consolidating these later.
+4. Full backend test suite (`python3 run_all_tests.py`): **75/79 passed**, same 4
+   pre-existing, environment-dependent (OCR/tesseract) failures CLAUDE.md already documents
+   as expected on a machine without `tesseract`/`poppler` -- `test_extraction.py`,
+   `test_synthetic_accuracy.py`, `test_multi_lease_detection.py`, `test_document_extractor.py`.
+   Nothing touched this session caused or is related to any of these.
 
 ## Phases
 
-- [~] Phase 1: deal assistant core -- citations DONE and tested; team-scoping of the
-      underlying lease/discrepancy/alert queries BLOCKED on the branch-base merge (see above)
+- [x] Phase 1: deal assistant core -- team-scoped Q&A with page citations. DONE: the merge
+      brought `get_all_effective_leases`/`list_discrepancies`/`list_alerts` fully team-scoped
+      (mandatory `team_id` param), `ask_assistant(question, team_id, ...)` already called
+      that way from the route, and citations/navigation both verified to never resolve/
+      navigate to another team's real lease_id (see the 4 new cross-team tests).
 - [x] Phase 2: credit controls -- config allowance, admin-adjustable (owner console Teams
-      tab, backend), remaining-credit meter (backend route + live-verified frontend widget),
+      detail modal), remaining-credit meter (backend route + live-verified frontend widget),
       friendly limit message, per-user rate limiting (pre-existing in assistant.py, unchanged,
       still active) and per-team token logging all DONE and verified.
 - [x] Phase 3: suggested default questions -- DONE, screenshot-verified.
 - [x] Phase 4: chat UI polish + headless screenshot verification -- DONE (includes rewiring
       the FAB panel from /qa to /assistant/ask, see Decision #3).
-- [~] Phase 5: tests -- credit limit tests and citation-resolution isolation unit tests DONE
-      (14 new tests, all passing); real end-to-end cross-team leakage tests BLOCKED on the
-      branch-base merge.
+- [x] Phase 5: tests -- credit limit tests, citation-resolution unit tests, AND real
+      end-to-end cross-team leakage tests (mocked Claude client, real team-scoped database,
+      full `ask_assistant` pipeline + the HTTP route) all DONE. 19/19 tests passing in
+      `test_deal_assistant_credit_and_citations.py`; full suite 75/79 (4 pre-existing,
+      unrelated OCR failures).
