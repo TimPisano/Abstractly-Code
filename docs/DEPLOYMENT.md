@@ -205,27 +205,104 @@ before a real call with a prospect:
    it's already warm — otherwise the first page load during the call
    will hang briefly.
 2. **Uploaded lease data does not persist** across a restart or
-   redeploy (see "Adding persistent storage later" below for the
-   fix). Treat the live site as a demo environment for now: re-upload
-   your demo lease fresh before an important call rather than relying
-   on data uploaded days ago still being there.
+   redeploy. Treat the live site as a demo environment for now:
+   re-upload your demo lease fresh before an important call rather than
+   relying on data uploaded days ago still being there.
 
 Neither of these requires any action now — just know they're the
 tradeoff of "free."
 
-## Adding persistent storage later
+Both points stop applying to a service once it has a persistent disk
+and a paid instance type: spindown is a free-tier behavior, and the
+database then lives on the disk. See "Adding persistent storage" below.
 
-When you're ready to stop losing data on restart (recommended before
-using this with a real prospect's real data, not just a demo):
+## Adding persistent storage
 
-1. Render dashboard → `abstractly-api` service → "Settings" → change
-   the plan from "Free" to "Starter" (currently ~$7/month).
-2. Same service → "Disks" → "Add Disk" → name it `abstractly-data`,
-   mount path `/app/data`, size 1 GB (currently ~$0.25/month).
-3. Environment tab → add `DB_PATH` = `/app/data/lease_portfolio.db`.
-4. Save — Render redeploys automatically. That's the entire upgrade;
-   no code change is needed (the app already reads `DB_PATH` at
-   startup — see `app/api.py`).
+`render.yaml` on `chore/render-persistent-disk` declares a 1 GB disk on
+**`abstractly-api`** (`abstractly-data`) and **`abstractly-tester-api`**
+(`abstractly-tester-data`), both mounted at `/app/data`, both with
+`DB_PATH=/app/data/lease_portfolio.db`, and both moved to `plan: starter`.
+`abstractly-demo-api` stays on `free` with no disk on purpose — losing
+its database on restart is how the demo resets itself for free.
+
+### What a disk does and does not cover
+
+The disk covers **the SQLite database**, which is everything durable
+this app has. It does *not* preserve uploaded files, because the app
+never stores them: an upload is written to a temp file, parsed, and
+deleted in a `finally` block (`app/api.py:545`). Only the extracted
+fields and their page numbers are persisted. So "uploads don't survive
+a redeploy" is true today and stays true after this change — but
+nothing is actually being lost that the app would ever have read again.
+
+### Important: this does not migrate existing data
+
+Attaching a disk and setting `DB_PATH` points the app at a **new, empty**
+database file on the disk. The old database is on the container's
+ephemeral filesystem and is not copied over. On first boot after the
+change, `init_db()` recreates the schema and re-seeds the admin account
+from `ADMIN_EMAIL` / `ADMIN_PASSWORD_HASH`.
+
+In practice there is nothing to lose — the current data is already wiped
+by every deploy — but if there are Book a Demo submissions or waitlist
+rows on the live service you care about, export them *before* making the
+change, because this is the last deploy that silently discards them.
+
+### Dashboard steps (do these per service)
+
+Render applies `disk:` and `plan:` from `render.yaml` on Blueprint sync,
+but the plan change is a billing action, so confirm it in the dashboard:
+
+1. **Settings → Instance Type**: change `Free` → `Starter`. Render shows
+   the exact monthly price on this screen before you confirm — read it
+   there rather than trusting the figure below.
+2. **Disks → Add Disk**: name `abstractly-data` (or
+   `abstractly-tester-data` for the tester service), mount path
+   `/app/data`, size `1` GB.
+3. **Environment → Add Environment Variable**:
+   `DB_PATH` = `/app/data/lease_portfolio.db`.
+4. **Confirm `FLASK_SECRET_KEY` is set** on this service. If it isn't,
+   the app generates a random one per boot into the system temp
+   directory (`app/api.py:178-190`), so every admin login is invalidated
+   on each restart *regardless of the disk*. A disk will not fix this;
+   the env var is the fix.
+5. Save. Render redeploys automatically. No code change is needed — the
+   app reads `DB_PATH` at import time and calls `database.configure()`
+   (`app/api.py:241-243`).
+
+### Two tradeoffs Render imposes on any disk-backed service
+
+- **Deploys stop being zero-downtime.** Render stops the old instance
+  before starting the new one, so expect a few seconds of unavailability
+  per deploy instead of a seamless swap.
+- **The service can never scale past one instance.** Neither is a new
+  limitation here: SQLite is a single-writer file database and could not
+  be shared across instances anyway.
+
+### Verifying data actually survives a redeploy
+
+Do this on `abstractly-tester-api` first, not production:
+
+1. `curl https://abstractly-tester-api.onrender.com/health` → expect
+   `{"status":"healthy"}`. This endpoint runs a real query, so a 503
+   `{"status":"degraded"}` means `DB_PATH` points somewhere the app
+   cannot open — catch that here before going further.
+2. **Shell tab** (available on paid plans) → `ls -l /app/data/` and
+   confirm `lease_portfolio.db` exists there and is non-zero.
+3. Log in and create something you can recognise later — upload one
+   Maple Ridge lease from `backend/benchmark_data/demo_deal/`, or submit
+   a Book a Demo form.
+4. **Manual Deploy → Deploy latest commit.** Use a real redeploy, not a
+   restart: a restart can appear to preserve data for reasons unrelated
+   to the disk, so it does not prove anything.
+5. After the deploy finishes, log back in and confirm the record from
+   step 3 is still there. That is the actual proof.
+6. **Disks tab** → disk usage should be non-zero and should have grown
+   between steps 3 and 5.
+
+A useful negative control: `abstractly-demo-api` has no disk, so the
+same sequence there should *lose* the record. If both services behave
+identically, the disk is not doing what you think it is.
 
 ## Logging and monitoring
 
