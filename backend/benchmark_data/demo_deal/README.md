@@ -30,6 +30,7 @@ rent_roll/maple_ridge_rent_roll_demo_subset_16unit.pdf   same, print-ready lands
 t12/maple_ridge_t12.xlsx                        12-month T-12 operating statement
 expected_findings.json                          machine-readable ground truth for every planted issue
 generate_demo_deal.py                           the generator (source of truth for everything above)
+DEMO_WALKTHROUGH.md                             one-page sales script for live-demoing this package
 ```
 
 Both rent rolls are styled to look like a clean, official export off a
