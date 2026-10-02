@@ -253,7 +253,7 @@ _NEGATION_BEFORE = re.compile(
 # defaults, Tenant shall not be entitled to one month free") still reads
 # as a negation of the grant.
 _NOT_ABOUT_DEFAULT = re.compile(
-    r"^\W*(?:[a-z]+\W+){0,3}?(?:default\w*|breach\w*|delinquen\w*)", re.IGNORECASE,
+    r"^\W*(?:[a-z\-]+\W+){0,6}?(?:default\w*|breach\w*|delinquen\w*|late\b|past\s+due)", re.IGNORECASE,
 )
 # Discounts and credits on something other than rent (parking, utilities,
 # the deposit, pet rent, an early-payment discount). Judged from the words
@@ -446,26 +446,35 @@ def _negated(sentence: str, start: int) -> bool:
 def _about_something_else(sentence: str, start: int, end: int) -> bool:
     """
     True when a $/% discount or credit match is about a non-rent charge.
-    Looks at the match itself, up to 45 characters before it, and the rest
+    Looks at the match itself, up to 60 characters before it, and the rest
     of its own clause after it (to the next comma/semicolon): a non-rent
     word there wins unless "rent" (the noun) sits closer to the match.
     """
     matched = sentence[start:end]
     # "$200 move-in credit, applied toward the security deposit" reduces
     # the deposit, not rent -- never priced into effective rent.
-    if _APPLIED_TO_DEPOSIT.search(sentence[end:]):
+    # Its own clause: up to a ";" or an "and" (a later, unrelated "..., and
+    # any overpayment will be credited to the deposit" isn't about this
+    # credit), but across a bare comma ("$200 credit, applied toward the
+    # security deposit" is).
+    own_clause = re.split(r";|\band\b", sentence[end:], maxsplit=1)[0]
+    if _APPLIED_TO_DEPOSIT.search(own_clause):
         return True
     if _TRIGGER_IN_MATCH.search(matched) or _RENT_WORD.search(matched):
         return False
     after = re.split(r"[,;]", sentence[end:], maxsplit=1)[0]
     if _NON_RENT_WORDS.search(after):
         return True
-    before = sentence[max(0, start - 45):start]
+    before = sentence[max(0, start - 60):start]
     # A non-rent word in an earlier "... and ..." clause belongs to that
     # clause ("the application fee is waived and residents receive $50 per
     # month off"); commas don't cut it ("parking is $50 per month,
     # discounted by $10" is still about parking).
-    before = re.split(r"\band\b", before)[-1]
+    # An "and" followed by an auxiliary ("Parking is $50 and is discounted
+    # by $10", "... and will be discounted") continues the same subject, so
+    # it doesn't split; any other "and" ("... fee is waived and residents
+    # receive", "... deposit of $200 and receives") starts a new clause.
+    before = re.split(r"\band\s+(?!(?:is|are|was|were|will|shall|would|can|may|be|been|has|have)\b)", before, flags=re.IGNORECASE)[-1]
     non_rent = [m.end() for m in _NON_RENT_WORDS.finditer(before)]
     rent = [m.end() for m in _RENT_WORD.finditer(before)]
     return bool(non_rent) and (not rent or non_rent[-1] > rent[-1])

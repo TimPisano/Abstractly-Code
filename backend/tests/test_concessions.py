@@ -871,6 +871,29 @@ def test_review3_and_clause_and_deposit_credit():
     print("✓ test_review3_and_clause_and_deposit_credit: PASS")
 
 
+# ----------------------------------------------------------------------
+# Reviewer round 4 (non-blocking cleanups)
+# ----------------------------------------------------------------------
+
+def test_review4_cleanups():
+    for text in (
+        "Parking is $50 per month and is discounted by $10 per month for a second car.",
+        "Utilities are billed at $100 per month and will be discounted by $20 per month for autopay.",
+        "Storage is available and is offered at a $10 per month discount.",
+    ):
+        assert _items(text) == [], (text, _items(text))
+    for text in (
+        "Resident receives $50 off rent each month, and any pet fee will be applied toward the security deposit.",
+        "Resident receives a $500 move-in credit, and any overpayment will be credited to the deposit.",
+        "So long as Tenant is not then in monetary or material non-monetary default, Base Rent shall be abated for the first two (2) months.",
+        "Provided Resident is not late with rent, Base Rent is reduced by $50.00 per month for the full term.",
+    ):
+        assert len(_items(text)) == 1, (text, _items(text))
+    result = parse_rent_roll_rows(["Unit", "Tenant", "Rent", "Concessions/Month"], [["101", "Pat", "1200", "75"]], "rr.csv", "1 Elm St")
+    assert result["column_mapping"].get("concessions") == 3
+    print("✓ test_review4_cleanups: PASS")
+
+
 if __name__ == "__main__":
     test_parse_single_free_month_with_trigger_and_calendar_month()
     test_parse_recurring_discount_with_duration_and_explicit_range()
@@ -928,4 +951,5 @@ if __name__ == "__main__":
     test_review3_interest_free_deposit_is_still_not_free_rent()
     test_review3_forfeiture_clauses_are_negations()
     test_review3_and_clause_and_deposit_credit()
+    test_review4_cleanups()
     print("\nAll concession tests passed.")

@@ -132,7 +132,7 @@ _COLUMN_ALIASES: Dict[str, List[str]] = {
     # assuming every rent roll omits concessions (see deal_mismatch.py's
     # detect_concession_mismatch). Never eligible for rent_amount, see
     # _is_concession_header.
-    "concessions": ["concession", "concessions", "rent concession", "monthly concession", "concession amount", "rent discount", "concession/month", "concession/mo"],
+    "concessions": ["concession", "concessions", "rent concession", "monthly concession", "concession amount", "rent discount", "concession/month", "concession/mo", "concessions/month", "concessions/mo"],
 }
 
 # Header words that mean a rent-like column is a THEORETICAL/aspirational
