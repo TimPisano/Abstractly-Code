@@ -638,26 +638,84 @@ def _wrap(c, text, font, size, max_w):
     return lines
 
 
-def _render_pdf(path, paragraphs):
+_PDF_STYLES = {
+    # style name -> (font, size)
+    "title": ("Helvetica-Bold", 16),
+    "subtitle": ("Helvetica", 10),
+    "small": ("Helvetica-Oblique", 8),
+    "bold": ("Helvetica-Bold", 11),
+}
+
+
+def _render_pdf(path, paragraphs, footer_text=None):
+    """
+    Renders a list of paragraphs to a one-or-more-page PDF. Each entry
+    is either a plain string (normal body text, auto-bolded if it's a
+    short all-caps line -- the existing section-title convention) or a
+    `(text, style)` tuple for an explicit style from _PDF_STYLES, plus
+    two pseudo-styles with no font of their own: "rule" draws a thin
+    horizontal divider (text ignored) and "pagebreak" forces a new page
+    (text ignored) -- used to push the Exhibit A addendum onto its own
+    page regardless of how much room is left on the signature page.
+
+    `footer_text` (if given) is drawn bottom-left on every page, with
+    "Page N" bottom-right -- same page-numbering convention as the
+    rent-roll PDF export, drawn once per page via a running counter.
+    """
     c = canvas.Canvas(path, pagesize=letter)
     width, height = letter
     left, right = 1 * inch, width - 1 * inch
     max_w = right - left
+    page_num = 1
+
+    def draw_footer():
+        if not footer_text:
+            return
+        c.setFont("Helvetica", 8)
+        c.setFillGray(0.4)
+        c.drawString(left, 0.6 * inch, footer_text)
+        c.drawRightString(right, 0.6 * inch, f"Page {page_num}")
+        c.setFillGray(0)
+
     y = height - 1 * inch
-    for para in paragraphs:
-        if para == "":
+    for item in paragraphs:
+        text, style = item if isinstance(item, tuple) else (item, None)
+
+        if style == "pagebreak":
+            draw_footer()
+            c.showPage()
+            page_num += 1
+            y = height - 1 * inch
+            continue
+        if style == "rule":
+            y -= 0.05 * inch
+            c.setLineWidth(0.75)
+            c.line(left, y, right, y)
+            y -= 0.18 * inch
+            continue
+        if text == "":
             y -= 0.16 * inch
             continue
-        bold = para.isupper() and len(para) < 70
-        font = "Helvetica-Bold" if bold else "Helvetica"
-        for line in _wrap(c, para, font, 11, max_w):
-            if y < 1 * inch:
+
+        if style in _PDF_STYLES:
+            font, size = _PDF_STYLES[style]
+        elif text.isupper() and len(text) < 70:
+            font, size = "Helvetica-Bold", 11
+        else:
+            font, size = "Helvetica", 11
+
+        line_height = size * 1.35 / 72 * inch
+        for line in _wrap(c, text, font, size, max_w):
+            if y < 1.1 * inch:
+                draw_footer()
                 c.showPage()
+                page_num += 1
                 y = height - 1 * inch
-            c.setFont(font, 11)
+            c.setFont(font, size)
             c.drawString(left, y, line)
-            y -= 0.22 * inch
+            y -= line_height
         y -= 0.08 * inch
+    draw_footer()
     c.save()
 
 
@@ -678,7 +736,12 @@ def _lease_paragraphs(unit_id, u, doc):
                           - (doc["lease_start"].year * 12 + doc["lease_start"].month)) + 1)
 
     paras = [
+        (MANAGEMENT_CO, "title"),
+        (f"{PROPERTY_NAME}  |  {PROPERTY_ADDRESS}", "subtitle"),
+        "",
+        ("", "rule"),
         "TEXAS APARTMENT LEASE AGREEMENT",
+        (f"Lease Reference: Suite {unit_id}", "small"),
         "",
         f"This Lease Agreement (\"Lease\") is entered into by and between {OWNER_ENTITY} "
         f"(\"Owner\"), acting through its agent {MANAGEMENT_CO} (\"Management\"), and "
@@ -753,10 +816,74 @@ def _lease_paragraphs(unit_id, u, doc):
         "",
         f"IN WITNESS WHEREOF, the parties have executed this Lease as of {_fmt_date_long(doc['lease_start'])}.",
         "",
-        f"OWNER: {OWNER_ENTITY}, by {MANAGEMENT_CO}, as authorized agent",
-        f"RESIDENT: {u['tenant']}",
-    ]
+        ("", "rule"),
+        "",
+        "OWNER:",
+        f"{OWNER_ENTITY}",
+        f"By: {MANAGEMENT_CO}, as authorized agent",
+        "",
+        "Signature: _______________________________________        Date: _______________",
+        "",
+        "RESIDENT:",
+        f"{u['tenant']}",
+        "",
+        "Signature: _______________________________________        Date: _______________",
+        ("", "pagebreak"),
+    ] + _exhibit_a_paragraphs(unit_id)
     return paras
+
+
+def _exhibit_a_paragraphs(unit_id):
+    """
+    The Community Rules and Regulations addendum Section 12 of the
+    lease already refers to ("attached as Exhibit A") -- generic
+    boilerplate, deliberately with no dollar figures, dates, or party
+    names beyond the same generic "Resident"/"Management" terms the
+    lease body itself uses, so it can never compete with (or duplicate)
+    any of the real extracted-field values elsewhere in the document.
+    """
+    return [
+        (MANAGEMENT_CO, "title"),
+        (f"{PROPERTY_NAME}  |  {PROPERTY_ADDRESS}", "subtitle"),
+        "",
+        ("", "rule"),
+        "EXHIBIT A -- COMMUNITY RULES AND REGULATIONS",
+        (f"Suite {unit_id}  |  Attached to and made a part of the Lease Agreement referenced above.", "small"),
+        "",
+        "1. QUIET HOURS. Residents and guests shall observe quiet hours between 10:00 p.m. and "
+        "8:00 a.m. daily. Excessive noise audible outside the Premises during these hours is a "
+        "violation of these Rules.",
+        "",
+        "2. GUESTS. Residents are responsible for the conduct of their guests at all times. A "
+        "guest who stays more than seven (7) consecutive days, or more than fourteen (14) days "
+        "in any calendar month, is considered an unauthorized occupant and requires Management's "
+        "prior written consent.",
+        "",
+        "3. COMMON AREAS. The clubhouse, pool, fitness center, and other common areas are for the "
+        "use of Residents and their accompanied guests during posted hours only. Management may "
+        "restrict or suspend access for maintenance or safety reasons on reasonable notice.",
+        "",
+        "4. PARKING. Vehicles must be parked only in designated spaces, display any required "
+        "parking permit, and remain in operating condition. A vehicle parked in violation of "
+        "these Rules is subject to towing at the owner's expense.",
+        "",
+        "5. TRASH AND RECYCLING. Household trash must be bagged and disposed of only in "
+        "designated receptacles. Furniture, appliances, and bulk items may not be left in common "
+        "areas, breezeways, or stairwells.",
+        "",
+        "6. MAINTENANCE REQUESTS. Residents should submit non-emergency maintenance requests "
+        "through Management's resident portal or office. A genuine emergency condition (fire, "
+        "flooding, or loss of an essential utility) should be reported immediately by phone.",
+        "",
+        "7. SMOKING. Smoking, including the use of e-cigarettes and vaporizers, is prohibited "
+        "inside all units, breezeways, and enclosed common areas.",
+        "",
+        "8. ALTERATIONS. Residents may not paint, wallpaper, or make structural alterations to "
+        "the Premises without Management's prior written consent.",
+        "",
+        "These Rules and Regulations may be reasonably amended by Management from time to time "
+        "upon notice to Resident, consistent with Section 12 of the Lease.",
+    ]
 
 
 def write_lease_pdfs(units):
@@ -767,7 +894,8 @@ def write_lease_pdfs(units):
         slug = u["tenant"].lower().replace(" ", "_").replace(".", "").replace("-", "_")
         filename = f"{unit_id}_{slug}.pdf"  # unit_id itself stays as-is for filenames; only in-document prose switched to "Suite" wording above
         path = os.path.join(LEASE_DIR, filename)
-        _render_pdf(path, _lease_paragraphs(unit_id, u, doc))
+        footer = f"{PROPERTY_NAME} -- Suite {unit_id} Lease -- FABRICATED DEMO DATA"
+        _render_pdf(path, _lease_paragraphs(unit_id, u, doc), footer_text=footer)
         manifest.append({
             "unit_id": unit_id, "file": f"leases/{filename}", "tenant": u["tenant"],
             "issue": doc["issue"], "lease_rent": doc["lease_rent"],
