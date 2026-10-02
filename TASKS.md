@@ -1,27 +1,20 @@
 # TASKS — single source of truth for work in progress
 
-Last verified against git: **2026-10-01, evening** (`git fetch --all`,
-every branch/worktree walked individually). "+a / −b" = commits ahead of
-/ behind `main`.
+Last verified against git: **2026-10-01, overnight pass** (`feature/team-isolation`
+rebasing onto `origin/main` @ `28f2fb9`). "+a / −b" = commits ahead of /
+behind `main`.
 
-**`main` was pushed to `origin` at `74d3237`** (user explicitly asked
-for the `fix/rent-roll-hardening` merge + push, this session). `render.yaml`
-has no `branch:` override, so this redeploys prod, tester, **and** demo
-from one push — all now live with: tester-api-routing, t12-crosscheck,
-usage-limits, the Book a Demo fix, and rent-roll-hardening (Maple Ridge
-demo deal). Smoke test all three once deploys finish (Up next #5).
+**`main` was pushed to `origin` at `74d3237`**, then advanced further to
+`28f2fb9` by `fix/rent-roll-hardening`'s merge (Maple Ridge demo deal +
+golden-file test) and a TASKS.md bookkeeping commit. `render.yaml` has
+no `branch:` override, so every push to `main` redeploys prod, tester,
+**and** demo from one push.
 
-**Other sessions are active right now, concurrently with this pass:**
-while writing this file, `229ab23` (the Book a Demo boolean-units fix,
-cherry-picked from `feature/landing-positioning`'s `391b49f`) landed
-directly on local `main`; `feature/pricing-page` gained a new commit
-(`0a0d7a2`, "Declare persistent disk for prod + tester backends in
-render.yaml" — possibly progress on the storage blocker below, not yet
-verified); and `feature/team-isolation`'s worktree moved. Exact commit
-SHAs/counts below are a snapshot — run the `status` skill to refresh
-before trusting them precisely.
+**Other sessions may still be active concurrently** — treat exact SHAs
+here as a snapshot, re-run the `status` skill before relying on them
+precisely.
 
-## Done (merged into local main)
+## Done (merged into `main`, pushed to `origin`)
 
 | Branch | Worktree | What it does | Status |
 |---|---|---|---|
@@ -32,98 +25,88 @@ before trusting them precisely.
 | `feature/landing-positioning` (round 1) | `~/dev/projects/abstractly-landing` | Multifamily-syndicator landing page + Book a Demo | Merged `d6ff92d`. Round 2 below is newer, separate work. |
 | `feature/pricing-page` (round 1) | `~/dev/projects/abstractly-pricing` | Config-driven pricing page + marketing redesign | Merged `a794f0e`. Round 2 below is newer, separate work. |
 | `worktree-agent-a3fcc0f…`, `-a640a39f…`, `-a671d27b…` | none (local only) | Old agent branches (sample lease onboarding, owner console tests, rent roll import fixes) | Fully merged. Safe to delete (`git worktree remove` / `git branch -d`). |
-| `fix/rent-roll-hardening` | `~/dev/projects/abstractly-rentroll-qa` | QA/hardening of the rent roll pipeline: import edge cases, negative-rent sign loss, multifamily tenant extraction, route-role checks, Maple Ridge demo deal + golden-file test | Rebased onto main and merged `03cebb5` on explicit instruction, by this session. **Correction:** an earlier version of this row (written by a concurrent session) claimed "72/72 test files passed... independently re-run... just before the merge" — false, and not independently verifiable; no such run had completed when that was written. The real first run after the merge was **76/77, with `test_demo_deal_golden.py` failing** on two genuine integration gaps against the already-merged `feature/usage-limits`: (1) the test's faked session had no `team_id`, tripping the new "account isn't assigned to a team yet" 403 gate; (2) its 15-lease bulk upload tripped the new 10/minute per-user rate limit. Fixed both in the test fixtures (`74d3237`) — not an app bug, the gate and the limit are both working as designed; the test just predated them. Full suite now genuinely **77/77**, independently run twice. |
+| `fix/rent-roll-hardening` | `~/dev/projects/abstractly-rentroll-qa` | QA/hardening of the rent roll pipeline: import edge cases, negative-rent sign loss, multifamily tenant extraction, route-role checks, **Maple Ridge demo deal + golden-file test** (`backend/benchmark_data/demo_deal/`: 15 real lease PDFs + 16-unit rent-roll CSV + T12, `test_demo_deal_golden.py` asserts exact planted findings through the real routes) | Merged `03cebb5`. Full suite 77/77 (post-fix for the two usage-limits integration gaps the golden test predated: team_id on its faked session, and the per-user extraction rate limit). **This unblocks `feature/team-isolation`'s deferred "Load sample deal" fixture — the real PDFs now exist on `main`.** |
 | (docs) | — | `CLAUDE.md` + `TASKS.md` committed to main; `TEAM_AUDIT.md` (external, read-only audit of the tenancy question, lives at `~/dev/projects/TEAM_AUDIT.md` — not part of this repo) | `64af20a`, 2026-10-01. |
 
 ## Ready for review (pushed to origin, not merged)
 
 | Branch | Worktree | What it does | Status |
 |---|---|---|---|
+| `feature/team-isolation` | `~/dev/projects/abstractly-teams` | **Real multi-tenant team isolation** — every team-owned table scoped by `team_id` (leases, discrepancies, alerts, comments, tasks, assignments, messaging, lease tags/edits, activity log, linked email accounts); `teams.status` for deactivation (blocks login for every member); owner-console team provisioning (`POST /owner/teams` — creates team + first admin with an unusable password hash + 7-day single-use setup link via `POST /auth/team-setup`, `GET /owner/teams` usage view, deactivate/reactivate); `backend/tests/test_team_isolation.py` (20 cross-team tests). See `PLAN.md` in this worktree for the full design. | **In an overnight autonomous pass (user-authorized, no merge/push-to-main, no browser except headless Playwright) to finish it completely**: rebase onto the now-updated `origin/main` (this unblocks the Maple Ridge sample-deal fixture — see Done table), a full re-audit of every query/route/export/cache-key/background-job/admin-view for team scoping, the owner-console frontend + `team-setup.html` page, the empty-workspace + "Load sample deal" button, adversarial ID-guessing cross-team tests, and headless-Playwright verification. Decisions logged below as they're made; see `OVERNIGHT_REPORT.md` in this worktree when the pass finishes. **Fixed real pre-existing cross-team vulnerabilities found while building this** (not isolation gaps introduced by this branch — all predate it): `POST /team/members` accepted a client-supplied `team_id`, letting any admin create a user directly inside another team; `POST /team/members/<id>/reset-password` and `PATCH /team/members/<id>` didn't check the target user's team at all; task/assignment/thread-participant routes let a caller assign work to or message a user on another team. All now team-scoped and covered by the test file. |
 | `feature/pricing-page` (round 2) | `~/dev/projects/abstractly-pricing` | Flat per-team pricing ($499/$399, $1,250/$999, Enterprise), fluted-glass WebGL hero, sticky header, Lenis, new logo | +11 / −6 vs. main, pushed to origin. Clean worktree. Frontend only. Confirm it's finished iterating before merging. |
 | `feature/landing-positioning` (round 2) | `~/dev/projects/abstractly-landing` | Scroll-linked fluted-glass shader, dark theme. (Its Book a Demo boolean-`units` fix, `391b49f`, is **already on `main`** as cherry-pick `229ab23` — done, don't re-merge it.) | Pushed to origin. **Worktree has uncommitted changes** to `background-fx.js`, `index.html`, `landing.css`, `pricing.html` — commit or discard before this is reviewable. Overlaps pricing-page round 2 heavily (same files, both add a fluted-glass background); pick one hero, not both. |
 
-### Recommended merge order (one at a time; smoke test the tester deployment after each — but see the push note at the top, nothing reaches the live deployments until `main` is pushed)
+### Recommended merge order (one at a time; smoke test the tester deployment after each)
 
-0. ~~Push current local `main`~~ — **done**, pushed to `origin` at `74d3237`.
-1. **`feature/pricing-page` (round 2)**: frontend only, no overlap with anything already merged.
-2. **`feature/landing-positioning` (round 2)**: resolve its uncommitted changes first; cherry-pick the Book a Demo validation fix, drop the competing shader work (or decide which hero wins).
-3. **`fix/rent-roll-hardening`**: once its QA is finished (see In progress). Overlaps only `tests/run_all_tests.py` (list entries — keep both sides).
-4. **`feature/team-isolation`**: once built out (see In progress) — this is the riskier, `database.py`/`api.py`-wide change; run the full suite before and after.
+1. **`feature/team-isolation`**: once this overnight pass finishes and is reviewed — the riskier, `database.py`/`api.py`-wide change (now rebased cleanly onto `fix/rent-roll-hardening`'s merge too). Run the full suite before and after.
+2. **`feature/pricing-page` (round 2)**: frontend only, no overlap with anything already merged.
+3. **`feature/landing-positioning` (round 2)**: resolve its uncommitted changes first; cherry-pick the Book a Demo validation fix, drop the competing shader work (or decide which hero wins).
 
 ## In progress
 
 | Branch | Worktree | What it does | Status |
 |---|---|---|---|
-| `feature/team-isolation` | `~/dev/projects/abstractly-teams` | Document-level team isolation: extend `team_id` (from `feature/usage-limits`) to `leases`, `discrepancies`, `alerts`, `tasks`, comments, assignments, activity/health-score caches | 0 commits yet, local only, not pushed. `PLAN.md` drafted (uncommitted) — already decided to build on `usage-limits`'s `team_id`, not a second `account_id` schema, and to mine `worktree-agent-ade76…` for which routes need scoping. This independently matches `TEAM_AUDIT.md`'s recommendation (written the same day, in parallel) — both arrived at the same answer without seeing each other. |
-| `feature/loan-underwriting` | `~/dev/projects/abstractly-loan` | Loan underwriting engine for multifamily lenders + T-12 line-item parsing, feature-flagged **off** | +9 / −2, local only, not pushed. **Uncommitted changes** to `PLAN.md`, `api.py`, `database.py`, `tests/run_all_tests.py` — another session may be active here; don't disturb without checking. Its own `PLAN.md` already decided (mid-build, per the user's instruction) to add **no** team/tenant columns itself and defer entirely to `feature/team-isolation` — nothing to reconcile once that lands. |
-| `worktree-agent-ade7619750bfa9a9f` | `.claude/worktrees/agent-ade76…` | Early, comprehensive multi-tenant isolation attempt (`accounts` table, `account_id` on nearly every document table) | +7 / −66, local only, stale (2026-09-02). **Confirmed cross-tenant leak**: `GET /leases/<other-account's-lease>/fields/<field>/source` returns 200 with the other account's data (`get_field_source_chain()` was never given the `account_id` parameter `get_lease()` got). Also deletes bearer-token auth that `frontend/app/api.js` still depends on. **Do not merge.** Mine its route list as a checklist for `feature/team-isolation`, then delete. |
+| `feature/loan-underwriting` | `~/dev/projects/abstractly-loan` | Loan underwriting engine for multifamily lenders + T-12 line-item parsing, feature-flagged **off** | +9 / −2, local only, not pushed. **Uncommitted changes** to `PLAN.md`, `api.py`, `database.py`, `tests/run_all_tests.py` — another session may be active here; don't disturb without checking. Its own `PLAN.md` already decided (mid-build, per the user's instruction) to add **no** team/tenant columns itself and defer entirely to `feature/team-isolation` — nothing to reconcile once that lands; merge this one *after* team isolation per the recommended order above. |
+| `feature/deal-assistant` | `~/dev/projects/abstractly-assistant` | Planned in-app portfolio assistant | 0 commits, clean worktree, nothing built yet. Not started. |
+
+Both `worktree-agent-ade7619750bfa9a9f` (early `accounts`/`account_id` isolation attempt) and the old agent branches are now **fully superseded and safe to delete** — mined for ideas by `feature/team-isolation`, nothing left to recover.
 
 ## Blocked
 
 - **Anthropic API account needs credits funded.** Without it, AI extraction and the assistant fall back to the regex engine, and the AI engine can't be QA'd. Only the user can fund it.
-- **Tester deployment has no persistent storage.** Free tier, no `disk:`. Tester uploads vanish on every deploy, restart, or 15-min idle spindown. Fix: Starter plan + disk + `DB_PATH` (`docs/DEPLOYMENT.md`). Needs the user (Render billing).
-- **No document-level team isolation on main.** Billing/quota `team_id` exists (`feature/usage-limits`, merged), but no document table is scoped yet — one shared pool per deployment, still fine for one tester per deployment, blocks multiple firms on one deployment. `feature/team-isolation` is the path out (see In progress + Decisions log).
+- **Tester deployment has no persistent storage.** Free tier, no `disk:`. Tester uploads vanish on every deploy, restart, or 15-min idle spindown. Same for prod. Fix: Starter plan + disk + `DB_PATH` (`docs/DEPLOYMENT.md`). **This is also why "logins survive restarts" can't be fully true yet** — every redeploy wipes the *entire* database (teams, users, leases — not just the admin password), so real customer teams lose everything on every deploy until this is fixed. Needs the user's call on the Starter-plan cost; `feature/team-isolation`'s overnight pass leaves `render.yaml` untouched per its own plan (not this session's call to make).
+- **Tester frontend points at the production API (found 2026-10-01).** `frontend/config.js` maps only localhost and `abstractly-demo.onrender.com`. `abstractly-tester.onrender.com` falls through to `abstractly-api`, and the tester site's CSP only allows `abstractly-tester-api`, so the tester app's API calls will fail. No branch fixes this. Needs a small fix branch (with a test) **before inviting testers**.
 
 ## Up next
 
-1. ~~Push local `main` to `origin`~~ — **done**, `74d3237`. Deploys to prod/tester/demo are in flight; verify once they finish (see #5).
+1. Finish `feature/team-isolation`'s overnight pass (this session); review in the morning.
 2. Merge the Ready-for-review branches in the order above (only when the user says so).
-3. Keep building out `feature/team-isolation`; reconcile `feature/loan-underwriting` onto it once document scoping lands.
-4. `feature/deal-assistant` (`~/dev/projects/abstractly-assistant`): worktree created, **0 commits, nothing built yet** — the planned in-app portfolio assistant. Not started.
-5. Smoke test the tester deployment once pushed: `/health`, login, upload a Maple Ridge lease + rent roll, Deal Mismatch Report, PDF/Excel export, T-12 cross-check.
-6. Invite the first 3 testers.
+3. Reconcile `feature/loan-underwriting` onto `main` once team isolation lands.
+4. Smoke test the tester deployment: `/health`, login, upload a Maple Ridge lease + rent roll, Deal Mismatch Report, PDF/Excel export, T-12 cross-check.
+5. Invite the first 3 testers.
 
 ### Branch sweep — 2026-10-01, 19:55 CDT
 
 Full `git fetch --all --prune` + every local/remote branch walked against
-`main` @ `03cebb5`. **This moved three times while the sweep was running**
-(local `main` went `ab7fb6f` → `70ed972` → `03cebb5` in under an hour,
-the last one — `fix/rent-roll-hardening` landing — happening *during*
-this pass, about a minute after this session had independently finished
-reviewing and clearing it). At least two other sessions are committing
-to this repo concurrently (`lease-abstraction-cc`, `abstractly-teams-eb`
-per the agent list) — treat exact SHAs here as a snapshot, re-run before
-relying on them precisely.
+`main` @ `03cebb5` (since advanced to `28f2fb9` — see header). At least
+two other sessions were committing to this repo concurrently with this
+sweep — treat exact SHAs as a snapshot, re-run before relying on them
+precisely.
 
 **Cloud-session branches — still not found.** Explicitly searched for
 branches covering: multifamily lease fields, rent roll multi-format
 parsing, Stripe payments, a pre-launch audit, tester onboarding and
 feedback, legal/trust pages, and pre-tester bug fixes. Checked
 `git ls-remote --heads origin` (fresh, bypasses local cache), every
-local branch name, and the live peer-session list (`abstractly-teams-eb`,
-`abstractly-assistant-6f`, `abstractly-pricing-c1`, `lease-abstraction-cc`,
-`deal-mismatch-report`, `Project context documentation` — none named for
-these topics). None of the six exist anywhere accessible from this
-machine. Also could not find any branch containing a file literally
-named `AUDIT.md` (only `docs/BENCHMARK_AND_PRIVACY_AUDIT.md`, which is
-already on `main` and unrelated — not branch-specific, not about these
-findings). If a "pre-launch audit" branch or `AUDIT.md` exists, it's in
-a cloud session that was never pushed here, or under a different name/
-remote. Can't assess its findings until it surfaces.
+local branch name, and the live peer-session list. None of the six
+exist anywhere accessible from this machine. If a "pre-launch audit"
+branch or `AUDIT.md` exists, it's in a cloud session that was never
+pushed here, or under a different name/remote.
 
 **Every branch not yet merged into `main`, with a merge/hold/delete call:**
 
-| Branch | Ahead/behind `main` (`03cebb5`) | What it does | Conflicts with `feature/team-isolation`? | Recommendation |
-|---|---|---|---|---|
-| `feature/pricing-page` (round 2) | +6 / −17 | Flat per-team pricing, fluted-glass WebGL hero, sticky header, new logo | No — frontend only, no backend overlap | **Merge now.** Clean worktree, pushed, no overlap with anything in flight. |
-| `feature/landing-positioning` (round 2) | +2 / −23 | Scroll-linked fluted-glass shader, dark theme | No — frontend only | **Merge now**, but only after resolving its overlap with pricing-page round 2 (both rewrite `landing.css`/`index.html`/`pricing.html` with a competing fluted-glass hero — pick one) and committing or discarding the worktree's uncommitted changes to those same files. |
-| `feature/loan-underwriting` | +2 / −15, plus substantial **uncommitted** changes (`api.py`, `database.py`, test fixtures, its own `TASKS.md` copy) | Loan underwriting engine for multifamily lenders + T-12 line-item parsing, feature-flagged off | **Yes, indirectly** — both branches are actively editing `api.py` and `database.py` right now. Its own `PLAN.md` already commits to adding *no* team/tenant columns and deferring entirely to `feature/team-isolation`, so there's no schema conflict by design, but landing it first risks `feature/team-isolation` having to rebase a wider `api.py`/`database.py` diff than necessary. | **Merge after team isolation.** Let `feature/team-isolation` land its scoping first, then rebase this on top — matches what its own plan already assumes. Don't touch this worktree in the meantime; another session appears to be actively mid-edit in it. |
-| `worktree-agent-ade7619750bfa9a9f` | +3 / −81, local only, stale (2026-09-02) | Early multi-tenant isolation attempt: `accounts` table + `account_id`, scoped across most document tables | **Yes, directly** — competing schema (`account_id` vs. the `team_id` both `TEAM_AUDIT.md` and `feature/team-isolation`'s own plan converged on independently). Also has a confirmed, unfixed cross-tenant data leak (`GET /leases/<id>/fields/<name>/source` returns another account's data — `get_field_source_chain()` was never given the scoping parameter `get_lease()` got) and deletes bearer-token auth `frontend/app/api.js` still depends on. | **Delete.** Already mined for its route-by-route checklist (recorded in the Decisions log below); nothing left to recover from it. |
-| `worktree-agent-a3fcc0f…`, `-a640a39f…`, `-a671d27b…` | 0 / −84 to −91 | Old agent branches, fully contained in `main` | No | **Delete** (`git branch -d`) — pure cleanup, no content left to merge. |
-| `feature/deal-mismatch-report` | 0 / −88 | Already fully merged (`e2c4848`, long-standing) | No | **Delete** the branch ref — cleanup only. |
-| `feature/team-isolation` | 0 committed / −6, but its worktree (`~/dev/projects/abstractly-teams`) has live, **uncommitted, mid-merge-conflict** changes (`UU backend/app/database.py`, staged `PLAN.md`, unstaged `api.py`/`auth.py`, and edits across a couple dozen test files) | The team isolation effort itself (see Decisions log) | — (this is the reference branch, not a candidate against itself) | **Don't touch — actively being worked on right now**, mid unresolved-conflict. Not a merge candidate yet; re-check once its worktree is clean and it has real commits. |
-| `feature/deal-assistant` | 0 / −6, clean worktree, genuinely empty | Planned in-app portfolio assistant | No — nothing built yet | **Not started.** No recommendation needed until there's content. |
+| Branch | What it does | Recommendation |
+|---|---|---|
+| `feature/pricing-page` (round 2) | Flat per-team pricing, fluted-glass WebGL hero, sticky header, new logo | **Merge after team isolation.** Clean worktree, pushed, no backend overlap. |
+| `feature/landing-positioning` (round 2) | Scroll-linked fluted-glass shader, dark theme | **Merge after team isolation**, but only after resolving its overlap with pricing-page round 2 (both rewrite `landing.css`/`index.html`/`pricing.html` with a competing fluted-glass hero — pick one) and committing or discarding the worktree's uncommitted changes. |
+| `feature/loan-underwriting` | Loan underwriting engine + T-12 line-item parsing, feature-flagged off | **Merge after team isolation.** Its own `PLAN.md` already commits to adding no team/tenant columns and deferring entirely to `feature/team-isolation`. Don't touch this worktree meanwhile; another session appears mid-edit in it. |
+| `worktree-agent-ade7619750bfa9a9f` | Early multi-tenant isolation attempt: `accounts`/`account_id`, confirmed cross-tenant leak, deletes bearer-token auth | **Delete.** Fully mined for its route-by-route checklist; nothing left to recover. |
+| `worktree-agent-a3fcc0f…`, `-a640a39f…`, `-a671d27b…` | Old agent branches, fully contained in `main` | **Delete** (`git branch -d`) — pure cleanup. |
+| `feature/deal-mismatch-report` | Already fully merged (`e2c4848`) | **Delete** the branch ref — cleanup only. |
+| `feature/team-isolation` | The team isolation effort itself | Overnight pass in progress this session — see Ready for review. |
+| `feature/deal-assistant` | Planned in-app portfolio assistant | **Not started.** No recommendation needed until there's content. |
 
-No branch is at "rebuild" — even the stale isolation attempt's design is salvageable as a checklist, not something that needs restarting from scratch; it's being retired instead because a better foundation (`team_id`) already won.
+No branch is at "rebuild" — even the stale isolation attempt's design was salvaged as a checklist, not restarted from scratch; it's being retired because a better foundation (`team_id`) already won.
 
 ### Housekeeping
 
-- Untracked in the main checkout: `backend/benchmark_data/{ACCURACY_REPORT.md,demo_deal/,last_run.json}` (these land properly with `fix/rent-roll-hardening` — delete the untracked copies before that branch merges or git will refuse); `docs/PLAN_t12_crosscheck.md` and `docs/TESTER_VERIFICATION_CHECKLIST.md` (working notes from the now-merged t12/tester-routing branches that never got committed — decide commit vs. discard); `drafts/sales/` (expected `outreach` subagent output, intentionally kept local/uncommitted).
+- Untracked in the main checkout: `docs/PLAN_t12_crosscheck.md` and `docs/TESTER_VERIFICATION_CHECKLIST.md` (working notes from the now-merged t12/tester-routing branches that never got committed — decide commit vs. discard); `drafts/sales/` (expected `outreach` subagent output, intentionally kept local/uncommitted).
 - `PLAN.md` and `SUMMARY.md` at the repo root are **committed on `main`** (landed as part of the `feature/usage-limits` merge, `ab7fb6f`) — these are meant to be per-worktree scratch docs, not permanent root files. Flagged, not touched this session (out of scope for a process-only pass); worth a small cleanup commit later.
 - Test-setup note: `backend/tests/sample_lease.pdf` is gitignored. In a fresh worktree, run `python backend/tests/create_sample_lease.py` first, or `test_extraction.py`, `test_synthetic_accuracy.py` and `test_multi_lease_detection.py` fail with "file not found." That isn't real breakage.
 
 ## Decisions log
 
-- **2026-10-01 — Team isolation converges on `feature/usage-limits`'s `teams`/`team_id` schema**, not the stale branch's `accounts`/`account_id` one. Reached independently twice the same day: by `~/dev/projects/TEAM_AUDIT.md` (external audit) and by `feature/team-isolation`'s own `PLAN.md` (which didn't know the audit existed yet when it was written). Reasons: already merged and reviewed, proven migration pattern (`_migrate_*` + "Legacy" team backfill), and billing + visibility belong on one entity, not two that can drift apart.
-- **2026-10-01 — Merge order executed on local `main`:** `fix/tester-api-routing` → `feature/t12-crosscheck` → `feature/usage-limits`, in that order, resolving the expected test-file conflicts by taking t12's versions. Not yet pushed to `origin` — see the note at the top of this file.
-- **(prior) One-firm-per-deployment pattern**: until document-level isolation exists, each tester/customer gets its own Render service + database rather than sharing one deployment. Revisit once `feature/team-isolation` lands.
+- **2026-10-01 — Team isolation converges on `feature/usage-limits`'s `teams`/`team_id` schema**, not the stale branch's `accounts`/`account_id` one. Reached independently twice the same day: by `~/dev/projects/TEAM_AUDIT.md` (external audit, since found not to actually exist as a repo file — see `feature/team-isolation`'s `PLAN.md` §0) and by `feature/team-isolation`'s own `PLAN.md`. Reasons: already merged and reviewed, proven migration pattern (`_migrate_*` + "Legacy" team backfill), and billing + visibility belong on one entity, not two that can drift apart.
+- **2026-10-01 — Merge order executed on local `main`:** `fix/tester-api-routing` → `feature/t12-crosscheck` → `feature/usage-limits` → `fix/rent-roll-hardening`, in that order, resolving the expected test-file conflicts by taking the later branch's versions.
+- **(prior) One-firm-per-deployment pattern**: until document-level isolation exists, each tester/customer gets its own Render service + database rather than sharing one deployment. Retired once `feature/team-isolation` merges.
+- **2026-10-01, overnight — found and fixed real pre-existing cross-team vulnerabilities** while building team isolation (predate this branch, not introduced by it): `POST /team/members` took a client-supplied `team_id` (could create a user directly inside another team); `PATCH /team/members/<id>` and its `/reset-password` sibling never checked the target user's team; task/assignment/thread-participant routes let a caller point at a user on another team. All fixed, all covered by `test_team_isolation.py`.

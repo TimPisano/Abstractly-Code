@@ -68,6 +68,7 @@ def _login_as_admin(client):
     """
     with client.session_transaction() as sess:
         sess["user_id"] = 1
+        sess["team_id"] = 1
         sess["email"] = "timmypisano24@gmail.com"
         sess["name"] = "Test Admin"
         sess["role"] = "admin"

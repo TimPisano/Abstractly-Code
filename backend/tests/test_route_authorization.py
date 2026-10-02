@@ -23,6 +23,10 @@ _MUTATING = {"POST", "PUT", "PATCH", "DELETE"}
 # accepts a mutating method must reject an anonymous caller.
 _PUBLIC_MUTATING = {
     "/auth/login", "/auth/logout", "/auth/forgot-password", "/auth/reset-password",
+    # A brand-new team's first admin has no session yet by definition
+    # -- the 7-day setup token itself is the proof of identity, same
+    # "unauthenticated by design" category as /auth/reset-password.
+    "/auth/team-setup",
     "/waitlist", "/waitlist/check",
     # Fired by anonymous visitors on the public marketing site itself
     # (frontend/landing.js) -- same "public by design" category as
@@ -89,7 +93,7 @@ def _client(role=None, is_owner=False):
     c = app.test_client()
     if role or is_owner:
         with c.session_transaction() as s:
-            s.update({"user_id": 1, "email": "u@x.com", "name": "U", "role": role or "viewer", "is_owner": is_owner})
+            s.update({"user_id": 1, "email": "u@x.com", "name": "U", "role": role or "viewer", "is_owner": is_owner, "team_id": 1})
     return c
 
 

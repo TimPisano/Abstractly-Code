@@ -48,6 +48,7 @@ def _authed_client():
     client = app.test_client()
     with client.session_transaction() as sess:
         sess["user_id"] = 1
+        sess["team_id"] = 1
         sess["email"] = "test-analyst@example.com"
         sess["team_id"] = 1  # the 'Legacy' team, always id 1 in a fresh test DB
         sess["name"] = "Test Analyst"
@@ -99,10 +100,11 @@ def test_reuploading_own_single_lease_export_extracts_correctly_not_garbled():
                 "default_cure_period": {"value": None, "source": None, "confidence": None},
             },
             display_name="Acme Corp - 100 Main St, Suite 5",
+        team_id=1,
         )
 
         # Export it exactly like GET /leases/<id>/export.xlsx does.
-        lease = database.get_effective_lease(lease_id)
+        lease = database.get_effective_lease(lease_id, team_id=1)
         xlsx_bytes = generate_rent_roll_excel([lease])
 
         # Re-upload it through the GENERAL upload route -- what was broken.
@@ -146,8 +148,9 @@ def test_reuploading_own_portfolio_export_csv_extracts_correctly():
                 "insurance_requirements": {"value": None, "source": None, "confidence": None},
                 "default_cure_period": {"value": None, "source": None, "confidence": None},
             },
+        team_id=1,
         )
-        lease = database.get_effective_lease(lease_id)
+        lease = database.get_effective_lease(lease_id, team_id=1)
         csv_text = generate_rent_roll_csv([lease])
 
         resp = client.post("/leases", data={"file": (io.BytesIO(csv_text.encode()), "reexported.csv")}, content_type="multipart/form-data")
@@ -215,8 +218,9 @@ def test_resubmit_with_edited_xlsx_export_updates_the_lease():
                 "insurance_requirements": {"value": None, "source": None, "confidence": None},
                 "default_cure_period": {"value": None, "source": None, "confidence": None},
             },
+        team_id=1,
         )
-        lease = database.get_effective_lease(lease_id)
+        lease = database.get_effective_lease(lease_id, team_id=1)
         xlsx_bytes = generate_rent_roll_excel([lease])
 
         # Edit the exported file's rent cell.
@@ -238,13 +242,13 @@ def test_resubmit_with_edited_xlsx_export_updates_the_lease():
         assert result["lease"]["extracted_fields"]["rent_amount"]["value"] == "$9,999.00"
 
         # Confirm on a fresh read too -- not just the response.
-        after = database.get_effective_fields(new_id)
+        after = database.get_effective_fields(new_id, team_id=1)
         assert after["rent_amount"]["value"] == "$9,999.00"
         assert after["tenant"]["value"] == "Gamma LLC"
 
-        old = database.get_lease(lease_id)
+        old = database.get_lease(lease_id, team_id=1)
         assert old["status"] == "superseded"
-        active_ids = [l["id"] for l in database.get_all_effective_leases()]
+        active_ids = [l["id"] for l in database.get_all_effective_leases(team_id=1)]
         assert lease_id not in active_ids
         assert new_id in active_ids
     finally:
@@ -276,15 +280,16 @@ def test_resubmit_with_edited_csv_updates_the_lease():
                 "insurance_requirements": {"value": None, "source": None, "confidence": None},
                 "default_cure_period": {"value": None, "source": None, "confidence": None},
             },
+        team_id=1,
         )
-        lease = database.get_effective_lease(lease_id)
+        lease = database.get_effective_lease(lease_id, team_id=1)
         csv_text = generate_rent_roll_csv([lease])
         edited_csv = csv_text.replace("$3,000.00", "$6,500.00")
 
         resp = client.post(f"/leases/{lease_id}/resubmit", data={"file": (io.BytesIO(edited_csv.encode()), "edited.csv")}, content_type="multipart/form-data")
         assert resp.status_code == 201, resp.get_json()
         new_id = resp.get_json()["lease"]["id"]
-        after = database.get_effective_fields(new_id)
+        after = database.get_effective_fields(new_id, team_id=1)
         assert after["rent_amount"]["value"] == "$6,500.00"
         assert after["tenant"]["value"] == "Delta Inc"
     finally:
@@ -305,6 +310,7 @@ def test_multi_row_table_still_rejected_by_resubmit():
                 ["landlord", "property_address", "lease_start_date", "lease_end_date", "square_footage",
                  "security_deposit", "cam_charges", "rent_escalation", "renewal_options", "permitted_use",
                  "exclusivity_clause", "insurance_requirements", "default_cure_period"]}},
+        team_id=1,
         )
         rows = [
             ["Tenant Name", "Monthly Rent"],

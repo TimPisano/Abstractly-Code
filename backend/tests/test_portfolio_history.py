@@ -49,6 +49,7 @@ def _authed_client():
     client = app.test_client()
     with client.session_transaction() as sess:
         sess["user_id"] = 1
+        sess["team_id"] = 1
         sess["email"] = "test-analyst@example.com"
         sess["name"] = "Test Analyst"
         sess["role"] = "analyst"
@@ -68,11 +69,11 @@ def _fields(tenant=None, rent_amount=None, property_address=None, lease_end_date
 
 
 def _insert(tenant, rent, address=ADDRESS, end_date=None, filename="upload.pdf"):
-    return database.insert_lease(filename, _fields(tenant=tenant, rent_amount=rent, property_address=address, lease_end_date=end_date))
+    return database.insert_lease(filename, _fields(tenant=tenant, rent_amount=rent, property_address=address, lease_end_date=end_date), team_id=1)
 
 
 def _get_all():
-    return database.get_all_effective_leases()
+    return database.get_all_effective_leases(team_id=1)
 
 
 # ------------------------------------------------------------------
@@ -351,7 +352,7 @@ def test_deletion_removes_history_documented_limitation():
     try:
         lease_id = _insert("Acme", "$4,000.00")
         assert len(get_property_history(_get_all(), ADDRESS)) == 1
-        database.delete_lease(lease_id)
+        database.delete_lease(lease_id, team_id=1)
         assert len(get_property_history(_get_all(), ADDRESS)) == 0
     finally:
         os.unlink(db_path)

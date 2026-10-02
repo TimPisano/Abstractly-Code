@@ -73,7 +73,7 @@ def _detect_lease_expiration_alerts(leases: List[Dict[str, Any]], reference_date
 # 2. Newly detected discrepancies
 # ----------------------------------------------------------------------
 
-def _detect_new_discrepancy_alerts() -> List[Dict[str, Any]]:
+def _detect_new_discrepancy_alerts(team_id: int) -> List[Dict[str, Any]]:
     """
     One alert per currently-OPEN discrepancy (Item 2's discrepancies
     table) -- a discrepancy that's already been resolved by the time
@@ -83,7 +83,7 @@ def _detect_new_discrepancy_alerts() -> List[Dict[str, Any]]:
     its alert auto-resolve (see generate_alerts).
     """
     candidates = []
-    for disc in database.list_discrepancies(status="open"):
+    for disc in database.list_discrepancies(status="open", team_id=team_id):
         severity = disc.get("severity") or "medium"
         candidates.append({
             "alert_type": "new_discrepancy",
@@ -220,17 +220,17 @@ def _detect_tenant_concentration_alerts(leases: List[Dict[str, Any]]) -> List[Di
 _MANAGED_ALERT_TYPES = ("lease_expiration", "new_discrepancy", "below_market_rent", "tenant_concentration")
 
 
-def detect_all_candidates(leases: List[Dict[str, Any]], reference_date=None) -> List[Dict[str, Any]]:
+def detect_all_candidates(leases: List[Dict[str, Any]], team_id: int, reference_date=None) -> List[Dict[str, Any]]:
     """Every alert condition currently detected across all four categories, unfiltered by severity threshold beyond what each detector itself applies."""
     return (
         _detect_lease_expiration_alerts(leases, reference_date=reference_date)
-        + _detect_new_discrepancy_alerts()
+        + _detect_new_discrepancy_alerts(team_id)
         + _detect_below_market_rent_alerts(leases)
         + _detect_tenant_concentration_alerts(leases)
     )
 
 
-def generate_alerts(reference_date=None) -> Dict[str, Any]:
+def generate_alerts(team_id: int, reference_date=None) -> Dict[str, Any]:
     """
     Runs all four detectors against the current portfolio state,
     upserts each candidate (see database.upsert_alert for exactly what
@@ -246,8 +246,8 @@ def generate_alerts(reference_date=None) -> Dict[str, Any]:
     Returns {"created": N, "refreshed": N, "auto_resolved": N,
     "active_count": N, "by_severity": {...}}.
     """
-    leases = database.get_all_effective_leases()
-    candidates = detect_all_candidates(leases, reference_date=reference_date)
+    leases = database.get_all_effective_leases(team_id)
+    candidates = detect_all_candidates(leases, team_id, reference_date=reference_date)
 
     # Bulk path: one batched existence check, one batched upsert, one
     # batched auto-resolve UPDATE, instead of 2-3 connect()+commit()
@@ -273,15 +273,15 @@ def generate_alerts(reference_date=None) -> Dict[str, Any]:
             "lease_id": c.get("lease_id"),
         }
         for c in candidates
-    ])
+    ], team_id=team_id)
 
     to_auto_resolve = [
-        alert["id"] for alert in database.list_alerts(status="active")
+        alert["id"] for alert in database.list_alerts(status="active", team_id=team_id)
         if alert["alert_type"] in _MANAGED_ALERT_TYPES and alert["natural_key"] not in seen_keys
     ]
     auto_resolved = database.auto_resolve_alerts_bulk(to_auto_resolve)
 
-    active_alerts = database.list_alerts(status="active")
+    active_alerts = database.list_alerts(status="active", team_id=team_id)
     by_severity: Dict[str, int] = {"high": 0, "medium": 0, "low": 0}
     for alert in active_alerts:
         by_severity[alert["severity"]] = by_severity.get(alert["severity"], 0) + 1
@@ -295,9 +295,9 @@ def generate_alerts(reference_date=None) -> Dict[str, Any]:
     }
 
 
-def get_alert_digest() -> Dict[str, Any]:
+def get_alert_digest(team_id: int) -> Dict[str, Any]:
     """A summary suitable for a notification-feed header or a future email digest: counts of currently-active alerts by severity and by type. Does NOT run generation -- callers should generate_alerts() first if they want this to reflect the latest data."""
-    active_alerts = database.list_alerts(status="active")
+    active_alerts = database.list_alerts(status="active", team_id=team_id)
     by_severity: Dict[str, int] = {"high": 0, "medium": 0, "low": 0}
     by_type: Dict[str, int] = {t: 0 for t in _MANAGED_ALERT_TYPES}
     for alert in active_alerts:

@@ -45,6 +45,7 @@ def _authed_client():
     client = app.test_client()
     with client.session_transaction() as sess:
         sess["user_id"] = 1
+        sess["team_id"] = 1
         sess["email"] = "test-analyst@example.com"
         sess["name"] = "Test Analyst"
         sess["role"] = "analyst"
@@ -101,7 +102,7 @@ def test_weights_sum_to_one():
 def test_empty_portfolio_returns_no_data_not_zero():
     db_path = _fresh_temp_db()
     try:
-        result = compute_portfolio_health_score(reference_date=REF_DATE)
+        result = compute_portfolio_health_score(1, reference_date=REF_DATE)
         assert result["score"] is None
         assert result["rating"] == "No Data"
         assert result["lease_count"] == 0
@@ -121,9 +122,9 @@ def test_perfect_portfolio_scores_near_100_excellent():
     db_path = _fresh_temp_db()
     try:
         for i in range(3):
-            database.insert_lease(f"lease{i}.pdf", _fields(confidence="high", **_all_field_kwargs(f"L{i} ")))
+            database.insert_lease(f"lease{i}.pdf", _fields(confidence="high", **_all_field_kwargs(f"L{i} ")), team_id=1)
 
-        result = compute_portfolio_health_score(reference_date=REF_DATE)
+        result = compute_portfolio_health_score(1, reference_date=REF_DATE)
         assert result["score"] >= 95, f"a genuinely perfect portfolio should score in the high 90s, got {result['score']}"
         assert result["rating"] == "Excellent"
         assert result["components"]["confidence_distribution"]["score"] == 100.0
@@ -150,19 +151,22 @@ def test_messy_portfolio_scores_low_critical():
             lease_id = database.insert_lease(
                 f"messy{i}.pdf",
                 _fields(confidence="low", tenant=f"Tenant {i}", rent_amount="$1,000.00"),
+            team_id=1,
             )
             _uploaded_at_override(lease_id, stale_timestamp)
 
             database.upsert_discrepancy(
                 discrepancy_type="lease_risk_flag", natural_key=f"messy-disc-{i}-a", category="missing_clause",
                 message="No insurance clause", details={}, lease_id=lease_id, severity="medium",
+            team_id=1,
             )
             database.upsert_discrepancy(
                 discrepancy_type="lease_risk_flag", natural_key=f"messy-disc-{i}-b", category="missing_clause",
                 message="No default/cure clause", details={}, lease_id=lease_id, severity="medium",
+            team_id=1,
             )
 
-        result = compute_portfolio_health_score(reference_date=REF_DATE)
+        result = compute_portfolio_health_score(1, reference_date=REF_DATE)
         assert result["score"] < 40, f"a genuinely messy portfolio should score Critical, got {result['score']} ({result['rating']})"
         assert result["rating"] == "Critical"
         assert result["components"]["source_verification"]["score"] == 0.0, "missing core fields (landlord, dates) -- zero leases should count as fully verified"
@@ -183,18 +187,19 @@ def test_mixed_portfolio_scores_in_the_middle():
     try:
         # 2 excellent leases
         for i in range(2):
-            database.insert_lease(f"good{i}.pdf", _fields(confidence="high", **_all_field_kwargs(f"Good{i} ")))
+            database.insert_lease(f"good{i}.pdf", _fields(confidence="high", **_all_field_kwargs(f"Good{i} ")), team_id=1)
         # 2 messy leases: missing core fields, stale, with an open discrepancy each
         stale_timestamp = _days_ago(400)
         for i in range(2):
-            lease_id = database.insert_lease(f"bad{i}.pdf", _fields(confidence="low", tenant=f"Bad {i}", rent_amount="$1,000.00"))
+            lease_id = database.insert_lease(f"bad{i}.pdf", _fields(confidence="low", tenant=f"Bad {i}", rent_amount="$1,000.00"), team_id=1)
             _uploaded_at_override(lease_id, stale_timestamp)
             database.upsert_discrepancy(
                 discrepancy_type="lease_risk_flag", natural_key=f"mixed-disc-{i}", category="missing_clause",
                 message="No insurance clause", details={}, lease_id=lease_id, severity="medium",
+            team_id=1,
             )
 
-        result = compute_portfolio_health_score(reference_date=REF_DATE)
+        result = compute_portfolio_health_score(1, reference_date=REF_DATE)
         assert 30 < result["score"] < 80, f"a genuinely mixed portfolio should land in the middle, got {result['score']}"
         assert result["rating"] not in ("Excellent", "Critical")
         # Exactly half fully verified, half stale -- the arithmetic must actually reflect the 50/50 split
@@ -212,8 +217,8 @@ def test_mixed_portfolio_scores_in_the_middle():
 def test_confidence_distribution_gives_partial_credit_for_medium_and_low():
     db_path = _fresh_temp_db()
     try:
-        database.insert_lease("a.pdf", _fields(confidence="medium", tenant="Acme"))
-        result = compute_portfolio_health_score(reference_date=REF_DATE)
+        database.insert_lease("a.pdf", _fields(confidence="medium", tenant="Acme"), team_id=1)
+        result = compute_portfolio_health_score(1, reference_date=REF_DATE)
         # 1 of 16 fields found at medium confidence: round((0.6 * 1) / 16 * 100, 1) = 3.8
         assert result["components"]["confidence_distribution"]["score"] == 3.8
     finally:
@@ -227,8 +232,8 @@ def test_source_verification_requires_zero_flagged_fields_too():
     try:
         fields = _fields(confidence="high", **_all_field_kwargs())
         fields["rent_amount"]["validation_note"] = "Unusually high rent for this property type -- please verify"
-        database.insert_lease("a.pdf", fields)
-        result = compute_portfolio_health_score(reference_date=REF_DATE)
+        database.insert_lease("a.pdf", fields, team_id=1)
+        result = compute_portfolio_health_score(1, reference_date=REF_DATE)
         assert result["components"]["source_verification"]["score"] == 0.0
         assert result["components"]["source_verification"]["fully_verified_count"] == 0
     finally:
@@ -239,14 +244,15 @@ def test_source_verification_requires_zero_flagged_fields_too():
 def test_unresolved_discrepancies_smooth_decay_not_a_cliff():
     db_path = _fresh_temp_db()
     try:
-        lease_ids = [database.insert_lease(f"l{i}.pdf", _fields(**_all_field_kwargs())) for i in range(4)]
+        lease_ids = [database.insert_lease(f"l{i}.pdf", _fields(**_all_field_kwargs()), team_id=1) for i in range(4)]
         # exactly 4 open discrepancies across 4 leases -> 1.0 per lease -> score should be exactly 50
         for i, lease_id in enumerate(lease_ids):
             database.upsert_discrepancy(
                 discrepancy_type="lease_risk_flag", natural_key=f"k{i}", category="missing_clause",
                 message="m", details={}, lease_id=lease_id, severity="low",
+            team_id=1,
             )
-        result = compute_portfolio_health_score(reference_date=REF_DATE)
+        result = compute_portfolio_health_score(1, reference_date=REF_DATE)
         assert result["components"]["unresolved_discrepancies"]["score"] == 50.0
         assert result["components"]["unresolved_discrepancies"]["discrepancies_per_lease"] == 1.0
     finally:
@@ -257,14 +263,15 @@ def test_unresolved_discrepancies_smooth_decay_not_a_cliff():
 def test_resolved_discrepancies_do_not_count_against_the_score():
     db_path = _fresh_temp_db()
     try:
-        lease_id = database.insert_lease("a.pdf", _fields(**_all_field_kwargs()))
+        lease_id = database.insert_lease("a.pdf", _fields(**_all_field_kwargs()), team_id=1)
         disc_id = database.upsert_discrepancy(
             discrepancy_type="lease_risk_flag", natural_key="k", category="missing_clause",
             message="m", details={}, lease_id=lease_id, severity="low",
+        team_id=1,
         )
         database.resolve_discrepancy(disc_id, "lease_document", "confirmed fine", "Jane")
 
-        result = compute_portfolio_health_score(reference_date=REF_DATE)
+        result = compute_portfolio_health_score(1, reference_date=REF_DATE)
         assert result["components"]["unresolved_discrepancies"]["open_count"] == 0
         assert result["components"]["unresolved_discrepancies"]["score"] == 100.0
     finally:
@@ -282,18 +289,19 @@ def test_discrepancies_from_deleted_leases_do_not_count_against_a_healthy_curren
     """
     db_path = _fresh_temp_db()
     try:
-        old_lease_id = database.insert_lease("old.pdf", _fields(**_all_field_kwargs()))
+        old_lease_id = database.insert_lease("old.pdf", _fields(**_all_field_kwargs()), team_id=1)
         for i in range(20):  # a pile of old discrepancies for a lease that's about to be deleted
             database.upsert_discrepancy(
                 discrepancy_type="lease_risk_flag", natural_key=f"stale-{i}", category="missing_clause",
                 message="m", details={}, lease_id=old_lease_id, severity="low",
+            team_id=1,
             )
-        database.delete_lease(old_lease_id)  # discrepancies survive -- by design, see Item 2
+        database.delete_lease(old_lease_id, team_id=1)  # discrepancies survive -- by design, see Item 2
 
         # A brand new, otherwise-perfect current portfolio
-        database.insert_lease("current.pdf", _fields(confidence="high", **_all_field_kwargs()))
+        database.insert_lease("current.pdf", _fields(confidence="high", **_all_field_kwargs()), team_id=1)
 
-        result = compute_portfolio_health_score(reference_date=REF_DATE)
+        result = compute_portfolio_health_score(1, reference_date=REF_DATE)
         assert result["components"]["unresolved_discrepancies"]["open_count"] == 0, "the 20 orphaned discrepancies from the deleted lease must not count"
         assert result["components"]["unresolved_discrepancies"]["score"] == 100.0
         assert result["score"] >= 95, f"a genuinely healthy current portfolio must not be dragged down by history, got {result['score']}"
@@ -316,25 +324,29 @@ def test_portfolio_wide_discrepancy_counts_only_if_its_subject_is_still_current(
     """
     db_path = _fresh_temp_db()
     try:
-        database.insert_lease("a.pdf", _fields(**_all_field_kwargs()))  # tenant: "Tenant Co"
+        database.insert_lease("a.pdf", _fields(**_all_field_kwargs()), team_id=1)  # tenant: "Tenant Co"
         database.upsert_discrepancy(
             discrepancy_type="tenant_concentration", natural_key="tc-current", category="tenant_concentration",
             message="Tenant Co is 80% of portfolio rent", details={"tenant": "Tenant Co"}, severity="high",
+        team_id=1,
         )
         database.upsert_discrepancy(
             discrepancy_type="tenant_concentration", natural_key="tc-stale", category="tenant_concentration",
             message="Mega Corp is 80% of portfolio rent", details={"tenant": "Mega Corp"}, severity="high",
+        team_id=1,
         )
         database.upsert_discrepancy(
             discrepancy_type="t12_reconciliation", natural_key="t12-current", category="t12_reconciliation",
             message="T12 mismatch at 1 Main St", details={"property_address": "1 Main St"}, severity="medium",
+        team_id=1,
         )
         database.upsert_discrepancy(
             discrepancy_type="t12_reconciliation", natural_key="t12-stale", category="t12_reconciliation",
             message="T12 mismatch at 999 Long-Gone Ave", details={"property_address": "999 Long-Gone Ave"}, severity="medium",
+        team_id=1,
         )
 
-        result = compute_portfolio_health_score(reference_date=REF_DATE)
+        result = compute_portfolio_health_score(1, reference_date=REF_DATE)
         assert result["components"]["unresolved_discrepancies"]["open_count"] == 2, "only the 2 whose subject is still in the current portfolio must count"
     finally:
         os.unlink(db_path)
@@ -345,14 +357,14 @@ def test_data_freshness_amendment_counts_as_a_refresh():
     db_path = _fresh_temp_db()
     try:
         old_timestamp = _days_ago(400)
-        base_id = database.insert_lease("base.pdf", _fields(**_all_field_kwargs()))
+        base_id = database.insert_lease("base.pdf", _fields(**_all_field_kwargs()), team_id=1)
         _uploaded_at_override(base_id, old_timestamp)
 
-        result_before_amendment = compute_portfolio_health_score(reference_date=REF_DATE)
+        result_before_amendment = compute_portfolio_health_score(1, reference_date=REF_DATE)
         assert result_before_amendment["components"]["data_freshness"]["score"] == 0.0, "the base lease alone is stale"
 
-        database.insert_lease("amendment.pdf", _fields(rent_amount="$5,500.00"), document_type="amendment", base_lease_id=base_id)
-        result_after_amendment = compute_portfolio_health_score(reference_date=REF_DATE)
+        database.insert_lease("amendment.pdf", _fields(rent_amount="$5,500.00"), document_type="amendment", base_lease_id=base_id, team_id=1)
+        result_after_amendment = compute_portfolio_health_score(1, reference_date=REF_DATE)
         assert result_after_amendment["components"]["data_freshness"]["score"] == 100.0, "a recent amendment must count as refreshing the base lease's data"
     finally:
         os.unlink(db_path)
@@ -363,13 +375,13 @@ def test_data_freshness_custom_threshold():
     db_path = _fresh_temp_db()
     try:
         timestamp = _days_ago(45)
-        lease_id = database.insert_lease("a.pdf", _fields(**_all_field_kwargs()))
+        lease_id = database.insert_lease("a.pdf", _fields(**_all_field_kwargs()), team_id=1)
         _uploaded_at_override(lease_id, timestamp)
 
-        result_6mo = compute_portfolio_health_score(reference_date=REF_DATE, staleness_threshold_months=6)
+        result_6mo = compute_portfolio_health_score(1, reference_date=REF_DATE, staleness_threshold_months=6)
         assert result_6mo["components"]["data_freshness"]["score"] == 100.0, "45 days is fresh under a 6-month threshold"
 
-        result_1mo = compute_portfolio_health_score(reference_date=REF_DATE, staleness_threshold_months=1)
+        result_1mo = compute_portfolio_health_score(1, reference_date=REF_DATE, staleness_threshold_months=1)
         assert result_1mo["components"]["data_freshness"]["score"] == 0.0, "45 days is stale under a 1-month threshold"
     finally:
         os.unlink(db_path)
@@ -395,7 +407,7 @@ def test_health_score_route():
         # here simulates that side effect for this direct-insert test;
         # see test_cache.py for tests of the real invalidation hooks
         # themselves, through the real routes.
-        database.insert_lease("a.pdf", _fields(confidence="high", **_all_field_kwargs()))
+        database.insert_lease("a.pdf", _fields(confidence="high", **_all_field_kwargs()), team_id=1)
         cache.invalidate_all()
         resp = client.get("/portfolio/health-score")
         data = resp.get_json()

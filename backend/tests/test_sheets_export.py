@@ -292,6 +292,7 @@ def _authed_client():
     client = app.test_client()
     with client.session_transaction() as sess:
         sess["user_id"] = 1
+        sess["team_id"] = 1
         sess["email"] = "test-analyst@example.com"
         sess["name"] = "Test Analyst"
         sess["role"] = "analyst"
@@ -322,7 +323,7 @@ def test_route_returns_200_with_url_on_success_and_logs_activity():
         body = resp.get_json()
         assert body["url"] == "https://docs.google.com/spreadsheets/d/xyz/edit"
 
-        activity = database.get_recent_activity(5)
+        activity = database.get_recent_activity(team_id=1, limit=5)
         assert any(a["action_type"] == "google_sheets_exported" for a in activity), activity
     finally:
         os.unlink(db_path)
@@ -336,7 +337,7 @@ def test_route_does_not_log_activity_on_failure():
             resp = _authed_client().post("/portfolio/export/google-sheets")
         assert resp.status_code == 502
 
-        activity = database.get_recent_activity(5)
+        activity = database.get_recent_activity(team_id=1, limit=5)
         assert not any(a["action_type"] == "google_sheets_exported" for a in activity), \
             "a failed export must not be logged as though it succeeded"
     finally:
@@ -354,7 +355,7 @@ def test_route_does_not_log_activity_on_failure():
 def test_single_lease_route_returns_502_with_clean_message_when_not_configured():
     db_path = _fresh_temp_db()
     try:
-        lease_id = database.insert_lease("solo.pdf", LEASE_COMPLETE["extracted_fields"])
+        lease_id = database.insert_lease("solo.pdf", LEASE_COMPLETE["extracted_fields"], team_id=1)
         with mock.patch.dict(os.environ, {}, clear=False):
             os.environ.pop("GOOGLE_APPLICATION_CREDENTIALS", None)
             resp = _authed_client().post(f"/leases/{lease_id}/export/google-sheets")
@@ -378,7 +379,7 @@ def test_single_lease_route_returns_404_for_nonexistent_lease():
 def test_single_lease_route_returns_200_and_logs_activity_naming_the_lease():
     db_path = _fresh_temp_db()
     try:
-        lease_id = database.insert_lease("solo.pdf", LEASE_COMPLETE["extracted_fields"], display_name="Blue Sky Coffee Roasters, Inc.")
+        lease_id = database.insert_lease("solo.pdf", LEASE_COMPLETE["extracted_fields"], display_name="Blue Sky Coffee Roasters, Inc.", team_id=1)
         with mock.patch("app.api.export_to_google_sheets", return_value={"spreadsheet_id": "xyz", "url": "https://docs.google.com/spreadsheets/d/xyz/edit"}) as mocked:
             resp = _authed_client().post(f"/leases/{lease_id}/export/google-sheets")
 
@@ -389,7 +390,7 @@ def test_single_lease_route_returns_200_and_logs_activity_naming_the_lease():
         exported_leases = mocked.call_args[0][0]
         assert len(exported_leases) == 1 and exported_leases[0]["id"] == lease_id
 
-        activity = database.get_recent_activity(5)
+        activity = database.get_recent_activity(team_id=1, limit=5)
         matching = [a for a in activity if a["action_type"] == "google_sheets_exported"]
         assert matching, activity
         assert "Blue Sky Coffee Roasters" in matching[0]["description"], matching[0]

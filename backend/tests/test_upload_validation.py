@@ -23,7 +23,7 @@ def _fresh_temp_db():
     database.init_db()
     # a real base lease so /leases/<id>/amendments reaches file validation
     # instead of 404-ing on a missing lease
-    lid = database.insert_lease("base.pdf", {n: {"value": None, "source": None, "confidence": None} for n in FIELD_NAMES})
+    lid = database.insert_lease("base.pdf", {n: {"value": None, "source": None, "confidence": None} for n in FIELD_NAMES}, team_id=1)
     return tmp.name, lid
 
 

@@ -58,6 +58,7 @@ def _client_as(user_id, email, role, is_owner):
     client = app.test_client()
     with client.session_transaction() as sess:
         sess["user_id"] = user_id
+        sess["team_id"] = 1
         sess["email"] = email
         sess["name"] = "Test User"
         sess["role"] = role

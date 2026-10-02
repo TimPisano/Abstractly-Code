@@ -341,7 +341,7 @@ def test_upload_route_502s_cleanly_when_ai_extraction_fails_no_regex_fallback():
         body = resp.get_json()
         assert "temporarily unavailable" in body["error"]
         assert "Traceback" not in str(body)
-        assert database.get_all_effective_leases() == [], "nothing persisted on a failed synchronous extraction"
+        assert database.get_all_effective_leases(team_id=1) == [], "nothing persisted on a failed synchronous extraction"
     finally:
         os.unlink(db_path)
     print("✓ test_upload_route_502s_cleanly_when_ai_extraction_fails_no_regex_fallback: PASS")

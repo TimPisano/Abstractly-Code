@@ -232,6 +232,7 @@ def test_synthetic_fixtures_round_trip_through_the_real_import_route():
     client = app.test_client()
     with client.session_transaction() as sess:
         sess["user_id"] = 1
+        sess["team_id"] = 1
         sess["email"] = "test-analyst@example.com"
         sess["name"] = "Test Analyst"
         sess["role"] = "analyst"

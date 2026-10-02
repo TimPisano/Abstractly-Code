@@ -39,6 +39,7 @@ def _authed_client():
     client = app.test_client()
     with client.session_transaction() as sess:
         sess["user_id"] = 1
+        sess["team_id"] = 1
         sess["email"] = "test-analyst@example.com"
         sess["name"] = "Test Analyst"
         sess["role"] = "analyst"
@@ -75,8 +76,8 @@ def test_loss_to_lease_route_groups_different_suites_same_building():
     """End-to-end confirmation (through the real route, real DB round-trip) of the same-building/different-suite grouping fix."""
     db_path = _fresh_temp_db()
     try:
-        database.insert_lease("a.pdf", _fields(property_address="500 Commerce Blvd, Suite 100", rent_amount="$2,000.00", square_footage="1,000 sq ft"))
-        database.insert_lease("b.pdf", _fields(property_address="500 Commerce Blvd, Suite 200", rent_amount="$4,000.00", square_footage="1,000 sq ft"))
+        database.insert_lease("a.pdf", _fields(property_address="500 Commerce Blvd, Suite 100", rent_amount="$2,000.00", square_footage="1,000 sq ft"), team_id=1)
+        database.insert_lease("b.pdf", _fields(property_address="500 Commerce Blvd, Suite 200", rent_amount="$4,000.00", square_footage="1,000 sq ft"), team_id=1)
 
         client = _authed_client()
         resp = client.get("/portfolio/loss-to-lease")
@@ -96,14 +97,16 @@ def test_loss_to_lease_route_reflects_amendments():
     try:
         base_id = database.insert_lease(
             "base.pdf", _fields(property_address="1 Plaza Dr, Suite A", rent_amount="$1,000.00", square_footage="1,000 sq ft"),
+        team_id=1,
         )
         database.insert_lease(
             "amendment.pdf",
             _fields(rent_amount="$9,000.00"),  # big rent increase via amendment
             document_type="amendment",
             base_lease_id=base_id,
+        team_id=1,
         )
-        database.insert_lease("other.pdf", _fields(property_address="1 Plaza Dr, Suite B", rent_amount="$3,000.00", square_footage="1,000 sq ft"))
+        database.insert_lease("other.pdf", _fields(property_address="1 Plaza Dr, Suite B", rent_amount="$3,000.00", square_footage="1,000 sq ft"), team_id=1)
 
         client = _authed_client()
         resp = client.get("/portfolio/loss-to-lease")

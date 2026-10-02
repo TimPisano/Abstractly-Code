@@ -40,6 +40,7 @@ def _client_as(role, email, name, user_id):
     client = app.test_client()
     with client.session_transaction() as sess:
         sess["user_id"] = user_id
+        sess["team_id"] = 1
         sess["email"] = email
         sess["name"] = name
         sess["role"] = role
@@ -71,13 +72,14 @@ def _fields(**overrides):
 
 
 def _make_lease(**field_overrides):
-    return database.insert_lease("lease.pdf", _fields(**field_overrides), display_name="Test Lease")
+    return database.insert_lease("lease.pdf", _fields(**field_overrides), display_name="Test Lease", team_id=1)
 
 
 def _make_discrepancy(lease_id, field="rent_amount", key_suffix="0"):
     return database.upsert_discrepancy(
         "lease_risk_flag", f"lease_risk:{lease_id}:field_mismatch:{field}:{key_suffix}", "field_mismatch",
         f"{field} looks wrong", {"lease_amount": 5000}, lease_id=lease_id, severity="high",
+    team_id=1,
     )
 
 
@@ -101,13 +103,13 @@ def test_bulk_status_completes_and_dismisses_plain_tasks():
         assert data["not_found"] == [999999]
         assert data["skipped_needs_discrepancy"] == []
 
-        assert database.get_task(t1)["status"] == "done"
-        assert database.get_task(t2)["status"] == "done"
-        assert database.get_task(t3)["status"] == "open", "untouched task must be unaffected"
+        assert database.get_task(t1, team_id=1)["status"] == "done"
+        assert database.get_task(t2, team_id=1)["status"] == "done"
+        assert database.get_task(t3, team_id=1)["status"] == "open", "untouched task must be unaffected"
 
         resp = client.post("/tasks/bulk-status", json={"ids": [t3], "status": "dismissed"})
         assert resp.status_code == 200
-        assert database.get_task(t3)["status"] == "dismissed"
+        assert database.get_task(t3, team_id=1)["status"] == "dismissed"
 
         activity = client.get("/activity?limit=10").get_json()
         bulk_entries = [a for a in activity if a["action_type"] == "tasks_bulk_status_updated"]
@@ -126,8 +128,8 @@ def test_bulk_status_skips_discrepancy_tied_tasks_needing_confirmation():
         lease_id = _make_lease(rent_amount="$4,000.00")
         disc1 = _make_discrepancy(lease_id, key_suffix="0")
         disc2 = _make_discrepancy(lease_id, key_suffix="1")
-        task1 = tasks_module.create_task_from_discrepancy(disc1, admin, assigned_to_user_id=analyst)
-        task2 = tasks_module.create_task_from_discrepancy(disc2, admin, assigned_to_user_id=analyst)
+        task1 = tasks_module.create_task_from_discrepancy(disc1, admin, team_id=1, assigned_to_user_id=analyst)
+        task2 = tasks_module.create_task_from_discrepancy(disc2, admin, team_id=1, assigned_to_user_id=analyst)
         plain_task = client.post("/tasks", json={"title": "Not tied to anything"}).get_json()["id"]
 
         resp = client.post("/tasks/bulk-status", json={"ids": [task1["id"], task2["id"], plain_task], "status": "done"})
@@ -135,9 +137,9 @@ def test_bulk_status_skips_discrepancy_tied_tasks_needing_confirmation():
         assert set(data["skipped_needs_discrepancy"]) == {task1["id"], task2["id"]}
         assert data["updated"] == [plain_task]
 
-        assert database.get_task(task1["id"])["status"] != "done"
-        assert database.get_discrepancy(disc1)["status"] == "open", "must not be silently resolved by a bulk action"
-        assert database.get_task(plain_task)["status"] == "done"
+        assert database.get_task(task1["id"], team_id=1)["status"] != "done"
+        assert database.get_discrepancy(disc1, team_id=1)["status"] == "open", "must not be silently resolved by a bulk action"
+        assert database.get_task(plain_task, team_id=1)["status"] == "done"
 
         # Resolve them for real first, THEN bulk-complete succeeds.
         database.resolve_discrepancy(disc1, "lease_document", "confirmed", "Analyst User")
@@ -174,12 +176,12 @@ def test_bulk_reassign():
         data = resp.get_json()
         assert set(data["updated"]) == {t1, t2}
         assert data["not_found"] == [999999]
-        assert database.get_task(t1)["assigned_to_user_id"] == second_analyst
-        assert database.get_task(t2)["assigned_to_user_id"] == second_analyst
+        assert database.get_task(t1, team_id=1)["assigned_to_user_id"] == second_analyst
+        assert database.get_task(t2, team_id=1)["assigned_to_user_id"] == second_analyst
 
         resp = client.post("/tasks/bulk-reassign", json={"ids": [t1], "assigned_to_user_id": None})
         assert resp.status_code == 200
-        assert database.get_task(t1)["assigned_to_user_id"] is None
+        assert database.get_task(t1, team_id=1)["assigned_to_user_id"] is None
 
         resp = client.post("/tasks/bulk-reassign", json={"ids": [t1], "assigned_to_user_id": 999999})
         assert resp.status_code == 400
@@ -308,12 +310,12 @@ def test_patch_task_can_change_priority():
         admin, analyst, _, _ = _real_users()
         client = _client_for(analyst, "analyst")
         task_id = client.post("/tasks", json={"title": "T"}).get_json()["id"]
-        assert database.get_task(task_id)["priority"] == "normal"
+        assert database.get_task(task_id, team_id=1)["priority"] == "normal"
 
         resp = client.patch(f"/tasks/{task_id}", json={"priority": "high"})
         assert resp.status_code == 200
         assert resp.get_json()["priority"] == "high"
-        assert database.get_task(task_id)["priority"] == "high"
+        assert database.get_task(task_id, team_id=1)["priority"] == "high"
 
         resp = client.patch(f"/tasks/{task_id}", json={"priority": "not_valid"})
         assert resp.status_code == 400
@@ -345,7 +347,7 @@ def test_high_priority_tasks_sort_first_in_list_and_today_view():
             "a high-priority task must sort ahead of an earlier-due normal task"
 
         from app.assignments import compute_today_view
-        view = compute_today_view(analyst, reference_date=today)
+        view = compute_today_view(analyst, team_id=1, reference_date=today)
         due_ids_in_order = [t["id"] for t in view["tasks_due_today_or_overdue"]]
         assert due_ids_in_order.index(urgent_later) < due_ids_in_order.index(normal_earlier), \
             "the Today view must also surface the high-priority task first"
@@ -381,7 +383,7 @@ def test_undo_reverts_a_recent_edit_and_restores_original_citation():
         edits = database.get_lease_field_edits(lease_id=lease_id, field_name="rent_amount")
         edit_id = edits[0]["id"]
 
-        assert database.get_lease(lease_id)["extracted_fields"]["rent_amount"]["value"] == "$9,999.00"
+        assert database.get_lease(lease_id, team_id=1)["extracted_fields"]["rent_amount"]["value"] == "$9,999.00"
 
         resp = client.post(f"/leases/{lease_id}/fields/rent_amount/edits/{edit_id}/undo", json={})
         assert resp.status_code == 200, resp.get_json()
@@ -393,7 +395,7 @@ def test_undo_reverts_a_recent_edit_and_restores_original_citation():
         assert restored["source"] == {"page": 1, "quote": "...$4,000.00..."}
         assert restored["confidence"] == "high"
 
-        lease_after = database.get_lease(lease_id)
+        lease_after = database.get_lease(lease_id, team_id=1)
         assert lease_after["extracted_fields"]["rent_amount"]["value"] == "$4,000.00"
 
         # Original edit marked reverted, a new revert edit row exists -- nothing deleted.
@@ -443,7 +445,7 @@ def test_undo_rejects_when_superseded_by_a_newer_edit():
         resp = client.post(f"/leases/{lease_id}/fields/rent_amount/edits/{first_edit_id}/undo", json={})
         assert resp.status_code == 400
         assert "newer edit" in resp.get_json()["error"].lower()
-        assert database.get_lease(lease_id)["extracted_fields"]["rent_amount"]["value"] == "$6,000.00", \
+        assert database.get_lease(lease_id, team_id=1)["extracted_fields"]["rent_amount"]["value"] == "$6,000.00", \
             "the rejected undo must not have changed anything"
     finally:
         os.unlink(db_path)
@@ -464,7 +466,7 @@ def test_undo_rejects_after_time_window_expires():
         resp = client.post(f"/leases/{lease_id}/fields/rent_amount/edits/{edit_id}/undo", json={})
         assert resp.status_code == 400
         assert "minutes old" in resp.get_json()["error"]
-        assert database.get_lease(lease_id)["extracted_fields"]["rent_amount"]["value"] == "$9,999.00"
+        assert database.get_lease(lease_id, team_id=1)["extracted_fields"]["rent_amount"]["value"] == "$9,999.00"
     finally:
         os.unlink(db_path)
     print("✓ test_undo_rejects_after_time_window_expires: PASS")
@@ -477,7 +479,7 @@ def test_undo_rejects_when_linked_task_already_done():
         client = _client_for(analyst, "analyst")
         lease_id = _make_lease(rent_amount="$4,000.00")
         disc_id = _make_discrepancy(lease_id)
-        task = tasks_module.create_task_from_discrepancy(disc_id, admin, assigned_to_user_id=analyst)
+        task = tasks_module.create_task_from_discrepancy(disc_id, admin, team_id=1, assigned_to_user_id=analyst)
         task_id = task["id"]
 
         client.patch(f"/leases/{lease_id}/fields/rent_amount", json={"value": "$5,000.00", "task_id": task_id})
@@ -488,7 +490,7 @@ def test_undo_rejects_when_linked_task_already_done():
         resp = client.post(f"/leases/{lease_id}/fields/rent_amount/edits/{edit_id}/undo", json={})
         assert resp.status_code == 400
         assert "already complete" in resp.get_json()["error"].lower()
-        assert database.get_lease(lease_id)["extracted_fields"]["rent_amount"]["value"] == "$5,000.00"
+        assert database.get_lease(lease_id, team_id=1)["extracted_fields"]["rent_amount"]["value"] == "$5,000.00"
     finally:
         os.unlink(db_path)
     print("✓ test_undo_rejects_when_linked_task_already_done: PASS")
@@ -560,13 +562,13 @@ def test_regression_single_task_completion_and_discrepancy_resolution_still_work
         client = _client_for(analyst, "analyst")
         lease_id = _make_lease(rent_amount="$4,000.00")
         disc_id = _make_discrepancy(lease_id)
-        task = tasks_module.create_task_from_discrepancy(disc_id, admin, assigned_to_user_id=analyst)
+        task = tasks_module.create_task_from_discrepancy(disc_id, admin, team_id=1, assigned_to_user_id=analyst)
         task_id = task["id"]
 
         # Still rejected without confirmation.
         resp = client.post(f"/tasks/{task_id}/status", json={"status": "done"})
         assert resp.status_code == 400
-        assert database.get_discrepancy(disc_id)["status"] == "open"
+        assert database.get_discrepancy(disc_id, team_id=1)["status"] == "open"
 
         # Edit the field, same as before.
         client.patch(f"/leases/{lease_id}/fields/rent_amount", json={"value": "$5,000.00", "task_id": task_id})
@@ -580,7 +582,7 @@ def test_regression_single_task_completion_and_discrepancy_resolution_still_work
         assert data["status"] == "done"
         assert data["discrepancy_resolved_now"] is True
         assert data["discrepancy"]["status"] == "resolved"
-        assert database.get_discrepancy(disc_id)["status"] == "resolved"
+        assert database.get_discrepancy(disc_id, team_id=1)["status"] == "resolved"
 
         # Still drops out of the open view, still shows up in the done view.
         open_tasks = client.get(f"/tasks?assigned_to={analyst}&status=open").get_json()
