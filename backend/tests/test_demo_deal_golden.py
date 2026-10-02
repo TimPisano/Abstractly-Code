@@ -58,21 +58,53 @@ def _fresh_temp_db():
     tmp.close()
     database.configure(tmp.name)
     database.init_db()
+    # feature/usage-limits' per-user extraction rate limit is in-memory
+    # and keyed by user_id, not by database -- a fresh temp DB per test
+    # doesn't reset it, so the 15-upload demo deal flow here would trip
+    # the 10/minute cap after whichever earlier test in this file ran
+    # first in the same pytest process. Reset explicitly, same as
+    # test_usage_limits.py and test_lease_resubmission.py already do.
+    from app import usage_limits
+    usage_limits._reset_extraction_rate_limit_for_tests()
     return tmp.name
 
 
 def _authed_client():
+    # feature/usage-limits (merged into main after this fixture was
+    # written) gates /leases uploads on the caller having a real
+    # team_id (app/api.py's "Your account isn't assigned to a team
+    # yet" 403) -- current_user() reads team_id straight off the
+    # session (app/auth.py), so a faked session needs one set
+    # explicitly, same as a real login would populate it. Every fresh
+    # database gets a 'Legacy' team from init_db() (see
+    # database._migrate_teams_create_legacy_team), so it's always
+    # there to look up by the time this runs (after _fresh_temp_db()).
+    conn = database.get_connection()
+    try:
+        legacy_team = conn.execute("SELECT id FROM teams WHERE name='Legacy' LIMIT 1").fetchone()
+    finally:
+        conn.close()
     client = app.test_client()
     with client.session_transaction() as sess:
         sess["user_id"] = 1
         sess["email"] = "test-analyst@example.com"
         sess["name"] = "Test Analyst"
         sess["role"] = "analyst"
+        sess["team_id"] = legacy_team[0] if legacy_team else None
     return client
 
 
 def _upload_all_demo_leases(client):
+    from app import usage_limits
     for filename in sorted(os.listdir(LEASES_DIR)):
+        # This fixture's 15 leases are one deal's full packet, uploaded
+        # back-to-back -- more than feature/usage-limits' 10/minute
+        # per-user rate limit, which exists to catch runaway/automated
+        # calls, not this legitimate bulk-at-close workflow. This test
+        # is about Deal Mismatch Report correctness, not the rate
+        # limiter, so reset between uploads rather than spacing them
+        # out or weakening the production limit.
+        usage_limits._reset_extraction_rate_limit_for_tests()
         path = os.path.join(LEASES_DIR, filename)
         with open(path, "rb") as f:
             resp = client.post(
