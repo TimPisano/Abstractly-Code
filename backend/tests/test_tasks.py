@@ -24,6 +24,9 @@ from app import tasks as tasks_module
 from app.assignments import compute_today_view
 
 
+from _session_users import sync_session_user
+
+
 def _fresh_temp_db():
     tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
     tmp.close()
@@ -40,6 +43,7 @@ def _client_as(role, email, name, user_id):
         sess["email"] = email
         sess["name"] = name
         sess["role"] = role
+        sync_session_user(sess)
     return client
 
 

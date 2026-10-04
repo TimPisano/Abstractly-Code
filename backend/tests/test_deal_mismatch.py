@@ -22,6 +22,7 @@ import pypdf
 
 from app.api import app
 from app import database
+from _session_users import sync_session_user
 from app.portfolio import FIELD_NAMES
 from app import deal_mismatch as dm
 from app.deal_mismatch_export import generate_deal_mismatch_report_pdf, generate_deal_mismatch_report_excel
@@ -43,6 +44,7 @@ def _authed_client(role="analyst"):
         sess["email"] = f"test-{role}@example.com"
         sess["name"] = f"Test {role.capitalize()}"
         sess["role"] = role
+        sync_session_user(sess)
     return client
 
 

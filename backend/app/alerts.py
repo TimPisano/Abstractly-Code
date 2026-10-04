@@ -165,7 +165,7 @@ def _normalize_tenant_key(tenant: str) -> str:
     return (tenant or "").strip().lower()
 
 
-def _detect_tenant_concentration_alerts(leases: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def _detect_tenant_concentration_alerts(leases: List[Dict[str, Any]], team_id: int) -> List[Dict[str, Any]]:
     """
     Alerts only at TOP_TENANT_HIGH_RISK_PCT (25%, not the 15% "moderate"
     threshold too) -- deliberately a single, higher bar. Using the 15%
@@ -191,7 +191,9 @@ def _detect_tenant_concentration_alerts(leases: List[Dict[str, Any]]) -> List[Di
 
         candidates.append({
             "alert_type": "tenant_concentration",
-            "natural_key": f"tenant_concentration:{_normalize_tenant_key(entry['tenant'])}",
+            # team in the key: natural_key is globally unique, and two
+            # firms can share a tenant name (see database._migrate_scope_natural_keys_by_team)
+            "natural_key": f"tenant_concentration:team{team_id}:{_normalize_tenant_key(entry['tenant'])}",
             "lease_id": None,  # concentration is a portfolio-wide fact about a tenant, not one specific lease
             "severity": "high",
             "title": f"{entry['tenant']} is {pct:.0f}% of portfolio rent",
@@ -226,7 +228,7 @@ def detect_all_candidates(leases: List[Dict[str, Any]], team_id: int, reference_
         _detect_lease_expiration_alerts(leases, reference_date=reference_date)
         + _detect_new_discrepancy_alerts(team_id)
         + _detect_below_market_rent_alerts(leases)
-        + _detect_tenant_concentration_alerts(leases)
+        + _detect_tenant_concentration_alerts(leases, team_id)
     )
 
 
@@ -258,7 +260,7 @@ def generate_alerts(team_id: int, reference_date=None) -> Dict[str, Any]:
     # database.upsert_discrepancies_bulk's docstring for the full
     # profiling writeup of the identical pattern.
     seen_keys = {c["natural_key"] for c in candidates}
-    existing_keys = database.get_alerts_existing_natural_keys(list(seen_keys))
+    existing_keys = database.get_alerts_existing_natural_keys(list(seen_keys), team_id)
     created = sum(1 for c in candidates if c["natural_key"] not in existing_keys)
     refreshed = len(candidates) - created
 

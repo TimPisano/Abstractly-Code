@@ -21,7 +21,7 @@ import logging
 from functools import wraps
 
 import bcrypt
-from flask import current_app, jsonify, request, session
+from flask import current_app, g, has_request_context, jsonify, request, session
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
 from app import database
@@ -147,18 +147,42 @@ def current_user():
     team_id defaults to None for old sessions; a fresh login always
     populates it from the user row.
     """
-    token_user = _user_from_bearer_token()
-    if token_user is not None:
-        return token_user
-    if not session.get("user_id"):
+    # The signed cookie/token only proves WHO this is. Whether they may
+    # still act -- and with which role and team -- is re-read from the
+    # database on every request, so deactivating a user or a team, or
+    # changing someone's role, takes effect on their very next request
+    # instead of whenever their 12-hour token happens to expire.
+    # Cached on flask.g: one users-row read per request, not per call.
+    if has_request_context() and "_abstractly_user" in g:
+        return g._abstractly_user
+    claimed = _user_from_bearer_token()
+    if claimed is None and session.get("user_id"):
+        claimed = {"id": session["user_id"]}
+    user = _live_user(claimed["id"]) if claimed else None
+    if has_request_context():
+        g._abstractly_user = user
+    return user
+
+
+def _live_user(user_id):
+    """
+    The user's CURRENT row as the current_user() dict, or None if the
+    account no longer exists, isn't active, or its team is deactivated
+    -- the same rules verify_password applies at login. A session for a
+    user who's been switched off is treated exactly like no session.
+    """
+    row = database.get_user(user_id)
+    if not row or row.get("status") != "active":
+        return None
+    if row.get("team_id") is not None and database.is_team_deactivated(row["team_id"]):
         return None
     return {
-        "id": session["user_id"],
-        "email": session.get("email"),
-        "name": session.get("name"),
-        "role": session.get("role"),
-        "is_owner": bool(session.get("is_owner", False)),
-        "team_id": session.get("team_id"),
+        "id": row["id"],
+        "email": row.get("email"),
+        "name": row.get("name"),
+        "role": row.get("role"),
+        "is_owner": bool(row.get("is_owner")),
+        "team_id": row.get("team_id"),
     }
 
 

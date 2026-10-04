@@ -1276,7 +1276,7 @@ def resubmit_lease(lease_id):
 
 def _current_version_of(lease_id):
     """Given any lease id in a version chain, the one currently active version -- or None if the whole chain has somehow lost its active member (shouldn't happen; every resubmission always activates exactly one replacement before superseding the one it replaces)."""
-    chain = database.get_lease_version_chain(lease_id)
+    chain = database.get_lease_version_chain(lease_id, current_team_id())
     return next((v for v in chain if v.get("status") != "superseded"), None)
 
 
@@ -1292,7 +1292,7 @@ def lease_versions(lease_id):
     """
     if not database.get_lease(lease_id, team_id=current_team_id()):
         return jsonify({"error": "Lease not found"}), 404
-    chain = database.get_lease_version_chain(lease_id)
+    chain = database.get_lease_version_chain(lease_id, current_team_id())
     versions = []
     for v in chain:
         versions.append({
@@ -1549,7 +1549,7 @@ def lease_field_source(lease_id, field_name):
     # rather than just the one id the caller happened to ask about.
     manual_edits = []
     for entry in chain["history"]:
-        manual_edits.extend(database.get_lease_field_edits(lease_id=entry["document_id"], field_name=field_name))
+        manual_edits.extend(database.get_lease_field_edits(current_team_id(), lease_id=entry["document_id"], field_name=field_name))
     manual_edits.sort(key=lambda e: (e["created_at"], e["id"]))
     chain["manual_edits"] = manual_edits
     return jsonify(chain), 200
@@ -2329,6 +2329,17 @@ def _get_team_member(user_id, team_id):
     return user
 
 
+def _is_protected_owner(member):
+    """
+    True when `member` is the platform owner and the caller isn't. The
+    owner usually sits on the Legacy team, so without this any admin on
+    that team could demote, deactivate, or reset the password of the
+    account that runs the whole platform through the ordinary team
+    routes. The owner can still change their own account.
+    """
+    return bool(member.get("is_owner")) and not current_user()["is_owner"]
+
+
 @app.route('/team/members', methods=['GET'])
 @require_role('admin')
 def list_team_members():
@@ -2382,6 +2393,8 @@ def update_team_member(member_id):
     user = _get_team_member(member_id, current_team_id())
     if not user:
         return jsonify({"error": "Team member not found"}), 404
+    if _is_protected_owner(user):
+        return jsonify({"error": "The owner account can only be changed by the owner."}), 403
 
     body = request.get_json(silent=True) or {}
     if 'name' in body:
@@ -2407,8 +2420,11 @@ def update_team_member(member_id):
 @require_role('admin')
 def reset_team_member_password(member_id):
     """Body: {"password"}. Admin-initiated reset, same as create -- the new password is shared with the member out-of-band. member_id must be on the caller's own team."""
-    if not _get_team_member(member_id, current_team_id()):
+    member = _get_team_member(member_id, current_team_id())
+    if not member:
         return jsonify({"error": "Team member not found"}), 404
+    if _is_protected_owner(member):
+        return jsonify({"error": "The owner account can only be changed by the owner."}), 403
 
     body = request.get_json(silent=True) or {}
     password = body.get('password') or ''
@@ -2484,7 +2500,7 @@ def get_team_usage():
 
 
 @app.route('/teams', methods=['POST'])
-@require_role('admin')
+@require_owner()  # platform-wide data: a team admin must not see or change other firms' quotas / prospects
 def create_team():
     """
     Create a new team.
@@ -2519,7 +2535,7 @@ def create_team():
 
 
 @app.route('/teams/<int:team_id>', methods=['PATCH'])
-@require_role('admin')
+@require_owner()  # platform-wide data: a team admin must not see or change other firms' quotas / prospects
 def update_team(team_id):
     """
     Update a team's quota overrides.
@@ -2547,7 +2563,7 @@ def update_team(team_id):
 
 
 @app.route('/teams', methods=['GET'])
-@require_role('admin')
+@require_owner()  # platform-wide data: a team admin must not see or change other firms' quotas / prospects
 def list_teams():
     """List all teams."""
     conn = database.get_connection()
@@ -3038,7 +3054,14 @@ def undo_lease_field_edit(lease_id, field_name, edit_id):
         the exact "recently... and the task isn't completed yet" gate
         the in-task Undo option is built around)
     """
-    edits = database.get_lease_field_edits(lease_id=lease_id, field_name=field_name)
+    # Ownership check first, same as every other lease-field route (edit,
+    # verify, source): another team's lease is a 404, indistinguishable
+    # from a nonexistent one. Without it, any analyst could revert any
+    # team's edits by guessing sequential lease/edit ids.
+    team_id = current_team_id()
+    if not database.get_lease(lease_id, team_id=team_id):
+        return jsonify({"error": "Edit not found for this lease/field"}), 404
+    edits = database.get_lease_field_edits(team_id, lease_id=lease_id, field_name=field_name)
     matching = next((e for e in edits if e["id"] == edit_id), None)
     if not matching:
         return jsonify({"error": "Edit not found for this lease/field"}), 404
@@ -3061,7 +3084,7 @@ def undo_lease_field_edit(lease_id, field_name, edit_id):
             return jsonify({"error": "This edit's task is already complete -- undo is only available while the task is still open."}), 400
 
     user = current_user()
-    restored = database.revert_lease_field_edit(edit_id, user["name"], user["email"])
+    restored = database.revert_lease_field_edit(edit_id, team_id, user["name"], user["email"])
     if restored is None:
         return jsonify({"error": "Lease not found"}), 404
     _invalidate_lease_derived_caches()
@@ -3613,14 +3636,14 @@ def record_pageview():
 
 
 @app.route('/waitlist', methods=['GET'])
-@require_role('admin')
+@require_owner()  # platform-wide data: a team admin must not see or change other firms' quotas / prospects
 def list_waitlist():
     """Admin-only. Lists every signup, newest first."""
     return jsonify(database.get_all_waitlist_signups()), 200
 
 
 @app.route('/waitlist/<int:signup_id>/approve', methods=['POST'])
-@require_role('admin')
+@require_owner()  # platform-wide data: a team admin must not see or change other firms' quotas / prospects
 def approve_waitlist(signup_id):
     """Admin-only. Flips a signup's status to 'approved'."""
     signup = database.get_waitlist_signup(signup_id)
@@ -3636,7 +3659,7 @@ def approve_waitlist(signup_id):
 
 
 @app.route('/waitlist/<int:signup_id>/deny', methods=['POST'])
-@require_role('admin')
+@require_owner()  # platform-wide data: a team admin must not see or change other firms' quotas / prospects
 def deny_waitlist(signup_id):
     """Admin-only. Flips a signup's status to 'denied'. No email is sent -- there's no "you were denied" template, and adding one wasn't asked for; this is a silent status change the admin dashboard reflects."""
     signup = database.get_waitlist_signup(signup_id)
@@ -5559,7 +5582,7 @@ def extraction_quality_field_reliability():
     reliability = extraction_quality.compute_field_reliability(
         latest_training_report=latest_report,
         ai_extracted_leases=ai_leases,
-        field_edits=database.get_lease_field_edits(),
+        field_edits=database.get_lease_field_edits(current_team_id()),
     )
     return jsonify({
         "fields": reliability,

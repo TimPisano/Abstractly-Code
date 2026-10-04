@@ -26,6 +26,7 @@ from anthropic.types import ToolUseBlock
 
 from app.api import app
 from app import database
+from _session_users import sync_session_user
 from app.auth import hash_password
 from app import assistant
 from app.portfolio import FIELD_NAMES
@@ -68,6 +69,7 @@ def _client_as(role, email="test@example.com", name="Test User", user_id=1):
         sess["email"] = email
         sess["name"] = name
         sess["role"] = role
+        sync_session_user(sess)
     return client
 
 

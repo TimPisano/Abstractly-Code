@@ -28,6 +28,9 @@ from app import jobs
 from app.portfolio import FIELD_NAMES
 
 
+from _session_users import sync_session_user
+
+
 def _fresh_temp_db():
     tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
     tmp.close()
@@ -44,6 +47,7 @@ def _analyst_client():
     c = app.test_client()
     with c.session_transaction() as s:
         s.update({"user_id": 1, "email": "a@example.com", "name": "A", "role": "analyst", "team_id": 1})
+        sync_session_user(s)
     return c
 
 

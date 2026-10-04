@@ -24,6 +24,9 @@ from app import database
 from app.sheets_export import export_to_google_sheets, SheetsExportError, _lease_row, _numeric_or_text
 
 
+from _session_users import sync_session_user
+
+
 def _field(value, page=1, confidence="high"):
     if value is None:
         return {"value": None, "source": None, "confidence": None}
@@ -296,6 +299,7 @@ def _authed_client():
         sess["email"] = "test-analyst@example.com"
         sess["name"] = "Test Analyst"
         sess["role"] = "analyst"
+        sync_session_user(sess)
     return client
 
 

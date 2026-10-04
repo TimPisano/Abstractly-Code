@@ -32,6 +32,7 @@ from anthropic.types import ToolUseBlock
 
 from app.api import app
 from app import database
+from _session_users import sync_session_user
 from app import ai_extraction
 from app.portfolio import FIELD_NAMES
 
@@ -259,6 +260,7 @@ def _analyst_client():
     client = app.test_client()
     with client.session_transaction() as sess:
         sess.update({"user_id": 1, "email": "a@example.com", "name": "A", "role": "analyst", "team_id": 1})
+        sync_session_user(sess)
     return client
 
 

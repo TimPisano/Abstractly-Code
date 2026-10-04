@@ -23,6 +23,9 @@ from app.assignments import derive_target_key, compute_today_view
 from app.portfolio import FIELD_NAMES
 
 
+from _session_users import sync_session_user
+
+
 def _fresh_temp_db():
     tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
     tmp.close()
@@ -39,6 +42,7 @@ def _client_as(role, email="test@example.com", name="Test User", user_id=1):
         sess["email"] = email
         sess["name"] = name
         sess["role"] = role
+        sync_session_user(sess)
     return client
 
 

@@ -22,6 +22,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 from app.api import app
 from app import database
+from _session_users import sync_session_user
 from app import cache
 from app.portfolio import FIELD_NAMES
 
@@ -56,6 +57,7 @@ def _authed_client():
         sess["team_id"] = 1  # the 'Legacy' team, always id 1 in a fresh test DB
         sess["name"] = "Test Analyst"
         sess["role"] = "analyst"
+        sync_session_user(sess)
     return client
 
 

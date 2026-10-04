@@ -42,6 +42,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 from app.api import app
 from app import database
+from _session_users import sync_session_user
 from app.deal_mismatch import build_deal_mismatch_report_data
 
 DEMO_DIR = os.path.join(os.path.dirname(__file__), '..', 'benchmark_data', 'demo_deal')
@@ -101,6 +102,7 @@ def _authed_client():
         sess["name"] = "Test Analyst"
         sess["role"] = "analyst"
         sess["team_id"] = team_id
+        sync_session_user(sess)
     return client
 
 

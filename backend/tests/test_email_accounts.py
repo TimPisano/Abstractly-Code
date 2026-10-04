@@ -20,6 +20,7 @@ os.environ.setdefault("TOKEN_ENCRYPTION_KEY", __import__("cryptography.fernet", 
 
 from app.api import app
 from app import database
+from _session_users import sync_session_user
 from app.auth import hash_password
 from app import email_accounts
 from app import token_encryption
@@ -46,6 +47,7 @@ def _client_for(user_id, role="analyst"):
         sess["email"] = user["email"]
         sess["name"] = user["name"]
         sess["role"] = role
+        sync_session_user(sess)
     return client
 
 

@@ -28,6 +28,9 @@ from app import tasks as tasks_module
 from app.portfolio import FIELD_NAMES
 
 
+from _session_users import sync_session_user
+
+
 def _fresh_temp_db():
     tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
     tmp.close()
@@ -44,6 +47,7 @@ def _client_as(role, email, name, user_id):
         sess["email"] = email
         sess["name"] = name
         sess["role"] = role
+        sync_session_user(sess)
     return client
 
 
@@ -380,7 +384,7 @@ def test_undo_reverts_a_recent_edit_and_restores_original_citation():
 
         edit_resp = client.patch(f"/leases/{lease_id}/fields/rent_amount", json={"value": "$9,999.00", "note": "oops, wrong number"})
         assert edit_resp.status_code == 200
-        edits = database.get_lease_field_edits(lease_id=lease_id, field_name="rent_amount")
+        edits = database.get_lease_field_edits(1, lease_id=lease_id, field_name="rent_amount")
         edit_id = edits[0]["id"]
 
         assert database.get_lease(lease_id, team_id=1)["extracted_fields"]["rent_amount"]["value"] == "$9,999.00"
@@ -399,7 +403,7 @@ def test_undo_reverts_a_recent_edit_and_restores_original_citation():
         assert lease_after["extracted_fields"]["rent_amount"]["value"] == "$4,000.00"
 
         # Original edit marked reverted, a new revert edit row exists -- nothing deleted.
-        all_edits = database.get_lease_field_edits(lease_id=lease_id, field_name="rent_amount")
+        all_edits = database.get_lease_field_edits(1, lease_id=lease_id, field_name="rent_amount")
         assert len(all_edits) == 2
         assert all_edits[0]["id"] == edit_id
         assert all_edits[0]["reverted_at"] is not None
@@ -418,7 +422,7 @@ def test_undo_rejects_already_reverted_edit():
         client = _client_for(analyst, "analyst")
         lease_id = _make_lease(rent_amount="$4,000.00")
         client.patch(f"/leases/{lease_id}/fields/rent_amount", json={"value": "$9,999.00"})
-        edit_id = database.get_lease_field_edits(lease_id=lease_id, field_name="rent_amount")[0]["id"]
+        edit_id = database.get_lease_field_edits(1, lease_id=lease_id, field_name="rent_amount")[0]["id"]
 
         first = client.post(f"/leases/{lease_id}/fields/rent_amount/edits/{edit_id}/undo", json={})
         assert first.status_code == 200
@@ -439,7 +443,7 @@ def test_undo_rejects_when_superseded_by_a_newer_edit():
         lease_id = _make_lease(rent_amount="$4,000.00")
 
         client.patch(f"/leases/{lease_id}/fields/rent_amount", json={"value": "$5,000.00"})
-        first_edit_id = database.get_lease_field_edits(lease_id=lease_id, field_name="rent_amount")[0]["id"]
+        first_edit_id = database.get_lease_field_edits(1, lease_id=lease_id, field_name="rent_amount")[0]["id"]
         client.patch(f"/leases/{lease_id}/fields/rent_amount", json={"value": "$6,000.00"})
 
         resp = client.post(f"/leases/{lease_id}/fields/rent_amount/edits/{first_edit_id}/undo", json={})
@@ -459,7 +463,7 @@ def test_undo_rejects_after_time_window_expires():
         client = _client_for(analyst, "analyst")
         lease_id = _make_lease(rent_amount="$4,000.00")
         client.patch(f"/leases/{lease_id}/fields/rent_amount", json={"value": "$9,999.00"})
-        edit_id = database.get_lease_field_edits(lease_id=lease_id, field_name="rent_amount")[0]["id"]
+        edit_id = database.get_lease_field_edits(1, lease_id=lease_id, field_name="rent_amount")[0]["id"]
 
         _age_edit(edit_id, minutes_ago=tasks_module.UNDO_WINDOW_MINUTES + 5)
 
@@ -483,7 +487,7 @@ def test_undo_rejects_when_linked_task_already_done():
         task_id = task["id"]
 
         client.patch(f"/leases/{lease_id}/fields/rent_amount", json={"value": "$5,000.00", "task_id": task_id})
-        edit_id = database.get_lease_field_edits(task_id=task_id)[0]["id"]
+        edit_id = database.get_lease_field_edits(1, task_id=task_id)[0]["id"]
 
         client.post(f"/tasks/{task_id}/status", json={"status": "done", "correct_source": "lease_document", "note": "fixed"})
 
@@ -506,7 +510,7 @@ def test_undo_allowed_when_linked_task_dismissed_not_done():
         task_id = client.post("/tasks", json={"title": "T", "lease_id": lease_id}).get_json()["id"]
 
         client.patch(f"/leases/{lease_id}/fields/rent_amount", json={"value": "$5,000.00", "task_id": task_id})
-        edit_id = database.get_lease_field_edits(task_id=task_id)[0]["id"]
+        edit_id = database.get_lease_field_edits(1, task_id=task_id)[0]["id"]
 
         client.post(f"/tasks/{task_id}/status", json={"status": "dismissed"})
 
@@ -524,7 +528,7 @@ def test_undo_route_requires_login_and_analyst_role():
         client = _client_for(analyst, "analyst")
         lease_id = _make_lease(rent_amount="$4,000.00")
         client.patch(f"/leases/{lease_id}/fields/rent_amount", json={"value": "$9,999.00"})
-        edit_id = database.get_lease_field_edits(lease_id=lease_id, field_name="rent_amount")[0]["id"]
+        edit_id = database.get_lease_field_edits(1, lease_id=lease_id, field_name="rent_amount")[0]["id"]
 
         anon = app.test_client()
         assert anon.post(f"/leases/{lease_id}/fields/rent_amount/edits/{edit_id}/undo", json={}).status_code == 401

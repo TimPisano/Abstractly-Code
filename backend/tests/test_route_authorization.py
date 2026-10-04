@@ -41,6 +41,9 @@ _PUBLIC_MUTATING = {
 }
 
 
+from _session_users import sync_session_user
+
+
 def _fresh_temp_db():
     tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
     tmp.close()
@@ -94,6 +97,7 @@ def _client(role=None, is_owner=False):
     if role or is_owner:
         with c.session_transaction() as s:
             s.update({"user_id": 1, "email": "u@x.com", "name": "U", "role": role or "viewer", "is_owner": is_owner, "team_id": 1})
+            sync_session_user(s)
     return c
 
 

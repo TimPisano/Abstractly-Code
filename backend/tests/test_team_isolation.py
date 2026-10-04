@@ -28,6 +28,9 @@ FIXTURES_DIR = os.path.dirname(__file__)
 SAMPLE_LEASE_PDF = os.path.join(FIXTURES_DIR, "sample_lease_commercial.pdf")
 
 
+from _session_users import sync_session_user
+
+
 def _fresh_temp_db():
     tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
     tmp.close()
@@ -57,6 +60,7 @@ def _client_for(user_id, team_id, email, role="admin"):
         sess["name"] = f"User {user_id}"
         sess["role"] = role
         sess["is_owner"] = False
+        sync_session_user(sess)
     return client
 
 
@@ -448,6 +452,7 @@ def _owner_client():
         sess["name"] = "Owner"
         sess["role"] = "admin"
         sess["is_owner"] = True
+        sync_session_user(sess)
     return client
 
 

@@ -19,6 +19,7 @@ from datetime import date
 
 from app.api import app
 from app import database, obligations
+from _session_users import sync_session_user
 from app.portfolio import FIELD_NAMES
 
 
@@ -38,6 +39,7 @@ def _authed_client():
         sess["email"] = "test@example.com"
         sess["name"] = "Test User"
         sess["role"] = "analyst"
+        sync_session_user(sess)
     return client
 
 

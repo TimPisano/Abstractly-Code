@@ -25,6 +25,9 @@ from app import database
 from app.portfolio import FIELD_NAMES
 
 
+from _session_users import sync_session_user
+
+
 def _fresh_temp_db():
     tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
     tmp.close()
@@ -50,6 +53,7 @@ def _authed_client():
         sess["email"] = "test-analyst@example.com"
         sess["name"] = "Test Analyst"
         sess["role"] = "analyst"
+        sync_session_user(sess)
     return client
 
 

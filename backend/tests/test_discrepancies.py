@@ -16,6 +16,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 from app.api import app
 from app import database
+from _session_users import sync_session_user
 from app.portfolio import FIELD_NAMES
 from app.discrepancies import (
     sync_lease_risk_flags, sync_rent_roll_reconciliation, sync_t12_reconciliation,
@@ -50,6 +51,7 @@ def _authed_client():
         sess["email"] = "test-analyst@example.com"
         sess["name"] = "Test Analyst"
         sess["role"] = "analyst"
+        sync_session_user(sess)
     return client
 
 

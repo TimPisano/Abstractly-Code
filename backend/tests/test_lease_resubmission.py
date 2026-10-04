@@ -24,6 +24,7 @@ from reportlab.lib.units import inch
 
 from app.api import app
 from app import database
+from _session_users import sync_session_user
 
 FIXTURES_DIR = os.path.dirname(__file__)
 
@@ -52,6 +53,7 @@ def _authed_client():
         sess["team_id"] = 1  # the 'Legacy' team, always id 1 in a fresh test DB
         sess["name"] = "Test Analyst"
         sess["role"] = "analyst"
+        sync_session_user(sess)
     return client
 
 
@@ -63,6 +65,7 @@ def _viewer_client():
         sess["email"] = "viewer@example.com"
         sess["name"] = "Test Viewer"
         sess["role"] = "viewer"
+        sync_session_user(sess)
     return client
 
 
@@ -443,7 +446,7 @@ def test_get_lease_version_chain_single_version():
     db_path = _fresh_temp_db()
     try:
         lease_id = database.insert_lease("a.pdf", {}, team_id=1)
-        chain = database.get_lease_version_chain(lease_id)
+        chain = database.get_lease_version_chain(lease_id, 1)
         assert len(chain) == 1
         assert chain[0]["id"] == lease_id
         assert chain[0]["status"] == "active"

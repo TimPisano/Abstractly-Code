@@ -21,6 +21,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 from app.api import app
 from app import database
+from _session_users import sync_session_user
 from app.auth import hash_password
 from app import messaging
 
@@ -46,6 +47,7 @@ def _client_for(user_id, role="analyst"):
         sess["email"] = user["email"]
         sess["name"] = user["name"]
         sess["role"] = role
+        sync_session_user(sess)
     return client
 
 

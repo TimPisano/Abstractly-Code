@@ -48,6 +48,9 @@ os.environ.pop("EMAIL_USER", None)
 os.environ.pop("EMAIL_APP_PASSWORD", None)
 
 
+from _session_users import sync_session_user
+
+
 def _fresh_temp_db():
     tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
     tmp.close()
@@ -72,6 +75,10 @@ def _login_as_admin(client):
         sess["email"] = "timmypisano24@gmail.com"
         sess["name"] = "Test Admin"
         sess["role"] = "admin"
+        # The waitlist is platform-wide (every firm's prospects), so it's
+        # owner-only now, not any team admin -- this account is the owner.
+        sess["is_owner"] = True
+        sync_session_user(sess)
 
 
 def test_signup_succeeds_with_no_email_credentials_configured():

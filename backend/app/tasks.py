@@ -62,13 +62,13 @@ def task_detail(task: Dict[str, Any]) -> Dict[str, Any]:
         # in-task view always reflects live data, same as every other
         # "current lease" reader in this app.
         if lease and lease.get("status") == "superseded":
-            chain = database.get_lease_version_chain(task["lease_id"])
+            chain = database.get_lease_version_chain(task["lease_id"], team_id)
             current = next((v for v in chain if v.get("status") != "superseded"), None)
             if current and current["id"] != task["lease_id"]:
                 lease = database.get_effective_lease(current["id"], team_id)
                 result["lease_redirected_from_id"] = task["lease_id"]
         result["lease"] = lease
-        result["field_edits"] = database.get_lease_field_edits(task_id=task["id"])
+        result["field_edits"] = database.get_lease_field_edits(team_id, task_id=task["id"])
     if task.get("discrepancy_id"):
         result["discrepancy"] = database.get_discrepancy(task["discrepancy_id"], team_id=team_id)
     # Team discussion on this task -- separate from field_edits (a

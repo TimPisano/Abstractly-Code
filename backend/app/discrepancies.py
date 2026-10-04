@@ -295,9 +295,11 @@ def sync_t12_reconciliation(result: Dict[str, Any], team_id: int) -> Dict[str, A
     normalized = _normalize_building_address(result.get("property_address"))
     if not normalized:
         return result
-    natural_key = f"t12_recon:{normalized}"
+    # team in the key: two firms can hold the same building address
+    # (see database._migrate_scope_natural_keys_by_team).
+    natural_key = f"t12_recon:team{team_id}:{normalized}"
 
-    existing = database.get_discrepancy_by_natural_key(natural_key)
+    existing = database.get_discrepancy_by_natural_key(natural_key, team_id)
     if not result.get("flagged") and not existing:
         return result
 

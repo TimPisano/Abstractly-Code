@@ -401,6 +401,29 @@ def _migrate_teams_table_add_status(conn: sqlite3.Connection) -> None:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_teams_status ON teams(status)")
 
 
+def _migrate_scope_natural_keys_by_team(conn: sqlite3.Connection) -> None:
+    """
+    alerts.natural_key and discrepancies.natural_key are globally
+    UNIQUE. Most keys embed a lease/discrepancy id (globally unique,
+    so they can't collide), but two families were built only from
+    names: `tenant_concentration:<tenant>` (alerts) and
+    `t12_recon:<address>` (discrepancies). Two teams with the same
+    tenant or building collided on one row and overwrote each other.
+    The code now builds `...:team<id>:...`; this rewrites existing rows
+    to the same shape so their history (status, resolutions) carries
+    over instead of being orphaned next to a fresh duplicate.
+
+    Idempotent: a row is rewritten only if its key doesn't already
+    start with its OWN team's prefix.
+    """
+    for table, prefix in (("alerts", "tenant_concentration:"), ("discrepancies", "t12_recon:")):
+        conn.execute(
+            f"UPDATE {table} SET natural_key = ? || 'team' || team_id || ':' || substr(natural_key, ?) "
+            f"WHERE natural_key LIKE ? AND natural_key NOT LIKE ? || 'team' || team_id || ':%'",
+            (prefix, len(prefix) + 1, prefix + "%", prefix),
+        )
+
+
 def _migrate_add_team_id_column(conn: sqlite3.Connection, table: str, legacy_team_id: int) -> None:
     """
     Adds `team_id INTEGER NOT NULL` to `table` if it doesn't already
@@ -421,6 +444,70 @@ def _migrate_add_team_id_column(conn: sqlite3.Connection, table: str, legacy_tea
     if "team_id" not in existing_columns:
         conn.execute(f"ALTER TABLE {table} ADD COLUMN team_id INTEGER NOT NULL DEFAULT {int(legacy_team_id)}")
         conn.execute(f"CREATE INDEX IF NOT EXISTS idx_{table}_team_id ON {table}(team_id)")
+
+
+_ASSIGNMENTS_COLUMNS = (
+    "id", "target_type", "target_key", "lease_id", "discrepancy_id", "property_address",
+    "assigned_to_user_id", "assigned_by_user_id", "status", "note", "created_at", "updated_at", "team_id",
+)
+
+
+def _migrate_assignments_unique_per_team(conn: sqlite3.Connection) -> None:
+    """
+    assignments was UNIQUE(target_type, target_key). For target_type
+    'property' the key is the normalized address, so two teams
+    assigning the same building collided on ONE row: the second team's
+    upsert overwrote the first's assignee, while team_id stayed the
+    first team's -- a cross-team write, and the second team could never
+    see its own assignment. (Likely in practice: every team that loads
+    the Maple Ridge sample deal shares those addresses.) Rebuilds the
+    table as UNIQUE(team_id, target_type, target_key).
+
+    Same rename/create/copy/drop dance as
+    _migrate_discrepancies_table_drop_lease_fk. Runs after
+    _migrate_add_team_id_column(assignments), so team_id exists. No-op
+    once migrated, and on a fresh DB it converts the just-created table
+    the same way, so there's one code path for both.
+    """
+    row = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='assignments'").fetchone()
+    if not row or "UNIQUE (team_id, target_type, target_key)" in row[0]:
+        return
+    existing = [r[1] for r in conn.execute("PRAGMA table_info(assignments)")]
+    unexpected = set(existing) - set(_ASSIGNMENTS_COLUMNS)
+    if unexpected:
+        # Fail loudly rather than silently drop a column some later
+        # migration added -- add it to _ASSIGNMENTS_COLUMNS and the
+        # CREATE below, then rerun.
+        raise RuntimeError(f"assignments has columns this migration doesn't know: {sorted(unexpected)}")
+    cols = ", ".join(c for c in _ASSIGNMENTS_COLUMNS if c in existing)
+    conn.execute("PRAGMA foreign_keys = OFF")
+    conn.execute("ALTER TABLE assignments RENAME TO assignments_pre_team_unique")
+    conn.execute("""
+        CREATE TABLE assignments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            target_type TEXT NOT NULL,
+            target_key TEXT NOT NULL,
+            lease_id INTEGER,
+            discrepancy_id INTEGER,
+            property_address TEXT,
+            assigned_to_user_id INTEGER NOT NULL,
+            assigned_by_user_id INTEGER NOT NULL,
+            status TEXT NOT NULL DEFAULT 'assigned',
+            note TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            team_id INTEGER NOT NULL,
+            UNIQUE (team_id, target_type, target_key),
+            FOREIGN KEY (assigned_to_user_id) REFERENCES users(id),
+            FOREIGN KEY (assigned_by_user_id) REFERENCES users(id)
+        )
+    """)
+    conn.execute(f"INSERT INTO assignments ({cols}) SELECT {cols} FROM assignments_pre_team_unique")
+    conn.execute("DROP TABLE assignments_pre_team_unique")
+    # Index names travel with a renamed table, so recreate them only now.
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_assignments_assigned_to ON assignments(assigned_to_user_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_assignments_team_id ON assignments(team_id)")
+    conn.execute("PRAGMA foreign_keys = ON")
 
 
 def _seed_first_admin_user(conn: sqlite3.Connection) -> None:
@@ -739,6 +826,7 @@ def init_db() -> None:
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_assignments_assigned_to ON assignments(assigned_to_user_id)")
         _migrate_add_team_id_column(conn, "assignments", legacy_team_id)
+        _migrate_assignments_unique_per_team(conn)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS assistant_conversations (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -912,6 +1000,7 @@ def init_db() -> None:
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_training_rounds_created_at ON training_rounds(created_at)")
         _migrate_add_team_id_column(conn, "training_rounds", legacy_team_id)
+        _migrate_scope_natural_keys_by_team(conn)
 
         # ---- Hardening pass (perf): indexes for lookups that were
         # full-table-scanning. SQLite does NOT auto-index a plain
@@ -1162,7 +1251,7 @@ def supersede_lease(lease_id: int) -> bool:
         conn.close()
 
 
-def get_lease_version_chain(lease_id: int) -> List[Dict[str, Any]]:
+def get_lease_version_chain(lease_id: int, team_id: int) -> List[Dict[str, Any]]:
     """
     Every version of this lease, oldest first, regardless of which
     version id was passed in -- walks supersedes_lease_id backward to
@@ -1170,10 +1259,15 @@ def get_lease_version_chain(lease_id: int) -> List[Dict[str, Any]]:
     later resubmission, so asking about v1, v2, or the current version
     all return the identical full chain. A lease with no resubmission
     history returns a list of exactly one (itself).
+
+    team_id is required (no default) and every step of the walk is
+    filtered by it: another team's lease id returns [], same as a
+    nonexistent one. Required rather than optional so a caller that
+    forgets it fails loudly (TypeError) instead of reading across teams.
     """
     conn = get_connection()
     try:
-        current = conn.execute("SELECT * FROM leases WHERE id = ?", (lease_id,)).fetchone()
+        current = conn.execute("SELECT * FROM leases WHERE id = ? AND team_id = ?", (lease_id, team_id)).fetchone()
         if current is None:
             return []
         current = dict(current)
@@ -1181,7 +1275,7 @@ def get_lease_version_chain(lease_id: int) -> List[Dict[str, Any]]:
         # Walk backward to the root (v1).
         node = current
         while node.get("supersedes_lease_id") is not None:
-            prior = conn.execute("SELECT * FROM leases WHERE id = ?", (node["supersedes_lease_id"],)).fetchone()
+            prior = conn.execute("SELECT * FROM leases WHERE id = ? AND team_id = ?", (node["supersedes_lease_id"], team_id)).fetchone()
             if prior is None:
                 break
             node = dict(prior)
@@ -1191,7 +1285,7 @@ def get_lease_version_chain(lease_id: int) -> List[Dict[str, Any]]:
         # current end of the chain.
         chain_rows = [node]
         while True:
-            nxt = conn.execute("SELECT * FROM leases WHERE supersedes_lease_id = ?", (chain_rows[-1]["id"],)).fetchone()
+            nxt = conn.execute("SELECT * FROM leases WHERE supersedes_lease_id = ? AND team_id = ?", (chain_rows[-1]["id"], team_id)).fetchone()
             if nxt is None:
                 break
             chain_rows.append(dict(nxt))
@@ -1489,11 +1583,11 @@ def mark_field_verified(
         conn.close()
 
 
-def get_lease_field_edits(lease_id: Optional[int] = None, field_name: Optional[str] = None, task_id: Optional[int] = None) -> List[Dict[str, Any]]:
-    """Oldest first -- a correction history reads top-to-bottom like a timeline, same convention as get_discrepancy_resolutions. Any combination of filters may be applied together; at least one should normally be given or this returns every edit ever made across the whole portfolio."""
+def get_lease_field_edits(team_id: int, lease_id: Optional[int] = None, field_name: Optional[str] = None, task_id: Optional[int] = None) -> List[Dict[str, Any]]:
+    """Oldest first -- a correction history reads top-to-bottom like a timeline, same convention as get_discrepancy_resolutions. Always scoped to one team: team_id is required, because an unscoped call used to return every team's edits. The other filters narrow further and may be combined."""
     conn = get_connection()
     try:
-        clauses, params = [], []
+        clauses, params = ["team_id = ?"], [team_id]
         if lease_id is not None:
             clauses.append("lease_id = ?")
             params.append(lease_id)
@@ -1520,11 +1614,11 @@ def get_lease_field_edits(lease_id: Optional[int] = None, field_name: Optional[s
         conn.close()
 
 
-def get_lease_field_edit(edit_id: int) -> Optional[Dict[str, Any]]:
+def get_lease_field_edit(edit_id: int, team_id: int) -> Optional[Dict[str, Any]]:
     """Single edit by id, decoded -- what api.py's undo route checks eligibility against (age window, whether a newer edit has superseded it, whether the task it happened under has since completed) before calling revert_lease_field_edit."""
     conn = get_connection()
     try:
-        row = conn.execute("SELECT * FROM lease_field_edits WHERE id = ?", (edit_id,)).fetchone()
+        row = conn.execute("SELECT * FROM lease_field_edits WHERE id = ? AND team_id = ?", (edit_id, team_id)).fetchone()
         if row is None:
             return None
         d = dict(row)
@@ -1537,7 +1631,7 @@ def get_lease_field_edit(edit_id: int) -> Optional[Dict[str, Any]]:
         conn.close()
 
 
-def revert_lease_field_edit(edit_id: int, reverted_by: str, reverted_by_email: Optional[str] = None) -> Optional[Dict[str, Any]]:
+def revert_lease_field_edit(edit_id: int, team_id: int, reverted_by: str, reverted_by_email: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """
     Undoes one specific field edit: restores the field on its lease row
     to `old_value` (the value it held right before that edit), marks
@@ -1555,17 +1649,20 @@ def revert_lease_field_edit(edit_id: int, reverted_by: str, reverted_by_email: O
     and just performs the revert.
 
     Returns the restored field entry (old_value), or None if edit_id
-    or its lease no longer exist.
+    or its lease no longer exist -- or belong to another team. team_id
+    is enforced here as well as in the route (defense in depth: this
+    function writes to a lease, so it must never touch another team's
+    row even if a future caller skips the route-level check).
     """
     conn = get_connection()
     try:
-        row = conn.execute("SELECT * FROM lease_field_edits WHERE id = ?", (edit_id,)).fetchone()
+        row = conn.execute("SELECT * FROM lease_field_edits WHERE id = ? AND team_id = ?", (edit_id, team_id)).fetchone()
         if row is None:
             return None
         edit = dict(row)
         old_value = json.loads(edit["old_value"])
 
-        lease_row = conn.execute("SELECT extracted_fields FROM leases WHERE id = ?", (edit["lease_id"],)).fetchone()
+        lease_row = conn.execute("SELECT extracted_fields FROM leases WHERE id = ? AND team_id = ?", (edit["lease_id"], team_id)).fetchone()
         if lease_row is None:
             return None
         fields = json.loads(lease_row["extracted_fields"])
@@ -1573,13 +1670,15 @@ def revert_lease_field_edit(edit_id: int, reverted_by: str, reverted_by_email: O
         fields[edit["field_name"]] = old_value
 
         now = datetime.now(timezone.utc).isoformat()
-        conn.execute("UPDATE leases SET extracted_fields = ? WHERE id = ?", (json.dumps(fields), edit["lease_id"]))
-        conn.execute("UPDATE lease_field_edits SET reverted_at = ? WHERE id = ?", (now, edit_id))
+        conn.execute("UPDATE leases SET extracted_fields = ? WHERE id = ? AND team_id = ?", (json.dumps(fields), edit["lease_id"], team_id))
+        conn.execute("UPDATE lease_field_edits SET reverted_at = ? WHERE id = ? AND team_id = ?", (now, edit_id, team_id))
+        # team_id written explicitly: without it the revert's audit row
+        # fell back to the column's migration default (the Legacy team).
         conn.execute(
             "INSERT INTO lease_field_edits (lease_id, field_name, old_value, new_value, edited_by, "
-            "edited_by_email, note, task_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "edited_by_email, note, task_id, created_at, team_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (edit["lease_id"], edit["field_name"], json.dumps(current_value), json.dumps(old_value),
-             reverted_by, reverted_by_email, f"Undo of edit #{edit_id}", edit["task_id"], now),
+             reverted_by, reverted_by_email, f"Undo of edit #{edit_id}", edit["task_id"], now, team_id),
         )
         conn.commit()
         return old_value
@@ -2533,7 +2632,7 @@ def upsert_assignment(
             INSERT INTO assignments (target_type, target_key, lease_id, discrepancy_id, property_address,
                 assigned_to_user_id, assigned_by_user_id, status, note, created_at, updated_at, team_id)
             VALUES (?, ?, ?, ?, ?, ?, ?, 'assigned', ?, ?, ?, ?)
-            ON CONFLICT(target_type, target_key) DO UPDATE SET
+            ON CONFLICT(team_id, target_type, target_key) DO UPDATE SET
                 assigned_to_user_id = excluded.assigned_to_user_id,
                 assigned_by_user_id = excluded.assigned_by_user_id,
                 status = 'assigned',
@@ -2545,7 +2644,7 @@ def upsert_assignment(
         )
         conn.commit()
         row = conn.execute(
-            "SELECT id FROM assignments WHERE target_type = ? AND target_key = ?", (target_type, target_key)
+            "SELECT id FROM assignments WHERE team_id = ? AND target_type = ? AND target_key = ?", (team_id, target_type, target_key)
         ).fetchone()
         return row["id"]
     finally:
@@ -2583,18 +2682,18 @@ def get_assignment(assignment_id: int, team_id: int) -> Optional[Dict[str, Any]]
         conn.close()
 
 
-def get_assignment_for_target(target_type: str, target_key: str) -> Optional[Dict[str, Any]]:
+def get_assignment_for_target(target_type: str, target_key: str, team_id: int) -> Optional[Dict[str, Any]]:
     conn = get_connection()
     try:
         row = conn.execute(
-            "SELECT * FROM assignments WHERE target_type = ? AND target_key = ?", (target_type, target_key)
+            "SELECT * FROM assignments WHERE team_id = ? AND target_type = ? AND target_key = ?", (team_id, target_type, target_key)
         ).fetchone()
         return dict(row) if row else None
     finally:
         conn.close()
 
 
-def get_assignments_for_targets(target_type: str, target_keys: List[str]) -> Dict[str, Dict[str, Any]]:
+def get_assignments_for_targets(target_type: str, target_keys: List[str], team_id: int) -> Dict[str, Dict[str, Any]]:
     """Batched version of get_assignment_for_target for a whole list of keys at once -- {target_key: assignment}, only for keys that actually have one. Mirrors get_discrepancies_by_ids -- used to annotate a whole lease/discrepancy list in one query, not N+1."""
     if not target_keys:
         return {}
@@ -2602,8 +2701,8 @@ def get_assignments_for_targets(target_type: str, target_keys: List[str]) -> Dic
     try:
         placeholders = ",".join("?" for _ in target_keys)
         rows = conn.execute(
-            f"SELECT * FROM assignments WHERE target_type = ? AND target_key IN ({placeholders})",
-            [target_type] + list(target_keys),
+            f"SELECT * FROM assignments WHERE team_id = ? AND target_type = ? AND target_key IN ({placeholders})",
+            [team_id, target_type] + list(target_keys),
         ).fetchall()
         return {row["target_key"]: dict(row) for row in rows}
     finally:
@@ -3450,6 +3549,7 @@ def upsert_discrepancy(
                 lease_id = excluded.lease_id,
                 related_lease_id = excluded.related_lease_id,
                 last_seen_at = excluded.last_seen_at
+            WHERE discrepancies.team_id = excluded.team_id
             """,
             (discrepancy_type, natural_key, lease_id, related_lease_id, category, field, severity, message, json.dumps(details), estimated_dollar_impact, now, now, team_id),
         )
@@ -3458,7 +3558,13 @@ def upsert_discrepancy(
         # the row is now guaranteed to exist under this natural_key
         # (the race this fixes was in the OLD check-then-act pattern,
         # not here).
-        row = conn.execute("SELECT id FROM discrepancies WHERE natural_key = ?", (natural_key,)).fetchone()
+        # Scoped by team: natural_key is globally UNIQUE, so if another
+        # team ever owned this key the upsert above changed nothing (its
+        # WHERE clause only updates same-team rows) and this must not
+        # hand back the other team's row id.
+        row = conn.execute("SELECT id FROM discrepancies WHERE natural_key = ? AND team_id = ?", (natural_key, team_id)).fetchone()
+        if row is None:
+            raise RuntimeError(f"natural_key {natural_key!r} belongs to another team; keys must be team-scoped")
         return row["id"]
     finally:
         conn.close()
@@ -3507,6 +3613,7 @@ def upsert_discrepancies_bulk(items: List[Dict[str, Any]], team_id: int) -> Dict
                     lease_id = excluded.lease_id,
                     related_lease_id = excluded.related_lease_id,
                     last_seen_at = excluded.last_seen_at
+                WHERE discrepancies.team_id = excluded.team_id
                 """,
                 (
                     item["discrepancy_type"], item["natural_key"], item.get("lease_id"), item.get("related_lease_id"),
@@ -3519,7 +3626,7 @@ def upsert_discrepancies_bulk(items: List[Dict[str, Any]], team_id: int) -> Dict
         natural_keys = [item["natural_key"] for item in items]
         placeholders = ",".join("?" for _ in natural_keys)
         rows = conn.execute(
-            f"SELECT id, natural_key FROM discrepancies WHERE natural_key IN ({placeholders})", natural_keys
+            f"SELECT id, natural_key FROM discrepancies WHERE natural_key IN ({placeholders}) AND team_id = ?", natural_keys + [team_id]
         ).fetchall()
         return {row["natural_key"]: row["id"] for row in rows}
     finally:
@@ -3569,10 +3676,10 @@ def _discrepancy_row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
     return d
 
 
-def get_discrepancy_by_natural_key(natural_key: str) -> Optional[Dict[str, Any]]:
+def get_discrepancy_by_natural_key(natural_key: str, team_id: int) -> Optional[Dict[str, Any]]:
     conn = get_connection()
     try:
-        row = conn.execute("SELECT * FROM discrepancies WHERE natural_key = ?", (natural_key,)).fetchone()
+        row = conn.execute("SELECT * FROM discrepancies WHERE natural_key = ? AND team_id = ?", (natural_key, team_id)).fetchone()
         return _discrepancy_row_to_dict(row) if row else None
     finally:
         conn.close()
@@ -3964,24 +4071,27 @@ def upsert_alert(
                 lease_id = excluded.lease_id,
                 status = CASE WHEN alerts.status = 'auto_resolved' THEN 'active' ELSE alerts.status END,
                 last_seen_at = excluded.last_seen_at
+            WHERE alerts.team_id = excluded.team_id
             """,
             (alert_type, natural_key, lease_id, severity, title, message, json.dumps(details), now, now, team_id),
         )
         conn.commit()
-        row = conn.execute("SELECT id FROM alerts WHERE natural_key = ?", (natural_key,)).fetchone()
+        row = conn.execute("SELECT id FROM alerts WHERE natural_key = ? AND team_id = ?", (natural_key, team_id)).fetchone()
+        if row is None:
+            raise RuntimeError(f"natural_key {natural_key!r} belongs to another team; keys must be team-scoped")
         return row["id"]
     finally:
         conn.close()
 
 
-def get_alerts_existing_natural_keys(natural_keys: List[str]) -> set:
+def get_alerts_existing_natural_keys(natural_keys: List[str], team_id: int) -> set:
     """Which of these natural_keys already have an alert row -- used to compute created-vs-refreshed counts around upsert_alerts_bulk without a get_alert_by_natural_key round trip per candidate."""
     if not natural_keys:
         return set()
     conn = get_connection()
     try:
         placeholders = ",".join("?" for _ in natural_keys)
-        rows = conn.execute(f"SELECT natural_key FROM alerts WHERE natural_key IN ({placeholders})", natural_keys).fetchall()
+        rows = conn.execute(f"SELECT natural_key FROM alerts WHERE natural_key IN ({placeholders}) AND team_id = ?", natural_keys + [team_id]).fetchall()
         return {row["natural_key"] for row in rows}
     finally:
         conn.close()
@@ -4017,6 +4127,7 @@ def upsert_alerts_bulk(items: List[Dict[str, Any]], team_id: int) -> None:
                     lease_id = excluded.lease_id,
                     status = CASE WHEN alerts.status = 'auto_resolved' THEN 'active' ELSE alerts.status END,
                     last_seen_at = excluded.last_seen_at
+                WHERE alerts.team_id = excluded.team_id
                 """,
                 (
                     item["alert_type"], item["natural_key"], item.get("lease_id"), item["severity"],

@@ -19,6 +19,7 @@ from openpyxl import load_workbook
 
 from app.api import app
 from app import database
+from _session_users import sync_session_user
 from app.portfolio import FIELD_NAMES, compute_rent_roll_reconciliation
 from app.discrepancies import sync_rent_roll_reconciliation
 from app.investment_memo import build_investment_memo_data, generate_investment_memo_pdf, generate_investment_memo_excel
@@ -49,6 +50,7 @@ def _authed_client():
         sess["email"] = "test-analyst@example.com"
         sess["name"] = "Test Analyst"
         sess["role"] = "analyst"
+        sync_session_user(sess)
     return client
 
 

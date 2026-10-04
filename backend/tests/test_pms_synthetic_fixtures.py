@@ -35,6 +35,9 @@ from app.rent_roll_import import parse_csv_rent_roll, parse_xlsx_rent_roll
 FIXTURES_DIR = os.path.dirname(__file__)
 
 
+from _session_users import sync_session_user
+
+
 def _read(filename):
     with open(os.path.join(FIXTURES_DIR, filename), "rb") as f:
         return f.read()
@@ -236,6 +239,7 @@ def test_synthetic_fixtures_round_trip_through_the_real_import_route():
         sess["email"] = "test-analyst@example.com"
         sess["name"] = "Test Analyst"
         sess["role"] = "analyst"
+        sync_session_user(sess)
     created_ids = []
     try:
         for filename, property_address, expected_count in [

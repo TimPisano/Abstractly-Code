@@ -19,6 +19,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 from app.api import app
 from app import database
+from _session_users import sync_session_user
 from app.auth import hash_password
 from app import tasks as tasks_module
 from app.portfolio import FIELD_NAMES
@@ -40,6 +41,7 @@ def _client_as(role, email, name, user_id):
         sess["email"] = email
         sess["name"] = name
         sess["role"] = role
+        sync_session_user(sess)
     return client
 
 
@@ -114,7 +116,7 @@ def test_update_lease_field_mutates_extracted_fields_and_logs_edit():
         assert lease["extracted_fields"]["rent_amount"]["value"] == "$5,000.00", \
             "the actual lease record must reflect the edit, not just the response"
 
-        edits = database.get_lease_field_edits(lease_id=lease_id)
+        edits = database.get_lease_field_edits(1, lease_id=lease_id)
         assert len(edits) == 1
         edit = edits[0]
         assert edit["field_name"] == "rent_amount"
@@ -163,7 +165,7 @@ def test_mark_field_verified_preserves_value_and_source():
         assert new_entry["confidence"] == "high"
         assert new_entry["manually_verified"] is True
 
-        edits = database.get_lease_field_edits(lease_id=lease_id)
+        edits = database.get_lease_field_edits(1, lease_id=lease_id)
         assert len(edits) == 1
         assert edits[0]["field_name"] == "tenant"
         assert edits[0]["edited_by"] == "Alice"
@@ -197,7 +199,7 @@ def test_mark_field_verified_no_value_is_a_noop():
         lease_id = _make_lease()  # every field not-found
         result = database.mark_field_verified(lease_id, "rent_amount", edited_by="Alice", team_id=1)
         assert result is None, "confirming a genuinely absent field isn't what this is for"
-        assert database.get_lease_field_edits(lease_id=lease_id) == []
+        assert database.get_lease_field_edits(1, lease_id=lease_id) == []
     finally:
         os.unlink(db_path)
     print("✓ test_mark_field_verified_no_value_is_a_noop: PASS")
@@ -220,10 +222,10 @@ def test_get_lease_field_edits_filters_and_ordering():
         database.update_lease_field(lease_id, "cam_charges", "$2", edited_by="A", team_id=1)
         database.update_lease_field(lease_id, "rent_amount", "$3", edited_by="A", team_id=1)
 
-        all_edits = database.get_lease_field_edits(lease_id=lease_id)
+        all_edits = database.get_lease_field_edits(1, lease_id=lease_id)
         assert [e["new_value"]["value"] for e in all_edits] == ["$1", "$2", "$3"], "oldest first"
 
-        rent_only = database.get_lease_field_edits(lease_id=lease_id, field_name="rent_amount")
+        rent_only = database.get_lease_field_edits(1, lease_id=lease_id, field_name="rent_amount")
         assert [e["new_value"]["value"] for e in rent_only] == ["$1", "$3"]
     finally:
         os.unlink(db_path)
