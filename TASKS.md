@@ -66,8 +66,16 @@ existed) — resolve those by taking **main's** TASKS.md, not the branch's.
 | `feature/team-isolation` | `~/dev/projects/abstractly-teams` | +5 / 0 | **Ready to merge.** Pushed `fe520c9`. Re-reviewed 2026-10-04: reviewer MERGE, security-auditor MERGE (every original attack re-run and now fails), suite 79/79 incl. 14 new regression tests in `test_team_isolation_fixes.py` (12 fail on `b75b947`). Fixed: undo-edit cross-team write; field-edit/version-chain helpers require team_id; `/teams` + `/waitlist` owner-only; per-team natural keys (migration) for tenant-concentration alerts and T-12 discrepancies; assignments UNIQUE per team (table rebuild); live sessions re-read user/team per request; owner account protected from team admins; root report moved to `docs/reports/`. **Merge order / conflicts:** before `fix/concession-detection` (1 conflict, `test_demo_deal_golden.py`); `feature/deal-assistant` must rebase after (3 trivial `api.py` conflicts + its session-faking tests need `sync_session_user`); `TASKS.md` conflicts (take main's). **Follow-up (not blocking):** bind tokens to the user's email so an old token can't act as a different user after a deploy-time DB wipe (`auth._live_user`). |
 | `feature/loan-underwriting` | `~/dev/projects/abstractly-loan` | +2 / −16 | ~19 uncommitted files (`api.py`, `database.py`, tests, plan); not pushed. Feature-flagged off. Merge **after** team isolation (its plan defers all tenancy to it). Another session may be active — don't touch. |
 | `feature/deal-assistant` | `~/dev/projects/abstractly-assistant` | 0 / −7 | Worktree only, nothing built. Not started. |
+| `feature/calendly-booking` | `~/dev/projects/abstractly-calendly` | +1 / 0 | Branched off `7ac879b` 2026-10-04. Calendly popup on all 9 Book-a-Demo CTAs (`index.html` ×5, `pricing.html` ×4), keeping `href="#book-demo"` as a fallback so no CTA can become a dead click. **Plan written, awaiting user approval** — `docs/plans/feature-calendly-booking.md`. Key finding: the task as given would have shipped a popup that never opens — all 3 frontends run `default-src 'self'` with no external hosts, so **5** CSP directives in `render.yaml` block Calendly (script, style, frame, img, font). Prior art: none (no Calendly anywhere, any branch, any stash). Will collide with `feature/pricing-page` / `feature/landing-positioning`, which both rewrite the same two files. |
 
 ### Handoff blocks
+
+#### feature/calendly-booking
+- Worktree: `~/dev/projects/abstractly-calendly`
+- Goal: every Book a Demo CTA opens the Calendly popup in place, with the existing demo form as fallback.
+- Loop step: 3 — plan written, waiting for user approval
+- Last update: 2026-10-04 by start-task
+- Next action: user reviews `docs/plans/feature-calendly-booking.md` and answers its 3 open questions (form's fate, merge order vs. the hero branches, booking URL slug)
 <!-- One block per In-progress task, written by /start-task and
      /session-handoff, read by /resume-task. Keep them current. -->
 
