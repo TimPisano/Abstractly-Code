@@ -83,6 +83,12 @@ def _reset_rate_limit_state_for_tests():
 
 FROM_DISPLAY_NAME = "Tim Pisano — Abstractly"
 
+# Where replies go, regardless of which mailbox EMAIL_USER happens to be.
+# "From" has to stay EMAIL_USER (Gmail's SMTP rejects a From it doesn't own),
+# so Reply-To is what actually routes a customer's reply to the public
+# contact address shown in the site footer.
+REPLY_TO_EMAIL = "tim@getabstractly.com"
+
 # Landing page's luxury palette (see frontend/landing.css), reused here
 # so the confirmation email doesn't feel like a different product.
 _COLOR_BACKGROUND = "#f6f3ec"
@@ -125,6 +131,7 @@ def _send(to_email: str, subject: str, text_body: str, html_body: str) -> bool:
     message = MIMEMultipart("alternative")
     message["Subject"] = subject
     message["From"] = f"{FROM_DISPLAY_NAME} <{email_user}>"
+    message["Reply-To"] = REPLY_TO_EMAIL
     message["To"] = to_email
     message.attach(MIMEText(text_body, "plain"))
     message.attach(MIMEText(html_body, "html"))
