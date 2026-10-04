@@ -13,18 +13,20 @@ All output is computed bottom-up from the unit inventory defined here
 and README.md can never silently drift out of sync with each other.
 Run: venv/bin/python benchmark_data/demo_deal/generate_demo_deal.py
 """
-import csv
 import json
 import os
 import random
 from datetime import date
 
 from openpyxl import Workbook
-from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
-from reportlab.lib.pagesizes import letter
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import letter, landscape
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
 from reportlab.pdfgen import canvas
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 OUT_DIR = os.path.dirname(os.path.abspath(__file__))
 LEASE_DIR = os.path.join(OUT_DIR, "leases")
@@ -37,6 +39,12 @@ OWNER_ENTITY = "Maple Ridge Apartments Owner, LLC"
 MANAGEMENT_CO = "Cordant Residential Management, LLC"
 
 RENT_ROLL_AS_OF = date(2026, 8, 31)
+# When the snapshot was actually pulled/printed -- a couple of days after
+# the as-of cutoff, like a real PMS month-end rent roll run once the
+# books close. Kept as a fixed constant (not date.today()) so the file
+# stays byte-reproducible on a re-run, matching this generator's
+# determinism contract (see module docstring / README "Regenerating").
+RENT_ROLL_GENERATED = date(2026, 9, 2)
 T12_MONTHS = [
     (2025, 9), (2025, 10), (2025, 11), (2025, 12),
     (2026, 1), (2026, 2), (2026, 3), (2026, 4),
@@ -373,45 +381,244 @@ def build_units():
 
 
 # ----------------------------------------------------------------------
-# Rent roll (AppFolio export style)
+# Rent roll: a clean, professional PMS-style export (xlsx + a matching
+# print-ready landscape PDF). Deliberately no per-row "Property" column
+# -- a single-property PMS export states the building once, in the
+# header block, not per row (see README's "set the uploader's base
+# property address" instructions, which already assume exactly this).
 # ----------------------------------------------------------------------
-def _rent_roll_rows(units, unit_ids):
-    rows = []
-    for unit_id in unit_ids:
-        u = units[unit_id]
-        bed_bath = {"studio": "Studio/1BA", "1br": "1BR/1BA", "2br": "2BR/2BA", "3br": "3BR/2BA"}[u["unit_type"]]
-        if u["status"] == "vacant":
-            rows.append([
-                PROPERTY_ADDRESS, unit_id, bed_bath, "VACANT", "Vacant",
-                str(u["sqft"]), f"{u['market_rent']:.2f}", "", "", "", "",
-            ])
-        else:
-            rows.append([
-                PROPERTY_ADDRESS, unit_id, bed_bath, u["tenant"], "Current",
-                str(u["sqft"]), f"{u['market_rent']:.2f}", f"{u['rent_roll_rent']:.2f}",
-                f"{u['rent_roll_rent']:.2f}",
-                _fmt_date_mdY(u["lease_start"]),
-                _fmt_date_mdY(u["rr_lease_to"]) if u["rr_lease_to"] else "",
-            ])
-    return rows
-
-
-RENT_ROLL_HEADERS = [
-    "Property", "Unit", "Unit Type", "Tenant", "Status", "Unit SF",
-    "Market Rent", "Rent Charge", "Deposit", "Lease From", "Lease To",
+RENT_ROLL_COLUMNS = [
+    "Unit", "Unit Type", "Sq Ft", "Tenant", "Status", "Move-In",
+    "Lease Start", "Lease End", "Market Rent", "Lease Rent",
+    "Concessions", "Other Charges", "Total Monthly", "Deposit", "Balance",
 ]
 
+_BED_BATH_LABEL = {"studio": "Studio/1BA", "1br": "1BR/1BA", "2br": "2BR/2BA", "3br": "3BR/2BA"}
 
-def write_rent_roll_csv(path, units, unit_ids, title_as_of):
-    with open(path, "w", newline="") as f:
-        w = csv.writer(f)
-        w.writerow([PROPERTY_NAME])
-        w.writerow(["Rent Roll (FABRICATED DEMO DATA -- not a real property)"])
-        w.writerow([f"As of {title_as_of.strftime('%m/%d/%Y')}"])
-        w.writerow([])
-        w.writerow(RENT_ROLL_HEADERS)
-        for row in _rent_roll_rows(units, unit_ids):
-            w.writerow(row)
+# 0-indexed column positions within RENT_ROLL_COLUMNS, used by both the
+# xlsx and PDF writers so number/date formatting stays in exactly one
+# place.
+_RR_DATE_COLS = {5, 6, 7}  # Move-In, Lease Start, Lease End
+_RR_MONEY_COLS = {8, 9, 10, 11, 12, 13, 14}  # Market Rent .. Balance
+_RR_SQFT_COL = 2
+
+
+def _rent_roll_raw_row(u):
+    """
+    One unit's rent-roll row as raw Python values (real date/float
+    objects, not pre-formatted strings) in RENT_ROLL_COLUMNS order --
+    shared by both the xlsx writer (keeps real typed cells) and the PDF
+    writer (formats them for display). "Concessions"/"Other Charges"/
+    "Balance" are always 0.00 and "Move-In" always equals the lease
+    start date -- this demo deal doesn't model any of those as varying
+    per unit, and critically, leaving Concessions at 0.00 rather than
+    blank is itself the point of the concession_missing planted issue
+    (see README): on its face this looks like a complete, populated
+    column, but it's wrong for the 3 units whose lease actually grants
+    a concession the rent roll never notes.
+    """
+    bed_bath = _BED_BATH_LABEL[u["unit_type"]]
+    if u["status"] == "vacant":
+        return [
+            u["unit_id"], bed_bath, u["sqft"], "VACANT", "Vacant",
+            None, None, None, u["market_rent"], None, None, None, None, None, None,
+        ]
+    return [
+        u["unit_id"], bed_bath, u["sqft"], u["tenant"], "Occupied",
+        u["lease_start"], u["lease_start"], u["rr_lease_to"],
+        u["market_rent"], u["rent_roll_rent"],
+        0.0, 0.0, round(u["rent_roll_rent"], 2), u["rent_roll_rent"], 0.0,
+    ]
+
+
+def _rent_roll_summary(units, unit_ids):
+    occupied = [units[uid] for uid in unit_ids if units[uid]["status"] == "occupied"]
+    vacant = [units[uid] for uid in unit_ids if units[uid]["status"] == "vacant"]
+    total = len(unit_ids)
+    total_market_rent = round(sum(units[uid]["market_rent"] for uid in unit_ids), 2)
+    occupied_market_rent = sum(u["market_rent"] for u in occupied)
+    total_lease_rent = round(sum(u["rent_roll_rent"] for u in occupied), 2)
+    loss_to_lease = round(occupied_market_rent - total_lease_rent, 2)
+    return {
+        "total_units": total,
+        "occupied": len(occupied),
+        "vacant": len(vacant),
+        "physical_occupancy_pct": round(len(occupied) / total * 100, 1) if total else 0.0,
+        "total_market_rent": total_market_rent,
+        "total_lease_rent": total_lease_rent,
+        "loss_to_lease": loss_to_lease,
+    }
+
+
+_RR_COL_WIDTHS = [9, 11, 8, 20, 10, 11, 12, 12, 12, 12, 12, 13, 13, 11, 11]
+_RR_MONEY_FMT = '"$"#,##0.00'
+_RR_DATE_FMT = "mm/dd/yyyy"
+_RR_THIN = Side(style="thin", color="B7B7B7")
+_RR_BORDER = Border(left=_RR_THIN, right=_RR_THIN, top=_RR_THIN, bottom=_RR_THIN)
+_RR_HEADER_FILL = PatternFill(start_color="D9E1F2", end_color="D9E1F2", fill_type="solid")
+
+
+def write_rent_roll_xlsx(path, units, unit_ids, as_of, generated):
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Rent Roll"
+
+    ws["A1"] = PROPERTY_NAME
+    ws["A1"].font = Font(bold=True, size=16)
+    ws["A2"] = PROPERTY_ADDRESS
+    ws["A2"].font = Font(size=11)
+    ws["A3"] = "Rent Roll"
+    ws["A3"].font = Font(bold=True, size=13)
+    ws["A4"] = "FABRICATED DEMO DATA -- not a real property"
+    ws["A4"].font = Font(italic=True, size=9, color="808080")
+    ws["A5"] = f"As of {as_of.strftime('%m/%d/%Y')}"
+    ws["A6"] = f"Generated {generated.strftime('%m/%d/%Y')}"
+
+    header_row = 7
+    for col, name in enumerate(RENT_ROLL_COLUMNS, start=1):
+        c = ws.cell(row=header_row, column=col, value=name)
+        c.font = Font(bold=True)
+        c.fill = _RR_HEADER_FILL
+        c.border = _RR_BORDER
+        c.alignment = Alignment(horizontal="center", vertical="center")
+
+    row = header_row + 1
+    for unit_id in unit_ids:
+        values = _rent_roll_raw_row(units[unit_id])
+        for col_idx, value in enumerate(values):
+            c = ws.cell(row=row, column=col_idx + 1, value=value)
+            c.border = _RR_BORDER
+            if col_idx in _RR_DATE_COLS:
+                c.number_format = _RR_DATE_FMT
+                c.alignment = Alignment(horizontal="right")
+            elif col_idx in _RR_MONEY_COLS:
+                c.number_format = _RR_MONEY_FMT
+                c.alignment = Alignment(horizontal="right")
+            elif col_idx == _RR_SQFT_COL:
+                c.number_format = "#,##0"
+                c.alignment = Alignment(horizontal="right")
+            else:
+                c.alignment = Alignment(horizontal="left")
+        row += 1
+    last_data_row = row - 1
+
+    row += 1  # blank spacer row before the summary block
+    summary = _rent_roll_summary(units, unit_ids)
+    ws.cell(row=row, column=1, value="Summary").font = Font(bold=True, size=11)
+    row += 1
+    summary_lines = [
+        ("Total Units", summary["total_units"], None),
+        ("Occupied", summary["occupied"], None),
+        ("Vacant", summary["vacant"], None),
+        ("Physical Occupancy", summary["physical_occupancy_pct"] / 100, "0.0%"),
+        ("Total Market Rent (Monthly)", summary["total_market_rent"], _RR_MONEY_FMT),
+        ("Total Lease Rent (Monthly)", summary["total_lease_rent"], _RR_MONEY_FMT),
+        ("Loss to Lease (Monthly)", summary["loss_to_lease"], _RR_MONEY_FMT),
+    ]
+    for label, value, number_format in summary_lines:
+        ws.cell(row=row, column=1, value=label).font = Font(bold=True)
+        value_cell = ws.cell(row=row, column=2, value=value)
+        if number_format:
+            value_cell.number_format = number_format
+        row += 1
+
+    for col_idx, width in enumerate(_RR_COL_WIDTHS, start=1):
+        ws.column_dimensions[get_column_letter(col_idx)].width = width
+
+    ws.freeze_panes = f"A{header_row + 1}"
+    wb.save(path)
+
+
+def _fmt_rent_roll_cell(col_idx, value):
+    if value is None or value == "":
+        return ""
+    if col_idx in _RR_DATE_COLS:
+        return _fmt_date_mdY(value)
+    if col_idx in _RR_MONEY_COLS:
+        return _fmt_money(value)
+    if col_idx == _RR_SQFT_COL:
+        return f"{value:,}"
+    return str(value)
+
+
+def write_rent_roll_pdf(path, units, unit_ids, as_of, generated):
+    doc = SimpleDocTemplate(
+        path, pagesize=landscape(letter),
+        leftMargin=0.4 * inch, rightMargin=0.4 * inch,
+        topMargin=0.5 * inch, bottomMargin=0.5 * inch,
+        title=f"{PROPERTY_NAME} Rent Roll",
+    )
+    styles = getSampleStyleSheet()
+    elements = [
+        Paragraph(PROPERTY_NAME, ParagraphStyle("rr_name", fontSize=16, leading=19, fontName="Helvetica-Bold")),
+        Paragraph(PROPERTY_ADDRESS, styles["Normal"]),
+        Paragraph("Rent Roll", ParagraphStyle("rr_title", fontSize=13, leading=16, fontName="Helvetica-Bold", spaceBefore=4)),
+        Paragraph("FABRICATED DEMO DATA -- not a real property", ParagraphStyle("rr_disclaimer", fontSize=8, textColor=colors.grey, fontName="Helvetica-Oblique")),
+        Paragraph(
+            f"As of {as_of.strftime('%m/%d/%Y')} &nbsp;&nbsp;|&nbsp;&nbsp; Generated {generated.strftime('%m/%d/%Y')}",
+            styles["Normal"],
+        ),
+        Spacer(1, 10),
+    ]
+
+    table_data = [RENT_ROLL_COLUMNS]
+    for unit_id in unit_ids:
+        raw = _rent_roll_raw_row(units[unit_id])
+        table_data.append([_fmt_rent_roll_cell(i, v) for i, v in enumerate(raw)])
+
+    page_width = landscape(letter)[0] - 0.8 * inch
+    # Relative weights, not pre-normalized fractions -- normalizing by
+    # their own sum here (rather than requiring them to already add up
+    # to exactly 1.0) avoids a real bug hit during review: an earlier
+    # version of these numbers summed to 1.185, not 1.0, so the table's
+    # total width came out ~19% wider than the page's content frame.
+    # Table defaults to hAlign="CENTER", so that overflow split evenly
+    # left/right -- clipping the entire "Unit" column off the left edge
+    # and most of "Balance" off the right, invisibly (no error, just a
+    # silently broken-looking PDF). Explicit hAlign="LEFT" below is a
+    # second, independent guard against the same failure mode.
+    col_weights = [0.9, 1.1, 0.75, 2.1, 1.0, 1.05, 1.05, 1.05, 1.1, 1.1, 1.1, 1.15, 1.2, 1.0, 0.95]
+    total_weight = sum(col_weights)
+    col_widths = [page_width * w / total_weight for w in col_weights]
+
+    table = Table(table_data, colWidths=col_widths, repeatRows=1, hAlign="LEFT")
+    style = [
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#D9E1F2")),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 7),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#999999")),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F3F6FB")]),
+        ("ALIGN", (_RR_SQFT_COL, 1), (_RR_SQFT_COL, -1), "RIGHT"),
+    ]
+    for col_idx in _RR_DATE_COLS | _RR_MONEY_COLS:
+        style.append(("ALIGN", (col_idx, 1), (col_idx, -1), "RIGHT"))
+    table.setStyle(TableStyle(style))
+    elements.append(table)
+    elements.append(Spacer(1, 12))
+
+    summary = _rent_roll_summary(units, unit_ids)
+    elements.append(Paragraph("Summary", ParagraphStyle("rr_summary_title", fontSize=11, fontName="Helvetica-Bold")))
+    summary_text = (
+        f"Total Units: {summary['total_units']} &nbsp;&nbsp;|&nbsp;&nbsp; "
+        f"Occupied: {summary['occupied']} &nbsp;&nbsp;|&nbsp;&nbsp; "
+        f"Vacant: {summary['vacant']} &nbsp;&nbsp;|&nbsp;&nbsp; "
+        f"Physical Occupancy: {summary['physical_occupancy_pct']:.1f}%<br/>"
+        f"Total Market Rent (Monthly): {_fmt_money(summary['total_market_rent'])} &nbsp;&nbsp;|&nbsp;&nbsp; "
+        f"Total Lease Rent (Monthly): {_fmt_money(summary['total_lease_rent'])} &nbsp;&nbsp;|&nbsp;&nbsp; "
+        f"Loss to Lease (Monthly): {_fmt_money(summary['loss_to_lease'])}"
+    )
+    elements.append(Paragraph(summary_text, styles["Normal"]))
+
+    def _draw_footer(canvas_obj, doc_obj):
+        canvas_obj.saveState()
+        canvas_obj.setFont("Helvetica", 8)
+        page_w, _ = landscape(letter)
+        canvas_obj.drawString(0.4 * inch, 0.3 * inch, f"{PROPERTY_NAME} -- Rent Roll -- FABRICATED DEMO DATA")
+        canvas_obj.drawRightString(page_w - 0.4 * inch, 0.3 * inch, f"Page {doc_obj.page}")
+        canvas_obj.restoreState()
+
+    doc.build(elements, onFirstPage=_draw_footer, onLaterPages=_draw_footer)
 
 
 # ----------------------------------------------------------------------
@@ -431,26 +638,84 @@ def _wrap(c, text, font, size, max_w):
     return lines
 
 
-def _render_pdf(path, paragraphs):
+_PDF_STYLES = {
+    # style name -> (font, size)
+    "title": ("Helvetica-Bold", 16),
+    "subtitle": ("Helvetica", 10),
+    "small": ("Helvetica-Oblique", 8),
+    "bold": ("Helvetica-Bold", 11),
+}
+
+
+def _render_pdf(path, paragraphs, footer_text=None):
+    """
+    Renders a list of paragraphs to a one-or-more-page PDF. Each entry
+    is either a plain string (normal body text, auto-bolded if it's a
+    short all-caps line -- the existing section-title convention) or a
+    `(text, style)` tuple for an explicit style from _PDF_STYLES, plus
+    two pseudo-styles with no font of their own: "rule" draws a thin
+    horizontal divider (text ignored) and "pagebreak" forces a new page
+    (text ignored) -- used to push the Exhibit A addendum onto its own
+    page regardless of how much room is left on the signature page.
+
+    `footer_text` (if given) is drawn bottom-left on every page, with
+    "Page N" bottom-right -- same page-numbering convention as the
+    rent-roll PDF export, drawn once per page via a running counter.
+    """
     c = canvas.Canvas(path, pagesize=letter)
     width, height = letter
     left, right = 1 * inch, width - 1 * inch
     max_w = right - left
+    page_num = 1
+
+    def draw_footer():
+        if not footer_text:
+            return
+        c.setFont("Helvetica", 8)
+        c.setFillGray(0.4)
+        c.drawString(left, 0.6 * inch, footer_text)
+        c.drawRightString(right, 0.6 * inch, f"Page {page_num}")
+        c.setFillGray(0)
+
     y = height - 1 * inch
-    for para in paragraphs:
-        if para == "":
+    for item in paragraphs:
+        text, style = item if isinstance(item, tuple) else (item, None)
+
+        if style == "pagebreak":
+            draw_footer()
+            c.showPage()
+            page_num += 1
+            y = height - 1 * inch
+            continue
+        if style == "rule":
+            y -= 0.05 * inch
+            c.setLineWidth(0.75)
+            c.line(left, y, right, y)
+            y -= 0.18 * inch
+            continue
+        if text == "":
             y -= 0.16 * inch
             continue
-        bold = para.isupper() and len(para) < 70
-        font = "Helvetica-Bold" if bold else "Helvetica"
-        for line in _wrap(c, para, font, 11, max_w):
-            if y < 1 * inch:
+
+        if style in _PDF_STYLES:
+            font, size = _PDF_STYLES[style]
+        elif text.isupper() and len(text) < 70:
+            font, size = "Helvetica-Bold", 11
+        else:
+            font, size = "Helvetica", 11
+
+        line_height = size * 1.35 / 72 * inch
+        for line in _wrap(c, text, font, size, max_w):
+            if y < 1.1 * inch:
+                draw_footer()
                 c.showPage()
+                page_num += 1
                 y = height - 1 * inch
-            c.setFont(font, 11)
+            c.setFont(font, size)
             c.drawString(left, y, line)
-            y -= 0.22 * inch
+            y -= line_height
         y -= 0.08 * inch
+    draw_footer()
     c.save()
 
 
@@ -471,7 +736,12 @@ def _lease_paragraphs(unit_id, u, doc):
                           - (doc["lease_start"].year * 12 + doc["lease_start"].month)) + 1)
 
     paras = [
+        (MANAGEMENT_CO, "title"),
+        (f"{PROPERTY_NAME}  |  {PROPERTY_ADDRESS}", "subtitle"),
+        "",
+        ("", "rule"),
         "TEXAS APARTMENT LEASE AGREEMENT",
+        (f"Lease Reference: Suite {unit_id}", "small"),
         "",
         f"This Lease Agreement (\"Lease\") is entered into by and between {OWNER_ENTITY} "
         f"(\"Owner\"), acting through its agent {MANAGEMENT_CO} (\"Management\"), and "
@@ -546,10 +816,74 @@ def _lease_paragraphs(unit_id, u, doc):
         "",
         f"IN WITNESS WHEREOF, the parties have executed this Lease as of {_fmt_date_long(doc['lease_start'])}.",
         "",
-        f"OWNER: {OWNER_ENTITY}, by {MANAGEMENT_CO}, as authorized agent",
-        f"RESIDENT: {u['tenant']}",
-    ]
+        ("", "rule"),
+        "",
+        "OWNER:",
+        f"{OWNER_ENTITY}",
+        f"By: {MANAGEMENT_CO}, as authorized agent",
+        "",
+        "Signature: _______________________________________        Date: _______________",
+        "",
+        "RESIDENT:",
+        f"{u['tenant']}",
+        "",
+        "Signature: _______________________________________        Date: _______________",
+        ("", "pagebreak"),
+    ] + _exhibit_a_paragraphs(unit_id)
     return paras
+
+
+def _exhibit_a_paragraphs(unit_id):
+    """
+    The Community Rules and Regulations addendum Section 12 of the
+    lease already refers to ("attached as Exhibit A") -- generic
+    boilerplate, deliberately with no dollar figures, dates, or party
+    names beyond the same generic "Resident"/"Management" terms the
+    lease body itself uses, so it can never compete with (or duplicate)
+    any of the real extracted-field values elsewhere in the document.
+    """
+    return [
+        (MANAGEMENT_CO, "title"),
+        (f"{PROPERTY_NAME}  |  {PROPERTY_ADDRESS}", "subtitle"),
+        "",
+        ("", "rule"),
+        "EXHIBIT A -- COMMUNITY RULES AND REGULATIONS",
+        (f"Suite {unit_id}  |  Attached to and made a part of the Lease Agreement referenced above.", "small"),
+        "",
+        "1. QUIET HOURS. Residents and guests shall observe quiet hours between 10:00 p.m. and "
+        "8:00 a.m. daily. Excessive noise audible outside the Premises during these hours is a "
+        "violation of these Rules.",
+        "",
+        "2. GUESTS. Residents are responsible for the conduct of their guests at all times. A "
+        "guest who stays more than seven (7) consecutive days, or more than fourteen (14) days "
+        "in any calendar month, is considered an unauthorized occupant and requires Management's "
+        "prior written consent.",
+        "",
+        "3. COMMON AREAS. The clubhouse, pool, fitness center, and other common areas are for the "
+        "use of Residents and their accompanied guests during posted hours only. Management may "
+        "restrict or suspend access for maintenance or safety reasons on reasonable notice.",
+        "",
+        "4. PARKING. Vehicles must be parked only in designated spaces, display any required "
+        "parking permit, and remain in operating condition. A vehicle parked in violation of "
+        "these Rules is subject to towing at the owner's expense.",
+        "",
+        "5. TRASH AND RECYCLING. Household trash must be bagged and disposed of only in "
+        "designated receptacles. Furniture, appliances, and bulk items may not be left in common "
+        "areas, breezeways, or stairwells.",
+        "",
+        "6. MAINTENANCE REQUESTS. Residents should submit non-emergency maintenance requests "
+        "through Management's resident portal or office. A genuine emergency condition (fire, "
+        "flooding, or loss of an essential utility) should be reported immediately by phone.",
+        "",
+        "7. SMOKING. Smoking, including the use of e-cigarettes and vaporizers, is prohibited "
+        "inside all units, breezeways, and enclosed common areas.",
+        "",
+        "8. ALTERATIONS. Residents may not paint, wallpaper, or make structural alterations to "
+        "the Premises without Management's prior written consent.",
+        "",
+        "These Rules and Regulations may be reasonably amended by Management from time to time "
+        "upon notice to Resident, consistent with Section 12 of the Lease.",
+    ]
 
 
 def write_lease_pdfs(units):
@@ -560,7 +894,8 @@ def write_lease_pdfs(units):
         slug = u["tenant"].lower().replace(" ", "_").replace(".", "").replace("-", "_")
         filename = f"{unit_id}_{slug}.pdf"  # unit_id itself stays as-is for filenames; only in-document prose switched to "Suite" wording above
         path = os.path.join(LEASE_DIR, filename)
-        _render_pdf(path, _lease_paragraphs(unit_id, u, doc))
+        footer = f"{PROPERTY_NAME} -- Suite {unit_id} Lease -- FABRICATED DEMO DATA"
+        _render_pdf(path, _lease_paragraphs(unit_id, u, doc), footer_text=footer)
         manifest.append({
             "unit_id": unit_id, "file": f"leases/{filename}", "tenant": u["tenant"],
             "issue": doc["issue"], "lease_rent": doc["lease_rent"],
@@ -699,6 +1034,10 @@ def build_t12(units):
     }
 
 
+_T12_THIN = Side(style="thin", color="B7B7B7")
+_T12_BORDER = Border(left=_T12_THIN, right=_T12_THIN, top=_T12_THIN, bottom=_T12_THIN)
+
+
 def write_t12_xlsx(path, t12):
     wb = Workbook()
     ws = wb.active
@@ -714,8 +1053,49 @@ def write_t12_xlsx(path, t12):
     ws["A1"].font = Font(bold=True, size=14)
     ws["A2"] = "Trailing 12-Month Operating Statement (T-12) -- FABRICATED DEMO DATA, not a real property"
     ws["A3"] = f"{MONTH_NAMES[T12_MONTHS[0][1]-1]} {T12_MONTHS[0][0]} through {MONTH_NAMES[T12_MONTHS[-1][1]-1]} {T12_MONTHS[-1][0]}"
+    ws["A4"] = f"Prepared {RENT_ROLL_GENERATED.strftime('%m/%d/%Y')}"
+    ws["A4"].font = Font(italic=True, size=9, color="808080")
 
-    header_row = 5
+    # Annual Summary panel, above the monthly grid -- pulled straight
+    # from t12["totals"] (the exact same numbers write_line's own Total
+    # column computes below), not recomputed, so the two can never drift
+    # apart. Placed ABOVE the real monthly header row specifically so
+    # app/t12_import.py's header-row auto-detection (which scans for a
+    # Total/Annual column or 2+ month columns) skips straight past it to
+    # the real grid -- this panel is a 2-column Metric/Amount table with
+    # neither, so it's structurally invisible to the importer, exactly
+    # like the rent roll's own header-block-then-table pattern.
+    summary_row = 6
+    ws.cell(row=summary_row, column=1, value="Annual Summary").font = Font(bold=True, size=11)
+    summary_lines = [
+        ("Gross Potential Rent", t12["totals"]["gpr"]),
+        ("Vacancy Loss", -t12["totals"]["vacancy_loss"]),
+        ("Loss to Lease", -t12["totals"]["loss_to_lease"]),
+        ("Net Rental Income Billed", t12["totals"]["net_rent_billed"]),
+        ("Concessions", -t12["totals"]["concessions"]),
+        ("Bad Debt / Collection Loss", -t12["totals"]["bad_debt"]),
+        ("Total Rent Collected", t12["totals"]["collected_rent"]),
+        ("Total Other Income", t12["totals"]["total_other_income"]),
+        ("TOTAL INCOME", t12["totals"]["total_income"]),
+        ("TOTAL OPERATING EXPENSES", t12["totals"]["total_expenses"]),
+        ("NET OPERATING INCOME (NOI)", t12["totals"]["noi"]),
+        ("Bad Debt as % of Net Rental Income Billed", t12["bad_debt_pct_actual"] / 100),
+    ]
+    row = summary_row + 1
+    for label, value in summary_lines:
+        is_total_line = label.isupper()
+        label_cell = ws.cell(row=row, column=1, value=label)
+        value_cell = ws.cell(row=row, column=2, value=value)
+        if is_total_line:
+            label_cell.font = bold
+            value_cell.font = bold
+        label_cell.border = _T12_BORDER
+        value_cell.border = _T12_BORDER
+        value_cell.alignment = Alignment(horizontal="right")
+        value_cell.number_format = "0.0%" if label.startswith("Bad Debt as %") else money_fmt
+        row += 1
+
+    header_row = row + 1
     ws.cell(row=header_row, column=1, value="Line Item")
     for i, m in enumerate(t12["months"]):
         ws.cell(row=header_row, column=2 + i, value=m["label"])
@@ -725,6 +1105,7 @@ def write_t12_xlsx(path, t12):
         c.font = header_font
         c.fill = header_fill
         c.alignment = Alignment(horizontal="center")
+        c.border = _T12_BORDER
 
     row = header_row + 1
 
@@ -733,9 +1114,16 @@ def write_t12_xlsx(path, t12):
         c0 = ws.cell(row=row, column=1, value=label)
         if bold_line or is_total:
             c0.font = bold
+        elif not section:
+            # Leaf line items (not a section header/subtotal/total) are
+            # indented one level so the subtotal/total rows visually
+            # stand out as category subtotals at a glance.
+            c0.alignment = Alignment(indent=1)
         if section:
             for col in range(1, 3 + len(t12["months"])):
-                ws.cell(row=row, column=col).fill = section_fill
+                cell = ws.cell(row=row, column=col)
+                cell.fill = section_fill
+                cell.border = _T12_BORDER
             ws.cell(row=row, column=1).font = bold
             row += 1
             return
@@ -743,12 +1131,15 @@ def write_t12_xlsx(path, t12):
             val = m[key_or_values] if isinstance(key_or_values, str) else key_or_values[i]
             c = ws.cell(row=row, column=2 + i, value=val)
             c.number_format = money_fmt
+            c.border = _T12_BORDER
             if bold_line or is_total:
                 c.font = bold
         total_val = sum((m[key_or_values] if isinstance(key_or_values, str) else key_or_values[i]) for i, m in enumerate(t12["months"]))
         ct = ws.cell(row=row, column=2 + len(t12["months"]), value=round(total_val, 2))
         ct.number_format = money_fmt
         ct.font = bold
+        ct.border = _T12_BORDER
+        c0.border = _T12_BORDER
         row += 1
 
     write_line("INCOME", None, section=True)
@@ -778,7 +1169,7 @@ def write_t12_xlsx(path, t12):
     for i in range(len(t12["months"]) + 1):
         ws.column_dimensions[get_column_letter(2 + i)].width = 12
 
-    ws.freeze_panes = "B6"
+    ws.freeze_panes = f"B{header_row + 1}"
     wb.save(path)
 
 
@@ -863,14 +1254,22 @@ def main():
     units = build_units()
     all_ids = sorted(units.keys())
 
-    write_rent_roll_csv(
-        os.path.join(RENT_ROLL_DIR, "maple_ridge_rent_roll_120unit_appfolio.csv"),
-        units, all_ids, RENT_ROLL_AS_OF,
+    write_rent_roll_xlsx(
+        os.path.join(RENT_ROLL_DIR, "maple_ridge_rent_roll_120unit.xlsx"),
+        units, all_ids, RENT_ROLL_AS_OF, RENT_ROLL_GENERATED,
+    )
+    write_rent_roll_pdf(
+        os.path.join(RENT_ROLL_DIR, "maple_ridge_rent_roll_120unit.pdf"),
+        units, all_ids, RENT_ROLL_AS_OF, RENT_ROLL_GENERATED,
     )
     documented_ids_sorted = sorted(DOCUMENTED_IDS)
-    write_rent_roll_csv(
-        os.path.join(RENT_ROLL_DIR, "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv"),
-        units, documented_ids_sorted, RENT_ROLL_AS_OF,
+    write_rent_roll_xlsx(
+        os.path.join(RENT_ROLL_DIR, "maple_ridge_rent_roll_demo_subset_16unit.xlsx"),
+        units, documented_ids_sorted, RENT_ROLL_AS_OF, RENT_ROLL_GENERATED,
+    )
+    write_rent_roll_pdf(
+        os.path.join(RENT_ROLL_DIR, "maple_ridge_rent_roll_demo_subset_16unit.pdf"),
+        units, documented_ids_sorted, RENT_ROLL_AS_OF, RENT_ROLL_GENERATED,
     )
 
     lease_manifest = write_lease_pdfs(units)

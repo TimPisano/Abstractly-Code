@@ -46,8 +46,8 @@ from app.deal_mismatch import build_deal_mismatch_report_data
 
 DEMO_DIR = os.path.join(os.path.dirname(__file__), '..', 'benchmark_data', 'demo_deal')
 LEASES_DIR = os.path.join(DEMO_DIR, 'leases')
-RENT_ROLL_16 = os.path.join(DEMO_DIR, 'rent_roll', 'maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv')
-RENT_ROLL_120 = os.path.join(DEMO_DIR, 'rent_roll', 'maple_ridge_rent_roll_120unit_appfolio.csv')
+RENT_ROLL_16 = os.path.join(DEMO_DIR, 'rent_roll', 'maple_ridge_rent_roll_demo_subset_16unit.xlsx')
+RENT_ROLL_120 = os.path.join(DEMO_DIR, 'rent_roll', 'maple_ridge_rent_roll_120unit.xlsx')
 EXPECTED_FINDINGS_PATH = os.path.join(DEMO_DIR, 'expected_findings.json')
 PROPERTY_ADDRESS = "4500 Maple Ridge Trail, Dallas, TX 75248"
 DEMO_AS_OF = date(2026, 8, 31)
@@ -201,7 +201,11 @@ def test_demo_deal_16unit_subset_matches_expected_findings_exactly():
             assert r["income_direction"] == "overstate"
             assert r["source"] and r["source"]["page"] == 1, r["source"]
             assert "RENT CONCESSION" not in r["source"]["quote"] and ("abated" in r["source"]["quote"] or "reduced by" in r["source"]["quote"]), r["source"]
-            assert r["rent_roll_value"].endswith("(no concession shown)"), r["rent_roll_value"]
+            # Both rent rolls now carry a real "Concessions" column that reads
+            # $0.00 for these units, so the detector reports the more precise
+            # "column shows $0.00" wording rather than "no concession shown"
+            # (deal_mismatch.py picks between the two on rr_concession).
+            assert r["rent_roll_value"].endswith("(concession column shows $0.00)"), r["rent_roll_value"]
         # Effective rent is reported alongside the concession
         e301 = next(r for r in by_type["concession_missing"] if r["unit"].endswith("E301"))
         assert e301["effective_rent"]["net_effective_rent"] == 1240.0, e301["effective_rent"]
@@ -209,8 +213,9 @@ def test_demo_deal_16unit_subset_matches_expected_findings_exactly():
         assert "active" in e301["note"], e301["note"]
         a104 = next(r for r in by_type["concession_missing"] if r["unit"].endswith("A104"))
         assert "already used" in a104["note"], a104["note"]  # the Oct 2025 free month is behind us
-        # No other concession checks fire on this rent roll (it has no
-        # concession column, and shows gross rent everywhere)
+        # No other concession checks fire on this rent roll: its concession
+        # column is $0.00 everywhere (a zero reads as "none recorded", which
+        # is concession_missing, not a mismatch) and it shows gross rent.
         assert "concession_mismatch" not in by_type and "concession_expiring" not in by_type
 
         # The 6 clean negative controls must never appear in ANY finding
