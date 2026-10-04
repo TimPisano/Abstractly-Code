@@ -20,11 +20,12 @@ existed) — resolve those by taking **main's** TASKS.md, not the branch's.
    like "merge these one at a time" does **not** arm it (`guard.py:427-440`,
    `APPROVE_RE`). A 2026-10-04 request to merge five branches in one pass
    was therefore not actionable; see #2–#4 for what each one actually needs.
-2. **`feature/team-isolation` is NOT reviewer-approved — do not merge.**
-   Its tip `b75b947` is the exact commit the 2026-10-02 review ran on:
-   reviewer **FIX FIRST**, security-auditor **BLOCK**, with 4 unfixed
-   cross-team data-leak findings (listed in its In-progress row). Merging
-   it would ship cross-team read/write access.
+2. **`feature/team-isolation` is ready to merge** (2026-10-04). All review
+   findings fixed in `fe520c9` (pushed); reviewer **MERGE**, security-auditor
+   **MERGE** on that commit; suite 79/79. Merge it **before**
+   `fix/concession-detection` and before rebasing `feature/deal-assistant`
+   (see its row for the expected conflicts). Merging needs
+   `/merge-branch feature/team-isolation` typed in the merger session.
 3. **`feature/pricing-page` r2 would ship the Render billing change you
    asked to hold.** Its tip commit *is* `0a0d7a2` — the persistent disk +
    `plan: free → starter` on `abstractly-api` and `abstractly-tester-api`,
@@ -64,7 +65,7 @@ existed) — resolve those by taking **main's** TASKS.md, not the branch's.
 
 | Branch | Worktree | +/− main | State |
 |---|---|---|---|
-| `feature/team-isolation` | `~/dev/projects/abstractly-teams` | +4 / 0 | Pushed (`b75b947`). **Reviewed 2026-10-02: reviewer FIX FIRST, security-auditor BLOCK.** Must fix before merge: (1) undo-field-edit route has no team check — team A can revert team B's lease edits (`api.py:3019-3074`); (2) legacy `/teams` GET/POST/PATCH are admin-only, not owner — any team admin can read/zero other teams' quotas (`api.py:2486-2549`); (3) globally-unique `natural_key` on alerts/discrepancies (`tenant_concentration:`, `t12_recon:`) collides across teams → cross-team overwrite/leak (`database.py:613,3443,3501,3959,4012`); (4) assignments UNIQUE(target_type,target_key) collides for `property` targets (`database.py:735,2536`). Also: sessions don't re-check deactivation/role (12h), `/waitlist` admin routes should be owner-only, move root OVERNIGHT_REPORT.md. Each needs a two-team regression test. |
+| `feature/team-isolation` | `~/dev/projects/abstractly-teams` | +5 / 0 | **Ready to merge.** Pushed `fe520c9`. Re-reviewed 2026-10-04: reviewer MERGE, security-auditor MERGE (every original attack re-run and now fails), suite 79/79 incl. 14 new regression tests in `test_team_isolation_fixes.py` (12 fail on `b75b947`). Fixed: undo-edit cross-team write; field-edit/version-chain helpers require team_id; `/teams` + `/waitlist` owner-only; per-team natural keys (migration) for tenant-concentration alerts and T-12 discrepancies; assignments UNIQUE per team (table rebuild); live sessions re-read user/team per request; owner account protected from team admins; root report moved to `docs/reports/`. **Merge order / conflicts:** before `fix/concession-detection` (1 conflict, `test_demo_deal_golden.py`); `feature/deal-assistant` must rebase after (3 trivial `api.py` conflicts + its session-faking tests need `sync_session_user`); `TASKS.md` conflicts (take main's). **Follow-up (not blocking):** bind tokens to the user's email so an old token can't act as a different user after a deploy-time DB wipe (`auth._live_user`). |
 | `feature/loan-underwriting` | `~/dev/projects/abstractly-loan` | +2 / −16 | ~19 uncommitted files (`api.py`, `database.py`, tests, plan); not pushed. Feature-flagged off. Merge **after** team isolation (its plan defers all tenancy to it). Another session may be active — don't touch. |
 | `feature/deal-assistant` | `~/dev/projects/abstractly-assistant` | 0 / −7 | Worktree only, nothing built. Not started. |
 
@@ -114,7 +115,7 @@ team-isolation (when built) → loan-underwriting.
    `chore/demo-rent-roll-polish` (the last three all touch the demo deal /
    `test_demo_deal_golden.py`, so order matters). Then `docs/tester-pack`.
    `feature/pricing-page` only after `0a0d7a2` is dropped from it (#3);
-   `feature/team-isolation` only after its 4 BLOCK findings are fixed (#2);
+   `feature/team-isolation` is ready now and should go first (#2);
    `chore/render-persistent-disk` only after you confirm the Render upgrade (#7).
 3. Smoke test the tester deployment **beyond `/health`**: login, Maple Ridge
    lease + rent roll upload, Deal Mismatch Report, PDF/Excel export, T-12.
