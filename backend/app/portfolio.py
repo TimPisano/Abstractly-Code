@@ -22,6 +22,7 @@ import re
 from datetime import date, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
+from .concessions import effective_rent_for_lease, rent_reflects_concession
 from .normalize import (
     escalation_rate_consistency,
     parse_currency,
@@ -1499,7 +1500,16 @@ def compute_rent_roll_reconciliation(leases: List[Dict[str, Any]]) -> Dict[str, 
                     diff_abs = abs(rr_rent - doc_rent)
                     larger = max(rr_rent, doc_rent)
                     diff_pct = (diff_abs / larger * 100) if larger > 0 else 0.0
-                    if diff_abs > _RENT_DISAGREEMENT_TOLERANCE_ABS and diff_pct > _RENT_DISAGREEMENT_TOLERANCE_PCT:
+                    # A rent roll showing the lease's concession-adjusted
+                    # rent (discounted current rent, or net effective rent)
+                    # is reflecting the lease correctly, not disagreeing
+                    # with it -- same effective-rent rule the Deal Mismatch
+                    # Report's rent_mismatch uses (see concessions.py).
+                    reflects_concession = rent_reflects_concession(
+                        rr_rent, effective_rent_for_lease(doc_lease, date.today()),
+                        _RENT_DISAGREEMENT_TOLERANCE_ABS, _RENT_DISAGREEMENT_TOLERANCE_PCT,
+                    )
+                    if diff_abs > _RENT_DISAGREEMENT_TOLERANCE_ABS and diff_pct > _RENT_DISAGREEMENT_TOLERANCE_PCT and not reflects_concession:
                         _add_mismatch(
                             mismatches, rr_lease, doc_lease, address, "rent_amount",
                             field_value(rr_lease, "rent_amount"), field_value(doc_lease, "rent_amount"),

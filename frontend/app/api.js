@@ -697,21 +697,27 @@ const Api = {
     // reasoning as the investment memo export -- optional scope only
     // for now, but keeps the door open for an optional file attachment
     // later without a route-method change.
-    dealMismatchReport({ propertyAddress } = {}) {
+    dealMismatchReport({ propertyAddress, t12File, materialityThresholdPct } = {}) {
         const formData = new FormData();
         if (propertyAddress) formData.append('property_address', propertyAddress);
+        if (t12File) formData.append('t12_file', t12File);
+        if (materialityThresholdPct) formData.append('materiality_threshold_pct', materialityThresholdPct);
         return apiRequest('/portfolio/deal-mismatch-report', { method: 'POST', body: formData });
     },
 
-    exportDealMismatchReportPdf({ propertyAddress } = {}) {
+    exportDealMismatchReportPdf({ propertyAddress, t12File, materialityThresholdPct } = {}) {
         const formData = new FormData();
         if (propertyAddress) formData.append('property_address', propertyAddress);
+        if (t12File) formData.append('t12_file', t12File);
+        if (materialityThresholdPct) formData.append('materiality_threshold_pct', materialityThresholdPct);
         return apiRequest('/portfolio/deal-mismatch-report.pdf', { method: 'POST', body: formData });
     },
 
-    exportDealMismatchReportExcel({ propertyAddress } = {}) {
+    exportDealMismatchReportExcel({ propertyAddress, t12File, materialityThresholdPct } = {}) {
         const formData = new FormData();
         if (propertyAddress) formData.append('property_address', propertyAddress);
+        if (t12File) formData.append('t12_file', t12File);
+        if (materialityThresholdPct) formData.append('materiality_threshold_pct', materialityThresholdPct);
         return apiRequest('/portfolio/deal-mismatch-report.xlsx', { method: 'POST', body: formData });
     },
 

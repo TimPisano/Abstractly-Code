@@ -1,8 +1,20 @@
 # Claude Code agent worktrees (isolated per-agent git repos, not project
-# content) -- but track the subagent team definitions themselves.
+# content) -- but track the subagent team definitions and skills themselves.
 .claude/*
 !.claude/agents/
 !.claude/agents/**
+!.claude/skills/
+!.claude/skills/**
+!.claude/settings.json
+!.claude/hooks/
+!.claude/hooks/**
+!.claude/tools/
+!.claude/tools/**
+.claude/hooks/__pycache__/
+
+# Local-only agent output (outreach drafts, prompt-builder prompts).
+# May name real companies/people, so it never gets committed.
+drafts/
 
 # Defense in depth: backend/.gitignore already covers backend/.env (the
 # only .env that exists today), but that only protects a file placed

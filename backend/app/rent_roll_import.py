@@ -125,6 +125,14 @@ _COLUMN_ALIASES: Dict[str, List[str]] = {
     # unrelated "Building Type" (construction type) column, and a bare
     # "building" substring match would risk grabbing that instead.
     "property": ["property", "property name", "property address", "community", "community name"],
+    # A monthly concession/discount column, when the PMS export has one
+    # (Yardi/AppFolio "Concession" charge codes, RealPage "Concessions").
+    # Lets the Deal Mismatch Report compare the concession the rent roll
+    # SHOWS against the one the lease actually grants, instead of
+    # assuming every rent roll omits concessions (see deal_mismatch.py's
+    # detect_concession_mismatch). Never eligible for rent_amount, see
+    # _is_concession_header.
+    "concessions": ["concession", "concessions", "rent concession", "monthly concession", "concession amount", "rent discount"],
 }
 
 # Header words that mean a rent-like column is a THEORETICAL/aspirational
@@ -138,6 +146,35 @@ _COLUMN_ALIASES: Dict[str, List[str]] = {
 # the file as if it has no recognizable rent column at all, same as if
 # the column were simply named something this module doesn't recognize.
 _MARKET_RENT_WORDS = {"market", "potential", "asking", "projected", "proforma"}
+
+
+_CONCESSION_WORDS = {"concession", "concessions", "discount", "discounts", "special", "specials"}
+
+
+def _is_concession_header(normalized_header: str) -> bool:
+    """
+    "Rent Concession" / "Rent Discount" contain the word "rent" but hold a
+    concession amount, not the tenant's rent -- reading one as rent_amount
+    would replace every unit's rent with its discount.
+    """
+    return bool(set(normalized_header.split()) & _CONCESSION_WORDS)
+
+
+# A concession column that ISN'T the dollar amount -- "Concession End
+# Date", "Concession Months", "Concession Type". Reading one as dollars
+# turned "2026-03-31" into a $2,026.00/mo concession (review finding,
+# fix/concession-detection), so these are never eligible for `concessions`.
+_CONCESSION_NON_AMOUNT_WORDS = {
+    "date", "start", "end", "expires", "expiration", "thru", "through", "from", "to",
+    "month", "months", "mos", "term", "type", "description", "desc", "code", "reason", "note", "notes",
+}
+
+
+def _is_concession_non_amount_header(normalized_header: str) -> bool:
+    # "Concession Per Month" / "Concession a Month" IS the dollar amount --
+    # only a bare "month(s)" means a count column.
+    stripped = re.sub(r"\b(?:per|a|each|every)\s+month\b", " ", normalized_header)
+    return bool(set(stripped.split()) & _CONCESSION_NON_AMOUNT_WORDS)
 
 
 def _is_market_rent_header(normalized_header: str) -> bool:
@@ -240,10 +277,12 @@ def _match_columns(headers: List[Any]) -> Dict[str, int]:
         for i, h in enumerate(normalized):
             if i in used_columns:
                 continue
-            if field_name == "rent_amount" and (_is_market_rent_header(h) or _is_rate_not_amount_header(h) or _is_annual_not_monthly_header(h)):
+            if field_name == "rent_amount" and (_is_market_rent_header(h) or _is_concession_header(h) or _is_rate_not_amount_header(h) or _is_annual_not_monthly_header(h)):
                 continue  # see _MARKET_RENT_WORDS / _RATE_NOT_AMOUNT_WORDS -- never eligible for rent_amount, exact match or not
             if field_name == "property" and _is_non_address_property_header(h):
                 continue  # see _NON_ADDRESS_PROPERTY_WORDS -- never eligible for property, exact match or not
+            if field_name == "concessions" and _is_concession_non_amount_header(h):
+                continue  # see _CONCESSION_NON_AMOUNT_WORDS -- a concession date/count/type column is not dollars
             if h in alias_norms:
                 mapping[field_name] = i
                 used_columns.add(i)
@@ -271,10 +310,12 @@ def _match_columns(headers: List[Any]) -> Dict[str, int]:
             for i, h in enumerate(normalized):
                 if i in used_columns:
                     continue
-                if field_name == "rent_amount" and (_is_market_rent_header(h) or _is_rate_not_amount_header(h) or _is_annual_not_monthly_header(h)):
+                if field_name == "rent_amount" and (_is_market_rent_header(h) or _is_concession_header(h) or _is_rate_not_amount_header(h) or _is_annual_not_monthly_header(h)):
                     continue  # see _MARKET_RENT_WORDS / _RATE_NOT_AMOUNT_WORDS -- e.g. "Market Rent"/"Rent PSF" must not fall through to the bare "rent" alias
                 if field_name == "property" and _is_non_address_property_header(h):
                     continue  # see _NON_ADDRESS_PROPERTY_WORDS -- e.g. "Property Manager" must not fall through to the bare "property" alias
+                if field_name == "concessions" and _is_concession_non_amount_header(h):
+                    continue  # see _CONCESSION_NON_AMOUNT_WORDS -- e.g. "Concession End Date" must not be read as dollars
                 if pattern.search(h):
                     candidates.append((len(alias_norm), field_name, i))
 
@@ -356,10 +397,22 @@ def _parse_import_currency(value: Any) -> Optional[float]:
     text = _cell_to_str(value)
     if text is None:
         return None
-    strict = parse_currency(text)  # handles "$1,200.00" using the existing, already-tested parser
+    strict = parse_currency(text)  # handles "$1,200.00" (and "-$1,200.00"/"($1,200.00)") using the existing, already-tested parser
     if strict is not None:
         return strict
-    match = re.search(r"[\d,]+(?:\.\d+)?", text)  # fall back to a bare number with no "$"
+    # Fall back to a bare number with no "$" -- same negative handling as
+    # parse_currency (leading "-", or wrapping parens as accounting
+    # notation for a credit/negative amount), see that function's
+    # docstring for why silently dropping the sign is dangerous here.
+    paren_match = re.search(r"\(\s*([\d,]+(?:\.\d+)?)\s*\)", text)
+    if paren_match:
+        if re.match(r"[A-Za-z]", text[paren_match.end():]):
+            return None
+        try:
+            return -float(paren_match.group(1).replace(",", ""))
+        except ValueError:
+            return None
+    match = re.search(r"(-\s?)?([\d,]+(?:\.\d+)?)", text)
     if not match:
         return None
     # Same OCR-truncation guard as normalize.parse_currency (see its own
@@ -369,7 +422,8 @@ def _parse_import_currency(value: Any) -> Optional[float]:
     if re.match(r"[A-Za-z]", text[match.end():]):
         return None
     try:
-        return float(match.group(0).replace(",", ""))
+        amount = float(match.group(2).replace(",", ""))
+        return -amount if match.group(1) else amount
     except ValueError:
         return None
 
@@ -575,6 +629,14 @@ def parse_rent_roll_rows(
             set_field("lease_start_date", start_str, start_str)
         if end_str is not None and parse_date(end_str) is not None:
             set_field("lease_end_date", end_str, end_str)
+        # Stored as the unsigned monthly amount: PMS exports show a
+        # concession as either "-100.00" (a charge-code credit) or
+        # "100.00", and both mean $100/month off. A $0.00 cell is kept
+        # too -- "the rent roll explicitly shows no concession" is a
+        # real, different fact from "this rent roll has no such column".
+        concession = _parse_import_currency(cell("concessions"))
+        if concession is not None:
+            set_field("concessions", f"${abs(concession):,.2f}/mo", _cell_to_str(cell("concessions")))
 
         display_name = f"{tenant_raw} - {address}" if address else tenant_raw
         parsed_leases.append({"extracted_fields": fields, "display_name": display_name})
