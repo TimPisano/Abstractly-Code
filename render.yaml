@@ -25,24 +25,8 @@ services:
     runtime: docker
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
-    plan: starter
+    plan: free
     healthCheckPath: /health
-    # Persistent disk for the SQLite database -- without this, every
-    # restart/redeploy (Render does this on every push, and on any free-
-    # tier idle spindown) wiped all Book a Demo submissions and reset
-    # admin accounts back to the ADMIN_EMAIL/ADMIN_PASSWORD_HASH seed.
-    # Requires the plan above to be "starter" or higher -- Render
-    # doesn't allow disks on the free tier. DB_PATH (below) is the one
-    # env var that points database.py at this disk instead of the
-    # container's own ephemeral filesystem; no other code change is
-    # needed (app/api.py already reads it at startup). This plan/disk
-    # declaration alone doesn't provision anything on an already-running
-    # service -- see DEPLOYMENT.md's "Adding persistent storage
-    # (production + tester)" section for the exact dashboard steps.
-    disk:
-      name: abstractly-data
-      mountPath: /app/data
-      sizeGB: 1
     envVars:
       # Real values are entered directly in the Render dashboard
       # (Environment tab), never committed here — see DEPLOYMENT.md.
@@ -60,8 +44,6 @@ services:
         value: "false"
       - key: LOG_LEVEL
         value: INFO
-      - key: DB_PATH
-        value: /app/data/lease_portfolio.db
       # Upstash Redis connection string (rediss://...), from the
       # Upstash console -- backs the background lease-extraction queue
       # (app/jobs.py). Entered directly in the Render dashboard, never
@@ -87,6 +69,18 @@ services:
       #   sync: false
       # - key: GOOGLE_APPLICATION_CREDENTIALS   # "Export to Google Sheets"
       #   value: /app/credentials/google-service-account.json
+
+    # NOTE (free tier, per your choice): no persistent disk is attached
+    # -- the SQLite database resets on every restart/redeploy. To make
+    # data durable later, upgrade this service's plan to "Starter" (or
+    # higher) in the Render dashboard and add:
+    #   disk:
+    #     name: abstractly-data
+    #     mountPath: /app/data
+    #     sizeGB: 1
+    # ...then set an extra env var DB_PATH=/app/data/lease_portfolio.db
+    # (see DEPLOYMENT.md's "Adding persistent storage later" section
+    # for the one-line code change that env var needs).
 
   # ---- Frontend: static site, no build step ----
   - type: web
@@ -159,19 +153,8 @@ services:
     runtime: docker
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
-    plan: starter
+    plan: free
     healthCheckPath: /health
-    # Persistent disk, same reasoning and setup as abstractly-api above
-    # -- a tester's uploads and any admin account created during their
-    # trial otherwise vanish on every restart/15-min idle spindown,
-    # which on the free tier could happen mid-trial. A distinct disk
-    # name (abstractly-tester-data, not abstractly-data) keeps this
-    # service's disk unambiguous from the production one in the Render
-    # dashboard's disk list.
-    disk:
-      name: abstractly-tester-data
-      mountPath: /app/data
-      sizeGB: 1
     envVars:
       # All four generated fresh for this deployment, never reused from
       # abstractly-api/abstractly-demo-api -- entered directly in the
@@ -190,8 +173,6 @@ services:
         value: "false"
       - key: LOG_LEVEL
         value: INFO
-      - key: DB_PATH
-        value: /app/data/lease_portfolio.db
       # Same Upstash instance abstractly-api/abstractly-demo-api already
       # use is fine -- paste the identical REDIS_URL value here. The
       # distinct queue name below is what actually keeps this
@@ -201,6 +182,11 @@ services:
         sync: false
       - key: LEASE_EXTRACTION_QUEUE
         value: extraction-tester
+      # No persistent disk (free tier, same tradeoff as abstractly-api
+      # and abstractly-demo-api above) -- the tester's uploads are wiped
+      # on restart/15-min idle spindown. Fine for a short trial; see
+      # "Adding persistent storage later" in DEPLOYMENT.md if a given
+      # tester run needs to survive longer.
 
   # ---- Tester frontend: same static files as abstractly, points at the tester backend ----
   - type: web
