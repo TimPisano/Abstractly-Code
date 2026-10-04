@@ -1,57 +1,78 @@
 ---
 name: ship-branch
-description: Run tests (and ui-checker if UI changed), commit, push the branch, invoke the reviewer subagent, and move the task to Ready for review in TASKS.md. Steps 5-9 of The Loop (CLAUDE.md).
+description: Finish a built branch — run tests, headless visual check if UI changed, check the Definition of Done, commit, push the feature branch, run the reviewer subagent, fix what it flags, and mark it Ready for review in TASKS.md. Loop steps 5-9. Never merges.
+argument-hint: "[branch — defaults to the current worktree's branch]"
 ---
 
 # ship-branch
 
-Steps 5–9 of The Loop, run after building (step 4) is actually done.
+> `$P` = the primary checkout (normally `~/dev/projects/lease-abstraction`, always on `main`). Each Bash call that uses it starts with
+> `P=$(git rev-parse --path-format=absolute --git-common-dir); P=${P%/.git}`.
+> Task worktrees live beside it: `${P%/*}/abstractly-<topic>`.
 
-## 1. Tests green
+Loop steps 5–9. Run inside the task's worktree, after building.
+Never merges and never pushes `main` (that's `/merge-branch`, user-only).
 
+Branch: `$ARGUMENTS` (or `git branch --show-current`).
+
+## 1. Tests green (step 5)
+
+```bash
+backend/venv/bin/python backend/tests/run_all_tests.py
 ```
-python backend/tests/run_all_tests.py
+
+Fix until green. Only known OCR failures (`test_real_ocr.py`,
+`test_ocr_fallback.py` without tesseract/poppler) may remain; list them
+by name. Any other failure blocks shipping. New test files must be
+registered in `run_all_tests.py`. If you touched `.claude/hooks/`, also
+run `python3 .claude/hooks/test_guard.py`.
+
+## 2. Visual check if anything under `frontend/` changed (step 6)
+
+Invoke the `ui-checker` subagent with the worktree path, the changed
+pages, and what the change is supposed to look like. It shoots before
+(main) and after (this branch) headlessly at 1440/768/375 and five
+scroll positions, and must Read every PNG.
+
+You then **Read at least the key "after" screenshots yourself** for the
+thing you changed. If the goal isn't visibly met, it isn't fixed; go
+back and build. Never claim a visual fix from code reasoning alone.
+Record the screenshot directory in the TASKS.md handoff.
+
+## 3. Definition of Done (CLAUDE.md)
+
+Walk the checklist line by line and write the result (✅ / ❌ / n/a +
+one phrase of evidence) into your final message. Any ❌ → fix first.
+
+## 4. Commit and push the branch (step 7)
+
+Small commits, clear messages, one concern per branch. Check
+`git status` for stray files (`*.db`, `.env`, screenshots, scratch).
+
+```bash
+git push -u origin <branch>
 ```
 
-Fix failures until green. Known pre-existing OCR failures
-(`test_real_ocr.py`, `test_ocr_fallback.py` without `tesseract`/
-`poppler` installed) are not new breakage — don't chase those, but
-treat every other failure as real. Register any new test file in
-`run_all_tests.py` (plain-script convention, not auto-discovered).
+Pushing a feature branch is fine. Pushing `main` is not (hook-blocked).
 
-## 2. Visual check, only if UI changed
+## 5. Reviewer (steps 8–9)
 
-If the diff touches anything under `frontend/`, invoke the
-`ui-checker` subagent against the running local app — headless
-Playwright only, never the user's real browser (CLAUDE.md rule 1).
-Fix anything it flags before moving on.
+Invoke the `reviewer` subagent with the branch name and worktree path.
+For anything touching auth, roles, routes, or queries, also run
+`/review-branch` (adds `security-auditor`).
 
-## 3. Commit and push
+- **MERGE** → step 6.
+- **FIX FIRST** → fix, re-test, re-push, and re-run the reviewer if a
+  fix changed logic (not just a typo).
+- **REJECT** → back to building with its reasoning; tell the user.
 
-- Small, focused commits, one concern per branch (CLAUDE.md
-  conventions). Write a clear message.
-- Push the branch to `origin` — this is pushing a *feature branch*,
-  not `main`, so it doesn't need the explicit merge-approval the Loop
-  requires later; it's still worth a quick confirmation if you're
-  unsure the user wants it pushed yet.
+## 6. Update TASKS.md (primary checkout)
 
-## 4. Hand off to the reviewer
+Move the row to **Ready for review** with: worktree, what it does,
+`+ahead/−behind` vs main, test result, reviewer verdict, screenshot dir
+(if UI), overlap with other branches. Update the handoff block
+(`Loop step: 10 — waiting for user to approve merge`). Commit with
+`git -C $P commit -m "TASKS: <branch> ready for review" -- TASKS.md`.
 
-Invoke the `reviewer` subagent with this branch name. Give it the
-worktree path so it can run `git diff main...<branch>` itself.
-
-## 5. Fix what it flags
-
-- **MERGE**: nothing to do, proceed to step 6.
-- **FIX FIRST**: make the listed fixes, re-run tests, and re-invoke
-  `reviewer` if any fix was non-trivial (touched logic, not just a typo).
-- **REJECT**: this needs rework, not a patch — go back to step 4 of
-  The Loop (Build) with the reviewer's reasoning in hand; don't try to
-  patch around a rejected design.
-
-## 6. Update TASKS.md
-
-Move the branch from **In progress** to **Ready for review**, with its
-worktree path, what it does, commit count ahead/behind `main`, and the
-reviewer's verdict. Note any overlap with other open branches the
-reviewer flagged.
+Tell the user it's ready and that merging needs `/merge-branch <branch>`
+typed in the designated merger session.

@@ -95,6 +95,7 @@ UNIT_TESTS = [
     # SS3.3 but never actually landed. All pass standalone.
     "test_analytics.py",
     "test_deal_mismatch.py",
+    "test_concessions.py",
     "test_demo_request.py",
     "test_obligations.py",
     "test_rent_roll_multiformat.py",

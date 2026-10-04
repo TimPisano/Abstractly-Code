@@ -34,6 +34,7 @@ import re
 from datetime import date as _date
 from typing import Optional, Dict, Any, List, Tuple
 
+from . import concessions as _concessions
 from .normalize import parse_currency, parse_date, parse_square_footage
 
 logger = logging.getLogger(__name__)
@@ -210,11 +211,19 @@ class FieldExtractor:
             "insurance_requirements": self._extract_insurance_requirements(pages),
             "default_cure_period": self._extract_default_cure_period(pages),
             "square_footage": self._extract_square_footage(pages),
+            # Multifamily concessions (free months, move-in specials,
+            # recurring discounts) -- structured schedule plus summary,
+            # see concessions.py. Feeds the Deal Mismatch Report's
+            # concession checks and effective-rent comparison.
+            "concessions": _concessions.build_field_entry(_concessions.parse_concessions(pages)),
         }
 
         self._apply_confidence_validation(result, pages)
 
-        not_found = [name for name, entry in result.items() if entry.get("value") is None]
+        # A lease with no concession is the normal case, not a parsing
+        # gap -- left out of the not-found log so it doesn't drown out
+        # the fields whose absence actually means something.
+        not_found = [name for name, entry in result.items() if entry.get("value") is None and name != "concessions"]
         if not_found:
             # This engine has no notion of document sections (recitals,
             # signature block, exhibits, ...) -- it only knows it searched

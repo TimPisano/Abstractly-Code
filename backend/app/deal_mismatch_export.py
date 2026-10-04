@@ -71,6 +71,8 @@ DISCREPANCY_TYPE_LABELS = {
     "unit_no_lease": "Unit on Rent Roll, No Lease",
     "lease_no_unit": "Lease on File, Not on Rent Roll",
     "concession_missing": "Concession Missing from Rent Roll",
+    "concession_mismatch": "Concession Differs from Lease",
+    "concession_expiring": "Concession Burning Off",
     "dates_mismatch": "Lease Dates Mismatch",
     "tenant_mismatch": "Tenant Name Mismatch",
     "t12_income_gap": "Rent Roll vs. T12 Income",

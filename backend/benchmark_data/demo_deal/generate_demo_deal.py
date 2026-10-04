@@ -1206,10 +1206,13 @@ def build_expected_findings(units, t12):
                 "discrepancy_type": "concession_missing", "unit_id": unit_id,
                 "rent_roll_value": _fmt_money(doc["rent_roll_rent"]) + " (no concession shown)",
                 "lease_value": doc["concession"],
-                "monthly_dollar_impact": None,
+                # The app reports the concession's monthly EQUIVALENT
+                # (annual / 12 for these 12-month leases), see
+                # app/concessions.py's compute_effective_rent.
+                "monthly_dollar_impact": round(doc["concession_annual_value"] / 12, 2),
                 "annual_dollar_impact": doc["concession_annual_value"],
                 "income_direction": "overstate",
-                "detected_by": "NOT YET DETECTED -- detect_concession_missing is a stub pending Phase 2 (multifamily `concessions` field); see README",
+                "detected_by": "Deal Mismatch Report (detect_concession_missing) -- live",
             })
 
     nl = NO_LEASE_UNIT

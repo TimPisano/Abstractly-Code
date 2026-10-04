@@ -111,31 +111,40 @@ All dollar amounts below are computed by the generator, not hand-typed — see
 
 **Subtotal: $36,120.00/year of income counted for leases that no longer exist.**
 
-### 3. Concessions missing from the rent roll (3 units) — `concession_missing`, **not yet auto-detected**
+### 3. Concessions missing from the rent roll (3 units) — `concession_missing`, live-detected
 
 | Unit | Concession the lease actually grants | Rent roll shows | Annual concession value |
 |---|---|---|---|
-| A104 (`leases/A104_perpetua_zabrinsky.pdf`) | 1 month free (Oct 2025 move-in incentive) | Full $1,075.00, no notation | $1,075.00 |
-| E301 (`leases/E301_fiona_rourke.pdf`) | $100/mo off for 6 months (renewal incentive) | Full $1,290.00, no notation | $600.00 |
-| I204 (`leases/I204_miriam_petrosyan.pdf`) | $75/mo off for 12 months (retention incentive) | Full $1,720.00, no notation | $900.00 |
+| A104 (`leases/A104_perpetua_zabrinsky.pdf`) | 1 month free (Oct 2025 move-in incentive) | Full $1,075.00, Concessions $0.00 | $1,075.00 |
+| E301 (`leases/E301_fiona_rourke.pdf`) | $100/mo off for 6 months (renewal incentive) | Full $1,290.00, Concessions $0.00 | $600.00 |
+| I204 (`leases/I204_miriam_petrosyan.pdf`) | $75/mo off for 12 months (retention incentive) | Full $1,720.00, Concessions $0.00 | $900.00 |
 
 **Subtotal: $2,575.00/year of effective rent the rent roll overstates.**
 
-Both rent rolls now have a real "Concessions" column (see the formatting
-note above) — it reads **$0.00** for these 3 units, same as every other
-unit, rather than being blank or missing. That's the planted gap exactly as
-before, just rendered the way a real PMS export would actually fail to
-catch it: a populated-looking column with the wrong (zero) number, not an
-obviously-empty cell.
+Both rent rolls have a real "Concessions" column (see the formatting note
+above) — it reads **$0.00** for these 3 units, same as every other unit,
+rather than being blank or missing. That's the planted gap rendered the way
+a real PMS export would actually fail to catch it: a populated-looking
+column with the wrong (zero) number, not an obviously-empty cell.
 
-> **Known gap — flagging this clearly, not hiding it:** `detect_concession_missing`
-> in `app/deal_mismatch.py` is currently a stub that always returns an empty
-> list. It's waiting on a Phase 2 multifamily `concessions` extracted field
-> that doesn't exist yet on this branch. **These 3 units will NOT show up in
-> a live Deal Mismatch Report run today.** The lease PDFs and rent-roll rows
-> are planted correctly regardless, so this finding is ready to verify the
-> moment that field ships — don't promise a customer today's build catches
-> concessions; it doesn't yet.
+Detected by `detect_concession_missing` in `app/deal_mismatch.py`, reading
+the lease's `concessions` field (see `app/concessions.py`). A zero in the
+rent roll's concession column still counts as "no concession recorded", so
+all 3 fire here; a *non-zero* but wrong amount is caught by
+`detect_concession_mismatch` instead. The dollar figure is the concession's
+annualized value — (gross rent − net effective rent) × 12 — which for these
+12-month leases equals the concession's total. Each row cites the lease's
+section 3A on page 1, and its `note` says whether the concession is already
+used (A104's October 2025 free month), still active (E301's discount runs
+through September 2026), or runs all term (I204).
+
+> **Date caveat (same one that affects `expired_but_occupied`, see the golden
+> test's docstring):** the leases' dates are fixed to the 08/31/2026 as-of
+> date. A104's lease ends 09/30/2026, so once real "today" is past that, a
+> live run reports A104 as `expired_but_occupied` instead — its concession is
+> then deliberately not counted a second time on top of the full lost rent.
+> `tests/test_demo_deal_golden.py` pins `today` to 08/31/2026 to check the
+> exact 10 findings.
 
 ### 4. Rent roll unit with no lease on file (1 unit) — `unit_no_lease`, live-detected
 
@@ -151,7 +160,7 @@ asserted as an overstatement, since there's no lease to compare against.)
 
 - **$45,355.00/year** in income overstatement across the 9 units where the
   app can assign a direction (4 rent mismatches + 2 expired-but-occupied + 3
-  concessions, the last of which isn't live yet — see above).
+  concessions, all live).
 - **+ $20,520.00/year** unconfirmed at the 1 no-lease unit (F203).
 - **= $65,875.00/year total dollar exposure** across all 10 planted issues.
 
