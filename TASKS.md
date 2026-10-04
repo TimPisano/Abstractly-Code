@@ -75,7 +75,7 @@ existed) — resolve those by taking **main's** TASKS.md, not the branch's.
 
 | Branch | Worktree | +/− main | Notes |
 |---|---|---|---|
-| `fix/demo-deal-relative-dates` | `~/dev/projects/abstractly-demo-dates` | — | Pushed (`8e1084f`). Makes the Maple Ridge demo deal's dates relative to generation day. Touches the same demo-deal generator as concession-detection (now merged) — **re-check its conflicts against `953c00a`**, they are no longer TASKS.md-only. |
+| `fix/demo-deal-relative-dates` | `~/dev/projects/abstractly-demo-dates` | — | Pushed (`8e1084f`). Makes the Maple Ridge demo deal's dates relative to generation day (good change: kills the date drift QA_REPORT flagged). **MERGE ATTEMPTED 2026-10-04 AND ABORTED — needs a reconciliation task, not a merge.** `main` was untouched (`0545bec`). 3 conflicts vs `953c00a`, two of them semantic: (1) `expected_findings.json` — main has concession-detection's populated `monthly_dollar_impact` (89.58, 50.0) with hardcoded dates; this branch has computed dates with `monthly_dollar_impact: null`. The combination needs both, and the dollar impacts must be **re-derived for the new dates** (a concession's past/future position changes its classification), then the package regenerated. (2) `test_demo_deal_golden.py` — the two branches chose **opposite strategies for the same test**: main *pins* `today` to the fixture's as-of date to sidestep `expired_but_occupied` drift and asserts **10** findings; this branch *never* pins `today` (regenerates into a temp dir, real wall-clock, plus a freshness test that trips 2026-12-15) and asserts **7**. Someone must pick one strategy and re-derive the assertions for all 10 findings under it. Not resolvable mechanically. (3) `TASKS.md` (take main's). |
 | `chore/demo-rent-roll-polish` | `~/dev/projects/abstractly-demo-polish` | — | Pushed (`8bc76ca`). Overnight demo rent-roll pass. **Re-check conflicts against `953c00a`**: its `test_demo_deal_golden.py` fixture fix is now redundant (#8 landed with concession-detection) and will likely conflict. |
 | `docs/tester-pack` | `~/dev/projects/abstractly-tester-pack` | +7 / 0 | Overnight run, 2026-10-01: in-app Help & Guides (17 articles incl. Getting Started + troubleshooting), tester emails, 10-Q questionnaire, sales drafts updated (local). Frontend + docs only. Headless-verified at 3 widths. **Read `OVERNIGHT_REPORT.md` on the branch**: 12 product bugs found (report-page T-12 upload broken, T-12 income check never fires, only .csv/.xlsx rent rolls feed the report…). |
 | `feature/pricing-page` (round 2) | `~/dev/projects/abstractly-pricing` | +6 / −18 | Flat per-team pricing, fluted-glass WebGL hero, sticky header, Lenis, new logo. Clean, pushed. **Blocked twice over (see #3):** its tip commit `0a0d7a2` is the held Render disk + `plan: starter` billing change, and it conflicts with `main` in `frontend/config.js`. No reviewer verdict → run `/review-branch`. |
@@ -159,6 +159,15 @@ team-isolation (when built) → loan-underwriting.
 
 ## Decisions log
 
+- **2026-10-04 — The demo-deal merge order had a real cost after all.**
+  Merging `fix/concession-detection` first was safe for *production* code
+  (no routes, no queries), but both it and `fix/demo-deal-relative-dates`
+  rewrote `test_demo_deal_golden.py` and `expected_findings.json` with
+  incompatible designs — pin `today` vs. never pin `today`. Whoever went
+  second was always going to inherit a semantic conflict; merging
+  concessions first put that cost on relative-dates. Lesson: for branches
+  that share a *fixture*, check the fixture's conflicts before choosing an
+  order, not just the production-code surface.
 - **2026-10-04 — Merged `fix/concession-detection` before
   `feature/team-isolation`**, reversing this file's recommended order,
   because the user typed that branch's approval. Checked first that the
