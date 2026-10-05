@@ -3,11 +3,11 @@ End-to-end golden test for the Maple Ridge demo deal
 (backend/benchmark_data/demo_deal/) -- QA_PLAN.md item 1: upload the real
 15 lease PDFs and the real 16-unit rent-roll CSV through the REAL Flask
 routes (not internal function calls), run the real Deal Mismatch Report,
-and confirm the 7 live-detectable planted findings (of the 10 documented
-in expected_findings.json -- the other 3 are concession_missing, a
-documented stub, see app/deal_mismatch.py's detect_concession_missing)
-come back with the exact unit and dollar amounts the demo deal's own
-generator computed.
+and confirm all 10 planted findings documented in expected_findings.json
+(4 rent_mismatch, 2 expired_but_occupied, 3 concession_missing, 1
+unit_no_lease) come back with the exact unit and dollar amounts the demo
+deal's own generator computed. (The 3 concession_missing rows were a
+documented stub until fix/concession-detection; see app/concessions.py.)
 
 Fixture note: the demo deal's lease dates are hardcoded absolute calendar
 dates anchored to RENT_ROLL_AS_OF = 2026-08-31 (see generate_demo_deal.py).
@@ -47,8 +47,8 @@ from app.deal_mismatch import build_deal_mismatch_report_data
 
 DEMO_DIR = os.path.join(os.path.dirname(__file__), '..', 'benchmark_data', 'demo_deal')
 LEASES_DIR = os.path.join(DEMO_DIR, 'leases')
-RENT_ROLL_16 = os.path.join(DEMO_DIR, 'rent_roll', 'maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv')
-RENT_ROLL_120 = os.path.join(DEMO_DIR, 'rent_roll', 'maple_ridge_rent_roll_120unit_appfolio.csv')
+RENT_ROLL_16 = os.path.join(DEMO_DIR, 'rent_roll', 'maple_ridge_rent_roll_demo_subset_16unit.xlsx')
+RENT_ROLL_120 = os.path.join(DEMO_DIR, 'rent_roll', 'maple_ridge_rent_roll_120unit.xlsx')
 EXPECTED_FINDINGS_PATH = os.path.join(DEMO_DIR, 'expected_findings.json')
 PROPERTY_ADDRESS = "4500 Maple Ridge Trail, Dallas, TX 75248"
 DEMO_AS_OF = date(2026, 8, 31)
@@ -86,18 +86,26 @@ def _authed_client():
     finally:
         conn.close()
     team_id = legacy_team[0] if legacy_team else None
-    # usage_events.user_id is FK-constrained to a real `users` row (same
-    # gate as team_id above) -- a fresh temp DB has none yet, so the
-    # faked session below needs a matching real user, same convention
-    # every other test file's _authed_client()/_fresh_temp_db() already
-    # follows (see e.g. test_lease_naming_and_tags.py).
+    # A REAL users row, not a hardcoded user_id=1: every upload writes a
+    # usage_events row with a foreign key to users(id), and a fresh temp
+    # DB only has a user 1 when the machine's backend/.env happens to set
+    # ADMIN_EMAIL (database's bootstrap-admin migration). Without one,
+    # every upload here 500'd with "FOREIGN KEY constraint failed" on a
+    # clean checkout (found 2026-10-02, fix/concession-detection).
+    #
+    # Both halves of this are load-bearing after the team-isolation merge:
+    # the session below needs `user_id` (that FK) *and* `team_id` (the
+    # /leases 403 gate from feature/usage-limits, now a required arg on
+    # database.create_user), so neither side's version works alone.
     from app.auth import hash_password
-    existing = database.get_user_by_email("test-analyst@example.com")
-    if not existing:
-        database.create_user("test-analyst@example.com", "Test Analyst", hash_password("x"), role="analyst", team_id=team_id)
+    created = database.create_user(
+        "test-analyst@example.com", "Test Analyst", hash_password("x"), role="analyst",
+        team_id=team_id,
+    )
+    user_id = created["id"] if created["status"] == "created" else database.get_user_by_email("test-analyst@example.com")["id"]
     client = app.test_client()
     with client.session_transaction() as sess:
-        sess["user_id"] = 1
+        sess["user_id"] = user_id
         sess["email"] = "test-analyst@example.com"
         sess["name"] = "Test Analyst"
         sess["role"] = "analyst"
@@ -146,10 +154,9 @@ def _expected():
 def test_demo_deal_16unit_subset_matches_expected_findings_exactly():
     """
     The headline demo flow the README recommends: 15 lease PDFs + the
-    16-unit rent-roll subset -> exactly the 10 planted issues, 7 of which
-    are live-detected today (4 rent_mismatch, 2 expired_but_occupied, 1
-    unit_no_lease; the 3 concession_missing rows are NOT live yet, a
-    documented stub -- see module docstring).
+    16-unit rent-roll subset -> exactly the 10 planted issues, all live:
+    4 rent_mismatch, 2 expired_but_occupied, 3 concession_missing, 1
+    unit_no_lease.
     """
     db_path = _fresh_temp_db()
     try:
@@ -191,8 +198,34 @@ def test_demo_deal_16unit_subset_matches_expected_findings_exactly():
         assert no_lease["annual_dollar_impact"] == 20520.0, no_lease
         assert no_lease["income_direction"] is None
 
-        # concession_missing is a documented stub -- must NOT appear live
-        assert "concession_missing" not in by_type, "detect_concession_missing fired; it's supposed to be a stub returning []"
+        # 3 concession_missing (A104 free month, E301 6-month renewal
+        # discount, I204 full-term retention discount), exact unit + exact
+        # annualized dollar impact, each citing the lease's concession
+        # clause on the page it's on.
+        assert len(by_type.get("concession_missing", [])) == 3, by_type.get("concession_missing")
+        got_concessions = {(r["unit"].split("Suite ")[-1], r["monthly_dollar_impact"], r["annual_dollar_impact"]) for r in by_type["concession_missing"]}
+        want_concessions = {(f["unit_id"], f["monthly_dollar_impact"], f["annual_dollar_impact"]) for f in expected_by_type["concession_missing"]}
+        assert got_concessions == want_concessions, (got_concessions, want_concessions)
+        for r in by_type["concession_missing"]:
+            assert r["income_direction"] == "overstate"
+            assert r["source"] and r["source"]["page"] == 1, r["source"]
+            assert "RENT CONCESSION" not in r["source"]["quote"] and ("abated" in r["source"]["quote"] or "reduced by" in r["source"]["quote"]), r["source"]
+            # Both rent rolls now carry a real "Concessions" column that reads
+            # $0.00 for these units, so the detector reports the more precise
+            # "column shows $0.00" wording rather than "no concession shown"
+            # (deal_mismatch.py picks between the two on rr_concession).
+            assert r["rent_roll_value"].endswith("(concession column shows $0.00)"), r["rent_roll_value"]
+        # Effective rent is reported alongside the concession
+        e301 = next(r for r in by_type["concession_missing"] if r["unit"].endswith("E301"))
+        assert e301["effective_rent"]["net_effective_rent"] == 1240.0, e301["effective_rent"]
+        assert e301["effective_rent"]["current_rent"] == 1190.0, e301["effective_rent"]  # Aug 2026 is inside the Apr-Sep discount window
+        assert "active" in e301["note"], e301["note"]
+        a104 = next(r for r in by_type["concession_missing"] if r["unit"].endswith("A104"))
+        assert "already used" in a104["note"], a104["note"]  # the Oct 2025 free month is behind us
+        # No other concession checks fire on this rent roll: its concession
+        # column is $0.00 everywhere (a zero reads as "none recorded", which
+        # is concession_missing, not a mismatch) and it shows gross rent.
+        assert "concession_mismatch" not in by_type and "concession_expiring" not in by_type
 
         # The 6 clean negative controls must never appear in ANY finding
         clean_units = {"A102", "B303", "D104", "G303", "H204", "J102"}
@@ -200,11 +233,15 @@ def test_demo_deal_16unit_subset_matches_expected_findings_exactly():
         leaked_clean = clean_units & flagged_units
         assert not leaked_clean, f"clean negative-control unit(s) incorrectly flagged: {leaked_clean}"
 
-        # Live dollar exposure: 4 rent_mismatch + 2 expired_but_occupied, signed overstate
-        assert data["annual_income_overstatement"] == 42780.0, data["annual_income_overstatement"]
+        # Live dollar exposure: 4 rent_mismatch + 2 expired_but_occupied
+        # + 3 concession_missing, signed overstate -- the README's
+        # $45,355.00 headline, now fully live
+        assert data["annual_income_overstatement"] == expected["total_planted_annual_income_overstatement"] == 45355.0, data["annual_income_overstatement"]
+        assert data["concession_summary"] == {"leases_with_concessions": 3, "annualized_concession_value": 2575.0}, data["concession_summary"]
 
-        # No false positives at all: exactly 7 findings, nothing extra
-        assert data["total_discrepancies"] == 7, data["total_discrepancies"]
+        # No false positives at all: exactly the 10 planted findings, nothing extra
+        assert data["total_discrepancies"] == 10, data["total_discrepancies"]
+        assert data["total_discrepancies"] == len(expected["findings"])
         assert data["total_units_checked"] == 16, data["total_units_checked"]
 
         # PDF + Excel export must both succeed against this real data
@@ -225,7 +262,9 @@ def test_demo_deal_16unit_subset_matches_expected_findings_exactly():
 def test_demo_deal_findings_stable_through_real_route_regardless_of_todays_date():
     """
     rent_mismatch and unit_no_lease don't depend on "today" at all (no
-    expiry check involved) -- confirm these 5 of the 7 live findings come
+    expiry check involved; none of the demo's rent_mismatch units has a
+    concession, so rent_mismatch's effective-rent check doesn't depend on
+    "today" here either) -- confirm these 5 of the 10 findings come
     back correctly through the REAL route (real wall-clock today, no
     override), so this test stays meaningful no matter what day it runs,
     unlike the exact-match test above which pins today to the fixture's

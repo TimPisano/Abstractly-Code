@@ -1,5 +1,5 @@
 """
-Tests for app/deal_mismatch.py (the 7 discrepancy detectors + summary)
+Tests for app/deal_mismatch.py (the discrepancy detectors + summary; concession cases are in test_concessions.py)
 and app/deal_mismatch_export.py (PDF/Excel renderers), plus the
 POST /portfolio/deal-mismatch-report[.pdf|.xlsx] routes.
 
@@ -176,11 +176,14 @@ def test_matched_unit_produces_neither_presence_finding():
 # detect_concession_missing (Phase 1 stub)
 # ----------------------------------------------------------------------
 
-def test_concession_missing_is_stubbed_empty():
+def test_concession_missing_silent_when_lease_has_no_concession():
+    # Was test_concession_missing_is_stubbed_empty while the detector was a
+    # stub; the real concession cases live in test_concessions.py. This
+    # keeps the "no concession in the lease -> no finding" guarantee here.
     rr = _rr_lease(property_address="1 Main St", tenant="Acme", rent_amount="$6,000.00")
     doc = _doc_lease(property_address="1 Main St", tenant="Acme", rent_amount="$6,000.00")
     assert dm.detect_concession_missing([rr, doc]) == []
-    print("✓ test_concession_missing_is_stubbed_empty: PASS")
+    print("✓ test_concession_missing_silent_when_lease_has_no_concession: PASS")
 
 
 # ----------------------------------------------------------------------
@@ -414,7 +417,7 @@ if __name__ == "__main__":
     test_unit_no_lease_has_no_source_or_direction()
     test_lease_no_unit_understates_income()
     test_matched_unit_produces_neither_presence_finding()
-    test_concession_missing_is_stubbed_empty()
+    test_concession_missing_silent_when_lease_has_no_concession()
     test_dates_mismatch_flags_end_date_and_start_date_separately()
     test_dates_mismatch_agrees_produces_nothing()
     test_tenant_mismatch_flags_disagreement_as_high_severity()

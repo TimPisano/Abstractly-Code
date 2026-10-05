@@ -1,194 +1,155 @@
 # Abstractly — project instructions for Claude
 
-Read this file and `TASKS.md` at the start of every session. `TASKS.md` is
-the single source of truth for what's in flight; this file is the standing
-context and rules. (`docs/CLAUDE.md` is an outdated stub from the first
-prototype; ignore it.)
+Read this and `TASKS.md` at the start of every session. **`TASKS.md` in the
+primary checkout (`~/dev/projects/lease-abstraction/TASKS.md`) is the single
+source of truth** for what's in flight and every task's handoff notes.
+How the user runs agents day to day: `docs/HOW_TO_RUN_AGENTS.md`.
 
-## What Abstractly is
+## Product
 
 SaaS for **mid-size multifamily syndicators**. It reads the leases behind a
-rent roll and checks them unit by unit before a deal closes.
+seller's rent roll and checks them unit by unit before a deal closes.
 
-Core features:
-- **Lease abstraction**: AI extraction of lease terms, each with a source page citation.
-- **Rent roll validation**: reconcile the seller's rent roll against the actual leases (the core feature).
-- **Deal Mismatch Report**: every rent roll vs. lease discrepancy with its **dollar impact** and **source page citations**.
-- **PDF and Excel export** of the report.
-- **T-12 cross-check**: compare the T-12 operating statement's collections against rent roll / lease rent.
+- **Lease abstraction** — AI extraction of lease terms, each with a source page citation.
+- **Rent roll validation** — reconcile the rent roll against the actual leases (the core feature).
+- **Deal Mismatch Report** — every discrepancy with its **dollar impact** and **page citations**; PDF + Excel export.
+- **T-12 cross-check** — T-12 collections vs. rent roll / lease rent.
 
-Positioning: the main competitor is **Prophia**, which serves institutional
-*office* owners. We win on multifamily focus, rent roll validation as the
-core feature, and dollar-impact reports.
+Competitor: **Prophia** (institutional *office*). We win on multifamily focus,
+rent roll validation as the core, and dollar-impact reports. Pricing is a
+flat monthly fee per team: Starter $499 ($399/mo annual), Growth $1,250
+($999), Enterprise custom (live only on `feature/pricing-page`).
+**Current goal: first outside beta testers on the tester deployment.**
 
-Business model: customers sign contracts. Pricing is a flat monthly fee per
-team:
+## Architecture
 
-| Plan | Monthly | Annual (per month) |
-|---|---|---|
-| Starter | $499 | $399 |
-| Growth | $1,250 | $999 |
-| Enterprise | custom | custom |
-
-(That pricing is live only on `feature/pricing-page`. `main` still shows
-the old per-property placeholder prices. See TASKS.md.)
-
-**Current goal: get the first outside beta testers onto the tester deployment.**
-
-## Tech stack and architecture (as found in the code)
-
-- **Backend:** Python 3.11, Flask 3, single app in `backend/app/api.py`
-  (large; most routes live there). Served by gunicorn (`backend/start.sh`).
-  Domain modules sit beside it: `deal_mismatch.py`, `deal_mismatch_export.py`,
-  `rent_roll_import.py`, `t12_import.py`, `ai_extraction.py`,
-  `pdf_extractor.py` (pypdf/pdfplumber + Tesseract OCR fallback), `auth.py`,
-  `database.py`, `security.py`.
-- **Frontend:** vanilla JS/HTML/CSS, **no framework, no build step**.
-  `frontend/index.html` + `pricing.html` = marketing site; `frontend/app/` =
-  the customer app; `frontend/admin/`, `frontend/owner/` = staff consoles.
-  `frontend/config.js` picks the API base URL from the page's hostname.
-- **Database:** SQLite (`database.py`, a fresh short-lived connection per
-  call). **No Render service has a persistent disk**, so every deploy or
-  restart wipes the data on prod, tester, and demo alike. See
-  `docs/DEPLOYMENT.md` → "Adding persistent storage later".
-- **Background jobs:** RQ on Redis (Upstash). `backend/worker.py` runs in
-  the **same container** as gunicorn (started by `start.sh`). Each
-  deployment uses its own queue name (`LEASE_EXTRACTION_QUEUE`:
-  default / `extraction-tester` / `extraction-demo`).
-- **Anthropic API:** `anthropic` SDK. Lease extraction (`ai_extraction.py`,
-  env `LEASE_EXTRACTION_MODEL`, default `claude-sonnet-5`), the portfolio
-  assistant (`assistant.py`, `ASSISTANT_MODEL`, `claude-sonnet-5`), CRE Q&A
-  (`cre_qa.py`, `CRE_QA_MODEL`, `claude-haiku-4-5`), and AI rent roll
-  validation (`ai_rent_roll_validation.py`). Without `ANTHROPIC_API_KEY`
-  the app falls back to the rule-based regex engine.
-- **Auth and roles:** session cookie for admin and a bearer token for the
-  `app/` client (`auth.py`). Roles rank `viewer < analyst < admin`
-  (`ROLE_RANK`), enforced with `@require_role('analyst')` etc.;
-  `is_owner` is a separate flag (`@require_owner`) and is never implied
-  by `admin`.
-- **Tenancy today:** `main` now has a `teams` table and `users.team_id`
-  (merged from `feature/usage-limits`), but it's **billing/quota scope
-  only** — `team_id` only ever touches `usage_events` and the `/teams`
-  admin routes, never a `WHERE` clause on `leases`, `discrepancies`,
-  `alerts`, or `tasks`. There is still **no document-level isolation**:
-  any logged-in user on a deployment can read/edit any other user's
-  leases. Isolation between *firms* is still per-deployment (why tester
-  and demo are separate Render services). `feature/team-isolation` is
-  the active branch extending `team_id` to document tables; converge on
-  its `team_id` (not a second `account_id`/`teams` schema) — see TASKS.md.
-
-### Render services (`render.yaml`, Blueprint)
-
-| Service | Kind | URL | Purpose |
-|---|---|---|---|
-| `abstractly-api` | Docker web | abstractly-api.onrender.com | Production API |
-| `abstractly` | static | abstractly-n0id.onrender.com | Production site/app |
-| `abstractly-tester-api` | Docker web | abstractly-tester-api.onrender.com | Beta tester API, own empty DB |
-| `abstractly-tester` | static | abstractly-tester.onrender.com | Beta tester frontend |
-| `abstractly-demo-api` | Docker web | abstractly-demo-api.onrender.com | Demo, `DEMO_MODE`, seeded, `/demo/reset` |
-| `abstractly-demo` | static | abstractly-demo.onrender.com | Demo frontend |
-
-All six are on the free plan. `render.yaml` sets **no `branch:`**, so every
-service auto-deploys from the Blueprint's linked branch, **`main`**. Any
-push to main redeploys prod, tester, and demo at once. (Verify in the
-Render dashboard if that ever matters; it can be overridden there.)
-Secrets live only in the Render dashboard (`sync: false`). Full runbook:
-`docs/DEPLOYMENT.md`.
-
-### Running locally
+- **Backend:** Python 3.11, Flask 3, gunicorn (`backend/start.sh`). Most
+  routes in `backend/app/api.py`; domain modules beside it
+  (`deal_mismatch*.py`, `rent_roll_import.py`, `t12_import.py`,
+  `ai_extraction.py`, `pdf_extractor.py` with Tesseract OCR fallback,
+  `auth.py`, `database.py`, `security.py`, `usage_limits.py`).
+- **Frontend:** vanilla JS/HTML/CSS, no framework, no build step.
+  `frontend/index.html` + `pricing.html` = marketing; `frontend/app/` =
+  customer app; `frontend/admin/`, `frontend/owner/` = staff consoles;
+  `frontend/config.js` picks the API URL from the hostname.
+- **DB:** SQLite, fresh connection per call. **No Render service has a
+  persistent disk** — every deploy/restart wipes prod, tester, and demo
+  data (`docs/DEPLOYMENT.md` → "Adding persistent storage later").
+- **Jobs:** RQ on Redis (Upstash); `backend/worker.py` runs in the same
+  container; queue per deployment (`LEASE_EXTRACTION_QUEUE`).
+- **Anthropic:** `ai_extraction.py` (`LEASE_EXTRACTION_MODEL`),
+  `assistant.py`, `cre_qa.py`, `ai_rent_roll_validation.py`. No
+  `ANTHROPIC_API_KEY` → rule-based regex fallback.
+- **Auth/roles:** session cookie (admin) + bearer token (`app/` client).
+  `viewer < analyst < admin` via `@require_role(...)`; `is_owner` /
+  `@require_owner` is separate and never implied by admin.
+- **Tenancy:** `main` has `teams` + `users.team_id`, but **only for
+  billing/quota** (`usage_events`, `/teams`). Document tables (`leases`,
+  `discrepancies`, `alerts`, `tasks`, …) are **not** scoped: any user on a
+  deployment can see every lease on it. Firms are isolated per deployment
+  for now. `feature/team-isolation` extends `team_id` to documents —
+  build on that, never a second `accounts`/`account_id` schema.
+- **Render** (`render.yaml`, free plan, no `branch:` → all deploy from
+  `main`): `abstractly-api` + `abstractly` (prod),
+  `abstractly-tester-api` + `abstractly-tester` (beta, own DB),
+  `abstractly-demo-api` + `abstractly-demo` (`DEMO_MODE`, seeded).
+  **One push to `main` redeploys all three.** Secrets only in the Render
+  dashboard (`sync: false`). Runbook: `docs/DEPLOYMENT.md`.
 
 ```bash
-cd backend && source venv/bin/activate && python run.py      # API on :5000
-cd frontend && python3 -m http.server 8080                    # site on :8080
-python backend/tests/run_all_tests.py                         # unit tests (plain-script convention)
-python backend/tests/run_all_tests.py --live                  # + live API tests (needs run.py up)
+cd backend && source venv/bin/activate && python run.py   # API :5000
+cd frontend && python3 -m http.server 8080                 # site :8080
+python backend/tests/run_all_tests.py [--live]             # tests (register new files here)
 ```
 
-New test files must be registered in `backend/tests/run_all_tests.py`.
-pytest is also installed in the venv. More detail: `docs/LOCAL_DEV.md`.
+More: `docs/LOCAL_DEV.md`, `docs/DECISIONS.md`, `docs/OPERATIONS.md`.
+(`docs/PROGRESS.md`, `WORK_LOG.md`, `LAUNCH_READINESS_RECAP.md` are history,
+not instructions. Root `PLAN.md`/`SUMMARY.md` are leftovers from
+`feature/usage-limits`; new plans go in `docs/plans/`.)
 
-### Other docs worth knowing
+## Standing rules
 
-`docs/DECISIONS.md` (architecture decisions), `docs/DEPLOYMENT.md`,
-`docs/OPERATIONS.md`, `docs/HARDENING_LOG.md`,
-`docs/TESTER_VERIFICATION_CHECKLIST.md`, `PLAN.md` (the active branch's
-plan; each worktree may have its own).
-Subagents in `.claude/agents/`: `engineer`, `reviewer`, `qa-tester`,
-`security-auditor`, `ui-checker`, `accuracy-tester`, `product-strategist`,
-`outreach` (drafts only, never sends).
-Skills in `.claude/skills/`: `start-task`, `ship-branch`, `review-branch`,
-`merge-branch`, `status`, `session-handoff` — see **The Loop** below.
+Hooks in `.claude/settings.json` enforce the ones marked 🔒; the rest are
+on you. A hook block is a signal to stop and reconsider, never something
+to route around.
 
-## Standing rules for every session
-
-1. **Never open the user's browser.** Run servers in the background and
-   give the URL. Use **headless Playwright** for any visual check.
-2. **Never merge into `main` or push `main`** unless the user explicitly
-   says so *in that session*. Do all work on a feature branch in **its own
-   git worktree under `~/dev/projects/`** (e.g. `~/dev/projects/abstractly-<topic>`).
-   Don't switch branches in someone else's worktree, and check
-   `git worktree list` first.
-3. **Enforce team-level data isolation and correct roles on every route
-   and query** you add or touch: scope every query by the caller's team and
-   put an explicit `@require_role(...)` on every route. `main`'s `team_id`
-   today only covers billing/quota, not documents — if a change needs
-   document-level isolation that doesn't exist yet, say so explicitly and
-   build on `feature/team-isolation`'s model rather than inventing a new
-   one. Never silently ship an unscoped route.
-4. **Never commit secrets, `.env` files, `*.db` files, or real customer
-   data.** Use fictional data such as the **Maple Ridge** demo deal
-   (`backend/benchmark_data/demo_deal/`, not yet committed; it lands with
-   `fix/rent-roll-hardening`) and the synthetic fixtures in `backend/tests/`.
-5. **Mock the Anthropic API in tests.** Do not run real AI benchmarks
-   repeatedly; they cost money. Ask before any real-API run.
-6. **Write a test for every bug fix**: a regression test that fails
-   before the fix and passes after.
-7. **Explain changes in plain English when done.** The user is still
-   learning backend development, so briefly teach the important pattern
-   behind the change (e.g. why a query is scoped, why a decorator is there).
-8. **Keep `TASKS.md` updated at the end of every task**: move items
-   between sections, and record branch, worktree, and status.
-9. **Known pre-existing failures:** OCR tests that need `tesseract` /
-   `poppler` installed locally (e.g. `test_real_ocr.py`, `test_ocr_fallback.py`)
-   fail on machines without them. Don't treat those as new breakage, but do
-   report any *other* failure.
-
-(The ECC GateGuard hook may block your first Bash/Edit/Write call each
-session with a "Fact-Forcing Gate" asking you to restate the request and
-what the command verifies. Answer its questions plainly and retry — it's
-a one-time check per tool per session, not a blocker to work around.)
+1. 🔒 **Never open the user's browser** or any visible browser (no `open
+   <url>`, no headed Playwright, no Chrome MCP). Visual checks: headless
+   via `node .claude/tools/screenshots.mjs` / the `ui-checker` agent. To
+   show the user a page, run the server in the background and give the URL.
+2. 🔒 **Never merge into `main`, commit on `main`, or push `main`** unless
+   the user typed `/merge-branch <branch>` (or "approve merge") in *this*
+   session. Only one session merges at a time (merge lock). Subagents
+   never touch `main`. TASKS.md-only commits on `main` are allowed.
+3. 🔒 **One task = one branch = one worktree** under `~/dev/projects/`.
+   The primary checkout `~/dev/projects/lease-abstraction` stays on `main`
+   and is read-only except `TASKS.md` and `drafts/`. Never switch branches
+   in a worktree you didn't create; check `git worktree list` first.
+4. **Team isolation and roles on every route and query you add or touch:**
+   explicit `@require_role(...)` on every route; scope document queries by
+   the *authenticated* caller's `team_id`. If the needed scoping doesn't
+   exist on your base yet, say so in the plan — never silently ship an
+   unscoped route.
+5. **Check for prior art before building.** Search `TASKS.md`, all
+   branches, and stashes (start-task step 1). Build on existing work;
+   never create a parallel version. Stay inside the approved plan — new
+   ideas go in the plan's "Out of scope" or TASKS.md "Up next".
+6. **Placeholders are questions, not values.** Text like `(the real
+   email)`, `<your key>`, `[insert …]`, `TBD`, `@example.com` means ask
+   the user. 🔒 The prompt hook flags these.
+7. **Never commit secrets, `.env`, `*.db`, or real customer data.** Use
+   Maple Ridge (`backend/benchmark_data/demo_deal/`) and
+   `backend/tests/` fixtures.
+8. **Mock the Anthropic API in tests.** Ask before any real-API run.
+9. **Every bug fix gets a regression test** that fails before the fix.
+10. **Claim only what you verified.** "Fixed" means you saw it: a test
+    you ran (quote the result) or a screenshot you opened. Otherwise
+    say "changed, unverified".
+11. **Before /clear, logout, or a long break: run `/session-handoff`.**
+    A fresh session resumes with `/resume-task <branch>`.
+12. **Explain changes in plain English when done** — the user is
+    learning backend development; teach the one pattern that matters.
+13. Known pre-existing failures: OCR tests needing `tesseract`/`poppler`
+    (`test_real_ocr.py`, `test_ocr_fallback.py`). Report any other failure.
+14. New features not ready for testers go behind an env-var flag,
+    default **off**. Small focused commits; one concern per branch.
 
 ## The Loop
 
-Every feature, on its own branch and worktree, follows the same cycle.
-The matching skill (in parens) automates each step — invoke it instead
-of improvising the sequence by hand.
+Each step has a skill; use it instead of improvising.
 
-1. Claim the task in `TASKS.md` — move it into **In progress**. (`start-task`)
-2. Create its branch + worktree under `~/dev/projects/`. (`start-task`)
-3. Write `PLAN.md` in the worktree and **stop for the user's approval**
-   before touching code. (`start-task`)
-4. Build.
-5. Run tests and fix until green.
-6. If anything UI-facing changed, visual-check it with headless
-   Playwright screenshots (never the user's real browser). (`ship-branch`
-   → `ui-checker`)
-7. Commit and push the branch. (`ship-branch`)
-8. Hand off to the `reviewer` subagent. (`ship-branch`, or `review-branch`
-   to also run `security-auditor`)
-9. Fix anything it flags, re-review if the fix is non-trivial.
-10. Wait for the user to explicitly approve the merge — never assume it.
-11. Merge into `main` and push `main`. (`merge-branch`)
-12. Run the smoke test. (`merge-branch`)
-13. Update `TASKS.md` and remove the worktree. (`merge-branch`)
+| # | Step | Skill |
+|---|---|---|
+| 1 | Prior-art check, claim the task in TASKS.md | `/start-task` |
+| 2 | Create branch + worktree under `~/dev/projects/` | `/start-task` |
+| 3 | Write `docs/plans/<branch>.md`, **stop for user approval** | `/start-task` |
+| 4 | Build (only what the plan says) | — |
+| 5 | Run tests, fix until green | `/ship-branch` |
+| 6 | UI changed → headless screenshots, *look at them* | `/ship-branch` → `ui-checker` |
+| 7 | Commit, push the **feature branch** | `/ship-branch` |
+| 8 | `reviewer` subagent (+ `security-auditor` for routes/auth) | `/ship-branch`, `/review-branch` |
+| 9 | Fix what it flags; re-review if non-trivial | `/ship-branch` |
+| 10 | **User approves the merge** by typing `/merge-branch <branch>` | user only |
+| 11 | Designated merger session merges + pushes `main` | `/merge-branch` |
+| 12 | Smoke test the tester deployment (headless) | `/merge-branch` |
+| 13 | Update TASKS.md, remove the worktree | `/merge-branch` |
 
-Use `status` any time to check where things stand, and `session-handoff`
-before a session ends mid-task so the next one can resume cold.
+Anytime: `/status` (where things stand), `/session-handoff` (save state),
+`/resume-task` (pick up), `/prompt-builder` (rough idea → task prompt).
 
-## Conventions
+## Definition of Done
 
-- Match the surrounding code: long explanatory comments on *why*, plain
-  Python, no new frameworks.
-- New features that aren't ready for testers go behind an env-var feature
-  flag that defaults **off**.
-- Small, focused commits with clear messages; one concern per branch.
+A task is not done, and you may not say it is, until every line is ✅ or
+explicitly n/a. Paste this checklist with evidence in your final message.
+
+- [ ] Work is on its own branch in its own worktree; plan was approved.
+- [ ] Diff matches the plan — nothing out of scope, no parallel duplicate of existing work.
+- [ ] `python backend/tests/run_all_tests.py` run **by you, now**; result quoted (pass count; only known OCR failures).
+- [ ] Every bug fix has a regression test; new test files registered; Anthropic mocked.
+- [ ] Every touched route has `@require_role`; every touched document query is team-scoped (or the gap is written in the plan).
+- [ ] UI changed → headless screenshots at 1440/768/375 and several scroll positions, **opened and looked at**; the goal is visible in them; paths recorded.
+- [ ] No secrets, `.env`, `*.db`, real customer data, or placeholder text in the diff.
+- [ ] Unready features behind an env flag defaulting off.
+- [ ] Branch committed and pushed; `reviewer` verdict MERGE (or every FIX FIRST item fixed).
+- [ ] TASKS.md (primary checkout) updated: row moved, handoff block current.
+- [ ] Plain-English explanation given to the user, including what was *not* verified.

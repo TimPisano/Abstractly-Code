@@ -1,33 +1,29 @@
 ---
 name: review-branch
-description: Run the reviewer and security-auditor subagents on a named branch and combine their verdicts into one report.
+description: Run the reviewer and security-auditor subagents in parallel on a named branch and combine their verdicts into one report. Review only — changes nothing.
+argument-hint: "<branch>"
 ---
 
 # review-branch
 
-Takes a branch name (from the user, or picked from TASKS.md's Ready
-for review table). Use this for a deeper look than `ship-branch`'s
-built-in review step — e.g. before a merge, or when a branch touches
-auth/roles/cross-team data directly.
+Branch: **$ARGUMENTS** (if empty, ask, or pick from TASKS.md's Ready for
+review table and confirm with the user).
 
-## Steps
-
-1. Resolve the branch's worktree path (`git worktree list`, or
-   `TASKS.md`).
-2. Invoke `reviewer` on the branch: correctness, team isolation on
-   every route/query, secrets, test quality, conflicts with other open
-   branches. Get its MERGE / FIX FIRST / REJECT verdict.
-3. Invoke `security-auditor` on the same branch: auth, sessions,
-   roles, cross-team data access, file upload safety, secrets. Run it
-   even if `reviewer` already said MERGE — they check different things
-   and a clean correctness review can still miss an auth gap.
-4. Combine both into one report:
-   - If either says REJECT, the combined verdict is REJECT — lead with
-     that agent's reasoning.
-   - If either says FIX FIRST, the combined verdict is FIX FIRST — list
-     every required fix from both, deduplicated.
-   - Only MERGE if both are MERGE.
-   - Note any place the two disagreed or one found something the other
-     missed — that's a signal the next review pass should double-check it.
-5. Report the combined verdict with the full fix list. Do not act on
-   the findings yourself unless asked — this skill only reviews.
+1. Find its worktree: `git worktree list | grep "\[$ARGUMENTS\]"`. If it
+   has no worktree, review it from the primary checkout with
+   `git diff main...<branch>` — do not check it out there.
+2. Launch **both** subagents in one message (parallel):
+   - `reviewer` — correctness, isolation/roles, scope vs. plan, secrets,
+     tests (it runs the suite), DoD evidence, overlap.
+   - `security-auditor` — cross-team data access first, then auth,
+     roles, uploads, secrets.
+   Give each the branch, the worktree path, and the plan file path.
+3. Combine:
+   - Either says REJECT → **REJECT**, lead with that reasoning.
+   - Either says FIX FIRST, or the auditor reports any critical/high →
+     **FIX FIRST**, one deduplicated numbered fix list.
+   - Otherwise **MERGE**.
+   - Note disagreements or things only one of them caught.
+4. Report the combined verdict and fix list. Record the verdict in the
+   branch's TASKS.md row (primary checkout, TASKS.md-only commit). Don't
+   fix anything unless the user asks.
