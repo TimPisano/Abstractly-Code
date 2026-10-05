@@ -602,119 +602,377 @@ body.scrolled .site-header {
     }
 }
 
-/* ===================== Hero visual: Deal Mismatch Report card ===================== */
+/* ===================== Hero visual: sample rent roll scan ===================== */
 
 .hero-visual {
     position: relative;
 }
 
-.deal-card {
-    /* No backdrop-filter here on purpose: this card sits over the
-       continuously-animating sitewide canvas, and backdrop-filter
-       forces a full blur recompute of everything behind it on every
-       repaint -- at even a throttled frame rate that's a real,
-       measured jank source over an area this size, not a
-       micro-optimization. A solid-enough background color reads the
-       same at this opacity without that cost. */
+.scan-card {
+    /* No backdrop-filter, same reason as every panel over the live
+       canvas: a full blur recompute behind it on every frame is real
+       jank at this size. A near-opaque fill reads the same. */
     position: relative;
     background: var(--panel-bg-strong);
     border: 1px solid var(--lux-line-dark);
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-lg);
-    padding: 1.875rem 2rem 1.625rem;
+    padding: 1.5rem 1.75rem 1.25rem;
+    text-align: left;
 }
 
-.deal-card-tag {
-    display: block;
+.scan-card-head {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    margin-bottom: 1.25rem;
+}
+
+.scan-card-badge {
     font-family: var(--font-mono);
     font-size: 0.6875rem;
-    letter-spacing: 0.07em;
+    font-weight: 600;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: rgba(246, 243, 236, 0.45);
-    margin-bottom: 1.5rem;
+    color: #0a0a0b;
+    background: var(--lux-accent);
+    border-radius: var(--radius-full);
+    padding: 0.25rem 0.625rem;
 }
 
-.deal-card-ticker {
+.scan-card-tag {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: rgba(246, 243, 236, 0.5);
+}
+
+.scan-card-ticker {
     display: flex;
     align-items: flex-end;
-    gap: 1.125rem;
-    margin-bottom: 1.5rem;
+    gap: 1rem;
+    margin-bottom: 1.25rem;
 }
 
-.deal-card-number {
-    font-family: 'Inter', sans-serif;
-    font-weight: 200;
-    font-size: clamp(2.5rem, 4.2vw, 3.5rem);
-    letter-spacing: -0.02em;
+/* Gold monospace ticker: tabular digits so the count-up never jitters. */
+.scan-card-number {
+    font-family: var(--font-mono);
+    font-weight: 500;
+    font-size: clamp(2.125rem, 3.6vw, 3rem);
+    letter-spacing: -0.03em;
     line-height: 1;
-    color: var(--lux-ivory);
+    color: var(--lux-accent-text);
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
 }
 
-.deal-card-ticker-label {
+.scan-card-ticker-label {
     font-family: var(--font-mono);
     font-size: 0.625rem;
     font-weight: 500;
     letter-spacing: 0.05em;
     text-transform: uppercase;
     line-height: 1.5;
-    color: var(--lux-accent-text);
-    padding-bottom: 0.3125rem;
+    color: rgba(246, 243, 236, 0.6);
+    padding-bottom: 0.25rem;
 }
 
-.deal-card-rows {
-    list-style: none;
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-    padding-top: 1.375rem;
+.scan-table {
     border-top: 1px solid var(--lux-line-dark);
-}
-
-.deal-card-row {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 1rem;
     font-size: 0.8125rem;
-    line-height: 1.4;
 }
 
-.deal-card-row-unit {
-    flex-shrink: 0;
+.scan-head-row,
+.scan-row {
+    display: grid;
+    grid-template-columns: 3.25rem minmax(0, 1fr) 6.75rem;
+    align-items: center;
+    column-gap: 0.75rem;
+    /* Room on the left for a flagged row's gold edge bar. */
+    padding: 0 0.625rem;
+}
+
+.scan-head-row {
+    height: 2rem;
     font-family: var(--font-mono);
-    font-size: 0.6875rem;
+    font-size: 0.625rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
     color: rgba(246, 243, 236, 0.4);
 }
 
-.deal-card-row-desc {
-    flex-grow: 1;
-    color: rgba(246, 243, 236, 0.72);
+.scan-mid {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 4.5rem;
+    column-gap: 0.75rem;
+    align-items: center;
+    height: 100%;
 }
 
-.deal-card-row-impact {
-    flex-shrink: 0;
-    font-weight: 700;
-    color: var(--lux-ivory);
+.scan-head-row .scan-end {
+    font-size: inherit;
+    color: inherit;
+}
+
+.scan-tag-short {
+    display: none;
+}
+
+.scan-rent {
+    position: relative;
+    text-align: right;
     font-variant-numeric: tabular-nums;
 }
 
-.deal-card-more {
-    margin-top: 0.875rem;
-    font-size: 0.75rem;
-    color: rgba(246, 243, 236, 0.4);
+.scan-rows {
+    position: relative;
+    list-style: none;
+    margin: 0;
+    padding: 0;
 }
 
-.deal-card-timestamp {
-    margin-top: 1.375rem;
-    padding-top: 1.125rem;
+.scan-row {
+    position: relative;
+    height: 2.125rem;
+    border-top: 1px solid var(--lux-line-dark-faint);
+    transition: background-color 0.4s ease;
+}
+
+.scan-unit {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: rgba(246, 243, 236, 0.55);
+}
+
+.scan-tenant,
+.scan-end {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: rgba(246, 243, 236, 0.72);
+    transition: opacity 0.3s ease;
+}
+
+.scan-end {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: rgba(246, 243, 236, 0.5);
+}
+
+.scan-rent-value {
+    color: var(--lux-ivory);
+    transition: opacity 0.3s ease;
+}
+
+/* The tag and the row's annual impact sit on top of the tenant /
+   lease-end and rent cells, hidden until the row is flagged -- then
+   they cross-fade in, so flagging never changes the row's height. */
+.scan-tag,
+.scan-rent-impact {
+    position: absolute;
+    top: 50%;
+    opacity: 0;
+    transform: translateY(-50%) translateX(6px);
+    transition: opacity 0.35s ease, transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    white-space: nowrap;
+    pointer-events: none;
+}
+
+.scan-tag {
+    left: 0;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    color: var(--lux-accent-text);
+    background: rgba(var(--lux-accent-rgb), 0.14);
+    border: 1px solid rgba(var(--lux-accent-rgb), 0.45);
+    border-radius: var(--radius-full);
+    padding: 0.1875rem 0.5625rem;
+}
+
+.scan-rent-impact {
+    right: 0;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--lux-accent-text);
+}
+
+/* Flagged state. Shown by default (no JS = the finished report); once
+   landing.js adds .js-scan it only applies to rows the scan has reached. */
+.scan-card:not(.js-scan) .scan-row[data-flag],
+.scan-row.is-flagged {
+    background-color: rgba(var(--lux-accent-rgb), 0.1);
+}
+
+.scan-card:not(.js-scan) .scan-row[data-flag] .scan-tenant,
+.scan-card:not(.js-scan) .scan-row[data-flag] .scan-end,
+.scan-card:not(.js-scan) .scan-row[data-flag] .scan-rent-value,
+.scan-row.is-flagged .scan-tenant,
+.scan-row.is-flagged .scan-end,
+.scan-row.is-flagged .scan-rent-value {
+    opacity: 0;
+}
+
+.scan-card:not(.js-scan) .scan-row[data-flag] .scan-tag,
+.scan-card:not(.js-scan) .scan-row[data-flag] .scan-rent-impact,
+.scan-row.is-flagged .scan-tag,
+.scan-row.is-flagged .scan-rent-impact {
+    opacity: 1;
+    transform: translateY(-50%);
+}
+
+.scan-row.is-flagged::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: var(--lux-accent);
+}
+
+/* The scan line: a 2px gold rule with a soft glow trailing above it,
+   moved row by row with a transform (compositor-only, no layout). */
+.scan-line {
+    position: absolute;
+    left: -0.5rem;
+    right: -0.5rem;
+    top: 0;
+    height: 2px;
+    z-index: 2;
+    background: rgba(var(--lux-accent-rgb), 0.85);
+    box-shadow: 0 0 12px 2px rgba(var(--lux-accent-rgb), 0.45);
+    opacity: 0;
+    transform: translateY(0);
+    transition: transform 0.36s cubic-bezier(0.45, 0, 0.25, 1), opacity 0.4s ease;
+    pointer-events: none;
+}
+
+.scan-line::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 2px;
+    height: 2.125rem;
+    background: linear-gradient(to top, rgba(var(--lux-accent-rgb), 0.16), transparent);
+}
+
+.scan-card.is-scanning .scan-line {
+    opacity: 1;
+}
+
+.scan-card-timestamp {
+    margin-top: 1rem;
+    padding-top: 0.875rem;
     border-top: 1px solid var(--lux-line-dark);
     font-family: var(--font-mono);
     font-size: 0.625rem;
     letter-spacing: 0.04em;
     text-transform: uppercase;
-    color: rgba(246, 243, 236, 0.35);
+    color: rgba(246, 243, 236, 0.38);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .scan-row,
+    .scan-tenant,
+    .scan-end,
+    .scan-rent-value,
+    .scan-tag,
+    .scan-rent-impact {
+        transition: none;
+    }
+
+    .scan-line {
+        display: none;
+    }
+}
+
+/* ===================== PMS marquee ===================== */
+
+.pms-marquee {
+    overflow: hidden;
+    border-top: 1px solid var(--lux-line-dark-faint);
+    border-bottom: 1px solid var(--lux-line-dark-faint);
+    background: rgba(9, 9, 10, 0.55);
+    padding: 1rem 0;
+    /* Fade both edges so text slides in and out rather than being cut. */
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+    mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+}
+
+.pms-marquee-track {
+    display: flex;
+    width: max-content;
+    animation: pms-marquee-scroll 60s linear infinite;
+}
+
+.pms-marquee:hover .pms-marquee-track {
+    animation-play-state: paused;
+}
+
+.pms-marquee-half {
+    display: flex;
+    flex-shrink: 0;
+}
+
+/* Each half repeats the phrase so one half is wider than any viewport. */
+.pms-marquee-item {
+    flex-shrink: 0;
+    padding-right: 4rem;
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+    color: rgba(246, 243, 236, 0.5);
+}
+
+.pms-marquee-item strong {
+    font-weight: 500;
+    color: rgba(246, 243, 236, 0.85);
+}
+
+@keyframes pms-marquee-scroll {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .pms-marquee {
+        -webkit-mask-image: none;
+        mask-image: none;
+        padding: 1rem 1.5rem;
+    }
+
+    .pms-marquee-track {
+        animation: none;
+        width: auto;
+        justify-content: center;
+    }
+
+    .pms-marquee-half[aria-hidden="true"],
+    .pms-marquee-item + .pms-marquee-item {
+        display: none;
+    }
+
+    .pms-marquee-half,
+    .pms-marquee-item {
+        flex-shrink: 1;
+        min-width: 0;
+    }
+
+    .pms-marquee-item {
+        padding-right: 0;
+        white-space: normal;
+        text-align: center;
+    }
 }
 
 /* ===================== Shared section heading ===================== */
@@ -986,6 +1244,157 @@ body.scrolled .site-header {
     border: 1px solid var(--panel-border);
     border-radius: var(--radius-full);
     padding: 0.4375rem 0.875rem;
+}
+
+/* ===================== Exposure calculator ===================== */
+
+.exposure {
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 7rem 1.5rem 0;
+}
+
+.exposure-card {
+    background: var(--panel-bg-strong);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    padding: 2.25rem 2.5rem 2rem;
+}
+
+.exposure-controls {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2rem;
+    margin-bottom: 2.25rem;
+}
+
+.exposure-field-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 1rem;
+    margin-bottom: 0.875rem;
+}
+
+.exposure-field-head label {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text-medium);
+}
+
+.exposure-field-value {
+    font-family: var(--font-mono);
+    font-size: 1rem;
+    color: var(--lux-ivory);
+    font-variant-numeric: tabular-nums;
+}
+
+/* Range input: a thin track with a gold fill up to the thumb
+   (--fill is set by landing.js) and a large-enough thumb for touch. */
+.exposure-field input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 1.75rem;
+    background: transparent;
+    cursor: pointer;
+    --fill: 50%;
+}
+
+.exposure-field input[type="range"]::-webkit-slider-runnable-track {
+    height: 4px;
+    border-radius: var(--radius-full);
+    background: linear-gradient(90deg, var(--lux-accent) var(--fill), rgba(246, 243, 236, 0.14) var(--fill));
+}
+
+.exposure-field input[type="range"]::-moz-range-track {
+    height: 4px;
+    border-radius: var(--radius-full);
+    background: rgba(246, 243, 236, 0.14);
+}
+
+.exposure-field input[type="range"]::-moz-range-progress {
+    height: 4px;
+    border-radius: var(--radius-full);
+    background: var(--lux-accent);
+}
+
+.exposure-field input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 22px;
+    height: 22px;
+    margin-top: -9px;
+    border-radius: 50%;
+    background: var(--lux-ivory);
+    border: 3px solid var(--lux-accent);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+.exposure-field input[type="range"]::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--lux-ivory);
+    border: 3px solid var(--lux-accent);
+}
+
+.exposure-field input[type="range"]:focus-visible {
+    outline: 2px solid var(--lux-accent);
+    outline-offset: 4px;
+    border-radius: var(--radius-sm);
+}
+
+.exposure-result {
+    text-align: center;
+    padding: 1.75rem 1rem;
+    border-top: 1px solid var(--lux-line-dark);
+    border-bottom: 1px solid var(--lux-line-dark);
+}
+
+.exposure-result-label {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(246, 243, 236, 0.55);
+    margin-bottom: 0.75rem;
+}
+
+.exposure-result-value {
+    display: block;
+    font-family: var(--font-mono);
+    font-weight: 500;
+    font-size: clamp(1.75rem, 4.4vw, 2.75rem);
+    letter-spacing: -0.03em;
+    line-height: 1.1;
+    color: var(--lux-accent-text);
+    font-variant-numeric: tabular-nums;
+}
+
+.exposure-math {
+    margin-top: 0.875rem;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    line-height: 1.6;
+    color: rgba(246, 243, 236, 0.5);
+}
+
+.exposure-assumption {
+    margin-top: 1.5rem;
+    font-size: 0.875rem;
+    line-height: 1.6;
+    color: var(--text-medium);
+}
+
+.exposure-assumption strong {
+    color: var(--lux-ivory);
+}
+
+.exposure-cta-wrap {
+    margin-top: 1.75rem;
+    text-align: center;
 }
 
 /* ===================== Three trust pillars ===================== */
@@ -1698,14 +2107,68 @@ body.scrolled .site-header {
     }
 }
 
-@media (max-width: 480px) {
-    .deal-card {
-        padding: 1.5rem 1.375rem 1.25rem;
+@media (max-width: 860px) {
+    .exposure-card {
+        padding: 1.75rem 1.5rem 1.5rem;
     }
 
-    .deal-card-ticker {
+    .exposure-controls {
+        grid-template-columns: 1fr;
+        gap: 1.5rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .scan-card {
+        padding: 1.25rem 1rem 1rem;
+    }
+
+    .scan-card-ticker {
         flex-direction: column;
         align-items: flex-start;
         gap: 0.5rem;
+    }
+
+    /* Tenant names go; unit, lease end and rent stay, and the tag
+       still has the whole middle column to sit in. */
+    .scan-head-row,
+    .scan-row {
+        grid-template-columns: 2.5rem minmax(0, 1fr) 5.25rem;
+        column-gap: 0.5rem;
+        padding: 0 0.375rem;
+    }
+
+    /* The full tag text doesn't fit beside the impact at phone width;
+       the short form plus the row's $/yr still says what's wrong. */
+    .scan-tag-long {
+        display: none;
+    }
+
+    .scan-tag-short {
+        display: inline;
+    }
+
+    .scan-rent-impact {
+        font-size: 0.6875rem;
+    }
+
+    .exposure-result-value {
+        font-size: 1.25rem;
+    }
+
+    .scan-mid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .scan-tenant {
+        display: none;
+    }
+
+    .scan-end {
+        text-align: left;
+    }
+
+    .pms-marquee-item {
+        font-size: 0.75rem;
     }
 }

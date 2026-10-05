@@ -16,7 +16,8 @@
  *  - Sitewide cursor-reactive light bands: a fixed, viewport-sized
  *    canvas behind every section (see #siteGlCanvas in both HTML files
  *    and .site-bg/.site-gl-canvas in landing.css).
- *  - Hero Deal Mismatch Report count-up.
+ *  - Hero sample rent roll scan (fictional Maple Ridge rows) + count-up.
+ *  - Exposure calculator (index.html only).
  *  - Pricing preview teaser (index.html only), rendered from
  *    PRICING_CONFIG so it can never drift from the real pricing page.
  * API_BASE_URL comes from config.js, loaded before this script.
@@ -462,47 +463,168 @@ if ('IntersectionObserver' in window) {
 })();
 
 /**
- * ===================== Hero: Deal Mismatch Report count-up =====================
+ * ===================== Hero: sample rent roll scan =====================
+ * A gold scan line steps down the fictional Maple Ridge sample rows in
+ * #scanCard. When it reaches a row marked data-flag, the row gets
+ * .is-flagged (CSS cross-fades its tag + annual impact in) and the gold
+ * ticker counts up by that row's data-impact. All timing is setTimeout
+ * steps + CSS transitions -- no animation loop of its own.
+ *
+ * Replays: it starts once the card is ~40% visible and fully resets
+ * when the card leaves the viewport, so scrolling back up runs it again.
+ * The HTML ships the finished state (all flags shown, full total) and
+ * CSS keeps showing it until .js-scan is added here, so no-JS visitors
+ * and prefers-reduced-motion both get the finished report, not $0.
  */
 (function () {
-    const numberEl = document.getElementById('dealCardNumber');
-    if (!numberEl) return;
+    const card = document.getElementById('scanCard');
+    if (!card) return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    if (!('IntersectionObserver' in window)) return;
 
-    const target = parseInt(numberEl.getAttribute('data-target'), 10);
-    if (!Number.isFinite(target)) return;
+    const numberEl = document.getElementById('scanCardNumber');
+    const countEl = document.getElementById('scanCardCount');
+    const line = card.querySelector('.scan-line');
+    const rows = Array.from(card.querySelectorAll('.scan-row'));
+
+    const START_DELAY = 350;   // ms before the line first moves
+    const ROW_STEP = 380;      // ms per row (matches .scan-line's transition)
+    const FLAG_PAUSE = 520;    // extra dwell on a flagged row
+    const COUNT_MS = 700;      // ticker tween per flagged row
 
     const formatDollars = (n) => `$${Math.round(n).toLocaleString('en-US')}`;
 
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-        numberEl.textContent = formatDollars(target);
-        return;
+    let timers = [];
+    let countRaf = null;
+    let shown = 0;     // value currently displayed by the ticker
+    let total = 0;     // value the ticker is heading toward
+    let found = 0;
+    let started = false;
+
+    function later(ms, fn) {
+        timers.push(setTimeout(fn, ms));
     }
 
-    function animateCount() {
-        const duration = 1400;
+    function countTo(target) {
+        cancelAnimationFrame(countRaf);
+        const from = shown;
         const start = performance.now();
-
         function tick(now) {
-            const progress = Math.min((now - start) / duration, 1);
-            const eased = 1 - Math.pow(1 - progress, 3);
-            numberEl.textContent = formatDollars(target * eased);
-            if (progress < 1) requestAnimationFrame(tick);
+            const p = Math.min((now - start) / COUNT_MS, 1);
+            shown = from + (target - from) * (1 - Math.pow(1 - p, 3));
+            numberEl.textContent = formatDollars(shown);
+            if (p < 1) countRaf = requestAnimationFrame(tick);
         }
-        requestAnimationFrame(tick);
+        countRaf = requestAnimationFrame(tick);
     }
 
-    if ('IntersectionObserver' in window) {
-        const observer = new IntersectionObserver((entries) => {
-            entries.forEach((entry) => {
-                if (entry.isIntersecting) {
-                    animateCount();
-                    observer.unobserve(entry.target);
-                }
+    function reset() {
+        timers.forEach(clearTimeout);
+        timers = [];
+        cancelAnimationFrame(countRaf);
+        shown = total = found = 0;
+        numberEl.textContent = formatDollars(0);
+        countEl.textContent = '0';
+        rows.forEach((r) => r.classList.remove('is-flagged'));
+        card.classList.remove('is-scanning');
+        line.style.transform = 'translateY(0)';
+    }
+
+    function run() {
+        reset();
+        card.classList.add('is-scanning');
+        let t = START_DELAY;
+        rows.forEach((row) => {
+            later(t, () => {
+                // Bottom edge of this row, relative to the <ol>.
+                line.style.transform = `translateY(${row.offsetTop + row.offsetHeight - 1}px)`;
             });
-        }, { threshold: 0.4 });
-        observer.observe(numberEl);
-    } else {
-        animateCount();
+            t += ROW_STEP;
+            if (row.dataset.flag) {
+                later(t, () => {
+                    row.classList.add('is-flagged');
+                    found += 1;
+                    countEl.textContent = String(found);
+                    total += parseInt(row.dataset.impact, 10) || 0;
+                    countTo(total);
+                });
+                t += FLAG_PAUSE;
+            }
+        });
+        later(t + 200, () => card.classList.remove('is-scanning'));
+    }
+
+    card.classList.add('js-scan');
+    reset();
+
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+            if (entry.intersectionRatio >= 0.4 && !started) {
+                started = true;
+                run();
+            } else if (!entry.isIntersecting && started) {
+                started = false;
+                reset();
+            }
+        });
+    }, { threshold: [0, 0.4] });
+    observer.observe(card);
+})();
+
+/**
+ * ===================== Exposure calculator =====================
+ * units x monthly rent x 12 = gross scheduled rent, times the stated
+ * 0.5%-2% assumption (printed on the page next to the result). Rounded
+ * to the nearest $100 so it doesn't pretend to more precision than one
+ * assumed percentage has. "Book a call" carries the unit count into the
+ * demo form's units field if the visitor hasn't typed one yet.
+ */
+(function () {
+    const unitsEl = document.getElementById('expUnits');
+    const rentEl = document.getElementById('expRent');
+    if (!unitsEl || !rentEl) return;
+
+    const LOW_RATE = 0.005;
+    const HIGH_RATE = 0.02;
+
+    const unitsOut = document.getElementById('expUnitsOut');
+    const rentOut = document.getElementById('expRentOut');
+    const rangeOut = document.getElementById('expRange');
+    const mathOut = document.getElementById('expMath');
+
+    const dollars = (n) => `$${Math.round(n).toLocaleString('en-US')}`;
+    const round100 = (n) => Math.round(n / 100) * 100;
+
+    function setFill(input) {
+        const pct = ((input.value - input.min) / (input.max - input.min)) * 100;
+        input.style.setProperty('--fill', `${pct}%`);
+    }
+
+    function update() {
+        const units = parseInt(unitsEl.value, 10);
+        const rent = parseInt(rentEl.value, 10);
+        const gross = units * rent * 12;
+
+        unitsOut.textContent = units.toLocaleString('en-US');
+        rentOut.textContent = dollars(rent);
+        unitsEl.setAttribute('aria-valuetext', `${units.toLocaleString('en-US')} units`);
+        rentEl.setAttribute('aria-valuetext', `${dollars(rent)} a month`);
+        rangeOut.textContent = `${dollars(round100(gross * LOW_RATE))} – ${dollars(round100(gross * HIGH_RATE))}`;
+        mathOut.textContent = `${units.toLocaleString('en-US')} units × ${dollars(rent)}/mo × 12 = ${dollars(gross)} scheduled rent a year, × 0.5% to 2%`;
+        setFill(unitsEl);
+        setFill(rentEl);
+    }
+
+    unitsEl.addEventListener('input', update);
+    rentEl.addEventListener('input', update);
+    update();
+
+    const bookCall = document.getElementById('expBookCall');
+    const demoUnits = document.getElementById('demoUnits');
+    if (bookCall && demoUnits) {
+        bookCall.addEventListener('click', () => {
+            if (!demoUnits.value) demoUnits.value = unitsEl.value;
+        });
     }
 })();
 

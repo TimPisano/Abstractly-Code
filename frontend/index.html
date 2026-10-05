@@ -106,43 +106,174 @@
                 </div>
             </div>
 
+            <!-- Hero scan animation (landing.js "Hero: sample rent roll scan").
+                 Rows are copied from the FICTIONAL Maple Ridge demo deal's
+                 16-unit sample rent roll (backend/benchmark_data/demo_deal/,
+                 expected_findings.json): 10 of its rows, including the 6
+                 findings that sum to $42,780. Illustrative only -- nothing
+                 here is live data. Without JS (or under reduced motion) the
+                 card shows its finished state. -->
             <div class="hero-visual">
-                <div class="deal-card">
-                    <span class="deal-card-tag">Sample Report — Maple Ridge Apartments, fictional demo deal</span>
-
-                    <div class="deal-card-ticker">
-                        <span class="deal-card-number" id="dealCardNumber" data-target="42780">$0</span>
-                        <span class="deal-card-ticker-label">Sample Report ·<br>Annual Income<br>Overstated</span>
+                <div class="scan-card" id="scanCard">
+                    <div class="scan-card-head">
+                        <span class="scan-card-badge">Sample deal</span>
+                        <span class="scan-card-tag">Maple Ridge Apartments &middot; fictional demo deal</span>
                     </div>
 
-                    <ul class="deal-card-rows">
-                        <li class="deal-card-row">
-                            <span class="deal-card-row-unit">H104</span>
-                            <span class="deal-card-row-desc">Lease expired, still shown occupied</span>
-                            <span class="deal-card-row-impact">$20,640/yr</span>
-                        </li>
-                        <li class="deal-card-row">
-                            <span class="deal-card-row-unit">C203</span>
-                            <span class="deal-card-row-desc">Lease expired, still shown occupied</span>
-                            <span class="deal-card-row-impact">$15,480/yr</span>
-                        </li>
-                        <li class="deal-card-row">
-                            <span class="deal-card-row-unit">G204</span>
-                            <span class="deal-card-row-desc">Rent roll overstates lease rent</span>
-                            <span class="deal-card-row-impact">$3,120/yr</span>
-                        </li>
-                        <li class="deal-card-row">
-                            <span class="deal-card-row-unit">D203</span>
-                            <span class="deal-card-row-desc">Rent roll overstates lease rent</span>
-                            <span class="deal-card-row-impact">$1,440/yr</span>
-                        </li>
-                    </ul>
-                    <p class="deal-card-more">+ 2 more discrepancies</p>
-                    <p class="deal-card-timestamp">Rent roll as of 08.31.2026</p>
+                    <div class="scan-card-ticker">
+                        <span class="scan-card-number" id="scanCardNumber" data-target="42780">$42,780</span>
+                        <span class="scan-card-ticker-label">Annual income<br>overstated &middot; <span id="scanCardCount">6</span> found</span>
+                    </div>
+
+                    <p class="sr-only">Sample deal, Maple Ridge Apartments, a fictional demo property: checking 10 rent-roll rows against their leases finds 6 discrepancies totaling $42,780 a year of overstated income &mdash; unit B104: rent above lease by $75/mo, $900 a year; unit C203: lease expired, still occupied, $15,480 a year; unit D203: rent above lease by $120/mo, $1,440 a year; unit G204: rent above lease by $260/mo, $3,120 a year; unit H104: lease expired, still occupied, $20,640 a year; unit J303: rent above lease by $100/mo, $1,200 a year.</p>
+
+                    <div class="scan-table" aria-hidden="true">
+                        <div class="scan-head-row">
+                            <span>Unit</span>
+                            <span class="scan-mid"><span class="scan-tenant">Tenant</span><span class="scan-end">Lease end</span></span>
+                            <span class="scan-rent">Rent</span>
+                        </div>
+                        <ol class="scan-rows">
+                            <li class="scan-line" aria-hidden="true"></li>
+                            <li class="scan-row">
+                                <span class="scan-unit">A102</span>
+                                <span class="scan-mid">
+                                    <span class="scan-tenant">Jordan Boone</span>
+                                    <span class="scan-end">06/30/27</span>
+                                </span>
+                                <span class="scan-rent">
+                                    <span class="scan-rent-value">$1,075</span>
+                                </span>
+                            </li>
+                            <li class="scan-row" data-flag="rent" data-impact="900">
+                                <span class="scan-unit">B104</span>
+                                <span class="scan-mid">
+                                    <span class="scan-tenant">Magnolia Fennimore</span>
+                                    <span class="scan-end">08/31/26</span>
+                                    <span class="scan-tag"><span class="scan-tag-long">Rent above lease by $75/mo</span><span class="scan-tag-short">Rent above lease</span></span>
+                                </span>
+                                <span class="scan-rent">
+                                    <span class="scan-rent-value">$1,360</span>
+                                    <span class="scan-rent-impact">+$900/yr</span>
+                                </span>
+                            </li>
+                            <li class="scan-row">
+                                <span class="scan-unit">B303</span>
+                                <span class="scan-mid">
+                                    <span class="scan-tenant">Delphine Ordway</span>
+                                    <span class="scan-end">01/31/27</span>
+                                </span>
+                                <span class="scan-rent">
+                                    <span class="scan-rent-value">$1,310</span>
+                                </span>
+                            </li>
+                            <li class="scan-row" data-flag="expired" data-impact="15480">
+                                <span class="scan-unit">C203</span>
+                                <span class="scan-mid">
+                                    <span class="scan-tenant">Chester Tigerstrom</span>
+                                    <span class="scan-end">&mdash;</span>
+                                    <span class="scan-tag"><span class="scan-tag-long">Lease expired, still occupied</span><span class="scan-tag-short">Lease expired</span></span>
+                                </span>
+                                <span class="scan-rent">
+                                    <span class="scan-rent-value">$1,290</span>
+                                    <span class="scan-rent-impact">+$15,480/yr</span>
+                                </span>
+                            </li>
+                            <li class="scan-row">
+                                <span class="scan-unit">D104</span>
+                                <span class="scan-mid">
+                                    <span class="scan-tenant">Juniper Foss</span>
+                                    <span class="scan-end">11/30/26</span>
+                                </span>
+                                <span class="scan-rent">
+                                    <span class="scan-rent-value">$1,285</span>
+                                </span>
+                            </li>
+                            <li class="scan-row" data-flag="rent" data-impact="1440">
+                                <span class="scan-unit">D203</span>
+                                <span class="scan-mid">
+                                    <span class="scan-tenant">Omar Ostrander</span>
+                                    <span class="scan-end">02/28/27</span>
+                                    <span class="scan-tag"><span class="scan-tag-long">Rent above lease by $120/mo</span><span class="scan-tag-short">Rent above lease</span></span>
+                                </span>
+                                <span class="scan-rent">
+                                    <span class="scan-rent-value">$1,420</span>
+                                    <span class="scan-rent-impact">+$1,440/yr</span>
+                                </span>
+                            </li>
+                            <li class="scan-row" data-flag="rent" data-impact="3120">
+                                <span class="scan-unit">G204</span>
+                                <span class="scan-mid">
+                                    <span class="scan-tenant">Junia Levine</span>
+                                    <span class="scan-end">10/31/26</span>
+                                    <span class="scan-tag"><span class="scan-tag-long">Rent above lease by $260/mo</span><span class="scan-tag-short">Rent above lease</span></span>
+                                </span>
+                                <span class="scan-rent">
+                                    <span class="scan-rent-value">$1,955</span>
+                                    <span class="scan-rent-impact">+$3,120/yr</span>
+                                </span>
+                            </li>
+                            <li class="scan-row">
+                                <span class="scan-unit">G303</span>
+                                <span class="scan-mid">
+                                    <span class="scan-tenant">Sonny Bostwick</span>
+                                    <span class="scan-end">04/30/27</span>
+                                </span>
+                                <span class="scan-rent">
+                                    <span class="scan-rent-value">$1,725</span>
+                                </span>
+                            </li>
+                            <li class="scan-row" data-flag="expired" data-impact="20640">
+                                <span class="scan-unit">H104</span>
+                                <span class="scan-mid">
+                                    <span class="scan-tenant">Ellery Fairweather</span>
+                                    <span class="scan-end">&mdash;</span>
+                                    <span class="scan-tag"><span class="scan-tag-long">Lease expired, still occupied</span><span class="scan-tag-short">Lease expired</span></span>
+                                </span>
+                                <span class="scan-rent">
+                                    <span class="scan-rent-value">$1,720</span>
+                                    <span class="scan-rent-impact">+$20,640/yr</span>
+                                </span>
+                            </li>
+                            <li class="scan-row" data-flag="rent" data-impact="1200">
+                                <span class="scan-unit">J303</span>
+                                <span class="scan-mid">
+                                    <span class="scan-tenant">Silas Vasilenko</span>
+                                    <span class="scan-end">05/31/27</span>
+                                    <span class="scan-tag"><span class="scan-tag-long">Rent above lease by $100/mo</span><span class="scan-tag-short">Rent above lease</span></span>
+                                </span>
+                                <span class="scan-rent">
+                                    <span class="scan-rent-value">$2,075</span>
+                                    <span class="scan-rent-impact">+$1,200/yr</span>
+                                </span>
+                            </li>
+                        </ol>
+                    </div>
+                    <p class="scan-card-timestamp">10 of 120 units shown &middot; Rent roll as of 08.31.2026</p>
                 </div>
             </div>
         </div>
     </header>
+
+    <!-- ===================== PMS marquee (text only, no logos) ===================== -->
+    <!-- The track holds two identical halves so translateX(-50%) loops
+         seamlessly; the second half is aria-hidden. Static under
+         prefers-reduced-motion (landing.css). Names only systems the FAQ
+         already claims import support for. -->
+    <div class="pms-marquee" role="region" aria-label="Supported rent roll sources">
+        <div class="pms-marquee-track">
+            <div class="pms-marquee-half">
+                <span class="pms-marquee-item">Reads exports from <strong>AppFolio &middot; Yardi &middot; RealPage &middot; MRI &middot; Buildium &middot; Excel &middot; CSV</strong></span>
+                <span class="pms-marquee-item">Reads exports from <strong>AppFolio &middot; Yardi &middot; RealPage &middot; MRI &middot; Buildium &middot; Excel &middot; CSV</strong></span>
+                <span class="pms-marquee-item">Reads exports from <strong>AppFolio &middot; Yardi &middot; RealPage &middot; MRI &middot; Buildium &middot; Excel &middot; CSV</strong></span>
+            </div>
+            <div class="pms-marquee-half" aria-hidden="true">
+                <span class="pms-marquee-item">Reads exports from <strong>AppFolio &middot; Yardi &middot; RealPage &middot; MRI &middot; Buildium &middot; Excel &middot; CSV</strong></span>
+                <span class="pms-marquee-item">Reads exports from <strong>AppFolio &middot; Yardi &middot; RealPage &middot; MRI &middot; Buildium &middot; Excel &middot; CSV</strong></span>
+                <span class="pms-marquee-item">Reads exports from <strong>AppFolio &middot; Yardi &middot; RealPage &middot; MRI &middot; Buildium &middot; Excel &middot; CSV</strong></span>
+            </div>
+        </div>
+    </div>
 
     <!-- ===================== Problem section (real sample report) ===================== -->
     <!-- The report below is REAL output from the reconciliation engine
@@ -250,6 +381,51 @@
             <span class="capability-chip">Yardi / AppFolio / RealPage / MRI / Buildium import</span>
             <span class="capability-chip">T-12 cross-check</span>
             <span class="capability-chip">Citation-linked validation</span>
+        </div>
+    </section>
+
+    <!-- ===================== Exposure calculator ===================== -->
+    <!-- Pure client-side arithmetic (landing.js "Exposure calculator"):
+         units x rent x 12 x the stated 0.5%-2% assumption. An estimate
+         from an assumption, labeled as such -- not data about anyone's
+         portfolio. Default values below match the JS defaults so the
+         section reads correctly without JS. -->
+    <section class="exposure" id="exposure">
+        <div class="section-heading reveal">
+            <span class="eyebrow">Exposure Estimate</span>
+            <h2>What could a drifted rent roll cost you?</h2>
+            <p>Move the sliders to match a deal you're looking at. It's a rough estimate from one stated assumption, not a finding about your portfolio.</p>
+        </div>
+
+        <div class="exposure-card reveal">
+            <div class="exposure-controls">
+                <div class="exposure-field">
+                    <div class="exposure-field-head">
+                        <label for="expUnits">Units</label>
+                        <output class="exposure-field-value" id="expUnitsOut" for="expUnits">200</output>
+                    </div>
+                    <input type="range" id="expUnits" min="20" max="1000" step="10" value="200" aria-valuetext="200 units">
+                </div>
+                <div class="exposure-field">
+                    <div class="exposure-field-head">
+                        <label for="expRent">Average monthly rent</label>
+                        <output class="exposure-field-value" id="expRentOut" for="expRent">$1,400</output>
+                    </div>
+                    <input type="range" id="expRent" min="600" max="3500" step="25" value="1400" aria-valuetext="$1,400 a month">
+                </div>
+            </div>
+
+            <div class="exposure-result">
+                <span class="exposure-result-label">Estimated annual income at risk</span>
+                <output class="exposure-result-value" id="expRange" for="expUnits expRent">$16,800 &ndash; $67,200</output>
+                <p class="exposure-math" id="expMath">200 units &times; $1,400/mo &times; 12 = $3,360,000 scheduled rent a year, &times; 0.5% to 2%</p>
+            </div>
+
+            <p class="exposure-assumption"><strong>The assumption:</strong> we model <strong>0.5% to 2%</strong> of a property's gross scheduled rent as overstated on the seller's rent roll &mdash; expired leases still shown as occupied, rent above what the lease says, concessions left off. That's a deliberately modest range we chose for illustration, <em>not</em> a measured industry statistic. Your real number could be lower or higher; the only way to know is to check the leases.</p>
+
+            <div class="exposure-cta-wrap">
+                <a href="#book-demo" class="btn-primary" id="expBookCall">Book a call</a>
+            </div>
         </div>
     </section>
 
