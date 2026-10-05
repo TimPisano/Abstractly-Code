@@ -12,6 +12,7 @@ isolated temp SQLite file so nothing here touches the real dev database.
 """
 
 import email
+import email.header
 import os
 import sys
 import tempfile
@@ -283,6 +284,45 @@ def test_admin_notification_escapes_html_in_requester_email():
     print("✓ test_admin_notification_escapes_html_in_requester_email: PASS")
 
 
+def test_outgoing_mail_sets_reply_to_the_public_contact_address():
+    """
+    Replies must reach the address shown in the site footer, not whatever
+    mailbox EMAIL_USER happens to be. Gmail's SMTP refuses a From it
+    doesn't own, so From stays EMAIL_USER and Reply-To is the only thing
+    routing a customer's reply to the public address -- which makes it
+    silent if it ever stops being set. Pinned here so that can't happen
+    unnoticed: a dropped Reply-To would send every reply to the personal
+    Gmail account instead.
+    """
+    fake_env = {"EMAIL_USER": "fake@example.com", "EMAIL_APP_PASSWORD": "fake-app-password"}
+    with mock.patch.dict(os.environ, fake_env):
+        mock_server = mock.MagicMock()
+        mock_smtp_ssl = mock.MagicMock()
+        mock_smtp_ssl.return_value.__enter__.return_value = mock_server
+
+        with mock.patch("smtplib.SMTP_SSL", mock_smtp_ssl):
+            sent = email_service.send_waitlist_confirmation_email("someone@example.com")
+
+        assert sent is True
+        raw_message = mock_server.sendmail.call_args[0][2]
+        parsed = email.message_from_string(raw_message)
+
+        assert parsed["Reply-To"] == "tim@getabstractly.com", \
+            "Reply-To must be the public contact address, got %r" % parsed["Reply-To"]
+        # From stays the authenticated mailbox -- asserted so a future
+        # change to send *as* the public address is a deliberate edit
+        # here, not an accident that Gmail would reject at send time.
+        # FROM_DISPLAY_NAME contains an em-dash, so the header arrives
+        # RFC 2047-encoded ("=?utf-8?q?...?=") and has to be decoded
+        # before the address is findable -- a plain substring check on
+        # the raw header silently never matches.
+        from_decoded = str(email.header.make_header(email.header.decode_header(parsed["From"])))
+        assert "fake@example.com" in from_decoded, \
+            "From must remain EMAIL_USER (Gmail rejects a From it doesn't own), got %r" % from_decoded
+
+    print("✓ test_outgoing_mail_sets_reply_to_the_public_contact_address: PASS")
+
+
 def test_admin_notification_noop_without_admin_email():
     """If ADMIN_EMAIL isn't configured, the notification is skipped (returns False), not an error."""
     with mock.patch.dict(os.environ, {"EMAIL_USER": "fake@example.com", "EMAIL_APP_PASSWORD": "fake"}, clear=False):
@@ -420,6 +460,7 @@ if __name__ == "__main__":
     test_duplicate_signup_does_not_resend_email()
     test_signup_notifies_admin_with_mocked_smtp()
     test_admin_notification_escapes_html_in_requester_email()
+    test_outgoing_mail_sets_reply_to_the_public_contact_address()
     test_admin_notification_noop_without_admin_email()
     test_signup_succeeds_when_admin_notification_fails()
     test_send_side_rate_limit_caps_repeated_sends_to_same_recipient()
