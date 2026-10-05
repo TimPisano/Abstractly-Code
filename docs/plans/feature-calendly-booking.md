@@ -1,5 +1,9 @@
 # Plan: Calendly popup on every Book a Demo CTA
 
+> **Revision 2026-10-05 — read this first.** The user answered the open
+> questions and widened the scope (see "Revision 2026-10-05" at the end).
+> Where the two disagree, the revision wins.
+
 ## Goal
 
 Every "Book a Demo" button on the marketing site (`index.html`,
@@ -150,3 +154,58 @@ commit, and the fallback means the worst case is the previous behaviour.
 3. **Confirm the booking URL** is exactly
    `https://calendly.com/timmypisano24/abstractly-intro-call` — I will not
    guess at a different event slug.
+
+## Revision 2026-10-05
+
+**Answers from the user:**
+
+- **Booking URL:** `https://calendly.com/timpisano/abstractly-intro-call`
+  (the user pasted it with `?back=1&month=2026-10`; those are browser-state
+  params and `month=` would pin the calendar to Oct 2026, so they are
+  dropped). This replaces the guessed `timmypisano24` slug above.
+- **Form stays.** Calendly sits in front of it; the form is the fallback
+  *and* gets its own Calendly hand-off on success (below).
+- **Built here**, not on `chore/contact-email` (that branch keeps only the
+  contact-detail changes and merges first).
+
+**Added scope:**
+
+1. **Every "Book a call" and "Book a Demo" CTA** opens the popup — now
+   also the footer "Book a call" link and the two "How do I reach you?"
+   FAQ links that `chore/contact-email` adds. Form's own submit button
+   still excluded (it submits the form).
+2. **Form success state:** the confirmation text says thanks and shows a
+   **"Pick a time"** button that opens the popup with the visitor's name
+   and email **prefilled** (`Calendly.initPopupWidget({url, prefill:
+   {name, email}})`; if the widget is blocked, the button is a plain
+   `target="_blank"` link to the URL with `?name=&email=` query params,
+   which Calendly also honours). Touches `landing.js` — this reverses the
+   "do not touch landing.js" line above.
+3. **Emails:** `send_demo_request_confirmation` (to the visitor) and
+   `send_demo_request_notification` (to the user) both include the
+   booking link. URL lives in one constant/env var
+   (`CALENDLY_URL`, default the URL above) so it is not hard-coded in 3
+   places. Backend change → mocked-SMTP tests in `test_demo_request.py`
+   asserting the link is in both bodies.
+4. **CSP:** as in "Why the CSP change is required", for all 3 frontend
+   services, plus a test pinning it. Verified with a **headless** click
+   test that the iframe loads and the console has no CSP violation.
+   Caveat: that proves the policy locally against the real `render.yaml`
+   header values served by a local server; it is *not* the production
+   deploy itself, which can only be checked after merge (merge-branch
+   step 12 smoke test).
+
+**Rebase first:** the plan's base `7ac879b` is 41 commits behind
+`origin/main` (pricing page and team isolation merged since). Rebuild on
+current `main` *after* `chore/contact-email` merges, so the new footer and
+FAQ links exist to wire up. Baseline test count will be re-measured
+(currently 81/82 on main; `test_demo_deal_regression.py` fails on `main`
+itself with `401 Login required` — separate fix).
+
+**Files (revised):** `frontend/index.html`, `frontend/pricing.html`,
+`frontend/landing.js`, `render.yaml`, `backend/app/email_service.py`,
+`backend/tests/test_demo_request.py` (+ a CSP test file, registered).
+
+**Team isolation / roles:** still no new routes or queries;
+`/demo-request` is public intake by design and only its email bodies
+change.
