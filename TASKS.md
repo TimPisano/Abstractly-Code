@@ -6,8 +6,8 @@ Commit changes with `git commit -m "TASKS: …" -- TASKS.md` (the hooks
 allow TASKS.md-only commits on main). `/status` reconciles this file with
 git; `/session-handoff` writes the handoff blocks; `/resume-task` reads them.
 
-Last reconciled with git: **2026-10-04** (`feature/team-isolation`
-merged + pushed). `main` @ `3cff20b` == `origin/main`.
+Last reconciled with git: **2026-10-04** (`feature/pricing-page`
+merged + pushed). `main` @ `c21ced5` == `origin/main`.
 `+a/−b` = commits ahead/behind `main`; the per-branch numbers below
 predate recent merges. **Every open branch now also conflicts in
 `TASKS.md`** (they each edited it before that rule existed) — resolve
@@ -23,14 +23,10 @@ those by taking **main's** TASKS.md, not the branch's.
    was therefore not actionable; see #2–#4 for what each one actually needs.
 2. ~~`feature/team-isolation` is ready to merge~~ — **MERGED** `3cff20b`
    (2026-10-04), pushed, all three services healthy. See Done.
-3. **`feature/pricing-page` r2 would ship the Render billing change you
-   asked to hold.** Its tip commit *is* `0a0d7a2` — the persistent disk +
-   `plan: free → starter` on `abstractly-api` and `abstractly-tester-api`,
-   the same change as `chore/render-persistent-disk`. The TASKS.md note
-   claiming that part was "split out" is wrong: it was *copied* out, not
-   removed from pricing-page. To merge pricing-page frontend-only, drop or
-   revert `0a0d7a2` on the branch first. Also still conflicts in
-   `frontend/config.js`, and has no reviewer verdict.
+3. ~~`feature/pricing-page` would ship the held Render billing change~~ —
+   **RESOLVED**: `0a0d7a2` was reverted on the branch (`e06db8e`), the
+   `config.js` duplication dropped, and the branch merged frontend-only
+   as `c21ced5`. It never touched `render.yaml`.
 4. ~~`fix/concession-detection`~~ — **fully merged**: rounds 1–2 as
    `953c00a`, rounds 3–4 as `f68a287` (2026-10-04). Both pushed. See Done.
    **It landed first, so `feature/team-isolation` now owes the `team_id`
@@ -53,18 +49,13 @@ those by taking **main's** TASKS.md, not the branch's.
    Held. Nothing on Render was changed. Same hold applies to pricing-page's
    `0a0d7a2` (#3): `plan: starter` on a non-upgraded account risks a
    failed deploy.
-9. **Two content blockers on the pricing page — your call, I didn't touch
-   them** (outside what you asked me to fix, but both are customer-facing):
-   (a) `pricing.html` carries a visible **"Placeholder launch pricing"**
-   banner saying the prices "are not market-tested". It is **already live
-   on production** (`main:frontend/pricing.html:71`), not new to the
-   branch. CLAUDE.md states $499/$1,250 as the actual pricing, so the page
-   currently undercuts its own numbers to every visitor. (b) The branch's
-   version of that banner adds a claim that is now **false** — "no
-   usage-limits system exists in the product yet" — `feature/usage-limits`
-   merged as `ab7fb6f`. Decide whether to drop the banner, or keep it and
-   correct the usage-limits clause. Related: the pricing DoD line "no
-   placeholder text in the diff" fails until this is settled.
+9. ~~Two content blockers on the pricing page~~ — **RESOLVED 2026-10-04**:
+   you chose to drop the placeholder-pricing banner entirely. Removed
+   markup + its dead CSS in `67afbe1`, shipped in `c21ced5`. That
+   cleared all three problems at once — the false "no usage-limits
+   system exists" claim, the page undercutting its own prices, and a
+   customer-facing page exposing an internal TODO and the
+   `pricing-config.js` path. The DoD "no placeholder text" line now passes.
 11. ~~The marketing page makes a security claim that is false~~ —
    **RESOLVED by merging `feature/team-isolation` (`3cff20b`).** The
    `index.html` card "Isolated per team — Each team's documents and
@@ -198,6 +189,7 @@ loan-underwriting. (`landing-positioning` dropped — superseded.)
 | Branch | Merged as | Notes |
 |---|---|---|
 | `chore/demo-rent-roll-polish` | `5d7fdbe` | Maple Ridge demo polish: rent rolls regenerated as PMS-style **xlsx + landscape PDF** (the two `*_appfolio.csv` files are **deleted** — fixture paths now point at the xlsx), 15 lease PDFs reworked into real-looking signed leases, T-12 as a clean operating statement, institutional-looking Deal Mismatch Report PDF (`deal_mismatch_export.py`), new data-driven `test_demo_deal_regression.py`, and `DEMO_WALKTHROUGH.md` sales script. Merged 2026-10-04. **Resolved on the branch, not on main:** the primary checkout is read-only (rule 3), so a combined conflict resolution is impossible there — merged `main` *into* the branch instead (`5139d3f`), fixed it up (`7dec3d1`), pushed, after which main merged with **zero conflicts**. Two stale expectations fixed in the process: the golden test still demanded `"(no concession shown)"` though the new rent rolls carry a real `$0.00` Concessions column (detector deliberately distinguishes the two; all 3 `concession_missing` findings fire correctly), and the demo README still warned that `detect_concession_missing` is a stub — false since `953c00a`, and actively misleading for sales. Suite **79/79 on merged main**, run post-merge. |
+| `feature/pricing-page` (round 2) | `c21ced5` | **The marketing design that ships.** Flat per-team pricing ($499/$399, $1,250/$999, Enterprise), dark theme, cursor-spotlight cards, new logo, Lenis, Book-a-demo CTAs with no self-serve checkout. 10 files, frontend-only. Merged 2026-10-04 on the user's typed approval, **zero conflicts** (fast-forward after `main` was merged into the branch first). **Fixes the per-property pricing ($25/$20) that was live on production.** Suite **80/81 in a clean worktree**; the primary checkout reported 72/81, which is the `.env` artifact in the Decisions log, not this merge — a frontend-only diff cannot break backend tests. Smoke test went beyond `/health`: polled production until the banner disappeared from the served HTML (11130 -> 10838 bytes), confirmed `pricing-config.js` now serves 499/399/1250/999, confirmed all three frontends serve the new build with zero `per-property` occurrences, and **looked at the live production page** — flat prices, no banner, readable. |
 | `feature/team-isolation` | `3cff20b` | **Real document-level multi-tenancy** — `team_id` on `leases`, `discrepancies`, `alerts`, `tasks`, etc., every document query scoped to the authenticated caller's team. 82 files, +7948/−1117; adds `app/sample_deal.py`, `tests/_session_users.py`, `test_team_isolation.py`, `test_team_isolation_fixes.py`, `frontend/app/team-setup.html`. Merged 2026-10-04 on the user's typed approval; **zero conflicts** (the branch had already merged `main` at `0ae5438` and fixed the `test_concessions.py` `team_id` args in `d8aeed5`). Suite **80/81 in a clean worktree** — only the pre-existing `test_demo_deal_regression.py` bug (#10). Smoke test: all three services `{"status":"healthy"}` across a 2-minute window after the push, and `/app/team-setup.html` (a file new on this branch) returns 200 with real content on the tester — which is what proves the redeploy actually landed rather than just reporting healthy. **Caveat:** merged tip `d8aeed5` is 2 commits past the reviewed `fe520c9`; both are a mechanical `main` merge and a 6-line test-only change, so no unreviewed production code shipped. **Follow-up (not blocking):** bind tokens to the user's email so an old token can't act as a different user after a deploy-time DB wipe (`auth._live_user`); and `feature/deal-assistant` must rebase (3 trivial `api.py` conflicts + its session-faking tests need `sync_session_user`). |
 | `research/section8` | `2fbb542` | Section 8 / LIHTC founder's briefing by another session — **docs only**, one new file (`docs/research/section8.md`, 224 lines), nothing modified, no code. Merged 2026-10-04 on the user's typed approval. Scanned before merging: no placeholders, secrets, or PII (the one `$KEY` hit is a shell variable in an illustrative `curl` example). Suite **79/79** post-merge; all three Render services healthy after the push. **Merging it was not a product decision** — see Up next #6 for the question it leaves open. Deviation worth noting: it was in Up next, not "Ready for review", and carried no reviewer verdict; merged anyway as an additive docs-only file on the user's explicit instruction. |
 | `fix/concession-detection` (rounds 3–4) | `f68a287` | **Merged 2026-10-04 on the user's typed approval; pushed.** The gap this closed: `main`'s earlier merge `953c00a` took the branch at its **round-2** tip (`1380198`), but the branch then gained three more commits — `b4e3f4a` (round 3), `1f8ec14` (round 4), `500f368` — which stayed unmerged and untracked while TASKS.md recorded the branch as done. Brings `concessions.py` (+40/−9), `rent_roll_import.py`, and 65 lines of tests: interest-free deposit wording no longer reads as free rent, default **forfeiture** clauses now read as negations rather than conditional grants, credits **applied to the deposit** are excluded from effective rent, plus clause-splitting fixes. Merged **clean** (prepared on the branch first — see the Decisions log). Suite **79/79** in the primary checkout post-merge; note that is 78/79 on a clean checkout because of the separate fixture bug in #10, which this merge does not touch. All three Render services returned `{"status":"healthy"}` after the push and all three frontends serve bytes identical to `main`. Backend-only change, so no UI to verify. |
@@ -213,6 +205,17 @@ loan-underwriting. (`landing-positioning` dropped — superseded.)
 | (docs) | `64af20a`, `d55fef9`, `70ed972` | First CLAUDE.md / TASKS.md / agents / skills. |
 
 ## Decisions log
+
+- **2026-10-04 — On this marketing page, changing page HEIGHT can break
+  text legibility.** Dropping the pricing banner shortened the page,
+  which moved the scroll-linked shader's bright ribs up behind the
+  pricing header and washed out the eyebrow and subhead at 375px. It
+  looked like an animation-phase artifact; re-capturing at a different
+  delay reproduced it, proving it real. Fixed with the scrim pattern the
+  index hero already uses (`.hero-copy::before`), radial here because the
+  pricing heading is centered. **Any future edit to `index.html` /
+  `pricing.html` needs a visual check at 375px, not just a diff review** —
+  content that reads fine locally can be unreadable once the shader moves.
 
 - **2026-10-04 — `backend/.env` in the primary checkout corrupts test
   results in BOTH directions; trust a clean worktree instead.** Merging
