@@ -101,8 +101,16 @@ those by taking **main's** TASKS.md, not the branch's.
 | `feature/calendly-booking` | `~/dev/projects/abstractly-calendly` | +1 / 0 | Branched off `7ac879b` 2026-10-04. Calendly popup on all 9 Book-a-Demo CTAs (`index.html` ×5, `pricing.html` ×4), keeping `href="#book-demo"` as a fallback so no CTA can become a dead click. **Plan written, awaiting user approval** — `docs/plans/feature-calendly-booking.md`. Key finding: the task as given would have shipped a popup that never opens — all 3 frontends run `default-src 'self'` with no external hosts, so **5** CSP directives in `render.yaml` block Calendly (script, style, frame, img, font). Prior art: none (no Calendly anywhere, any branch, any stash). Will collide with `feature/pricing-page` / `feature/landing-positioning`, which both rewrite the same two files. |
 
 | `feature/s8-hud-data` | `~/dev/projects/abstractly-s8-data` | — | Branched off `origin/main` `b18bbe3` 2026-10-05. Self-contained `backend/app/section8/hud_data/` (HUD income limits, FMRs, LIHTC/MTSP limits; versioned by effective year; lookup + refresh CLI) behind `SECTION8_HUD_DATA_ENABLED` (off). Plan: `docs/plans/feature-s8-hud-data.md`. Building. |
+| `design/logo` | `~/dev/projects/abstractly-logo` | — | Branched off `origin/main` `b18bbe3` 2026-10-05. Three original A logomark concepts (split crossbar, fluted, ledger) as standalone SVGs + preview page in `design/logo/`. Design exploration only — **live site untouched**. Prior art: current brass-square favicon on `main` (from `feature/pricing-page`); no other logo branch/stash. |
 
 ### Handoff blocks
+
+#### design/logo
+- Worktree: `~/dev/projects/abstractly-logo`
+- Goal: 3 A-logomark concepts (mark, lockup, dark/light, 16px favicon) + `design/logo/index.html` preview.
+- Loop step: 4 — building (user's task prompt was the approval)
+- Last update: 2026-10-05
+- Next action: user picks a concept; then a separate task swaps it into the live site
 
 #### feature/s8-hud-data
 - Worktree: `~/dev/projects/abstractly-s8-data`
