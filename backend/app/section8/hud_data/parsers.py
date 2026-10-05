@@ -56,6 +56,7 @@ def parse_file(dataset: str, content: bytes, filename: str, year: int) -> Parsed
     """Parse one HUD file for `dataset` ('il', 'fmr', 'mtsp') and `year`."""
     if dataset not in DATASETS:
         raise HudDataParseError(f"Unknown dataset {dataset!r}; expected one of {', '.join(DATASETS)}")
+    _check_filename_year(filename, year)
     header, rows = _read_table(content, filename)
     columns = _Columns(header, year)
     parse_row = {
@@ -79,6 +80,26 @@ def parse_file(dataset: str, content: bytes, filename: str, year: int) -> Parsed
     if not parsed.rows:
         raise HudDataParseError(f"{filename}: no data rows found")
     return parsed
+
+
+_FILENAME_YEAR_RE = re.compile(r"fy[_-]?(\d{4}|\d{2})(?!\d)", re.IGNORECASE)
+
+
+def _check_filename_year(filename: str, year: int) -> None:
+    """
+    FMR files and the income-limit columns (l50_N, ELI_N, l80_N) carry no
+    year, so the header check can't catch an FY2025 file loaded as 2026.
+    HUD's file names do carry it (Section8-FY25.xlsx, FY26_FMRs.xlsx), so
+    refuse a name that names a different fiscal year.
+    """
+    m = _FILENAME_YEAR_RE.search(filename)
+    if not m:
+        return
+    stated = int(m.group(1))
+    if (stated if len(m.group(1)) == 4 else 2000 + stated) != year:
+        raise HudDataParseError(
+            f"File name {filename!r} says FY{m.group(1)}, but it is being loaded as {year}"
+        )
 
 
 # ---------------------------------------------------------------- reading
@@ -215,7 +236,7 @@ class _Columns:
     def income_limits_row(self, row: list, line_no: int) -> dict:
         payload = {"median_income": self._optional_amount(row, self.median, line_no)}
         for key, positions in self.il.items():
-            payload[key] = {n: self._amount(row, positions[n], line_no) for n in HOUSEHOLD_SIZES}
+            payload[key] = self._by_household_size(row, positions, line_no)
         return payload
 
     def fmr_row(self, row: list, line_no: int) -> dict:
@@ -224,9 +245,21 @@ class _Columns:
     def mtsp_row(self, row: list, line_no: int) -> dict:
         return {
             "median_income": self._optional_amount(row, self.median, line_no),
-            "limit_50": {n: self._amount(row, self.mtsp["50"][n], line_no) for n in HOUSEHOLD_SIZES},
-            "limit_60": {n: self._amount(row, self.mtsp["60"][n], line_no) for n in HOUSEHOLD_SIZES},
+            "limit_50": self._by_household_size(row, self.mtsp["50"], line_no),
+            "limit_60": self._by_household_size(row, self.mtsp["60"], line_no),
         }
+
+    def _by_household_size(self, row: list, positions: Dict[int, int], line_no: int) -> Dict[int, int]:
+        # HUD income limits never fall as a household grows; a dip means
+        # shifted or mislabeled columns.
+        values = {n: self._amount(row, positions[n], line_no) for n in HOUSEHOLD_SIZES}
+        for n in range(2, 9):
+            if values[n] < values[n - 1]:
+                raise HudDataParseError(
+                    f"Row {line_no}: {self.header[positions[n]]!r} ({values[n]}) is lower than "
+                    f"{self.header[positions[n - 1]]!r} ({values[n - 1]})"
+                )
+        return values
 
     def _cell(self, row: list, pos: Optional[int]):
         if pos is None or pos >= len(row):
@@ -258,8 +291,8 @@ class _Columns:
 def _checked(value, column: str, line_no: int) -> int:
     if isinstance(value, str):
         raise HudDataParseError(f"Row {line_no}: column {column!r} is not a number: {value!r}")
-    if value < 0:
-        raise HudDataParseError(f"Row {line_no}: column {column!r} is negative: {value}")
+    if value <= 0:
+        raise HudDataParseError(f"Row {line_no}: column {column!r} must be positive, got {value}")
     return value
 
 
@@ -280,7 +313,7 @@ def parse_amount(value):
         return None
     try:
         return int(round(float(text)))
-    except ValueError:
+    except (ValueError, OverflowError):  # "abc", "inf"; "nan" is ValueError too
         return str(value)
 
 

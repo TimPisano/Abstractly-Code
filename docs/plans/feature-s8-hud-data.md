@@ -76,8 +76,9 @@ owner/admin-only.
 
 ## Feature flag
 
-`SECTION8_HUD_DATA_ENABLED` (default off). Lookups and refresh raise
-`HudDataDisabled` while it's off. Not added to `render.yaml`.
+`SECTION8_HUD_DATA_ENABLED` (default off). Lookups, `refresh()` and the
+CLI raise `HudDataDisabled` while it's off; the `lihtc_*` helpers are pure
+math on an already-looked-up record and are not gated. Not added to `render.yaml`.
 
 ## Verification
 
@@ -97,6 +98,16 @@ allow-list. Full suite via `run_all_tests.py`.
   files are the canonical full-year source. Possible follow-up.
 - Small Area FMRs, HERA special limits, state-agency charts, utility
   allowances, payment standards, scheduled/automatic refresh.
+
+## Review follow-ups (reviewer verdict MERGE, applied anyway)
+
+- Files whose headers carry no year (FMR; IL `l50_`/`ELI_`/`l80_`) are
+  now year-checked by file name (`FY25`, `fy2026`); a name with no year
+  is still accepted unchecked.
+- Zero / `inf` / `nan` values rejected; limits must not fall as
+  household size grows.
+- Where a deploy sets `DB_PATH` without a persistent disk (tester, demo),
+  the HUD store is wiped on every deploy like everything else there.
 
 ## Open questions
 

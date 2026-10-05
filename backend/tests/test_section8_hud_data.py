@@ -233,7 +233,20 @@ def test_parser_rejects_bad_input():
     err = expect(HudDataParseError, parse_file, "il", text.replace(",57150,", ",,", 1).encode(), "f.csv", 2025)
     assert "blank" in str(err)
     err = expect(HudDataParseError, parse_file, "il", text.replace(",57150,", ",-5,", 1).encode(), "f.csv", 2025)
-    assert "negative" in str(err)
+    assert "positive" in str(err)
+    # Reviewer follow-ups: zero is not a limit; "inf" used to escape as an
+    # uncaught OverflowError; a limit that falls as the household grows
+    # means shifted columns.
+    err = expect(HudDataParseError, parse_file, "il", text.replace(",57150,", ",0,", 1).encode(), "f.csv", 2025)
+    assert "positive" in str(err)
+    for junk in ("inf", "nan"):
+        err = expect(HudDataParseError, parse_file, "il", text.replace(",57150,", f",{junk},", 1).encode(), "f.csv", 2025)
+        assert "not a number" in str(err), junk
+    err = expect(HudDataParseError, parse_file, "il", text.replace(",57150,", ",49000,", 1).encode(), "f.csv", 2025)
+    assert "l50_2" in str(err) and "lower than" in str(err)
+    mtsp = open(fx("mtsp_fy2025.csv")).read()
+    err = expect(HudDataParseError, parse_file, "mtsp", mtsp.replace(",68580,", ",1,", 1).encode(), "m.csv", 2025)
+    assert "lim60_25p2" in str(err)
     lines = text.splitlines()
     err = expect(HudDataParseError, parse_file, "il", "\n".join(lines + [lines[1]]).encode(), "f.csv", 2025)
     assert "duplicate" in str(err)
@@ -247,6 +260,21 @@ def test_parser_rejects_bad_input():
     # MTSP year suffix (lim50_25p1) checked against the load year.
     expect(HudDataParseError, parse_file, "mtsp", open(fx("mtsp_fy2025.csv"), "rb").read(), "m.csv", 2026)
     print("✓ test_parser_rejects_bad_input: PASS")
+
+
+def test_filename_year_must_match_load_year():
+    # FMR headers carry no year, so before this check an FY2026 file
+    # loaded as 2027 went in silently under the wrong year.
+    fmr = open(fx("fmr_fy2026.csv"), "rb").read()
+    for name in ("fmr_fy2026.csv", "FY26_FMRs.csv", "FY_2026.csv", "fmrs.csv"):
+        assert len(parse_file("fmr", fmr, name, 2026).rows) == 4, name
+    for name in ("fmr_fy2026.csv", "FY26_FMRs.csv", "Section8-FY27.csv"):
+        err = expect(HudDataParseError, parse_file, "fmr", fmr, name, 2025)
+        assert "File name" in str(err), name
+    with hud_env():
+        expect(HudDataParseError, refresh, "fmr", 2027, file_path=fx("fmr_fy2026.csv"))
+        expect(HudDataNotFound, lookup_fmr, "06037")  # nothing was written
+    print("✓ test_filename_year_must_match_load_year: PASS")
 
 
 def test_normalize_area_code():
@@ -442,6 +470,7 @@ if __name__ == "__main__":
     test_reload_replaces_only_that_year_and_logs_versions()
     test_bad_file_leaves_loaded_year_untouched()
     test_parser_rejects_bad_input()
+    test_filename_year_must_match_load_year()
     test_normalize_area_code()
     test_xlsx_fmr_with_header_variants()
     test_fmr_fiscal_year_effective_date()
