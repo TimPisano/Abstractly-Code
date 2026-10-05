@@ -385,6 +385,131 @@ def _migrate_discrepancies_table_add_dollar_impact(conn: sqlite3.Connection) -> 
         conn.execute("ALTER TABLE discrepancies ADD COLUMN estimated_dollar_impact REAL")
 
 
+def _migrate_teams_table_add_status(conn: sqlite3.Connection) -> None:
+    """
+    Adds `status` ('active' | 'deactivated') to the `teams` table that
+    `_migrate_teams_table` (feature/usage-limits, merged into main)
+    already creates for per-team quota tracking. Team isolation reuses
+    that same table rather than introducing a second one -- this is the
+    one piece isolation needs that usage-limits didn't: a way to
+    deactivate an entire team (see api.py's /owner/teams/<id>/deactivate
+    and auth.verify_password's team-status check).
+    """
+    existing_columns = {row["name"] for row in conn.execute("PRAGMA table_info(teams)").fetchall()}
+    if "status" not in existing_columns:
+        conn.execute("ALTER TABLE teams ADD COLUMN status TEXT NOT NULL DEFAULT 'active'")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_teams_status ON teams(status)")
+
+
+def _migrate_scope_natural_keys_by_team(conn: sqlite3.Connection) -> None:
+    """
+    alerts.natural_key and discrepancies.natural_key are globally
+    UNIQUE. Most keys embed a lease/discrepancy id (globally unique,
+    so they can't collide), but two families were built only from
+    names: `tenant_concentration:<tenant>` (alerts) and
+    `t12_recon:<address>` (discrepancies). Two teams with the same
+    tenant or building collided on one row and overwrote each other.
+    The code now builds `...:team<id>:...`; this rewrites existing rows
+    to the same shape so their history (status, resolutions) carries
+    over instead of being orphaned next to a fresh duplicate.
+
+    Idempotent: a row is rewritten only if its key doesn't already
+    start with its OWN team's prefix.
+    """
+    for table, prefix in (("alerts", "tenant_concentration:"), ("discrepancies", "t12_recon:")):
+        conn.execute(
+            f"UPDATE {table} SET natural_key = ? || 'team' || team_id || ':' || substr(natural_key, ?) "
+            f"WHERE natural_key LIKE ? AND natural_key NOT LIKE ? || 'team' || team_id || ':%'",
+            (prefix, len(prefix) + 1, prefix + "%", prefix),
+        )
+
+
+def _migrate_add_team_id_column(conn: sqlite3.Connection, table: str, legacy_team_id: int) -> None:
+    """
+    Adds `team_id INTEGER NOT NULL` to `table` if it doesn't already
+    have one, defaulting every existing row (via the ALTER's DEFAULT,
+    SQLite backfills it in the same statement) to `legacy_team_id`.
+    NOT NULL from the moment the column exists -- every database.py
+    function that reads/writes a team-owned table requires a real
+    team_id argument (no Optional/None-means-unscoped default; see
+    DECISIONS.md), so there must never be a row this column is null on,
+    including the instant it's added to a populated table.
+
+    `table` is always a hardcoded literal from the call sites in
+    init_db() below, never user input, so the f-string interpolation
+    here (SQLite's parameter binding can't substitute identifiers,
+    only values) carries no injection risk.
+    """
+    existing_columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+    if "team_id" not in existing_columns:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN team_id INTEGER NOT NULL DEFAULT {int(legacy_team_id)}")
+        conn.execute(f"CREATE INDEX IF NOT EXISTS idx_{table}_team_id ON {table}(team_id)")
+
+
+_ASSIGNMENTS_COLUMNS = (
+    "id", "target_type", "target_key", "lease_id", "discrepancy_id", "property_address",
+    "assigned_to_user_id", "assigned_by_user_id", "status", "note", "created_at", "updated_at", "team_id",
+)
+
+
+def _migrate_assignments_unique_per_team(conn: sqlite3.Connection) -> None:
+    """
+    assignments was UNIQUE(target_type, target_key). For target_type
+    'property' the key is the normalized address, so two teams
+    assigning the same building collided on ONE row: the second team's
+    upsert overwrote the first's assignee, while team_id stayed the
+    first team's -- a cross-team write, and the second team could never
+    see its own assignment. (Likely in practice: every team that loads
+    the Maple Ridge sample deal shares those addresses.) Rebuilds the
+    table as UNIQUE(team_id, target_type, target_key).
+
+    Same rename/create/copy/drop dance as
+    _migrate_discrepancies_table_drop_lease_fk. Runs after
+    _migrate_add_team_id_column(assignments), so team_id exists. No-op
+    once migrated, and on a fresh DB it converts the just-created table
+    the same way, so there's one code path for both.
+    """
+    row = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='assignments'").fetchone()
+    if not row or "UNIQUE (team_id, target_type, target_key)" in row[0]:
+        return
+    existing = [r[1] for r in conn.execute("PRAGMA table_info(assignments)")]
+    unexpected = set(existing) - set(_ASSIGNMENTS_COLUMNS)
+    if unexpected:
+        # Fail loudly rather than silently drop a column some later
+        # migration added -- add it to _ASSIGNMENTS_COLUMNS and the
+        # CREATE below, then rerun.
+        raise RuntimeError(f"assignments has columns this migration doesn't know: {sorted(unexpected)}")
+    cols = ", ".join(c for c in _ASSIGNMENTS_COLUMNS if c in existing)
+    conn.execute("PRAGMA foreign_keys = OFF")
+    conn.execute("ALTER TABLE assignments RENAME TO assignments_pre_team_unique")
+    conn.execute("""
+        CREATE TABLE assignments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            target_type TEXT NOT NULL,
+            target_key TEXT NOT NULL,
+            lease_id INTEGER,
+            discrepancy_id INTEGER,
+            property_address TEXT,
+            assigned_to_user_id INTEGER NOT NULL,
+            assigned_by_user_id INTEGER NOT NULL,
+            status TEXT NOT NULL DEFAULT 'assigned',
+            note TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            team_id INTEGER NOT NULL,
+            UNIQUE (team_id, target_type, target_key),
+            FOREIGN KEY (assigned_to_user_id) REFERENCES users(id),
+            FOREIGN KEY (assigned_by_user_id) REFERENCES users(id)
+        )
+    """)
+    conn.execute(f"INSERT INTO assignments ({cols}) SELECT {cols} FROM assignments_pre_team_unique")
+    conn.execute("DROP TABLE assignments_pre_team_unique")
+    # Index names travel with a renamed table, so recreate them only now.
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_assignments_assigned_to ON assignments(assigned_to_user_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_assignments_team_id ON assignments(team_id)")
+    conn.execute("PRAGMA foreign_keys = ON")
+
+
 def _seed_first_admin_user(conn: sqlite3.Connection) -> None:
     """
     Migrates the old env-var-only admin account into the real `users`
@@ -507,6 +632,12 @@ def init_db() -> None:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_pageviews_session_id ON pageviews(session_id)")
         _migrate_teams_table(conn)
         _migrate_teams_create_legacy_team(conn)
+        _migrate_teams_table_add_status(conn)
+        # Every _migrate_add_team_id_column call below backfills into
+        # this -- teams/legacy team are guaranteed to exist by this
+        # point (the two calls directly above), so this is never None.
+        legacy_team_id = conn.execute("SELECT id FROM teams WHERE name = 'Legacy' LIMIT 1").fetchone()["id"]
+        _migrate_add_team_id_column(conn, "leases", legacy_team_id)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS activity_log (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -517,6 +648,7 @@ def init_db() -> None:
                 FOREIGN KEY (lease_id) REFERENCES leases(id) ON DELETE SET NULL
             )
         """)
+        _migrate_add_team_id_column(conn, "activity_log", legacy_team_id)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS lease_tags (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -526,6 +658,7 @@ def init_db() -> None:
                 UNIQUE (lease_id, tag)
             )
         """)
+        _migrate_add_team_id_column(conn, "lease_tags", legacy_team_id)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS discrepancies (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -545,6 +678,7 @@ def init_db() -> None:
         """)
         _migrate_discrepancies_table_drop_lease_fk(conn)
         _migrate_discrepancies_table_add_dollar_impact(conn)
+        _migrate_add_team_id_column(conn, "discrepancies", legacy_team_id)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS discrepancy_resolutions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -558,6 +692,7 @@ def init_db() -> None:
                 FOREIGN KEY (discrepancy_id) REFERENCES discrepancies(id) ON DELETE CASCADE
             )
         """)
+        _migrate_add_team_id_column(conn, "discrepancy_resolutions", legacy_team_id)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS alerts (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -576,6 +711,7 @@ def init_db() -> None:
                 last_seen_at TEXT NOT NULL
             )
         """)
+        _migrate_add_team_id_column(conn, "alerts", legacy_team_id)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS comments (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -590,6 +726,7 @@ def init_db() -> None:
             )
         """)
         _migrate_comments_table_add_task_id(conn)
+        _migrate_add_team_id_column(conn, "comments", legacy_team_id)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -688,6 +825,8 @@ def init_db() -> None:
             )
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_assignments_assigned_to ON assignments(assigned_to_user_id)")
+        _migrate_add_team_id_column(conn, "assignments", legacy_team_id)
+        _migrate_assignments_unique_per_team(conn)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS assistant_conversations (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -702,6 +841,7 @@ def init_db() -> None:
             )
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_assistant_conversations_user_id ON assistant_conversations(user_id)")
+        _migrate_add_team_id_column(conn, "assistant_conversations", legacy_team_id)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS message_threads (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -712,6 +852,7 @@ def init_db() -> None:
                 FOREIGN KEY (created_by_user_id) REFERENCES users(id)
             )
         """)
+        _migrate_add_team_id_column(conn, "message_threads", legacy_team_id)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS message_thread_participants (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -725,6 +866,7 @@ def init_db() -> None:
             )
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_thread_participants_user_id ON message_thread_participants(user_id)")
+        _migrate_add_team_id_column(conn, "message_thread_participants", legacy_team_id)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS messages (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -737,6 +879,7 @@ def init_db() -> None:
             )
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_messages_thread_id_created_at ON messages(thread_id, created_at)")
+        _migrate_add_team_id_column(conn, "messages", legacy_team_id)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS linked_email_accounts (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -753,6 +896,7 @@ def init_db() -> None:
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
             )
         """)
+        _migrate_add_team_id_column(conn, "linked_email_accounts", legacy_team_id)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS oauth_states (
                 state TEXT PRIMARY KEY,
@@ -786,6 +930,7 @@ def init_db() -> None:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_assigned_to_user_id ON tasks(assigned_to_user_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_due_date ON tasks(due_date)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)")
+        _migrate_add_team_id_column(conn, "tasks", legacy_team_id)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS lease_field_edits (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -805,6 +950,7 @@ def init_db() -> None:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_lease_field_edits_task_id ON lease_field_edits(task_id)")
         _migrate_lease_field_edits_table_add_reverted_at(conn)
         _migrate_tasks_table_add_priority(conn)
+        _migrate_add_team_id_column(conn, "lease_field_edits", legacy_team_id)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS ai_extraction_runs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -830,6 +976,7 @@ def init_db() -> None:
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_ai_extraction_runs_created_at ON ai_extraction_runs(created_at)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_ai_extraction_runs_lease_id ON ai_extraction_runs(lease_id)")
+        _migrate_add_team_id_column(conn, "ai_extraction_runs", legacy_team_id)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS training_rounds (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -852,6 +999,8 @@ def init_db() -> None:
             )
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_training_rounds_created_at ON training_rounds(created_at)")
+        _migrate_add_team_id_column(conn, "training_rounds", legacy_team_id)
+        _migrate_scope_natural_keys_by_team(conn)
 
         # ---- Hardening pass (perf): indexes for lookups that were
         # full-table-scanning. SQLite does NOT auto-index a plain
@@ -923,6 +1072,7 @@ def _row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
 def insert_lease(
     filename: str,
     extracted_fields: Dict[str, Any],
+    team_id: int,
     document_type: str = "lease",
     base_lease_id: Optional[int] = None,
     date_candidates: Optional[Dict[str, Any]] = None,
@@ -971,8 +1121,8 @@ def insert_lease(
     try:
         cur = conn.execute(
             "INSERT INTO leases (filename, uploaded_at, extracted_fields, document_type, base_lease_id, "
-            "date_candidates, display_name, source_page_start, source_page_end, status, supersedes_lease_id, version_number, processing_status, processing_error) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "date_candidates, display_name, source_page_start, source_page_end, status, supersedes_lease_id, version_number, processing_status, processing_error, team_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 filename,
                 datetime.now(timezone.utc).isoformat(),
@@ -988,6 +1138,7 @@ def insert_lease(
                 version_number,
                 processing_status,
                 processing_error,
+                team_id,
             ),
         )
         conn.commit()
@@ -1100,7 +1251,7 @@ def supersede_lease(lease_id: int) -> bool:
         conn.close()
 
 
-def get_lease_version_chain(lease_id: int) -> List[Dict[str, Any]]:
+def get_lease_version_chain(lease_id: int, team_id: int) -> List[Dict[str, Any]]:
     """
     Every version of this lease, oldest first, regardless of which
     version id was passed in -- walks supersedes_lease_id backward to
@@ -1108,10 +1259,15 @@ def get_lease_version_chain(lease_id: int) -> List[Dict[str, Any]]:
     later resubmission, so asking about v1, v2, or the current version
     all return the identical full chain. A lease with no resubmission
     history returns a list of exactly one (itself).
+
+    team_id is required (no default) and every step of the walk is
+    filtered by it: another team's lease id returns [], same as a
+    nonexistent one. Required rather than optional so a caller that
+    forgets it fails loudly (TypeError) instead of reading across teams.
     """
     conn = get_connection()
     try:
-        current = conn.execute("SELECT * FROM leases WHERE id = ?", (lease_id,)).fetchone()
+        current = conn.execute("SELECT * FROM leases WHERE id = ? AND team_id = ?", (lease_id, team_id)).fetchone()
         if current is None:
             return []
         current = dict(current)
@@ -1119,7 +1275,7 @@ def get_lease_version_chain(lease_id: int) -> List[Dict[str, Any]]:
         # Walk backward to the root (v1).
         node = current
         while node.get("supersedes_lease_id") is not None:
-            prior = conn.execute("SELECT * FROM leases WHERE id = ?", (node["supersedes_lease_id"],)).fetchone()
+            prior = conn.execute("SELECT * FROM leases WHERE id = ? AND team_id = ?", (node["supersedes_lease_id"], team_id)).fetchone()
             if prior is None:
                 break
             node = dict(prior)
@@ -1129,7 +1285,7 @@ def get_lease_version_chain(lease_id: int) -> List[Dict[str, Any]]:
         # current end of the chain.
         chain_rows = [node]
         while True:
-            nxt = conn.execute("SELECT * FROM leases WHERE supersedes_lease_id = ?", (chain_rows[-1]["id"],)).fetchone()
+            nxt = conn.execute("SELECT * FROM leases WHERE supersedes_lease_id = ? AND team_id = ?", (chain_rows[-1]["id"], team_id)).fetchone()
             if nxt is None:
                 break
             chain_rows.append(dict(nxt))
@@ -1311,6 +1467,7 @@ def update_lease_field(
     field_name: str,
     value: Optional[str],
     edited_by: str,
+    team_id: int,
     edited_by_email: Optional[str] = None,
     confidence: str = "high",
     note: Optional[str] = None,
@@ -1347,7 +1504,7 @@ def update_lease_field(
     """
     conn = get_connection()
     try:
-        row = conn.execute("SELECT extracted_fields FROM leases WHERE id = ?", (lease_id,)).fetchone()
+        row = conn.execute("SELECT extracted_fields FROM leases WHERE id = ? AND team_id = ?", (lease_id, team_id)).fetchone()
         if row is None:
             return None
         fields = json.loads(row["extracted_fields"])
@@ -1359,8 +1516,8 @@ def update_lease_field(
         conn.execute("UPDATE leases SET extracted_fields = ? WHERE id = ?", (json.dumps(fields), lease_id))
         conn.execute(
             "INSERT INTO lease_field_edits (lease_id, field_name, old_value, new_value, edited_by, "
-            "edited_by_email, note, task_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (lease_id, field_name, json.dumps(old_entry), json.dumps(new_entry), edited_by, edited_by_email, note, task_id, now),
+            "edited_by_email, note, task_id, created_at, team_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (lease_id, field_name, json.dumps(old_entry), json.dumps(new_entry), edited_by, edited_by_email, note, task_id, now, team_id),
         )
         conn.commit()
         return new_entry
@@ -1372,6 +1529,7 @@ def mark_field_verified(
     lease_id: int,
     field_name: str,
     edited_by: str,
+    team_id: int,
     edited_by_email: Optional[str] = None,
     note: Optional[str] = None,
     task_id: Optional[int] = None,
@@ -1397,7 +1555,7 @@ def mark_field_verified(
     """
     conn = get_connection()
     try:
-        row = conn.execute("SELECT extracted_fields FROM leases WHERE id = ?", (lease_id,)).fetchone()
+        row = conn.execute("SELECT extracted_fields FROM leases WHERE id = ? AND team_id = ?", (lease_id, team_id)).fetchone()
         if row is None:
             return None
         fields = json.loads(row["extracted_fields"])
@@ -1416,8 +1574,8 @@ def mark_field_verified(
         conn.execute("UPDATE leases SET extracted_fields = ? WHERE id = ?", (json.dumps(fields), lease_id))
         conn.execute(
             "INSERT INTO lease_field_edits (lease_id, field_name, old_value, new_value, edited_by, "
-            "edited_by_email, note, task_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (lease_id, field_name, json.dumps(old_entry), json.dumps(new_entry), edited_by, edited_by_email, note, task_id, now),
+            "edited_by_email, note, task_id, created_at, team_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (lease_id, field_name, json.dumps(old_entry), json.dumps(new_entry), edited_by, edited_by_email, note, task_id, now, team_id),
         )
         conn.commit()
         return new_entry
@@ -1425,11 +1583,11 @@ def mark_field_verified(
         conn.close()
 
 
-def get_lease_field_edits(lease_id: Optional[int] = None, field_name: Optional[str] = None, task_id: Optional[int] = None) -> List[Dict[str, Any]]:
-    """Oldest first -- a correction history reads top-to-bottom like a timeline, same convention as get_discrepancy_resolutions. Any combination of filters may be applied together; at least one should normally be given or this returns every edit ever made across the whole portfolio."""
+def get_lease_field_edits(team_id: int, lease_id: Optional[int] = None, field_name: Optional[str] = None, task_id: Optional[int] = None) -> List[Dict[str, Any]]:
+    """Oldest first -- a correction history reads top-to-bottom like a timeline, same convention as get_discrepancy_resolutions. Always scoped to one team: team_id is required, because an unscoped call used to return every team's edits. The other filters narrow further and may be combined."""
     conn = get_connection()
     try:
-        clauses, params = [], []
+        clauses, params = ["team_id = ?"], [team_id]
         if lease_id is not None:
             clauses.append("lease_id = ?")
             params.append(lease_id)
@@ -1456,11 +1614,11 @@ def get_lease_field_edits(lease_id: Optional[int] = None, field_name: Optional[s
         conn.close()
 
 
-def get_lease_field_edit(edit_id: int) -> Optional[Dict[str, Any]]:
+def get_lease_field_edit(edit_id: int, team_id: int) -> Optional[Dict[str, Any]]:
     """Single edit by id, decoded -- what api.py's undo route checks eligibility against (age window, whether a newer edit has superseded it, whether the task it happened under has since completed) before calling revert_lease_field_edit."""
     conn = get_connection()
     try:
-        row = conn.execute("SELECT * FROM lease_field_edits WHERE id = ?", (edit_id,)).fetchone()
+        row = conn.execute("SELECT * FROM lease_field_edits WHERE id = ? AND team_id = ?", (edit_id, team_id)).fetchone()
         if row is None:
             return None
         d = dict(row)
@@ -1473,7 +1631,7 @@ def get_lease_field_edit(edit_id: int) -> Optional[Dict[str, Any]]:
         conn.close()
 
 
-def revert_lease_field_edit(edit_id: int, reverted_by: str, reverted_by_email: Optional[str] = None) -> Optional[Dict[str, Any]]:
+def revert_lease_field_edit(edit_id: int, team_id: int, reverted_by: str, reverted_by_email: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """
     Undoes one specific field edit: restores the field on its lease row
     to `old_value` (the value it held right before that edit), marks
@@ -1491,17 +1649,20 @@ def revert_lease_field_edit(edit_id: int, reverted_by: str, reverted_by_email: O
     and just performs the revert.
 
     Returns the restored field entry (old_value), or None if edit_id
-    or its lease no longer exist.
+    or its lease no longer exist -- or belong to another team. team_id
+    is enforced here as well as in the route (defense in depth: this
+    function writes to a lease, so it must never touch another team's
+    row even if a future caller skips the route-level check).
     """
     conn = get_connection()
     try:
-        row = conn.execute("SELECT * FROM lease_field_edits WHERE id = ?", (edit_id,)).fetchone()
+        row = conn.execute("SELECT * FROM lease_field_edits WHERE id = ? AND team_id = ?", (edit_id, team_id)).fetchone()
         if row is None:
             return None
         edit = dict(row)
         old_value = json.loads(edit["old_value"])
 
-        lease_row = conn.execute("SELECT extracted_fields FROM leases WHERE id = ?", (edit["lease_id"],)).fetchone()
+        lease_row = conn.execute("SELECT extracted_fields FROM leases WHERE id = ? AND team_id = ?", (edit["lease_id"], team_id)).fetchone()
         if lease_row is None:
             return None
         fields = json.loads(lease_row["extracted_fields"])
@@ -1509,13 +1670,15 @@ def revert_lease_field_edit(edit_id: int, reverted_by: str, reverted_by_email: O
         fields[edit["field_name"]] = old_value
 
         now = datetime.now(timezone.utc).isoformat()
-        conn.execute("UPDATE leases SET extracted_fields = ? WHERE id = ?", (json.dumps(fields), edit["lease_id"]))
-        conn.execute("UPDATE lease_field_edits SET reverted_at = ? WHERE id = ?", (now, edit_id))
+        conn.execute("UPDATE leases SET extracted_fields = ? WHERE id = ? AND team_id = ?", (json.dumps(fields), edit["lease_id"], team_id))
+        conn.execute("UPDATE lease_field_edits SET reverted_at = ? WHERE id = ? AND team_id = ?", (now, edit_id, team_id))
+        # team_id written explicitly: without it the revert's audit row
+        # fell back to the column's migration default (the Legacy team).
         conn.execute(
             "INSERT INTO lease_field_edits (lease_id, field_name, old_value, new_value, edited_by, "
-            "edited_by_email, note, task_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "edited_by_email, note, task_id, created_at, team_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (edit["lease_id"], edit["field_name"], json.dumps(current_value), json.dumps(old_value),
-             reverted_by, reverted_by_email, f"Undo of edit #{edit_id}", edit["task_id"], now),
+             reverted_by, reverted_by_email, f"Undo of edit #{edit_id}", edit["task_id"], now, team_id),
         )
         conn.commit()
         return old_value
@@ -1523,10 +1686,18 @@ def revert_lease_field_edit(edit_id: int, reverted_by: str, reverted_by_email: O
         conn.close()
 
 
-def get_lease(lease_id: int) -> Optional[Dict[str, Any]]:
+def get_lease(lease_id: int, team_id: int) -> Optional[Dict[str, Any]]:
+    """
+    team_id is the isolation boundary: a lease that exists but belongs
+    to a different team returns None, identically to a nonexistent
+    id -- this IS the ownership check every route that handles a
+    lease_id from the URL/body must call first, before doing anything
+    else with that id (see DECISIONS.md's "Real multi-tenant data
+    isolation" entry).
+    """
     conn = get_connection()
     try:
-        row = conn.execute("SELECT * FROM leases WHERE id = ?", (lease_id,)).fetchone()
+        row = conn.execute("SELECT * FROM leases WHERE id = ? AND team_id = ?", (lease_id, team_id)).fetchone()
         return _row_to_dict(row) if row else None
     except OverflowError:
         # SQLite's INTEGER column is a signed 64-bit int; an id outside
@@ -1540,14 +1711,14 @@ def get_lease(lease_id: int) -> Optional[Dict[str, Any]]:
         conn.close()
 
 
-def get_leases_by_ids(lease_ids: List[int]) -> Dict[int, Dict[str, Any]]:
-    """Batched version of get_lease for many ids at once — {id: lease}. Same OverflowError safety as get_lease (an out-of-range id just won't match any row)."""
+def get_leases_by_ids(lease_ids: List[int], team_id: int) -> Dict[int, Dict[str, Any]]:
+    """Batched version of get_lease for many ids at once — {id: lease}, filtered to team_id so a caller can't smuggle another team's id into a batch. Same OverflowError safety as get_lease (an out-of-range id just won't match any row)."""
     if not lease_ids:
         return {}
     conn = get_connection()
     try:
         placeholders = ",".join("?" for _ in lease_ids)
-        rows = conn.execute(f"SELECT * FROM leases WHERE id IN ({placeholders})", lease_ids).fetchall()
+        rows = conn.execute(f"SELECT * FROM leases WHERE id IN ({placeholders}) AND team_id = ?", (*lease_ids, team_id)).fetchall()
         return {row["id"]: _row_to_dict(row) for row in rows}
     except OverflowError:
         return {}
@@ -1555,7 +1726,7 @@ def get_leases_by_ids(lease_ids: List[int]) -> Dict[int, Dict[str, Any]]:
         conn.close()
 
 
-def get_all_leases(document_type: Optional[str] = "lease", include_superseded: bool = False) -> List[Dict[str, Any]]:
+def get_all_leases(team_id: int, document_type: Optional[str] = "lease", include_superseded: bool = False) -> List[Dict[str, Any]]:
     """
     Base leases only by default (document_type='lease'), ordered by
     upload time. Pass document_type=None to include amendments too.
@@ -1569,25 +1740,25 @@ def get_all_leases(document_type: Optional[str] = "lease", include_superseded: b
     """
     conn = get_connection()
     try:
-        clauses, params = [], []
+        clauses, params = ["team_id = ?"], [team_id]
         if document_type is not None:
             clauses.append("document_type = ?")
             params.append(document_type)
         if not include_superseded:
             clauses.append("status != 'superseded'")
-        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        where = f"WHERE {' AND '.join(clauses)}"
         rows = conn.execute(f"SELECT * FROM leases {where} ORDER BY uploaded_at", params).fetchall()
         return [_row_to_dict(r) for r in rows]
     finally:
         conn.close()
 
 
-def delete_lease(lease_id: int) -> None:
-    """Deletes a lease and any amendments linked to it."""
+def delete_lease(lease_id: int, team_id: int) -> None:
+    """Deletes a lease and any amendments linked to it. Scoped by team_id in addition to whatever boundary check the calling route already did -- a destructive op is worth the extra WHERE clause even if every current caller already verified ownership first."""
     conn = get_connection()
     try:
-        conn.execute("DELETE FROM leases WHERE base_lease_id = ?", (lease_id,))
-        conn.execute("DELETE FROM leases WHERE id = ?", (lease_id,))
+        conn.execute("DELETE FROM leases WHERE base_lease_id = ? AND team_id = ?", (lease_id, team_id))
+        conn.execute("DELETE FROM leases WHERE id = ? AND team_id = ?", (lease_id, team_id))
         conn.commit()
     except OverflowError:
         # An out-of-range id (see get_lease) can never match a real
@@ -1648,21 +1819,22 @@ def _tag_field_document(field_data: Any, document: Dict[str, Any]) -> Any:
     return entry
 
 
-def get_effective_fields(lease_id: int) -> Optional[Dict[str, Any]]:
+def get_effective_fields(lease_id: int, team_id: int) -> Optional[Dict[str, Any]]:
     """
     Merge a base lease's extracted_fields with its amendments' non-null
     fields — later-uploaded amendments take priority per field. Returns
-    None if lease_id doesn't exist. This is what portfolio metrics, risk
-    analysis, comparison, and the Q&A engine should read from, not the
-    raw base lease alone, so an amendment (e.g. a rent increase
-    addendum) is actually reflected in portfolio math.
+    None if lease_id doesn't exist (or belongs to another team). This is
+    what portfolio metrics, risk analysis, comparison, and the Q&A
+    engine should read from, not the raw base lease alone, so an
+    amendment (e.g. a rent increase addendum) is actually reflected in
+    portfolio math.
 
     Each returned field also carries a `document` key naming which
     document (base lease or a specific amendment) it actually came
     from -- necessary once a lease has amendments, since two documents
     can each state the same field and only one wins per field.
     """
-    base = get_lease(lease_id)
+    base = get_lease(lease_id, team_id)
     if not base:
         return None
 
@@ -1674,19 +1846,19 @@ def get_effective_fields(lease_id: int) -> Optional[Dict[str, Any]]:
     return effective
 
 
-def get_effective_lease(lease_id: int) -> Optional[Dict[str, Any]]:
+def get_effective_lease(lease_id: int, team_id: int) -> Optional[Dict[str, Any]]:
     """Like get_lease, but with extracted_fields replaced by the effective (amendment-merged) fields."""
-    base = get_lease(lease_id)
+    base = get_lease(lease_id, team_id)
     if not base:
         return None
-    effective_fields = get_effective_fields(lease_id)
+    effective_fields = get_effective_fields(lease_id, team_id)
     result = dict(base)
     result["extracted_fields"] = effective_fields
     result["amendment_count"] = len(get_amendments(lease_id))
     return result
 
 
-def get_all_effective_leases() -> List[Dict[str, Any]]:
+def get_all_effective_leases(team_id: int) -> List[Dict[str, Any]]:
     """
     All base leases (not amendments) with their fields amendment-merged
     -- same output shape as calling get_effective_lease() on every base
@@ -1707,7 +1879,7 @@ def get_all_effective_leases() -> List[Dict[str, Any]]:
     """
     conn = get_connection()
     try:
-        rows = conn.execute("SELECT * FROM leases ORDER BY uploaded_at").fetchall()
+        rows = conn.execute("SELECT * FROM leases WHERE team_id = ? ORDER BY uploaded_at", (team_id,)).fetchall()
     finally:
         conn.close()
 
@@ -1736,7 +1908,7 @@ def get_all_effective_leases() -> List[Dict[str, Any]]:
     return results
 
 
-def get_field_source_chain(lease_id: int, field_name: str) -> Optional[Dict[str, Any]]:
+def get_field_source_chain(lease_id: int, field_name: str, team_id: int) -> Optional[Dict[str, Any]]:
     """
     The full audit trail for one extracted field on one lease: which
     document currently governs its effective value (base lease, or
@@ -1751,11 +1923,12 @@ def get_field_source_chain(lease_id: int, field_name: str) -> Optional[Dict[str,
     each value's own citation, rather than only being able to see
     today's answer.
 
-    Returns None if lease_id doesn't exist. Each history entry's
-    `value`/`source` is None if that document didn't state this field at
-    all (not an error -- just nothing to cite there).
+    Returns None if lease_id doesn't exist (or belongs to another
+    team). Each history entry's `value`/`source` is None if that
+    document didn't state this field at all (not an error -- just
+    nothing to cite there).
     """
-    base = get_lease(lease_id)
+    base = get_lease(lease_id, team_id)
     if not base:
         return None
 
@@ -2101,12 +2274,105 @@ def get_user_by_email(email: str) -> Optional[Dict[str, Any]]:
         conn.close()
 
 
-def list_users() -> List[Dict[str, Any]]:
-    """Every team member, active and deactivated alike (the Team view distinguishes them in the UI), oldest first."""
+def list_users(team_id: int) -> List[Dict[str, Any]]:
+    """Every member of `team_id`, active and deactivated alike (the Team view distinguishes them in the UI), oldest first. For the owner console's cross-team account list, use list_all_users_cross_team() instead -- never this -- so a route's intent (scoped vs. deliberately global) is visible at the call site, not hidden in an optional argument."""
+    conn = get_connection()
+    try:
+        rows = conn.execute("SELECT * FROM users WHERE team_id = ? ORDER BY created_at ASC", (team_id,)).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def list_all_users_cross_team() -> List[Dict[str, Any]]:
+    """Every user across every team -- the owner console's account list (Abstractly staff manage every customer from one screen; @require_owner already gates this). Never call this from a regular team-scoped route."""
     conn = get_connection()
     try:
         rows = conn.execute("SELECT * FROM users ORDER BY created_at ASC").fetchall()
         return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+# ---- Teams -----------------------------------------------------------
+# The real multi-tenant boundary (see _migrate_teams_table /
+# _migrate_add_team_id_column in init_db()). Every customer firm is one
+# row here.
+
+def create_team(name: str) -> Dict[str, Any]:
+    """Creates a new team. Raises sqlite3.IntegrityError if `name` collides with an existing team (teams.name is UNIQUE) -- callers (api.py's POST /owner/teams) translate that into a 409."""
+    conn = get_connection()
+    try:
+        cur = conn.execute(
+            "INSERT INTO teams (name, status, created_at) VALUES (?, 'active', ?)",
+            (name, datetime.now(timezone.utc).isoformat()),
+        )
+        conn.commit()
+        return get_team(cur.lastrowid)
+    finally:
+        conn.close()
+
+
+def get_team(team_id: int) -> Optional[Dict[str, Any]]:
+    conn = get_connection()
+    try:
+        row = conn.execute("SELECT * FROM teams WHERE id = ?", (team_id,)).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def get_team_by_name(name: str) -> Optional[Dict[str, Any]]:
+    conn = get_connection()
+    try:
+        row = conn.execute("SELECT * FROM teams WHERE name = ?", (name,)).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def list_teams_with_usage() -> List[Dict[str, Any]]:
+    """
+    Every team for the owner console's Teams view: name, status, user
+    count, lease count (leases + rent rolls together -- document_type
+    covers both on the same table), and last activity
+    (MAX(activity_log.created_at) for that team, NULL if it has none
+    yet). Three correlated subqueries rather than a JOIN + GROUP BY --
+    simpler to read at this scale (low hundreds of teams at most) and
+    avoids a fan-out JOIN across three unrelated tables.
+    """
+    conn = get_connection()
+    try:
+        rows = conn.execute("""
+            SELECT
+                t.*,
+                (SELECT COUNT(*) FROM users u WHERE u.team_id = t.id) AS user_count,
+                (SELECT COUNT(*) FROM leases l WHERE l.team_id = t.id) AS lease_count,
+                (SELECT MAX(a.created_at) FROM activity_log a WHERE a.team_id = t.id) AS last_activity_at
+            FROM teams t
+            ORDER BY t.created_at ASC
+        """).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def update_team_status(team_id: int, status: str) -> bool:
+    """status: 'active' | 'deactivated'. Deactivating a team blocks login for every user in it (auth.verify_password checks this), even a user whose own status is still 'active' -- see that function's docstring."""
+    conn = get_connection()
+    try:
+        cur = conn.execute("UPDATE teams SET status = ? WHERE id = ?", (status, team_id))
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def is_team_deactivated(team_id: int) -> bool:
+    conn = get_connection()
+    try:
+        row = conn.execute("SELECT status FROM teams WHERE id = ?", (team_id,)).fetchone()
+        return bool(row) and row["status"] != "active"
     finally:
         conn.close()
 
@@ -2345,7 +2611,7 @@ def update_user_last_login(user_id: int) -> None:
 # ----------------------------------------------------------------------
 
 def upsert_assignment(
-    target_type: str, target_key: str, assigned_to_user_id: int, assigned_by_user_id: int,
+    target_type: str, target_key: str, assigned_to_user_id: int, assigned_by_user_id: int, team_id: int,
     lease_id: Optional[int] = None, discrepancy_id: Optional[int] = None,
     property_address: Optional[str] = None, note: Optional[str] = None,
 ) -> int:
@@ -2364,9 +2630,9 @@ def upsert_assignment(
         conn.execute(
             """
             INSERT INTO assignments (target_type, target_key, lease_id, discrepancy_id, property_address,
-                assigned_to_user_id, assigned_by_user_id, status, note, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 'assigned', ?, ?, ?)
-            ON CONFLICT(target_type, target_key) DO UPDATE SET
+                assigned_to_user_id, assigned_by_user_id, status, note, created_at, updated_at, team_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'assigned', ?, ?, ?, ?)
+            ON CONFLICT(team_id, target_type, target_key) DO UPDATE SET
                 assigned_to_user_id = excluded.assigned_to_user_id,
                 assigned_by_user_id = excluded.assigned_by_user_id,
                 status = 'assigned',
@@ -2374,11 +2640,11 @@ def upsert_assignment(
                 updated_at = excluded.updated_at
             """,
             (target_type, target_key, lease_id, discrepancy_id, property_address,
-             assigned_to_user_id, assigned_by_user_id, note, now, now),
+             assigned_to_user_id, assigned_by_user_id, note, now, now, team_id),
         )
         conn.commit()
         row = conn.execute(
-            "SELECT id FROM assignments WHERE target_type = ? AND target_key = ?", (target_type, target_key)
+            "SELECT id FROM assignments WHERE team_id = ? AND target_type = ? AND target_key = ?", (team_id, target_type, target_key)
         ).fetchone()
         return row["id"]
     finally:
@@ -2404,10 +2670,11 @@ def update_assignment_status(assignment_id: int, status: str, updated_by_user_id
         conn.close()
 
 
-def get_assignment(assignment_id: int) -> Optional[Dict[str, Any]]:
+def get_assignment(assignment_id: int, team_id: int) -> Optional[Dict[str, Any]]:
+    """team_id is the boundary check (see get_lease)."""
     conn = get_connection()
     try:
-        row = conn.execute("SELECT * FROM assignments WHERE id = ?", (assignment_id,)).fetchone()
+        row = conn.execute("SELECT * FROM assignments WHERE id = ? AND team_id = ?", (assignment_id, team_id)).fetchone()
         return dict(row) if row else None
     except OverflowError:
         return None
@@ -2415,18 +2682,18 @@ def get_assignment(assignment_id: int) -> Optional[Dict[str, Any]]:
         conn.close()
 
 
-def get_assignment_for_target(target_type: str, target_key: str) -> Optional[Dict[str, Any]]:
+def get_assignment_for_target(target_type: str, target_key: str, team_id: int) -> Optional[Dict[str, Any]]:
     conn = get_connection()
     try:
         row = conn.execute(
-            "SELECT * FROM assignments WHERE target_type = ? AND target_key = ?", (target_type, target_key)
+            "SELECT * FROM assignments WHERE team_id = ? AND target_type = ? AND target_key = ?", (team_id, target_type, target_key)
         ).fetchone()
         return dict(row) if row else None
     finally:
         conn.close()
 
 
-def get_assignments_for_targets(target_type: str, target_keys: List[str]) -> Dict[str, Dict[str, Any]]:
+def get_assignments_for_targets(target_type: str, target_keys: List[str], team_id: int) -> Dict[str, Dict[str, Any]]:
     """Batched version of get_assignment_for_target for a whole list of keys at once -- {target_key: assignment}, only for keys that actually have one. Mirrors get_discrepancies_by_ids -- used to annotate a whole lease/discrepancy list in one query, not N+1."""
     if not target_keys:
         return {}
@@ -2434,8 +2701,8 @@ def get_assignments_for_targets(target_type: str, target_keys: List[str]) -> Dic
     try:
         placeholders = ",".join("?" for _ in target_keys)
         rows = conn.execute(
-            f"SELECT * FROM assignments WHERE target_type = ? AND target_key IN ({placeholders})",
-            [target_type] + list(target_keys),
+            f"SELECT * FROM assignments WHERE team_id = ? AND target_type = ? AND target_key IN ({placeholders})",
+            [team_id, target_type] + list(target_keys),
         ).fetchall()
         return {row["target_key"]: dict(row) for row in rows}
     finally:
@@ -2443,12 +2710,12 @@ def get_assignments_for_targets(target_type: str, target_keys: List[str]) -> Dic
 
 
 def list_assignments(
-    assigned_to_user_id: Optional[int] = None, status: Optional[str] = None, target_type: Optional[str] = None
+    team_id: int, assigned_to_user_id: Optional[int] = None, status: Optional[str] = None, target_type: Optional[str] = None
 ) -> List[Dict[str, Any]]:
     """Any combination of filters may be applied together. Most-recently-updated first."""
     conn = get_connection()
     try:
-        clauses, params = [], []
+        clauses, params = ["team_id = ?"], [team_id]
         if assigned_to_user_id is not None:
             clauses.append("assigned_to_user_id = ?")
             params.append(assigned_to_user_id)
@@ -2486,16 +2753,16 @@ def delete_assignment(assignment_id: int) -> bool:
 # ----------------------------------------------------------------------
 
 def insert_assistant_conversation(
-    user_id: int, question: str, response_type: str, answer: str,
+    user_id: int, question: str, response_type: str, answer: str, team_id: int,
     route: Optional[str] = None, route_params: Optional[Dict[str, Any]] = None,
 ) -> int:
     conn = get_connection()
     try:
         cur = conn.execute(
-            "INSERT INTO assistant_conversations (user_id, question, response_type, answer, route, route_params, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO assistant_conversations (user_id, question, response_type, answer, route, route_params, created_at, team_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (user_id, question, response_type, answer, route, json.dumps(route_params) if route_params is not None else None,
-             datetime.now(timezone.utc).isoformat()),
+             datetime.now(timezone.utc).isoformat(), team_id),
         )
         conn.commit()
         return cur.lastrowid
@@ -2560,7 +2827,7 @@ def find_direct_thread(user_id_a: int, user_id_b: int) -> Optional[int]:
         conn.close()
 
 
-def create_thread(thread_type: str, participant_user_ids: List[int], created_by_user_id: int, name: Optional[str] = None) -> int:
+def create_thread(thread_type: str, participant_user_ids: List[int], created_by_user_id: int, team_id: int, name: Optional[str] = None) -> int:
     """
     For thread_type='direct' with exactly 2 participants, reuses an
     existing thread between them if one exists (see find_direct_thread)
@@ -2578,14 +2845,14 @@ def create_thread(thread_type: str, participant_user_ids: List[int], created_by_
     conn = get_connection()
     try:
         cur = conn.execute(
-            "INSERT INTO message_threads (thread_type, name, created_by_user_id, created_at) VALUES (?, ?, ?, ?)",
-            (thread_type, name, created_by_user_id, now),
+            "INSERT INTO message_threads (thread_type, name, created_by_user_id, created_at, team_id) VALUES (?, ?, ?, ?, ?)",
+            (thread_type, name, created_by_user_id, now, team_id),
         )
         thread_id = cur.lastrowid
         for user_id in set(participant_user_ids):
             conn.execute(
-                "INSERT INTO message_thread_participants (thread_id, user_id, joined_at, last_read_at) VALUES (?, ?, ?, NULL)",
-                (thread_id, user_id, now),
+                "INSERT INTO message_thread_participants (thread_id, user_id, joined_at, last_read_at, team_id) VALUES (?, ?, ?, NULL, ?)",
+                (thread_id, user_id, now, team_id),
             )
         conn.commit()
         return thread_id
@@ -2593,13 +2860,13 @@ def create_thread(thread_type: str, participant_user_ids: List[int], created_by_
         conn.close()
 
 
-def add_thread_participant(thread_id: int, user_id: int) -> bool:
+def add_thread_participant(thread_id: int, user_id: int, team_id: int) -> bool:
     """Adds someone to a group thread. Silently a no-op if they're already in it (UNIQUE(thread_id, user_id)) -- same convention as add_lease_tag."""
     conn = get_connection()
     try:
         conn.execute(
-            "INSERT INTO message_thread_participants (thread_id, user_id, joined_at, last_read_at) VALUES (?, ?, ?, NULL)",
-            (thread_id, user_id, datetime.now(timezone.utc).isoformat()),
+            "INSERT INTO message_thread_participants (thread_id, user_id, joined_at, last_read_at, team_id) VALUES (?, ?, ?, NULL, ?)",
+            (thread_id, user_id, datetime.now(timezone.utc).isoformat(), team_id),
         )
         conn.commit()
         return True
@@ -2674,13 +2941,13 @@ def list_threads_for_user(user_id: int) -> List[Dict[str, Any]]:
         conn.close()
 
 
-def insert_message(thread_id: int, sender_user_id: int, body: str) -> int:
+def insert_message(thread_id: int, sender_user_id: int, body: str, team_id: int) -> int:
     now = datetime.now(timezone.utc).isoformat()
     conn = get_connection()
     try:
         cur = conn.execute(
-            "INSERT INTO messages (thread_id, sender_user_id, body, created_at) VALUES (?, ?, ?, ?)",
-            (thread_id, sender_user_id, body, now),
+            "INSERT INTO messages (thread_id, sender_user_id, body, created_at, team_id) VALUES (?, ?, ?, ?, ?)",
+            (thread_id, sender_user_id, body, now, team_id),
         )
         # Sending a message always marks the sender's own copy of the
         # thread read as of now -- you obviously already know what you
@@ -2808,6 +3075,7 @@ def upsert_linked_email_account(
     refresh_token_encrypted: str,
     token_expires_at: str,
     scopes: str,
+    team_id: int,
 ) -> int:
     """Re-linking the same provider replaces the stored tokens rather than creating a second row -- one linked account per (user, provider), matching the UNIQUE constraint."""
     conn = get_connection()
@@ -2816,8 +3084,8 @@ def upsert_linked_email_account(
         conn.execute(
             """
             INSERT INTO linked_email_accounts
-                (user_id, provider, provider_email, access_token_encrypted, refresh_token_encrypted, token_expires_at, scopes, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (user_id, provider, provider_email, access_token_encrypted, refresh_token_encrypted, token_expires_at, scopes, created_at, updated_at, team_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT (user_id, provider) DO UPDATE SET
                 provider_email = excluded.provider_email,
                 access_token_encrypted = excluded.access_token_encrypted,
@@ -2826,7 +3094,7 @@ def upsert_linked_email_account(
                 scopes = excluded.scopes,
                 updated_at = excluded.updated_at
             """,
-            (user_id, provider, provider_email, access_token_encrypted, refresh_token_encrypted, token_expires_at, scopes, now, now),
+            (user_id, provider, provider_email, access_token_encrypted, refresh_token_encrypted, token_expires_at, scopes, now, now, team_id),
         )
         conn.commit()
         row = conn.execute(
@@ -2898,6 +3166,7 @@ def delete_linked_email_account(account_id: int) -> bool:
 def create_task(
     title: str,
     created_by_user_id: int,
+    team_id: int,
     description: Optional[str] = None,
     due_date: Optional[str] = None,
     assigned_to_user_id: Optional[int] = None,
@@ -2917,11 +3186,11 @@ def create_task(
             INSERT INTO tasks
                 (title, description, due_date, status, assigned_to_user_id, created_by_user_id,
                  lease_id, discrepancy_id, property_address, source_type, source_natural_key,
-                 priority, created_at, updated_at)
-            VALUES (?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 priority, created_at, updated_at, team_id)
+            VALUES (?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (title, description, due_date, assigned_to_user_id, created_by_user_id,
-             lease_id, discrepancy_id, property_address, source_type, source_natural_key, priority, now, now),
+             lease_id, discrepancy_id, property_address, source_type, source_natural_key, priority, now, now, team_id),
         )
         conn.commit()
         return cur.lastrowid
@@ -2929,23 +3198,24 @@ def create_task(
         conn.close()
 
 
-def get_task(task_id: int) -> Optional[Dict[str, Any]]:
+def get_task(task_id: int, team_id: int) -> Optional[Dict[str, Any]]:
+    """team_id is the boundary check (see get_lease)."""
     conn = get_connection()
     try:
-        row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+        row = conn.execute("SELECT * FROM tasks WHERE id = ? AND team_id = ?", (task_id, team_id)).fetchone()
         return dict(row) if row else None
     finally:
         conn.close()
 
 
-def get_tasks_by_ids(task_ids: List[int]) -> Dict[int, Dict[str, Any]]:
-    """Batched version of get_task for many ids at once — {id: task}."""
+def get_tasks_by_ids(task_ids: List[int], team_id: int) -> Dict[int, Dict[str, Any]]:
+    """Batched version of get_task for many ids at once — {id: task}, filtered to team_id."""
     if not task_ids:
         return {}
     conn = get_connection()
     try:
         placeholders = ",".join("?" for _ in task_ids)
-        rows = conn.execute(f"SELECT * FROM tasks WHERE id IN ({placeholders})", task_ids).fetchall()
+        rows = conn.execute(f"SELECT * FROM tasks WHERE id IN ({placeholders}) AND team_id = ?", (*task_ids, team_id)).fetchall()
         return {row["id"]: dict(row) for row in rows}
     except OverflowError:
         return {}
@@ -2954,6 +3224,7 @@ def get_tasks_by_ids(task_ids: List[int]) -> Dict[int, Dict[str, Any]]:
 
 
 def list_tasks(
+    team_id: int,
     assigned_to_user_id: Optional[int] = None,
     status: Optional[str] = None,
     due_before: Optional[str] = None,
@@ -2964,7 +3235,7 @@ def list_tasks(
     """Every filter is optional and AND-combined -- callers pass only the ones they need (the /tasks route maps straight from its own optional query params to these same keyword args)."""
     conn = get_connection()
     try:
-        clauses, params = [], []
+        clauses, params = ["team_id = ?"], [team_id]
         if assigned_to_user_id is not None:
             clauses.append("assigned_to_user_id = ?")
             params.append(assigned_to_user_id)
@@ -3077,7 +3348,7 @@ def delete_task(task_id: int) -> bool:
         conn.close()
 
 
-def insert_activity(action_type: str, description: str, lease_id: Optional[int] = None) -> int:
+def insert_activity(action_type: str, description: str, team_id: int, lease_id: Optional[int] = None) -> int:
     """
     Records one entry in the account-wide activity feed. Called
     directly from the API route handling an action (upload, delete,
@@ -3092,8 +3363,8 @@ def insert_activity(action_type: str, description: str, lease_id: Optional[int] 
     conn = get_connection()
     try:
         cur = conn.execute(
-            "INSERT INTO activity_log (action_type, description, lease_id, created_at) VALUES (?, ?, ?, ?)",
-            (action_type, description, lease_id, datetime.now(timezone.utc).isoformat()),
+            "INSERT INTO activity_log (action_type, description, lease_id, created_at, team_id) VALUES (?, ?, ?, ?, ?)",
+            (action_type, description, lease_id, datetime.now(timezone.utc).isoformat(), team_id),
         )
         conn.commit()
         return cur.lastrowid
@@ -3101,15 +3372,15 @@ def insert_activity(action_type: str, description: str, lease_id: Optional[int] 
         conn.close()
 
 
-def get_recent_activity(limit: int = 10) -> List[Dict[str, Any]]:
+def get_recent_activity(team_id: int, limit: int = 10) -> List[Dict[str, Any]]:
     """Most recent activity first. `limit` is clamped to a sane range so an
     unbounded/absurd query param can't force a full-table scan-and-return."""
     limit = max(1, min(limit, 200))
     conn = get_connection()
     try:
         rows = conn.execute(
-            "SELECT * FROM activity_log ORDER BY created_at DESC, id DESC LIMIT ?",
-            (limit,),
+            "SELECT * FROM activity_log WHERE team_id = ? ORDER BY created_at DESC, id DESC LIMIT ?",
+            (team_id, limit),
         ).fetchall()
         return [dict(r) for r in rows]
     finally:
@@ -3123,13 +3394,13 @@ def get_recent_activity(limit: int = 10) -> List[Dict[str, Any]]:
 # use is just DISTINCT tag over lease_tags, computed on read.
 # ----------------------------------------------------------------------
 
-def add_lease_tag(lease_id: int, tag: str) -> None:
+def add_lease_tag(lease_id: int, tag: str, team_id: int) -> None:
     """Adds one tag to a lease. Silently a no-op if that exact tag is already there (UNIQUE(lease_id, tag)) — tagging something twice isn't an error, just redundant."""
     conn = get_connection()
     try:
         conn.execute(
-            "INSERT INTO lease_tags (lease_id, tag) VALUES (?, ?)",
-            (lease_id, tag),
+            "INSERT INTO lease_tags (lease_id, tag, team_id) VALUES (?, ?, ?)",
+            (lease_id, tag, team_id),
         )
         conn.commit()
     except (sqlite3.IntegrityError, OverflowError):
@@ -3185,21 +3456,21 @@ def get_tags_for_leases(lease_ids: List[int]) -> Dict[int, List[str]]:
         conn.close()
 
 
-def get_all_tags() -> List[str]:
+def get_all_tags(team_id: int) -> List[str]:
     """Every distinct tag currently in use, alphabetically — for filter-by-tag UI and tag autocomplete."""
     conn = get_connection()
     try:
-        rows = conn.execute("SELECT DISTINCT tag FROM lease_tags ORDER BY tag").fetchall()
+        rows = conn.execute("SELECT DISTINCT tag FROM lease_tags WHERE team_id = ? ORDER BY tag", (team_id,)).fetchall()
         return [row["tag"] for row in rows]
     finally:
         conn.close()
 
 
-def get_lease_ids_with_tag(tag: str) -> List[int]:
+def get_lease_ids_with_tag(tag: str, team_id: int) -> List[int]:
     conn = get_connection()
     try:
         rows = conn.execute(
-            "SELECT lease_id FROM lease_tags WHERE tag = ?", (tag,)
+            "SELECT lease_id FROM lease_tags WHERE tag = ? AND team_id = ?", (tag, team_id)
         ).fetchall()
         return [row["lease_id"] for row in rows]
     finally:
@@ -3227,6 +3498,7 @@ def upsert_discrepancy(
     category: str,
     message: str,
     details: Dict[str, Any],
+    team_id: int,
     lease_id: Optional[int] = None,
     related_lease_id: Optional[int] = None,
     field: Optional[str] = None,
@@ -3265,8 +3537,8 @@ def upsert_discrepancy(
         conn.execute(
             """
             INSERT INTO discrepancies (discrepancy_type, natural_key, lease_id, related_lease_id,
-                category, field, severity, message, details, estimated_dollar_impact, status, first_detected_at, last_seen_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)
+                category, field, severity, message, details, estimated_dollar_impact, status, first_detected_at, last_seen_at, team_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?)
             ON CONFLICT(natural_key) DO UPDATE SET
                 category = excluded.category,
                 field = excluded.field,
@@ -3277,21 +3549,28 @@ def upsert_discrepancy(
                 lease_id = excluded.lease_id,
                 related_lease_id = excluded.related_lease_id,
                 last_seen_at = excluded.last_seen_at
+            WHERE discrepancies.team_id = excluded.team_id
             """,
-            (discrepancy_type, natural_key, lease_id, related_lease_id, category, field, severity, message, json.dumps(details), estimated_dollar_impact, now, now),
+            (discrepancy_type, natural_key, lease_id, related_lease_id, category, field, severity, message, json.dumps(details), estimated_dollar_impact, now, now, team_id),
         )
         conn.commit()
         # A second SELECT after the atomic upsert above is race-free --
         # the row is now guaranteed to exist under this natural_key
         # (the race this fixes was in the OLD check-then-act pattern,
         # not here).
-        row = conn.execute("SELECT id FROM discrepancies WHERE natural_key = ?", (natural_key,)).fetchone()
+        # Scoped by team: natural_key is globally UNIQUE, so if another
+        # team ever owned this key the upsert above changed nothing (its
+        # WHERE clause only updates same-team rows) and this must not
+        # hand back the other team's row id.
+        row = conn.execute("SELECT id FROM discrepancies WHERE natural_key = ? AND team_id = ?", (natural_key, team_id)).fetchone()
+        if row is None:
+            raise RuntimeError(f"natural_key {natural_key!r} belongs to another team; keys must be team-scoped")
         return row["id"]
     finally:
         conn.close()
 
 
-def upsert_discrepancies_bulk(items: List[Dict[str, Any]]) -> Dict[str, int]:
+def upsert_discrepancies_bulk(items: List[Dict[str, Any]], team_id: int) -> Dict[str, int]:
     """
     Same atomic upsert as upsert_discrepancy, for many discrepancies at
     once, sharing ONE connection and ONE commit instead of one
@@ -3323,8 +3602,8 @@ def upsert_discrepancies_bulk(items: List[Dict[str, Any]]) -> Dict[str, int]:
             conn.execute(
                 """
                 INSERT INTO discrepancies (discrepancy_type, natural_key, lease_id, related_lease_id,
-                    category, field, severity, message, details, status, first_detected_at, last_seen_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)
+                    category, field, severity, message, details, status, first_detected_at, last_seen_at, team_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?)
                 ON CONFLICT(natural_key) DO UPDATE SET
                     category = excluded.category,
                     field = excluded.field,
@@ -3334,11 +3613,12 @@ def upsert_discrepancies_bulk(items: List[Dict[str, Any]]) -> Dict[str, int]:
                     lease_id = excluded.lease_id,
                     related_lease_id = excluded.related_lease_id,
                     last_seen_at = excluded.last_seen_at
+                WHERE discrepancies.team_id = excluded.team_id
                 """,
                 (
                     item["discrepancy_type"], item["natural_key"], item.get("lease_id"), item.get("related_lease_id"),
                     item["category"], item.get("field"), item.get("severity"), item["message"],
-                    json.dumps(item["details"]), now, now,
+                    json.dumps(item["details"]), now, now, team_id,
                 ),
             )
         conn.commit()
@@ -3346,21 +3626,21 @@ def upsert_discrepancies_bulk(items: List[Dict[str, Any]]) -> Dict[str, int]:
         natural_keys = [item["natural_key"] for item in items]
         placeholders = ",".join("?" for _ in natural_keys)
         rows = conn.execute(
-            f"SELECT id, natural_key FROM discrepancies WHERE natural_key IN ({placeholders})", natural_keys
+            f"SELECT id, natural_key FROM discrepancies WHERE natural_key IN ({placeholders}) AND team_id = ?", natural_keys + [team_id]
         ).fetchall()
         return {row["natural_key"]: row["id"] for row in rows}
     finally:
         conn.close()
 
 
-def get_discrepancies_by_ids(discrepancy_ids: List[int]) -> Dict[int, Dict[str, Any]]:
-    """Batched version of get_discrepancy for many ids at once — {id: discrepancy}. Same OverflowError safety as get_discrepancy (an out-of-range id just won't match any row)."""
+def get_discrepancies_by_ids(discrepancy_ids: List[int], team_id: int) -> Dict[int, Dict[str, Any]]:
+    """Batched version of get_discrepancy for many ids at once — {id: discrepancy}, filtered to team_id. Same OverflowError safety as get_discrepancy (an out-of-range id just won't match any row)."""
     if not discrepancy_ids:
         return {}
     conn = get_connection()
     try:
         placeholders = ",".join("?" for _ in discrepancy_ids)
-        rows = conn.execute(f"SELECT * FROM discrepancies WHERE id IN ({placeholders})", discrepancy_ids).fetchall()
+        rows = conn.execute(f"SELECT * FROM discrepancies WHERE id IN ({placeholders}) AND team_id = ?", (*discrepancy_ids, team_id)).fetchall()
         return {row["id"]: _discrepancy_row_to_dict(row) for row in rows}
     except OverflowError:
         return {}
@@ -3396,19 +3676,20 @@ def _discrepancy_row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
     return d
 
 
-def get_discrepancy_by_natural_key(natural_key: str) -> Optional[Dict[str, Any]]:
+def get_discrepancy_by_natural_key(natural_key: str, team_id: int) -> Optional[Dict[str, Any]]:
     conn = get_connection()
     try:
-        row = conn.execute("SELECT * FROM discrepancies WHERE natural_key = ?", (natural_key,)).fetchone()
+        row = conn.execute("SELECT * FROM discrepancies WHERE natural_key = ? AND team_id = ?", (natural_key, team_id)).fetchone()
         return _discrepancy_row_to_dict(row) if row else None
     finally:
         conn.close()
 
 
-def get_discrepancy(discrepancy_id: int) -> Optional[Dict[str, Any]]:
+def get_discrepancy(discrepancy_id: int, team_id: int) -> Optional[Dict[str, Any]]:
+    """team_id is the boundary check (see get_lease) -- a discrepancy belonging to another team returns None, same as a nonexistent id."""
     conn = get_connection()
     try:
-        row = conn.execute("SELECT * FROM discrepancies WHERE id = ?", (discrepancy_id,)).fetchone()
+        row = conn.execute("SELECT * FROM discrepancies WHERE id = ? AND team_id = ?", (discrepancy_id, team_id)).fetchone()
         return _discrepancy_row_to_dict(row) if row else None
     except OverflowError:
         return None
@@ -3417,6 +3698,7 @@ def get_discrepancy(discrepancy_id: int) -> Optional[Dict[str, Any]]:
 
 
 def list_discrepancies(
+    team_id: int,
     status: Optional[str] = None,
     lease_id: Optional[int] = None,
     discrepancy_type: Optional[str] = None,
@@ -3424,7 +3706,7 @@ def list_discrepancies(
     """Most-recently-seen first. Any combination of filters may be applied together."""
     conn = get_connection()
     try:
-        clauses, params = [], []
+        clauses, params = ["team_id = ?"], [team_id]
         if status:
             clauses.append("status = ?")
             params.append(status)
@@ -3455,13 +3737,13 @@ def _add_resolution(
     now = datetime.now(timezone.utc).isoformat()
     conn = get_connection()
     try:
-        exists = conn.execute("SELECT id FROM discrepancies WHERE id = ?", (discrepancy_id,)).fetchone()
+        exists = conn.execute("SELECT id, team_id FROM discrepancies WHERE id = ?", (discrepancy_id,)).fetchone()
         if not exists:
             return None
         cur = conn.execute(
             "INSERT INTO discrepancy_resolutions (discrepancy_id, action, correct_source, note, "
-            "resolved_by, resolved_by_email, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (discrepancy_id, action, correct_source, note, resolved_by, resolved_by_email, now),
+            "resolved_by, resolved_by_email, created_at, team_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (discrepancy_id, action, correct_source, note, resolved_by, resolved_by_email, now, exists["team_id"]),
         )
         conn.execute("UPDATE discrepancies SET status = ? WHERE id = ?", (new_status, discrepancy_id))
         conn.commit()
@@ -3566,7 +3848,7 @@ def get_prior_resolutions_for_lease(
         conn.close()
 
 
-def get_discrepancy_summary() -> Dict[str, Any]:
+def get_discrepancy_summary(team_id: int) -> Dict[str, Any]:
     """
     Counts across every discrepancy, by status/severity/type -- the
     header-stat digest a "Discrepancies" sidebar tab needs (how many
@@ -3581,7 +3863,7 @@ def get_discrepancy_summary() -> Dict[str, Any]:
     """
     conn = get_connection()
     try:
-        rows = conn.execute("SELECT status, severity, discrepancy_type FROM discrepancies").fetchall()
+        rows = conn.execute("SELECT status, severity, discrepancy_type FROM discrepancies WHERE team_id = ?", (team_id,)).fetchall()
     finally:
         conn.close()
 
@@ -3609,7 +3891,7 @@ def get_discrepancy_summary() -> Dict[str, Any]:
 # ----------------------------------------------------------------------
 
 def add_comment(
-    author_name: str, body: str, lease_id: Optional[int] = None,
+    author_name: str, body: str, team_id: int, lease_id: Optional[int] = None,
     discrepancy_id: Optional[int] = None, author_email: Optional[str] = None,
     task_id: Optional[int] = None,
 ) -> int:
@@ -3617,9 +3899,9 @@ def add_comment(
     conn = get_connection()
     try:
         cur = conn.execute(
-            "INSERT INTO comments (lease_id, discrepancy_id, task_id, author_name, author_email, body, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (lease_id, discrepancy_id, task_id, author_name, author_email, body, datetime.now(timezone.utc).isoformat()),
+            "INSERT INTO comments (lease_id, discrepancy_id, task_id, author_name, author_email, body, created_at, team_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (lease_id, discrepancy_id, task_id, author_name, author_email, body, datetime.now(timezone.utc).isoformat(), team_id),
         )
         conn.commit()
         return cur.lastrowid
@@ -3668,7 +3950,7 @@ def get_task_comments(task_id: int) -> List[Dict[str, Any]]:
         conn.close()
 
 
-def get_recent_comments(limit: int = 20) -> List[Dict[str, Any]]:
+def get_recent_comments(team_id: int, limit: int = 20) -> List[Dict[str, Any]]:
     """
     The most recent comments across BOTH leases and discrepancies, one
     portfolio-wide feed -- what a standalone "Team Notes" sidebar tab
@@ -3696,10 +3978,11 @@ def get_recent_comments(limit: int = 20) -> List[Dict[str, Any]]:
             FROM comments c
             LEFT JOIN leases l ON c.lease_id = l.id
             LEFT JOIN discrepancies d ON c.discrepancy_id = d.id
+            WHERE c.team_id = ?
             ORDER BY c.created_at DESC, c.id DESC
             LIMIT ?
             """,
-            (limit,),
+            (team_id, limit),
         ).fetchall()
         return [dict(r) for r in rows]
     finally:
@@ -3745,6 +4028,7 @@ def upsert_alert(
     title: str,
     message: str,
     details: Dict[str, Any],
+    team_id: int,
     lease_id: Optional[int] = None,
 ) -> int:
     """
@@ -3777,8 +4061,8 @@ def upsert_alert(
         conn.execute(
             """
             INSERT INTO alerts (alert_type, natural_key, lease_id, severity, title, message, details,
-                status, first_detected_at, last_seen_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
+                status, first_detected_at, last_seen_at, team_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)
             ON CONFLICT(natural_key) DO UPDATE SET
                 severity = excluded.severity,
                 title = excluded.title,
@@ -3787,30 +4071,33 @@ def upsert_alert(
                 lease_id = excluded.lease_id,
                 status = CASE WHEN alerts.status = 'auto_resolved' THEN 'active' ELSE alerts.status END,
                 last_seen_at = excluded.last_seen_at
+            WHERE alerts.team_id = excluded.team_id
             """,
-            (alert_type, natural_key, lease_id, severity, title, message, json.dumps(details), now, now),
+            (alert_type, natural_key, lease_id, severity, title, message, json.dumps(details), now, now, team_id),
         )
         conn.commit()
-        row = conn.execute("SELECT id FROM alerts WHERE natural_key = ?", (natural_key,)).fetchone()
+        row = conn.execute("SELECT id FROM alerts WHERE natural_key = ? AND team_id = ?", (natural_key, team_id)).fetchone()
+        if row is None:
+            raise RuntimeError(f"natural_key {natural_key!r} belongs to another team; keys must be team-scoped")
         return row["id"]
     finally:
         conn.close()
 
 
-def get_alerts_existing_natural_keys(natural_keys: List[str]) -> set:
+def get_alerts_existing_natural_keys(natural_keys: List[str], team_id: int) -> set:
     """Which of these natural_keys already have an alert row -- used to compute created-vs-refreshed counts around upsert_alerts_bulk without a get_alert_by_natural_key round trip per candidate."""
     if not natural_keys:
         return set()
     conn = get_connection()
     try:
         placeholders = ",".join("?" for _ in natural_keys)
-        rows = conn.execute(f"SELECT natural_key FROM alerts WHERE natural_key IN ({placeholders})", natural_keys).fetchall()
+        rows = conn.execute(f"SELECT natural_key FROM alerts WHERE natural_key IN ({placeholders}) AND team_id = ?", natural_keys + [team_id]).fetchall()
         return {row["natural_key"] for row in rows}
     finally:
         conn.close()
 
 
-def upsert_alerts_bulk(items: List[Dict[str, Any]]) -> None:
+def upsert_alerts_bulk(items: List[Dict[str, Any]], team_id: int) -> None:
     """
     Same atomic upsert as upsert_alert (including the auto_resolved ->
     active status-transition rule), for many alerts at once, sharing
@@ -3830,8 +4117,8 @@ def upsert_alerts_bulk(items: List[Dict[str, Any]]) -> None:
             conn.execute(
                 """
                 INSERT INTO alerts (alert_type, natural_key, lease_id, severity, title, message, details,
-                    status, first_detected_at, last_seen_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
+                    status, first_detected_at, last_seen_at, team_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)
                 ON CONFLICT(natural_key) DO UPDATE SET
                     severity = excluded.severity,
                     title = excluded.title,
@@ -3840,10 +4127,11 @@ def upsert_alerts_bulk(items: List[Dict[str, Any]]) -> None:
                     lease_id = excluded.lease_id,
                     status = CASE WHEN alerts.status = 'auto_resolved' THEN 'active' ELSE alerts.status END,
                     last_seen_at = excluded.last_seen_at
+                WHERE alerts.team_id = excluded.team_id
                 """,
                 (
                     item["alert_type"], item["natural_key"], item.get("lease_id"), item["severity"],
-                    item["title"], item["message"], json.dumps(item["details"]), now, now,
+                    item["title"], item["message"], json.dumps(item["details"]), now, now, team_id,
                 ),
             )
         conn.commit()
@@ -3912,10 +4200,11 @@ def dismiss_alert(alert_id: int, dismissed_by: str, note: Optional[str] = None) 
         conn.close()
 
 
-def get_alert(alert_id: int) -> Optional[Dict[str, Any]]:
+def get_alert(alert_id: int, team_id: int) -> Optional[Dict[str, Any]]:
+    """team_id is the boundary check (see get_lease)."""
     conn = get_connection()
     try:
-        row = conn.execute("SELECT * FROM alerts WHERE id = ?", (alert_id,)).fetchone()
+        row = conn.execute("SELECT * FROM alerts WHERE id = ? AND team_id = ?", (alert_id, team_id)).fetchone()
         return _alert_row_to_dict(row) if row else None
     except OverflowError:
         return None
@@ -3924,6 +4213,7 @@ def get_alert(alert_id: int) -> Optional[Dict[str, Any]]:
 
 
 def list_alerts(
+    team_id: int,
     status: Optional[str] = None,
     alert_type: Optional[str] = None,
     severity: Optional[str] = None,
@@ -3932,7 +4222,7 @@ def list_alerts(
     """Any combination of filters may be applied together. Ordered by severity (high first) then most-recently-seen -- a notification feed's natural reading order."""
     conn = get_connection()
     try:
-        clauses, params = [], []
+        clauses, params = ["team_id = ?"], [team_id]
         if status:
             clauses.append("status = ?")
             params.append(status)

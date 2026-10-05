@@ -25,6 +25,9 @@ from app import database
 from app.portfolio import FIELD_NAMES
 
 
+from _session_users import sync_session_user
+
+
 def _fresh_temp_db():
     tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
     tmp.close()
@@ -46,9 +49,11 @@ def _authed_client():
     client = app.test_client()
     with client.session_transaction() as sess:
         sess["user_id"] = 1
+        sess["team_id"] = 1
         sess["email"] = "test-analyst@example.com"
         sess["name"] = "Test Analyst"
         sess["role"] = "analyst"
+        sync_session_user(sess)
     return client
 
 
@@ -85,8 +90,8 @@ def test_rollover_route_real_leases_walt_and_schedule_agree():
     """WALT and the rollover schedule must be computed against the same reference_date -- both derived from the same 2 leases here should describe a consistent picture."""
     db_path = _fresh_temp_db()
     try:
-        database.insert_lease("a.pdf", _fields(rent_amount="$9,000.00", lease_end_date=_days_from_today(100)))
-        database.insert_lease("b.pdf", _fields(rent_amount="$1,000.00", lease_end_date=_days_from_today(800)))
+        database.insert_lease("a.pdf", _fields(rent_amount="$9,000.00", lease_end_date=_days_from_today(100)), team_id=1)
+        database.insert_lease("b.pdf", _fields(rent_amount="$1,000.00", lease_end_date=_days_from_today(800)), team_id=1)
 
         client = _authed_client()
         resp = client.get("/portfolio/rollover")
@@ -111,13 +116,15 @@ def test_rollover_route_reflects_amendments():
     db_path = _fresh_temp_db()
     try:
         base_id = database.insert_lease(
-            "base.pdf", _fields(rent_amount="$5,000.00", lease_end_date=_days_from_today(100)),  # originally year_1
+            "base.pdf", _fields(rent_amount="$5,000.00", lease_end_date=_days_from_today(100)),  # originally year_1,
+        team_id=1,
         )
         database.insert_lease(
             "amendment.pdf",
             _fields(lease_end_date=_days_from_today(800)),  # extended into year_2/3
             document_type="amendment",
             base_lease_id=base_id,
+        team_id=1,
         )
 
         client = _authed_client()

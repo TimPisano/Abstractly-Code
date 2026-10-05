@@ -22,6 +22,7 @@ import pypdf
 
 from app.api import app
 from app import database
+from _session_users import sync_session_user
 from app.portfolio import FIELD_NAMES
 from app import deal_mismatch as dm
 from app.deal_mismatch_export import generate_deal_mismatch_report_pdf, generate_deal_mismatch_report_excel
@@ -39,9 +40,11 @@ def _authed_client(role="analyst"):
     client = app.test_client()
     with client.session_transaction() as sess:
         sess["user_id"] = 1
+        sess["team_id"] = 1
         sess["email"] = f"test-{role}@example.com"
         sess["name"] = f"Test {role.capitalize()}"
         sess["role"] = role
+        sync_session_user(sess)
     return client
 
 
@@ -57,11 +60,11 @@ def _fields(**overrides):
 
 
 def _insert_lease(filename="lease.pdf", **overrides):
-    return database.insert_lease(filename, _fields(**overrides), display_name=overrides.get("tenant") or filename)
+    return database.insert_lease(filename, _fields(**overrides), display_name=overrides.get("tenant") or filename, team_id=1)
 
 
 def _insert_rent_roll_row(filename="rentroll.csv", **overrides):
-    return database.insert_lease(filename, _fields(**overrides), display_name=overrides.get("tenant") or filename)
+    return database.insert_lease(filename, _fields(**overrides), display_name=overrides.get("tenant") or filename, team_id=1)
 
 
 def _rr_lease(**f):
@@ -239,7 +242,7 @@ def test_tenant_mismatch_tolerates_case_and_punctuation():
 def test_empty_portfolio_honest_zero_state():
     db_path = _fresh_temp_db()
     try:
-        data = dm.build_deal_mismatch_report_data()
+        data = dm.build_deal_mismatch_report_data(team_id=1)
         assert data["total_units_checked"] == 0
         assert data["total_discrepancies"] == 0
         assert data["annual_income_overstatement"] is None, "no data at all is 'unknown', not a guessed 0"
@@ -258,7 +261,7 @@ def test_summary_sums_signed_impact_across_units():
         # Unit B: lease on file, not on rent roll -> understates by full $4,000/mo -> -$48,000/yr
         _insert_lease("lease_b.pdf", tenant="Beta", rent_amount="$4,000.00", property_address="1 Main St, Suite B")
 
-        data = dm.build_deal_mismatch_report_data()
+        data = dm.build_deal_mismatch_report_data(team_id=1)
         assert data["total_units_checked"] == 2
         assert data["total_discrepancies"] == 2
         assert data["annual_income_overstatement"] == 6000.0 - 48000.0
@@ -273,7 +276,7 @@ def test_property_address_scopes_report():
         _insert_lease("lease_a.pdf", tenant="Acme", rent_amount="$5,000.00", property_address="1 Main St, Suite A")
         _insert_lease("lease_b.pdf", tenant="Beta", rent_amount="$4,000.00", property_address="99 Oak Ave, Suite B")
 
-        data = dm.build_deal_mismatch_report_data(property_address="1 Main St")
+        data = dm.build_deal_mismatch_report_data(team_id=1, property_address="1 Main St")
         assert data["total_units_checked"] == 1
     finally:
         os.unlink(db_path)
@@ -289,7 +292,7 @@ def test_pdf_export_is_valid_and_readable():
     try:
         _insert_lease("lease_a.pdf", tenant="Acme", rent_amount="$5,500.00", property_address="1 Main St, Suite A")
         _insert_rent_roll_row("rr_a.csv", tenant="Acme", rent_amount="$6,000.00", property_address="1 Main St, Suite A")
-        data = dm.build_deal_mismatch_report_data()
+        data = dm.build_deal_mismatch_report_data(team_id=1)
         pdf_bytes = generate_deal_mismatch_report_pdf(data)
         reader = pypdf.PdfReader(io.BytesIO(pdf_bytes))
         text = "\n".join(page.extract_text() for page in reader.pages)
@@ -305,7 +308,7 @@ def test_excel_export_has_header_and_rows():
     try:
         _insert_lease("lease_a.pdf", tenant="Acme", rent_amount="$5,500.00", property_address="1 Main St, Suite A")
         _insert_rent_roll_row("rr_a.csv", tenant="Acme", rent_amount="$6,000.00", property_address="1 Main St, Suite A")
-        data = dm.build_deal_mismatch_report_data()
+        data = dm.build_deal_mismatch_report_data(team_id=1)
         excel_bytes = generate_deal_mismatch_report_excel(data)
         workbook = load_workbook(io.BytesIO(excel_bytes))
         sheet = workbook.active

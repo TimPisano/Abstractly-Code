@@ -24,6 +24,7 @@ from reportlab.lib.units import inch
 
 from app.api import app
 from app import database
+from _session_users import sync_session_user
 
 FIXTURES_DIR = os.path.dirname(__file__)
 
@@ -47,10 +48,12 @@ def _authed_client():
     client = app.test_client()
     with client.session_transaction() as sess:
         sess["user_id"] = 1
+        sess["team_id"] = 1
         sess["email"] = "test-analyst@example.com"
         sess["team_id"] = 1  # the 'Legacy' team, always id 1 in a fresh test DB
         sess["name"] = "Test Analyst"
         sess["role"] = "analyst"
+        sync_session_user(sess)
     return client
 
 
@@ -58,9 +61,11 @@ def _viewer_client():
     client = app.test_client()
     with client.session_transaction() as sess:
         sess["user_id"] = 2
+        sess["team_id"] = 1
         sess["email"] = "viewer@example.com"
         sess["name"] = "Test Viewer"
         sess["role"] = "viewer"
+        sync_session_user(sess)
     return client
 
 
@@ -261,7 +266,7 @@ def test_resubmit_replaces_lease_archives_old_and_reconciles_discrepancies():
 
         old_after = client.get(f"/leases/{old_id}").get_json()
         assert old_after["status"] == "superseded", "old version must be archived, not deleted"
-        assert database.get_lease(old_id) is not None, "old version must still exist in the DB"
+        assert database.get_lease(old_id, team_id=1) is not None, "old version must still exist in the DB"
 
         active_list = client.get("/leases").get_json()
         active_ids = {l["id"] for l in active_list}
@@ -421,7 +426,7 @@ def test_resubmit_route_rejects_amendment_document_type():
     try:
         client = _authed_client()
         old_id = _upload(client, _v1_bytes(), "a.pdf").get_json()["leases"][0]["id"]
-        amendment_id = database.insert_lease("amend.pdf", {}, document_type="amendment", base_lease_id=old_id)
+        amendment_id = database.insert_lease("amend.pdf", {}, document_type="amendment", base_lease_id=old_id, team_id=1)
         resp = _resubmit(client, amendment_id, _v2_bytes())
         assert resp.status_code == 400
     finally:
@@ -440,8 +445,8 @@ def test_resubmit_route_rejects_amendment_document_type():
 def test_get_lease_version_chain_single_version():
     db_path = _fresh_temp_db()
     try:
-        lease_id = database.insert_lease("a.pdf", {})
-        chain = database.get_lease_version_chain(lease_id)
+        lease_id = database.insert_lease("a.pdf", {}, team_id=1)
+        chain = database.get_lease_version_chain(lease_id, 1)
         assert len(chain) == 1
         assert chain[0]["id"] == lease_id
         assert chain[0]["status"] == "active"
@@ -454,17 +459,17 @@ def test_get_lease_version_chain_single_version():
 def test_repoint_lease_references_moves_everything():
     db_path = _fresh_temp_db()
     try:
-        old_id = database.insert_lease("a.pdf", {})
-        new_id = database.insert_lease("b.pdf", {}, status="active", supersedes_lease_id=old_id, version_number=2)
+        old_id = database.insert_lease("a.pdf", {}, team_id=1)
+        new_id = database.insert_lease("b.pdf", {}, status="active", supersedes_lease_id=old_id, version_number=2, team_id=1)
 
         natural_key = f"lease_risk:{old_id}:missing_clause:insurance_requirements:0"
-        disc_id = database.upsert_discrepancy("lease_risk_flag", natural_key, "missing_clause", "msg", {}, lease_id=old_id)
-        database.add_lease_tag(old_id, "important")
-        database.add_comment("Analyst", "note here", lease_id=old_id)
+        disc_id = database.upsert_discrepancy("lease_risk_flag", natural_key, "missing_clause", "msg", {}, lease_id=old_id, team_id=1)
+        database.add_lease_tag(old_id, "important", team_id=1)
+        database.add_comment("Analyst", "note here", lease_id=old_id, team_id=1)
 
         database.repoint_lease_references(old_id, new_id)
 
-        updated = database.get_discrepancy(disc_id)
+        updated = database.get_discrepancy(disc_id, team_id=1)
         assert updated["lease_id"] == new_id
         assert updated["natural_key"] == f"lease_risk:{new_id}:missing_clause:insurance_requirements:0", \
             "natural_key text itself must be repointed too, not just the lease_id column"
@@ -498,10 +503,11 @@ def test_resubmit_does_not_let_a_carried_forward_amendment_override_the_correcti
         # An amendment overrides rent_amount on the OLD lease.
         amendment_id = database.insert_lease(
             "amend.pdf",
-            {**database.get_lease(old_id)["extracted_fields"], "rent_amount": {"value": "$9,999.00", "source": {"page": 1, "quote": "amended rent"}, "confidence": "high"}},
+            {**database.get_lease(old_id, team_id=1)["extracted_fields"], "rent_amount": {"value": "$9,999.00", "source": {"page": 1, "quote": "amended rent"}, "confidence": "high"}},
             document_type="amendment", base_lease_id=old_id,
+        team_id=1,
         )
-        effective_before = database.get_effective_fields(old_id)
+        effective_before = database.get_effective_fields(old_id, team_id=1)
         assert effective_before["rent_amount"]["value"] == "$9,999.00", "amendment must genuinely govern this field before resubmitting"
 
         # Resubmit a corrected document -- its own rent_amount is $6,250.00 (see _build_lease_pdf).
@@ -509,14 +515,14 @@ def test_resubmit_does_not_let_a_carried_forward_amendment_override_the_correcti
         assert resp.status_code == 201, resp.get_json()
         new_id = resp.get_json()["lease"]["id"]
 
-        effective_after = database.get_effective_fields(new_id)
+        effective_after = database.get_effective_fields(new_id, team_id=1)
         assert effective_after["rent_amount"]["value"] == "$6,250.00", \
             "the resubmitted document's own value must win -- a carried-forward old amendment must not silently override it"
 
         # The amendment itself is untouched, permanent history -- still
         # attached to the archived OLD lease, not deleted.
-        assert database.get_lease(amendment_id)["base_lease_id"] == old_id
-        old_effective = database.get_effective_fields(old_id)
+        assert database.get_lease(amendment_id, team_id=1)["base_lease_id"] == old_id
+        old_effective = database.get_effective_fields(old_id, team_id=1)
         assert old_effective["rent_amount"]["value"] == "$9,999.00", "the archived old version's own history is unaffected"
     finally:
         os.unlink(db_path)
@@ -531,9 +537,9 @@ def test_get_stale_open_discrepancies_excludes_untouched_types():
     """A rent_roll_reconciliation discrepancy must never be treated as 'stale' by this check -- it's never touched by the lease-risk sync pass in the first place, so absence from that pass proves nothing about it."""
     db_path = _fresh_temp_db()
     try:
-        lease_id = database.insert_lease("a.pdf", {})
-        risk_id = database.upsert_discrepancy("lease_risk_flag", "nk1", "missing_clause", "msg", {}, lease_id=lease_id)
-        recon_id = database.upsert_discrepancy("rent_roll_reconciliation", "nk2", "rent_roll_reconciliation", "msg", {}, lease_id=lease_id)
+        lease_id = database.insert_lease("a.pdf", {}, team_id=1)
+        risk_id = database.upsert_discrepancy("lease_risk_flag", "nk1", "missing_clause", "msg", {}, lease_id=lease_id, team_id=1)
+        recon_id = database.upsert_discrepancy("rent_roll_reconciliation", "nk2", "rent_roll_reconciliation", "msg", {}, lease_id=lease_id, team_id=1)
 
         stale = database.get_stale_open_discrepancies_for_lease(lease_id, ["lease_risk_flag", "cross_lease_mismatch"], keep_ids=[])
         stale_ids = {d["id"] for d in stale}

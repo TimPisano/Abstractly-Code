@@ -345,6 +345,37 @@ def send_password_reset_email(to_email: str, reset_url: str) -> bool:
     return _send(to_email, subject, text_body, html_body)
 
 
+def send_team_setup_email(to_email: str, name: str, firm_name: str, setup_url: str) -> bool:
+    """
+    Sent when the owner creates a new team via POST /owner/teams. The
+    URL carries a single-use, 7-day token (see
+    database.create_password_reset_token -- reused as-is for this
+    longer-lived "first login" flow, not just forgot-password) that the
+    invited admin uses to set their own password -- the owner never
+    sees or sets it. If sending fails (or isn't configured), the caller
+    falls back to showing the raw URL in the owner console for manual
+    sharing -- this function's return value is exactly that signal.
+    """
+    subject = f"You're set up on Abstractly, {name}"
+    text_body = (
+        f"Hi {name},\n\n"
+        f"An Abstractly workspace for {firm_name} is ready. Set your password "
+        f"to finish setting up your login (this link expires in 7 days and can "
+        f"only be used once):\n{setup_url}\n\n"
+        "Best,\nTim Pisano"
+    )
+    html_body = _email_html(
+        heading=f"You're set up on Abstractly, {name}.",
+        paragraphs=[
+            f"An Abstractly workspace for {firm_name} is ready.",
+            f'<a href="{setup_url}" style="color:{_COLOR_ACCENT};">Set your password</a> '
+            "to finish setting up your login &mdash; this link expires in 7 days "
+            "and can only be used once.",
+        ],
+    )
+    return _send(to_email, subject, text_body, html_body)
+
+
 def _email_html(heading: str, paragraphs) -> str:
     """
     A restrained, minimal HTML shell — inline styles only (email clients

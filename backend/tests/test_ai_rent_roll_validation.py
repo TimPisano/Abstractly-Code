@@ -26,6 +26,9 @@ from app import ai_rent_roll_validation as rrv
 from app.portfolio import FIELD_NAMES
 
 
+from _session_users import sync_session_user
+
+
 def _fresh_temp_db():
     tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
     tmp.close()
@@ -144,18 +147,18 @@ def test_find_unit_pairs_matches_by_address():
 def test_sync_validation_result_persists_and_is_stable_on_rerun():
     db_path = _fresh_temp_db()
     try:
-        rr_id = database.insert_lease("rr.csv", _fields(property_address="100 Main St", tenant="Acme", rent_amount="$6,000.00"))
-        doc_id = database.insert_lease("lease.pdf", _fields(property_address="100 Main St", tenant="Acme", rent_amount="$6,250.00"))
+        rr_id = database.insert_lease("rr.csv", _fields(property_address="100 Main St", tenant="Acme", rent_amount="$6,000.00"), team_id=1)
+        doc_id = database.insert_lease("lease.pdf", _fields(property_address="100 Main St", tenant="Acme", rent_amount="$6,250.00"), team_id=1)
         result = {
             "rent_roll_lease_id": rr_id, "lease_document_id": doc_id, "address": "100 Main St",
             "assessment": "disagree on rent",
             "discrepancies": [{"field": "rent_amount", "severity": "high", "rent_roll_value": "$6,000.00",
                                "lease_value": "$6,250.00", "explanation": "off by $250", "recommendation": "check"}],
         }
-        rrv.sync_validation_result(result)
-        rrv.sync_validation_result(result)  # re-run
+        rrv.sync_validation_result(result, team_id=1)
+        rrv.sync_validation_result(result, team_id=1)  # re-run
 
-        open_discrepancies = database.list_discrepancies()
+        open_discrepancies = database.list_discrepancies(team_id=1)
         ai_rows = [d for d in open_discrepancies if d["discrepancy_type"] == "rent_roll_ai_validation"]
         assert len(ai_rows) == 1, "re-running must update the same row, not duplicate"
         assert ai_rows[0]["severity"] == "high", "the model's severity is stored, not a hardcoded default"
@@ -172,7 +175,8 @@ def test_sync_validation_result_persists_and_is_stable_on_rerun():
 def _analyst_client():
     c = app.test_client()
     with c.session_transaction() as s:
-        s.update({"user_id": 1, "email": "a@example.com", "name": "A", "role": "analyst"})
+        s.update({"user_id": 1, "email": "a@example.com", "name": "A", "role": "analyst", "team_id": 1})
+        sync_session_user(s)
     return c
 
 
@@ -191,11 +195,11 @@ def test_route_validates_pairs_skips_unabstracted_and_persists():
     db_path = _fresh_temp_db()
     try:
         # pair A: rent roll + abstracted lease -> validated, 1 discrepancy
-        rr_a = database.insert_lease("rr.csv", _fields(property_address="1 A St", tenant="Acme", rent_amount="$6,000.00"))
-        database.insert_lease("lease_a.pdf", _fields(property_address="1 A St", tenant="Acme", rent_amount="$6,250.00"))
+        rr_a = database.insert_lease("rr.csv", _fields(property_address="1 A St", tenant="Acme", rent_amount="$6,000.00"), team_id=1)
+        database.insert_lease("lease_a.pdf", _fields(property_address="1 A St", tenant="Acme", rent_amount="$6,250.00"), team_id=1)
         # pair B: rent roll + un-abstracted lease -> skipped
-        database.insert_lease("rr.csv", _fields(property_address="2 B Ave", tenant="Beta"))
-        database.insert_lease("lease_b.pdf", _fields(property_address="2 B Ave"))
+        database.insert_lease("rr.csv", _fields(property_address="2 B Ave", tenant="Beta"), team_id=1)
+        database.insert_lease("lease_b.pdf", _fields(property_address="2 B Ave"), team_id=1)
 
         payload = {"discrepancies": [{"field": "rent_amount", "severity": "high", "rent_roll_value": "$6,000.00",
                                       "lease_value": "$6,250.00", "explanation": "off by $250", "recommendation": "check"}],
@@ -213,7 +217,7 @@ def test_route_validates_pairs_skips_unabstracted_and_persists():
         assert body["skipped_not_abstracted"] == 1
         assert len(body["discrepancies"]) == 1
 
-        ai_rows = [d for d in database.list_discrepancies() if d["discrepancy_type"] == "rent_roll_ai_validation"]
+        ai_rows = [d for d in database.list_discrepancies(team_id=1) if d["discrepancy_type"] == "rent_roll_ai_validation"]
         assert len(ai_rows) == 1 and ai_rows[0]["severity"] == "high"
 
         runs = [r for r in database.list_ai_extraction_runs() if r["kind"] == "rent_roll_validation"]

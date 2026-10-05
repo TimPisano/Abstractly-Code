@@ -8,8 +8,6 @@
     <link rel="icon" href="/favicon.ico" sizes="32x32">
     <link rel="apple-touch-icon" href="/apple-touch-icon.png">
     <meta name="description" content="Abstractly reads the leases behind a multifamily rent roll and checks them against it unit by unit before your deal closes, then hands you every mismatch with its dollar impact — ready to export for your lender or LP. Built for mid-size multifamily syndicators.">
-    <!-- og:image / og:url are absolute per the OG spec; update the host
-         here if the deployed frontend URL changes (same as config.js). -->
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="Abstractly">
     <meta property="og:title" content="Abstractly — Check The Rent Roll Before You Close">
@@ -29,44 +27,74 @@
 <body>
     <a class="skip-link" href="#mainContent">Skip to content</a>
 
+    <!-- Fixed, sitewide background: .site-bg is the pure-CSS base layer,
+         #siteGlCanvas is the live WebGL layer painted over it once ready
+         (see landing.js / landing.css). Both cover the whole viewport
+         and sit behind every section -- there is no separate hero
+         background, so there's nothing to create a seam against. -->
+    <div class="site-bg" aria-hidden="true"></div>
+    <canvas class="site-gl-canvas" id="siteGlCanvas" aria-hidden="true"></canvas>
+
+    <!-- Everything else (announcement bar, header, main, footer) sits
+         inside this single z-index:1 wrapper, above both fixed
+         background layers -- see .site-content in landing.css. -->
+    <div class="site-content">
+
     <div class="announcement-bar">
         Now onboarding beta testers. <a href="#book-demo">Book a demo &rarr;</a>
     </div>
 
     <div class="site-header">
         <nav class="landing-nav">
-            <div class="landing-brand">
-                <svg class="landing-brand-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5"/>
+            <a href="index.html" class="landing-brand">
+                <svg class="landing-logo-mark" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <rect x="1" y="1" width="22" height="22" rx="6" fill="#b68a4e"/>
+                    <rect x="6" y="8.8" width="12" height="2.4" rx="1.2" fill="#0a0a0b"/>
+                    <rect x="7.5" y="14.3" width="7" height="2.4" rx="1.2" fill="#0a0a0b"/>
                 </svg>
                 Abstractly
-            </div>
+            </a>
+
             <div class="landing-nav-links">
                 <a href="#how-it-works">How It Works</a>
                 <a href="#why-multifamily">Built For Multifamily</a>
                 <a href="#trust">Trust</a>
                 <a href="pricing.html">Pricing</a>
                 <a href="#faq">FAQ</a>
-                <a href="#book-demo">Book a Demo</a>
-                <a href="/app/login.html" class="nav-client-login">Client Login</a>
             </div>
+
+            <div class="landing-nav-actions">
+                <a href="/app/login.html" class="nav-client-login">Client Login</a>
+                <a href="#book-demo" class="btn-primary nav-book-demo">Book a Demo</a>
+            </div>
+
+            <button type="button" class="nav-toggle" id="navToggle" aria-label="Open menu" aria-expanded="false" aria-controls="navMobilePanel">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3.75 6.75h16.5M3.75 12h16.5M3.75 17.25h16.5"/></svg>
+            </button>
         </nav>
+
+        <div class="nav-mobile-panel" id="navMobilePanel">
+            <a href="#how-it-works">How It Works</a>
+            <a href="#why-multifamily">Built For Multifamily</a>
+            <a href="#trust">Trust</a>
+            <a href="pricing.html">Pricing</a>
+            <a href="#faq">FAQ</a>
+            <a href="/app/login.html">Client Login</a>
+            <a href="#book-demo" class="btn-primary nav-mobile-cta">Book a Demo</a>
+        </div>
     </div>
 
     <main id="mainContent">
 
     <!-- ===================== Hero ===================== -->
     <header class="hero" id="hero">
-        <div class="hero-bg" aria-hidden="true">
-            <div class="hero-bands" id="heroBands"></div>
-            <canvas class="hero-canvas" id="heroCanvas"></canvas>
-            <div class="hero-glow"></div>
-        </div>
-
         <div class="hero-inner hero-inner-split reveal">
             <div class="hero-copy">
                 <span class="eyebrow">Built for multifamily syndicators</span>
-                <h1>Check the rent roll<br><span class="accent">before you close.</span></h1>
+                <h1>
+                    <span class="reveal-line" style="--line-index:0">Check the rent roll</span>
+                    <span class="reveal-line accent" style="--line-index:1">before you close.</span>
+                </h1>
                 <p class="hero-subhead">
                     Abstractly reads the actual leases behind a rent roll and
                     checks them against it unit by unit — tenant, rent,
@@ -122,12 +150,11 @@
          discrepancies.py) run against one test lease and one disagreeing
          rent-roll row -- unlike the hero's Maple Ridge card above (an
          explicitly labeled illustrative example), this one is genuine
-         engine output. Regenerate with tools if the message format or
-         severity logic changes. -->
+         engine output. -->
     <section class="problem" id="problem">
         <div class="section-heading reveal">
             <span class="eyebrow">The Problem</span>
-            <h2>Rent Rolls Drift From The Leases That Back Them</h2>
+            <h2>Rent rolls drift from the leases that back them</h2>
             <p>Not a hypothetical — here's real output from the reconciliation engine, run against a real test lease and a rent roll built to disagree with it. Same severity, dollar-impact, and source-citation format the product produces on your own documents.</p>
         </div>
 
@@ -176,7 +203,7 @@
     <section class="how-it-works" id="how-it-works">
         <div class="section-heading reveal">
             <span class="eyebrow">How It Works</span>
-            <h2>Two Files In. Every Mismatch Out.</h2>
+            <h2>Two files in. Every mismatch out.</h2>
         </div>
         <div class="steps-grid">
             <div class="step-card reveal">
@@ -201,7 +228,7 @@
     <section class="differentiator" id="why-multifamily">
         <div class="section-heading reveal">
             <span class="eyebrow">Built For Multifamily</span>
-            <h2>Built For Hundreds Of Units, Not A Handful Of Tenants</h2>
+            <h2>Built for hundreds of units, not a handful of tenants</h2>
             <p>Most lease-review tools were built for commercial CRE — a handful of long, heavily negotiated leases per building. Multifamily is a different problem entirely.</p>
         </div>
         <div class="differentiator-grid">
@@ -230,7 +257,7 @@
     <section class="trust" id="trust">
         <div class="section-heading reveal">
             <span class="eyebrow">Trust &amp; Security</span>
-            <h2>What's Actually True Today</h2>
+            <h2>What's actually true today</h2>
         </div>
         <div class="trust-grid">
             <div class="trust-item reveal">
@@ -265,13 +292,13 @@
     <section class="pricing-preview" id="pricing-preview">
         <div class="section-heading reveal">
             <span class="eyebrow">Pricing</span>
-            <h2>Priced Per Property, Not Per Document</h2>
-            <p>Three tiers, monthly or annual contracts. Every plan starts with a real walkthrough, not a self-serve checkout.</p>
+            <h2>Straightforward monthly pricing</h2>
+            <p>Three tiers, flat monthly or annual per team. Every plan starts with a real walkthrough, not a self-serve checkout.</p>
         </div>
         <!-- Rendered by landing.js from PRICING_CONFIG (pricing-config.js)
-             -- same source of truth as pricing.html, so this teaser can
-             never drift out of sync with the real numbers. -->
+             -- same source of truth as pricing.html. -->
         <div class="pricing-preview-grid reveal" id="pricingPreviewGrid"></div>
+        <p class="pricing-preview-note reveal">Free pilot available for early testers.</p>
         <div class="pricing-preview-cta-wrap reveal">
             <a href="pricing.html" class="btn-primary">Compare All Plans &rarr;</a>
         </div>
@@ -281,7 +308,7 @@
     <section class="faq" id="faq">
         <div class="section-heading reveal">
             <span class="eyebrow">FAQ</span>
-            <h2>Questions We'd Ask Too</h2>
+            <h2>Questions we'd ask too</h2>
         </div>
         <div class="faq-list">
             <details class="faq-item reveal">
@@ -340,10 +367,6 @@
                         <textarea id="demoMessage" name="message" rows="3" maxlength="2000"></textarea>
                     </div>
 
-                    <!-- Honeypot: invisible to a real visitor (aria-hidden,
-                         off-screen, unreachable by Tab), left for a bot that
-                         fills in every field it can find. See landing.js and
-                         backend/app/api.py's POST /demo-request. -->
                     <div class="demo-form-honeypot" aria-hidden="true">
                         <label for="demoWebsite">Website</label>
                         <input type="text" id="demoWebsite" name="website" tabindex="-1" autocomplete="off">
@@ -361,14 +384,17 @@
         </div>
     </section>
 
-    <!-- ===================== Footer ===================== -->
     </main>
 
     <footer class="landing-footer">
         <div class="footer-inner">
             <div class="footer-top">
                 <div class="footer-brand">
-                    <svg width="20" height="20" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5"/></svg>
+                    <svg class="footer-logo-mark" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <rect x="1" y="1" width="22" height="22" rx="6" fill="#b68a4e"/>
+                        <rect x="6" y="8.8" width="12" height="2.4" rx="1.2" fill="#0a0a0b"/>
+                        <rect x="7.5" y="14.3" width="7" height="2.4" rx="1.2" fill="#0a0a0b"/>
+                    </svg>
                     Abstractly
                 </div>
                 <div class="footer-links">
@@ -381,8 +407,11 @@
         </div>
     </footer>
 
+    </div><!-- /.site-content -->
+
     <script src="config.js"></script>
     <script src="pricing-config.js"></script>
+    <script src="vendor/lenis.min.js"></script>
     <script src="landing.js"></script>
 </body>
 </html>

@@ -22,6 +22,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 from app.api import app
 from app import database
+from _session_users import sync_session_user
 from app import cache
 from app.portfolio import FIELD_NAMES
 
@@ -51,10 +52,12 @@ def _authed_client():
     client = app.test_client()
     with client.session_transaction() as sess:
         sess["user_id"] = 1
+        sess["team_id"] = 1
         sess["email"] = "test-analyst@example.com"
         sess["team_id"] = 1  # the 'Legacy' team, always id 1 in a fresh test DB
         sess["name"] = "Test Analyst"
         sess["role"] = "analyst"
+        sync_session_user(sess)
     return client
 
 
@@ -149,10 +152,10 @@ def test_uploading_a_lease_through_the_api_busts_the_health_score_cache():
         resp = client.get("/portfolio/health-score")
         assert resp.get_json()["rating"] == "No Data", "must start with an empty, cached 'No Data' result"
 
-        database.insert_lease("a.pdf", _fields(tenant="Acme", rent_amount="$5,000.00", landlord="L", lease_start_date="Jan 1, 2025", lease_end_date="Jan 1, 2030"))
+        database.insert_lease("a.pdf", _fields(tenant="Acme", rent_amount="$5,000.00", landlord="L", lease_start_date="Jan 1, 2025", lease_end_date="Jan 1, 2030"), team_id=1)
         # NOT calling cache.invalidate_all() here -- the whole point of
         # this test is that a REAL API route (below) does the
-        # invalidation itself. A direct database.insert_lease() (like
+        # invalidation itself. A direct database.insert_lease(team_id=1) (like
         # the line above) does NOT trigger it -- confirmed first,
         # deliberately, so the next assertion actually proves something.
         resp = client.get("/portfolio/health-score")
@@ -175,7 +178,7 @@ def test_deleting_a_lease_through_the_api_busts_the_trends_cache():
     db_path = _fresh_temp_db()
     try:
         client = _authed_client()
-        lease_id = database.insert_lease("a.pdf", _fields(tenant="Acme", rent_amount="$5,000.00", property_address="1 Main St"))
+        lease_id = database.insert_lease("a.pdf", _fields(tenant="Acme", rent_amount="$5,000.00", property_address="1 Main St"), team_id=1)
 
         resp = client.get("/portfolio/trends")
         assert resp.get_json()["property_count"] == 1
@@ -194,7 +197,7 @@ def test_resolving_a_discrepancy_through_the_api_busts_the_health_score_cache():
     db_path = _fresh_temp_db()
     try:
         client = _authed_client()
-        lease_id = database.insert_lease("a.pdf", _fields())  # missing everything -> real flags
+        lease_id = database.insert_lease("a.pdf", _fields(), team_id=1)  # missing everything -> real flags
         flags = client.get(f"/leases/{lease_id}/risks").get_json()
         assert flags, "fixture must produce at least one real discrepancy"
         disc_id = flags[0]["discrepancy_id"]
@@ -221,7 +224,7 @@ def test_health_score_cache_key_is_scoped_by_staleness_threshold():
     try:
         client = _authed_client()
         old_timestamp = "2020-01-01T00:00:00+00:00"
-        lease_id = database.insert_lease("a.pdf", _fields(tenant="Acme", rent_amount="$5,000.00", landlord="L", lease_start_date="Jan 1, 2025", lease_end_date="Jan 1, 2030"))
+        lease_id = database.insert_lease("a.pdf", _fields(tenant="Acme", rent_amount="$5,000.00", landlord="L", lease_start_date="Jan 1, 2025", lease_end_date="Jan 1, 2030"), team_id=1)
         conn = database.get_connection()
         conn.execute("UPDATE leases SET uploaded_at = ? WHERE id = ?", (old_timestamp, lease_id))
         conn.commit()

@@ -15,6 +15,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 from app.api import app, _pageview_rate_limiter
 from app import database
+from _session_users import sync_session_user
 
 
 def _fresh_temp_db():
@@ -29,10 +30,12 @@ def _client_as_owner():
     client = app.test_client()
     with client.session_transaction() as sess:
         sess["user_id"] = 1
+        sess["team_id"] = 1
         sess["email"] = "owner@example.com"
         sess["name"] = "Test Owner"
         sess["role"] = "admin"
         sess["is_owner"] = True
+        sync_session_user(sess)
     return client
 
 

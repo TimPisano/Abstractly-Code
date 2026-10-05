@@ -132,7 +132,7 @@ _COLUMN_ALIASES: Dict[str, List[str]] = {
     # assuming every rent roll omits concessions (see deal_mismatch.py's
     # detect_concession_mismatch). Never eligible for rent_amount, see
     # _is_concession_header.
-    "concessions": ["concession", "concessions", "rent concession", "monthly concession", "concession amount", "rent discount"],
+    "concessions": ["concession", "concessions", "rent concession", "monthly concession", "concession amount", "rent discount", "concession/month", "concession/mo", "concessions/month", "concessions/mo"],
 }
 
 # Header words that mean a rent-like column is a THEORETICAL/aspirational
@@ -174,6 +174,9 @@ def _is_concession_non_amount_header(normalized_header: str) -> bool:
     # "Concession Per Month" / "Concession a Month" IS the dollar amount --
     # only a bare "month(s)" means a count column.
     stripped = re.sub(r"\b(?:per|a|each|every)\s+month\b", " ", normalized_header)
+    # "Concession/Month" normalizes to "concession month" -- singular,
+    # right after "concession", it means per month (a count is "Months").
+    stripped = re.sub(r"\b(concessions?)\s+month\b", r"\1", stripped)
     return bool(set(stripped.split()) & _CONCESSION_NON_AMOUNT_WORDS)
 
 

@@ -25,8 +25,33 @@ services:
     runtime: docker
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
-    plan: free
+    plan: starter
     healthCheckPath: /health
+    # Persistent disk for the SQLite database. Without it, every
+    # redeploy (Render does one on each push to main) and every restart
+    # starts from an empty database file on the container's own
+    # ephemeral filesystem -- losing uploaded leases, rent rolls, Book
+    # a Demo submissions, and any admin account created after the
+    # ADMIN_EMAIL/ADMIN_PASSWORD_HASH seed.
+    #
+    # Render requires a PAID plan for disks (hence plan: starter above)
+    # -- the free tier can't attach one at all.
+    #
+    # DB_PATH (below) is the only thing pointing database.py at this
+    # disk instead of the ephemeral filesystem; app/api.py reads it at
+    # import time and calls database.configure(), so NO code change is
+    # needed. Verified at app/api.py:241-243.
+    #
+    # Two tradeoffs Render imposes on any disk-backed service: deploys
+    # are no longer zero-downtime (the old instance stops before the
+    # new one starts -- a few seconds), and the service can never scale
+    # past a single instance. Neither is a new constraint here: SQLite
+    # is a single-writer file database and couldn't be shared across
+    # instances anyway.
+    disk:
+      name: abstractly-data
+      mountPath: /app/data
+      sizeGB: 1
     envVars:
       # Real values are entered directly in the Render dashboard
       # (Environment tab), never committed here — see DEPLOYMENT.md.
@@ -44,6 +69,10 @@ services:
         value: "false"
       - key: LOG_LEVEL
         value: INFO
+      # Must live under the disk's mountPath above, or the database is
+      # back on the ephemeral filesystem and the disk does nothing.
+      - key: DB_PATH
+        value: /app/data/lease_portfolio.db
       # Upstash Redis connection string (rediss://...), from the
       # Upstash console -- backs the background lease-extraction queue
       # (app/jobs.py). Entered directly in the Render dashboard, never
@@ -70,17 +99,13 @@ services:
       # - key: GOOGLE_APPLICATION_CREDENTIALS   # "Export to Google Sheets"
       #   value: /app/credentials/google-service-account.json
 
-    # NOTE (free tier, per your choice): no persistent disk is attached
-    # -- the SQLite database resets on every restart/redeploy. To make
-    # data durable later, upgrade this service's plan to "Starter" (or
-    # higher) in the Render dashboard and add:
-    #   disk:
-    #     name: abstractly-data
-    #     mountPath: /app/data
-    #     sizeGB: 1
-    # ...then set an extra env var DB_PATH=/app/data/lease_portfolio.db
-    # (see DEPLOYMENT.md's "Adding persistent storage later" section
-    # for the one-line code change that env var needs).
+    # NOTE: uploaded FILES are deliberately never persisted, disk or
+    # no disk. An upload is written to a temp file, parsed, and deleted
+    # in a finally block (app/api.py:545 and its `os.unlink`); only the
+    # extracted fields and page numbers are stored, in SQLite. So the
+    # disk above covers everything durable this app has. Re-rendering a
+    # page citation against its original PDF would need the source
+    # document kept too -- a product change, not a hosting one.
 
   # ---- Frontend: static site, no build step ----
   - type: web
@@ -182,11 +207,13 @@ services:
         sync: false
       - key: LEASE_EXTRACTION_QUEUE
         value: extraction-tester
-      # No persistent disk (free tier, same tradeoff as abstractly-api
-      # and abstractly-demo-api above) -- the tester's uploads are wiped
-      # on restart/15-min idle spindown. Fine for a short trial; see
-      # "Adding persistent storage later" in DEPLOYMENT.md if a given
-      # tester run needs to survive longer.
+      # No persistent disk and still plan: free, deliberately -- only
+      # abstractly-api gets a disk in this change. The tester's uploads
+      # are therefore still wiped on restart and on the free tier's
+      # ~15-min idle spindown. Fine for a short trial; to make a tester
+      # run durable later, mirror the disk + DB_PATH block on
+      # abstractly-api above (and note that a disk requires a paid
+      # instance type, so it's a billing decision too).
 
   # ---- Tester frontend: same static files as abstractly, points at the tester backend ----
   - type: web
@@ -283,8 +310,9 @@ services:
         sync: false
       - key: LEASE_EXTRACTION_QUEUE
         value: extraction-demo
-      # No persistent disk (see the free-tier note on abstractly-api
-      # above) -- here that's a feature, not a caveat: a cold restart
+      # Deliberately still plan: free with NO disk, unlike
+      # abstractly-api above -- here losing
+      # the database is a feature, not a caveat: a cold restart
       # after Render's free-tier idle spindown wipes the demo database,
       # and DEMO_MODE's startup seed immediately repopulates it, so a
       # demo instance that's been idle resets itself for free between

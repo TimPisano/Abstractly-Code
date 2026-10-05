@@ -10,15 +10,13 @@
 
 const CAPITALIZE = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
-function _formatPricePerProperty(monthlyPrice, annual) {
-    const price = annual
-        ? monthlyPrice * (1 - PRICING_CONFIG.annualDiscountPercent / 100)
-        : monthlyPrice;
-    // Prices are whole dollars today (see pricing-config.js) but the
-    // discount math can produce cents -- show them only when present,
-    // rather than always forcing "$20.00".
-    const formatted = Number.isInteger(price) ? price : price.toFixed(2);
-    return `$${formatted}<span>/property/mo</span>`;
+function _formatMonthlyPrice(tier, annual) {
+    const price = annual ? tier.annualPriceMonthly : tier.monthlyPrice;
+    return `$${price.toLocaleString('en-US')}<span>/mo</span>`;
+}
+
+function _savingsPercent(tier) {
+    return Math.round((1 - tier.annualPriceMonthly / tier.monthlyPrice) * 100);
 }
 
 function _tierCardHtml(tier, annual) {
@@ -30,15 +28,19 @@ function _tierCardHtml(tier, annual) {
     if (tier.custom) {
         priceHtml = '<div class="pricing-tier-price pricing-tier-price-custom">Contact us</div>';
     } else {
-        priceHtml = `<div class="pricing-tier-price">${_formatPricePerProperty(tier.monthlyPricePerProperty, annual)}</div>`;
+        priceHtml = `<div class="pricing-tier-price">${_formatMonthlyPrice(tier, annual)}</div>`;
         annualNoteHtml = annual
-            ? `<p class="pricing-annual-note">billed annually &mdash; save ${PRICING_CONFIG.annualDiscountPercent}%</p>`
+            ? `<p class="pricing-annual-note">billed annually &mdash; save ${_savingsPercent(tier)}%</p>`
             : '<p class="pricing-annual-note">billed monthly</p>';
     }
 
-    const limitLine = tier.propertyLimitLabel
-        ? tier.propertyLimitLabel
-        : `Up to ${tier.propertyLimit} properties`;
+    const userLine = tier.maxUsersLabel
+        ? tier.maxUsersLabel
+        : `Up to ${tier.maxUsers} users`;
+
+    const limitLine = tier.monthlyDocumentLimit
+        ? `<li>Up to ${tier.monthlyDocumentLimit} documents/month</li>`
+        : '';
 
     const includesLine = tier.includesPrevious
         ? `<li class="pricing-feature-includes">Everything in ${CAPITALIZE(tier.includesPrevious)}, plus:</li>`
@@ -56,7 +58,8 @@ function _tierCardHtml(tier, annual) {
             ${priceHtml}
             ${annualNoteHtml}
             <ul class="pricing-feature-list">
-                <li>${limitLine}</li>
+                <li>${userLine}</li>
+                ${limitLine}
                 ${includesLine}
                 ${featureItems}
             </ul>

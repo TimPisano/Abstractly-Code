@@ -207,7 +207,7 @@ def _validate_navigation(result: Dict[str, Any], valid_lease_ids: set) -> Dict[s
     return result
 
 
-def ask_assistant(question: str, client: Optional[anthropic.Anthropic] = None, reference_date: Optional[date] = None) -> Dict[str, Any]:
+def ask_assistant(question: str, team_id: int, client: Optional[anthropic.Anthropic] = None, reference_date: Optional[date] = None) -> Dict[str, Any]:
     """
     The whole pipeline: pull the real portfolio, build the compact
     grounding context, call Claude with the forced respond_to_user
@@ -216,9 +216,9 @@ def ask_assistant(question: str, client: Optional[anthropic.Anthropic] = None, r
     itself fails -- callers should turn that into a 502/503, never a
     500 with a raw traceback.
     """
-    leases = database.get_all_effective_leases()
-    discrepancies = database.list_discrepancies()
-    alerts = database.list_alerts()
+    leases = database.get_all_effective_leases(team_id)
+    discrepancies = database.list_discrepancies(team_id=team_id)
+    alerts = database.list_alerts(team_id=team_id)
     context = build_portfolio_context(leases, discrepancies, alerts)
     system_prompt = _system_prompt(context, reference_date or date.today())
 

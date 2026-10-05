@@ -233,7 +233,10 @@ def seed_demo_data() -> None:
     try:
         fcntl.flock(lock_fd, fcntl.LOCK_EX)  # losing worker blocks HERE, before its own run()/accept() loop exists
 
-        existing = database.get_all_leases(document_type=None)
+        legacy_team = database.get_team_by_name("Legacy")
+        team_id = legacy_team["id"]
+
+        existing = database.get_all_leases(team_id, document_type=None)
         if existing:
             logger.info("Demo data already present (%d lease(s)) -- skipping seed.", len(existing))
             return
@@ -243,18 +246,18 @@ def seed_demo_data() -> None:
                 account["password"].encode("utf-8"), bcrypt.gensalt(rounds=_DEMO_PASSWORD_BCRYPT_ROUNDS),
             ).decode("utf-8")
             user_result = database.create_user(
-                account["email"], account["name"], password_hash, role=account["role"],
+                account["email"], account["name"], password_hash, role=account["role"], team_id=team_id,
             )
             if user_result["status"] == "created":
                 logger.info("Seeded demo user %s", account["email"])
 
         for lease in _sample_pdf_leases():
-            database.insert_lease(lease["filename"], lease["extracted_fields"], document_type="lease", display_name=lease["display_name"])
+            database.insert_lease(lease["filename"], lease["extracted_fields"], team_id, document_type="lease", display_name=lease["display_name"])
 
         for lease in _sample_rent_roll_leases():
-            database.insert_lease(lease["filename"], lease["extracted_fields"], document_type="lease", display_name=lease["display_name"])
+            database.insert_lease(lease["filename"], lease["extracted_fields"], team_id, document_type="lease", display_name=lease["display_name"])
 
-        database.insert_activity("demo_seeded", "Demo account seeded with sample leases and a sample rent roll")
+        database.insert_activity("demo_seeded", "Demo account seeded with sample leases and a sample rent roll", team_id)
         logger.info("Demo data seeded: 2 sample leases + 2 matching rent-roll rows.")
     finally:
         fcntl.flock(lock_fd, fcntl.LOCK_UN)

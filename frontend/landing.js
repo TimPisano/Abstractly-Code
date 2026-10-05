@@ -3,25 +3,27 @@
  * alike):
  *  - Book a Demo form: posts to the backend and swaps in a confirmation
  *    state instead of navigating away. Only present on index.html --
- *    guarded so pages without it (pricing.html, which links back to
- *    index.html's form instead of duplicating it) don't throw on this
- *    line and silently skip the reveal-animation wiring below it as a
- *    result.
+ *    guarded so pricing.html doesn't throw on this line.
  *  - Pageview beacon: fire-and-forget first-party analytics (see
- *    backend/app/api.py's POST /analytics/pageview) -- one per page
- *    load, plus a synthetic one on a successful demo request so the
- *    owner console's funnel can show conversions, not just visits.
+ *    backend/app/api.py's POST /analytics/pageview).
  *  - Scroll reveal: a subtle fade + rise for elements marked .reveal
- *    as they enter the viewport, restrained rather than bouncy, and
- *    skipped entirely for prefers-reduced-motion (handled in CSS).
+ *    as they enter the viewport, skipped under prefers-reduced-motion
+ *    (handled in CSS).
+ *  - Sticky header: toggles body.scrolled past a small scroll
+ *    threshold so the header can go from transparent (over the hero)
+ *    to a blurred dark bar (see landing.css's body.scrolled .site-header).
+ *  - Mobile nav: opens/closes the slide-down panel on narrow viewports.
+ *  - Sitewide cursor-reactive light bands: a fixed, viewport-sized
+ *    canvas behind every section (see #siteGlCanvas in both HTML files
+ *    and .site-bg/.site-gl-canvas in landing.css).
+ *  - Hero Deal Mismatch Report count-up.
+ *  - Pricing preview teaser (index.html only), rendered from
+ *    PRICING_CONFIG so it can never drift from the real pricing page.
  * API_BASE_URL comes from config.js, loaded before this script.
  */
 
 // A per-tab id in sessionStorage, NOT a cookie -- gone when the tab
-// closes, never sent anywhere except this one beacon, and not read by
-// or shared with anything else on the page. Only exists so the owner
-// console can count distinct visits/conversions instead of raw
-// pageview volume; see database.get_pageview_summary's own docstring.
+// closes, never sent anywhere except this one beacon.
 function _pageviewSessionId() {
     try {
         let id = sessionStorage.getItem('_pvsid');
@@ -31,8 +33,6 @@ function _pageviewSessionId() {
         }
         return id;
     } catch (e) {
-        // Private browsing / storage disabled: still send a beacon, just
-        // without session continuity across this page's other beacons.
         return null;
     }
 }
@@ -43,8 +43,8 @@ function recordPageview(path) {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ path, referrer: document.referrer || null, session_id: _pageviewSessionId() }),
-        }).catch(() => {}); // analytics must never surface an error to a visitor
-    } catch (e) { /* same -- never let telemetry break the page */ }
+        }).catch(() => {});
+    } catch (e) { /* telemetry must never break the page */ }
 }
 
 recordPageview(window.location.pathname);
@@ -64,17 +64,10 @@ if (demoFormEl) {
         const company = document.getElementById('demoCompany').value.trim();
         const unitsRaw = document.getElementById('demoUnits').value.trim();
         const message = document.getElementById('demoMessage').value.trim();
-        // Honeypot -- left empty by a real visitor (it's hidden off-screen);
-        // sent through as-is so the server applies the same spam check
-        // regardless of what filled it in.
         const website = document.getElementById('demoWebsite').value.trim();
 
         errorEl.classList.remove('show');
 
-        // Client-side validation mirrors the server's (backend/app/api.py's
-        // POST /demo-request) so a real visitor sees a fast, specific error
-        // without a round trip -- the server re-validates everything
-        // regardless, since client-side checks are trivially bypassable.
         let clientError = null;
         if (!name) {
             clientError = 'Please enter your name';
@@ -113,11 +106,6 @@ if (demoFormEl) {
                     }),
                 });
             } catch (networkErr) {
-                // A raw fetch() failure (backend unreachable, network down)
-                // throws a browser-internal string like "Failed to fetch" --
-                // caught here and replaced before it can reach a prospective
-                // client's screen on the single most important form on the
-                // page.
                 throw new Error("Couldn't reach the server. Check your connection and try again.");
             }
             const data = await response.json().catch(() => ({}));
@@ -128,9 +116,6 @@ if (demoFormEl) {
 
             document.getElementById('demoFormWrap').classList.add('submitted');
             document.getElementById('demoFormConfirm').classList.add('show');
-            // Synthetic "path" -- a conversion marker, not a real page. Any
-            // path starting with "/" is accepted by POST /analytics/pageview
-            // (see backend/app/api.py), so this needs no backend change.
             recordPageview('/__event/demo_requested');
         } catch (err) {
             errorEl.textContent = err.message;
@@ -153,76 +138,239 @@ if ('IntersectionObserver' in window) {
 
     document.querySelectorAll('.reveal').forEach((el) => observer.observe(el));
 } else {
-    // No IntersectionObserver support: show everything immediately
-    // rather than leaving it permanently hidden.
     document.querySelectorAll('.reveal').forEach((el) => el.classList.add('in-view'));
 }
 
 /**
- * ===================== Hero: cursor-reactive light bands =====================
- * index.html only (#hero / #heroCanvas aren't present on pricing.html).
- * A handful of soft vertical bands in the brand accent color, drawn on
- * a canvas layered behind the hero copy, that brighten and widen near
- * the mouse and ease toward it rather than snapping -- "light through
- * blinds." landing.css already renders a static CSS-gradient version of
- * the same pattern (.hero-bands) unconditionally as a progressive-
- * enhancement fallback; this block only takes over from it when the
- * visitor can actually benefit from the motion:
- *  - never under prefers-reduced-motion
- *  - never on a touch/coarse-pointer device (nothing to react to, and
- *    it's the brief's own instruction to keep those static)
- * When it does run: paused via IntersectionObserver whenever the hero
- * scrolls off-screen, and via the page Visibility API whenever the tab
- * is hidden, so it only ever costs a frame budget while actually
- * visible to someone who can see the motion.
+ * ===================== Sticky header scroll state =====================
+ * Toggles body.scrolled once the page has scrolled past a small
+ * threshold, so the header can go from fully transparent (sitting over
+ * the hero) to the blurred dark bar defined in landing.css. Passive
+ * listener, no layout reads beyond scrollY, cheap on every scroll frame.
  */
 (function () {
-    const hero = document.getElementById('hero');
-    const canvas = document.getElementById('heroCanvas');
-    if (!hero || !canvas) return;
+    const THRESHOLD = 24;
+    function updateScrolled() {
+        document.body.classList.toggle('scrolled', window.scrollY > THRESHOLD);
+    }
+    updateScrolled();
+    window.addEventListener('scroll', updateScrolled, { passive: true });
+})();
+
+/**
+ * ===================== Mobile nav toggle =====================
+ */
+(function () {
+    const toggle = document.getElementById('navToggle');
+    const panel = document.getElementById('navMobilePanel');
+    if (!toggle || !panel) return;
+
+    toggle.addEventListener('click', () => {
+        const isOpen = panel.classList.toggle('open');
+        toggle.setAttribute('aria-expanded', String(isOpen));
+    });
+
+    // Close the panel after following a link, rather than leaving it
+    // open behind the section the visitor just navigated to.
+    panel.querySelectorAll('a').forEach((a) => {
+        a.addEventListener('click', () => {
+            panel.classList.remove('open');
+            toggle.setAttribute('aria-expanded', 'false');
+        });
+    });
+})();
+
+/**
+ * ===================== Sitewide fluted-glass WebGL shader =====================
+ * Runs on every page that has #siteGlCanvas (index.html and
+ * pricing.html alike) -- a single `position: fixed` canvas sized to the
+ * viewport, painted behind the whole page (see .site-gl-canvas in
+ * landing.css), never scoped to the hero or any other single section.
+ * Evenly spaced vertical "ribs," each shaded like a rounded glass
+ * cylinder (soft highlight + darker grooves between them), lit by a
+ * point light that eases toward the cursor and never snaps. Ribs near
+ * the light glow in the accent color; brightness falls off smoothly
+ * with distance. A slow perpetual idle drift keeps it visibly alive
+ * when the cursor is still, and a faint per-rib shimmer plays across
+ * lit ribs.
+ *
+ * The light's overall intensity (u_scrollFade) eases from full at the
+ * top of the page down to a faint floor over the first 1.5 screen
+ * heights of scroll, then holds at that floor -- never a hard cutoff,
+ * and the glow plus cursor-follow keep running all the way to the
+ * bottom of the page, because this is the one and only background
+ * layer for the entire site, not something confined to the hero.
+ *
+ * CSS fallback: .site-bg (landing.css) already paints a static
+ * approximation of this same design (soft top glow + matching rib
+ * spacing) across the whole viewport. #siteGlCanvas starts at
+ * opacity:0 and only fades in once WebGL actually initializes and
+ * compiles successfully (`.is-ready`) -- so a browser with no WebGL
+ * support, or where shader compilation fails for any reason, silently
+ * keeps the CSS version permanently instead of showing nothing.
+ *
+ * prefers-reduced-motion gets a single still WebGL frame with the light
+ * centered, at full intensity, and no further updates -- a true-to-
+ * design static render, not a downgrade, and it costs one draw call,
+ * not an animation loop. Touch / coarse-pointer devices still get the
+ * animated loop (idle drift, shimmer, and scroll-driven fade) just
+ * without cursor-follow, since there's no cursor to follow.
+ */
+(function () {
+    const canvas = document.getElementById('siteGlCanvas');
+    if (!canvas) return;
+
+    const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+    if (!gl) return; // no WebGL -- .site-bg's own CSS background stays the permanent look
+
+    const VERT_SRC = `
+        attribute vec2 a_position;
+        void main() {
+            gl_Position = vec4(a_position, 0.0, 1.0);
+        }
+    `;
+
+    // Must match --lux-accent-rgb in landing.css (both derive from
+    // design-system.css's --lux-accent, #b68a4e), as 0-1 floats.
+    const FRAG_SRC = `
+        precision highp float;
+        uniform vec2 u_resolution;
+        uniform vec2 u_mouse;
+        uniform float u_time;
+        uniform float u_reduced;
+        uniform float u_scrollFade;
+
+        const float RIB_COUNT = 34.0;
+        const vec3 ACCENT = vec3(0.7137, 0.5412, 0.3059);
+        const vec3 BASE_DARK = vec3(0.035, 0.035, 0.04);
+
+        void main() {
+            vec2 uv = gl_FragCoord.xy;
+            uv.y = u_resolution.y - uv.y; // match CSS/mouse y-down convention
+
+            float ribWidth = u_resolution.x / RIB_COUNT;
+            float ribIndex = floor(uv.x / ribWidth);
+            float localX = fract(uv.x / ribWidth);
+
+            // Rounded-glass-cylinder cross-section: smooth bright center,
+            // darker grooves at each rib boundary, plus a thin specular
+            // highlight offset off-center like light catching a curve.
+            float cyl = sin(localX * 3.14159265);
+            float shade = pow(max(0.0, cyl), 1.6);
+            float highlight = pow(max(0.0, cos((localX - 0.62) * 3.14159265)), 24.0);
+
+            // Slow perpetual idle drift, layered on top of the already-
+            // eased (in JS) cursor position -- zeroed under
+            // prefers-reduced-motion for a genuinely still frame.
+            vec2 drift = vec2(sin(u_time * 0.13), cos(u_time * 0.09)) * 22.0 * (1.0 - u_reduced);
+            vec2 lightPos = u_mouse + drift;
+
+            // True circular spotlight centered on the cursor: distance is
+            // measured in viewport-HEIGHT units (both axes divided by
+            // u_resolution.y) so a wide or narrow viewport can't stretch
+            // it into an oval -- a radius means the same thing regardless
+            // of aspect ratio. smoothstep gives a soft falloff with zero
+            // slope at the boundary (brightest dead center, genuinely
+            // nothing felt at the edge -- no visible ring), scaled by
+            // u_scrollFade (eased in JS from scroll position, never a
+            // step) so the light also dims smoothly as you scroll.
+            vec2 normUv = uv / u_resolution.y;
+            vec2 normLight = lightPos / u_resolution.y;
+            float dist = distance(normUv, normLight);
+            const float RADIUS = 0.375; // ~37.5% of viewport height
+            float glow = (1.0 - smoothstep(0.0, RADIUS, dist)) * u_scrollFade;
+
+            // Subtle per-rib shimmer, only visible where glow is present.
+            float shimmer = 0.5 + 0.5 * sin(u_time * 2.2 + ribIndex * 1.7);
+            float shimmerAmt = shimmer * 0.06 * glow * (1.0 - u_reduced * 0.6);
+
+            vec3 litColor = mix(BASE_DARK, ACCENT, min(1.0, glow * 1.6));
+            vec3 color = litColor * (shade * 0.55 + 0.45) + highlight * glow * 0.5;
+            color *= (1.0 + shimmerAmt);
+
+            gl_FragColor = vec4(color, 1.0);
+        }
+    `;
+
+    function compileShader(type, src) {
+        const shader = gl.createShader(type);
+        gl.shaderSource(shader, src);
+        gl.compileShader(shader);
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+            console.warn('Abstractly site shader failed to compile:', gl.getShaderInfoLog(shader));
+            gl.deleteShader(shader);
+            return null;
+        }
+        return shader;
+    }
+
+    const vertShader = compileShader(gl.VERTEX_SHADER, VERT_SRC);
+    const fragShader = compileShader(gl.FRAGMENT_SHADER, FRAG_SRC);
+    if (!vertShader || !fragShader) return; // falls back to .site-bg's CSS background
+
+    const program = gl.createProgram();
+    gl.attachShader(program, vertShader);
+    gl.attachShader(program, fragShader);
+    gl.linkProgram(program);
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+        console.warn('Abstractly site shader failed to link:', gl.getProgramInfoLog(program));
+        return;
+    }
+    gl.useProgram(program);
+
+    // One oversized triangle covering the whole clip space -- standard
+    // fullscreen-shader trick, one buffer, no index buffer needed.
+    const posLoc = gl.getAttribLocation(program, 'a_position');
+    const posBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, posBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(posLoc);
+    gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+
+    const uResolution = gl.getUniformLocation(program, 'u_resolution');
+    const uMouse = gl.getUniformLocation(program, 'u_mouse');
+    const uTime = gl.getUniformLocation(program, 'u_time');
+    const uReduced = gl.getUniformLocation(program, 'u_reduced');
+    const uScrollFade = gl.getUniformLocation(program, 'u_scrollFade');
 
     const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const hasFinePointer = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
-    if (prefersReducedMotion || !hasFinePointer) return;
-
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    // Must match --lux-accent-rgb in landing.css (both derive from
-    // design-system.css's --lux-accent, #b68a4e) -- there's no way to
-    // read a CSS custom property into a canvas rgba() string without an
-    // extra getComputedStyle round trip, so this is kept as a plain
-    // constant and the two are kept in sync by hand.
-    const ACCENT_RGB = '182, 138, 78';
 
     let width = 0;
     let height = 0;
+    let mouseMoved = false;
+
+    // Idle default rests just behind the headline (the hero's left
+    // column) rather than dead center, so the circle has somewhere
+    // deliberate to sit before the cursor ever touches the page.
+    // Recomputed on resize as long as the cursor hasn't actually moved
+    // yet, so it never drifts to a stale pixel position after a
+    // viewport resize.
+    const IDLE_X_FRACTION = 0.3;
+    const IDLE_Y_FRACTION = 0.4;
     let targetX = 0;
+    let targetY = 0;
     let easedX = 0;
-    let heroVisible = true;
-    let rafId = null;
+    let easedY = 0;
 
     function resize() {
-        const rect = hero.getBoundingClientRect();
-        // Capped at 1: these are large, soft, blurry-by-design gradient
-        // bands, not text or a hard edge -- retina sharpness buys
-        // nothing visible here, and a canvas this size at a real
-        // device's DPR (2-3x) is real per-frame fill-rate cost for zero
-        // perceptible benefit.
-        const dpr = 1;
-        width = rect.width;
-        height = rect.height;
-        canvas.width = width * dpr;
-        canvas.height = height * dpr;
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        const dpr = Math.min(window.devicePixelRatio || 1, 2); // capped per the brief
+        width = window.innerWidth;
+        height = window.innerHeight;
+        canvas.width = Math.round(width * dpr);
+        canvas.height = Math.round(height * dpr);
+        canvas.style.width = `${width}px`;
+        canvas.style.height = `${height}px`;
+        gl.viewport(0, 0, canvas.width, canvas.height);
+        if (!mouseMoved) {
+            targetX = canvas.width * IDLE_X_FRACTION;
+            targetY = canvas.height * IDLE_Y_FRACTION;
+            easedX = targetX;
+            easedY = targetY;
+        }
     }
 
     resize();
-    // Resting position roughly behind the report card (right side of the
-    // hero) rather than dead center, so the very first frame -- before
-    // any mousemove -- already looks intentional.
-    targetX = width * 0.72;
-    easedX = targetX;
 
     let resizeTimer = null;
     window.addEventListener('resize', () => {
@@ -230,102 +378,91 @@ if ('IntersectionObserver' in window) {
         resizeTimer = setTimeout(resize, 150);
     });
 
-    hero.addEventListener('mousemove', (e) => {
-        const rect = hero.getBoundingClientRect();
-        targetX = e.clientX - rect.left;
-    });
-
-    hero.addEventListener('mouseleave', () => {
-        targetX = width * 0.72;
-    });
-
-    // Capped independent of viewport width -- a 3440px ultrawide has no
-    // business drawing more gradient fills per frame than a 1440px
-    // laptop, and the pattern still reads fine slightly denser/sparser.
-    const BAND_COUNT = 12;
-
-    function draw() {
-        ctx.clearRect(0, 0, width, height);
-
-        const spacing = width / BAND_COUNT;
-
-        for (let i = 0; i < BAND_COUNT; i++) {
-            const bandX = spacing * (i + 0.5);
-            const dist = Math.abs(bandX - easedX);
-            // Gaussian falloff: bands within ~150px of the cursor
-            // brighten noticeably, further ones stay near the resting
-            // baseline -- keeps peak brightness capped (subtle, not
-            // flashy) regardless of how close the cursor gets.
-            const falloff = Math.exp(-(dist * dist) / (2 * 150 * 150));
-            const alphaPeak = 0.045 + falloff * 0.16;
-            const bandWidth = 2.5 + falloff * 5;
-
-            const gradient = ctx.createLinearGradient(bandX, 0, bandX, height);
-            gradient.addColorStop(0, `rgba(${ACCENT_RGB}, 0)`);
-            gradient.addColorStop(0.18, `rgba(${ACCENT_RGB}, ${alphaPeak})`);
-            gradient.addColorStop(0.55, `rgba(${ACCENT_RGB}, ${alphaPeak * 0.45})`);
-            gradient.addColorStop(1, `rgba(${ACCENT_RGB}, 0)`);
-
-            ctx.fillStyle = gradient;
-            ctx.fillRect(bandX - bandWidth / 2, 0, bandWidth, height);
-        }
+    // Eases from 1.0 (full intensity) at the top of the page down to
+    // MIN_SCROLL_INTENSITY (a faint floor, never fully off) by 1.5
+    // screen heights of scroll, via a smoothstep -- a continuous curve,
+    // not a step, so there is no point on the page where the light's
+    // brightness changes abruptly. Holds at the floor for any scroll
+    // beyond that, all the way to the bottom of the page.
+    const MIN_SCROLL_INTENSITY = 0.16;
+    function computeScrollFade() {
+        const t = Math.min(1, window.scrollY / (window.innerHeight * 1.5));
+        const eased = t * t * (3 - 2 * t);
+        return 1 - eased * (1 - MIN_SCROLL_INTENSITY);
     }
 
-    // Throttled to ~24fps -- this is a slow ease toward a slow-moving
-    // target (the cursor), not fast-motion content, so a lower frame
-    // rate is imperceptible here while meaningfully cutting main-thread
-    // work on every device, not just this one being profiled on.
-    const FRAME_INTERVAL_MS = 1000 / 24;
-    let lastFrameTime = 0;
+    function render(mx, my, time, reduced, scrollFade) {
+        gl.uniform2f(uResolution, canvas.width, canvas.height);
+        gl.uniform2f(uMouse, mx, my);
+        gl.uniform1f(uTime, time);
+        gl.uniform1f(uReduced, reduced ? 1.0 : 0.0);
+        gl.uniform1f(uScrollFade, scrollFade);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+    }
+
+    if (prefersReducedMotion) {
+        render(canvas.width * IDLE_X_FRACTION, canvas.height * IDLE_Y_FRACTION, 0, true, 1.0);
+        canvas.classList.add('is-ready');
+        return;
+    }
+
+    // Cursor-follow only makes sense with an actual pointer -- touch
+    // devices still get the idle drift + shimmer + scroll-driven fade
+    // below, just without a light that chases a finger.
+    if (hasFinePointer) {
+        window.addEventListener('mousemove', (e) => {
+            mouseMoved = true;
+            const dpr = canvas.width / width;
+            targetX = e.clientX * dpr;
+            targetY = e.clientY * dpr;
+        });
+
+        document.documentElement.addEventListener('mouseleave', () => {
+            mouseMoved = false;
+            targetX = canvas.width * IDLE_X_FRACTION;
+            targetY = canvas.height * IDLE_Y_FRACTION;
+        });
+    }
+
+    let rafId = null;
+    let lastTime = performance.now();
+    // Exponential, frame-rate-independent easing: reaches ~95% of the
+    // way to the target in about 3*EASE_TAU seconds -- "drifts toward
+    // the cursor over roughly half a second, never snaps."
+    const EASE_TAU = 0.16;
 
     function loop(now) {
-        if (!heroVisible || document.hidden) {
-            rafId = null; // dropped here, not just skipped -- startLoop() below checks for exactly this
+        if (document.hidden) {
+            rafId = null;
             return;
         }
-        if (now - lastFrameTime >= FRAME_INTERVAL_MS) {
-            lastFrameTime = now;
-            easedX += (targetX - easedX) * 0.08; // ease toward the pointer, never snap
-            draw();
-        }
+        const dt = Math.min(0.05, (now - lastTime) / 1000);
+        lastTime = now;
+        const k = 1 - Math.exp(-dt / EASE_TAU);
+        easedX += (targetX - easedX) * k;
+        easedY += (targetY - easedY) * k;
+        render(easedX, easedY, now / 1000, false, computeScrollFade());
         rafId = requestAnimationFrame(loop);
     }
 
     function startLoop() {
-        if (rafId === null) {
-            rafId = requestAnimationFrame(loop);
-        }
+        lastTime = performance.now();
+        if (rafId === null) rafId = requestAnimationFrame(loop);
     }
 
-    if ('IntersectionObserver' in window) {
-        const heroObserver = new IntersectionObserver((entries) => {
-            entries.forEach((entry) => {
-                heroVisible = entry.isIntersecting;
-                if (heroVisible) startLoop();
-            });
-        }, { threshold: 0 });
-        heroObserver.observe(hero);
-    }
-
+    // The canvas is `position: fixed` and covers the whole page, so
+    // unlike the old hero-scoped version there's no "is it on screen"
+    // check to gate the loop on -- only tab visibility matters.
     document.addEventListener('visibilitychange', () => {
         if (!document.hidden) startLoop();
     });
 
-    // Only now -- everything above succeeded -- do we actually swap the
-    // static CSS fallback out for the canvas (see .js-canvas-active in
-    // landing.css). Any early return above leaves that class off, so a
-    // visitor always gets a correct-looking hero either way.
-    hero.classList.add('js-canvas-active');
+    canvas.classList.add('is-ready');
     startLoop();
 })();
 
 /**
  * ===================== Hero: Deal Mismatch Report count-up =====================
- * #dealCardNumber carries the true final value in data-target (plain
- * dollars, no formatting) so the DOM always has the real number even if
- * this script never runs. Counts up once, the first time the card
- * scrolls into view; shows the final value immediately (no animation)
- * under prefers-reduced-motion.
  */
 (function () {
     const numberEl = document.getElementById('dealCardNumber');
@@ -347,7 +484,7 @@ if ('IntersectionObserver' in window) {
 
         function tick(now) {
             const progress = Math.min((now - start) / duration, 1);
-            const eased = 1 - Math.pow(1 - progress, 3); // ease-out cubic
+            const eased = 1 - Math.pow(1 - progress, 3);
             numberEl.textContent = formatDollars(target * eased);
             if (progress < 1) requestAnimationFrame(tick);
         }
@@ -371,10 +508,8 @@ if ('IntersectionObserver' in window) {
 
 /**
  * ===================== Pricing preview (index.html only) =====================
- * Reuses PRICING_CONFIG (pricing-config.js, loaded before this file on
- * index.html the same way it already is on pricing.html) so the teaser
- * on the landing page can never drift out of sync with the real numbers
- * on /pricing -- one source of truth, no duplicated figures to maintain.
+ * Reuses PRICING_CONFIG so the teaser can never drift out of sync with
+ * the real numbers on /pricing.
  */
 (function () {
     const grid = document.getElementById('pricingPreviewGrid');
@@ -384,7 +519,7 @@ if ('IntersectionObserver' in window) {
         const featuredClass = tier.featured ? ' pricing-preview-card-featured' : '';
         const priceHtml = tier.custom
             ? '<div class="pricing-preview-price">Contact us</div>'
-            : `<div class="pricing-preview-price">$${tier.monthlyPricePerProperty}<span>/property/mo</span></div>`;
+            : `<div class="pricing-preview-price">$${tier.monthlyPrice.toLocaleString('en-US')}<span>/mo</span></div>`;
         return `
             <div class="pricing-preview-card${featuredClass}">
                 <div class="pricing-preview-name">${tier.name}</div>
@@ -392,4 +527,103 @@ if ('IntersectionObserver' in window) {
             </div>
         `;
     }).join('');
+})();
+
+/**
+ * ===================== Lenis smooth scroll =====================
+ * vendor/lenis.min.js (MIT, vendored locally -- see vendor/LENIS_LICENSE
+ * -- not loaded from a CDN) exposes a global `Lenis` constructor when
+ * loaded as a plain <script>. Never initialized under
+ * prefers-reduced-motion -- native scrolling is the correct behavior
+ * there, not an animated one running at a different speed. Anchor links
+ * (nav, hero, footer, "See a sample report", etc.) are intercepted here
+ * so they go through lenis.scrollTo instead of the browser's native
+ * jump -- landing.css deliberately drops `scroll-behavior: smooth` for
+ * the same reason (the two would otherwise fight).
+ */
+(function () {
+    if (typeof Lenis === 'undefined') return; // script failed to load -- native scroll still works fine
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+    const lenis = new Lenis({
+        duration: 1.1,
+        easing: (t) => (t === 1 ? 1 : 1 - Math.pow(2, -10 * t)),
+        smoothWheel: true,
+    });
+
+    function raf(time) {
+        lenis.raf(time);
+        requestAnimationFrame(raf);
+    }
+    requestAnimationFrame(raf);
+
+    document.addEventListener('click', (e) => {
+        const link = e.target.closest('a[href*="#"]');
+        if (!link) return;
+        const href = link.getAttribute('href');
+        const hashIndex = href.indexOf('#');
+        if (hashIndex === -1) return;
+        const path = href.slice(0, hashIndex);
+        const hash = href.slice(hashIndex + 1);
+        // Only intercept a same-page anchor (bare "#id" or a link to
+        // this exact page + "#id") -- "index.html#book-demo" from
+        // pricing.html must still navigate for real.
+        if (path && path !== window.location.pathname.split('/').pop()) return;
+        if (!hash) return;
+        const target = document.getElementById(hash);
+        if (!target) return;
+        e.preventDefault();
+        // -96: clears the ~80px sticky header plus a little breathing
+        // room, so the target section's heading isn't left hidden
+        // behind the header after the scroll settles.
+        lenis.scrollTo(target, { offset: -96 });
+    });
+})();
+
+/**
+ * ===================== Card spotlight: cursor-aware glow =====================
+ * One delegated mousemove listener (not one per card) updates --mx/--my
+ * on whichever card the cursor is over; landing.css's ::before radial-
+ * gradient on .pricing-card/.trust-item/.differentiator-card/.faq-item/
+ * .pricing-preview-card reads those custom properties. Delegation means
+ * this works for the two pricing grids even though they're rendered
+ * dynamically (by pricing.js and the block above) after this script
+ * would otherwise have already run a querySelectorAll.
+ */
+(function () {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+    const SPOTLIGHT_SELECTOR = '.pricing-card, .trust-item, .differentiator-card, .faq-item, .pricing-preview-card';
+
+    document.addEventListener('mousemove', (e) => {
+        const card = e.target.closest(SPOTLIGHT_SELECTOR);
+        if (!card) return;
+        const rect = card.getBoundingClientRect();
+        card.style.setProperty('--mx', `${e.clientX - rect.left}px`);
+        card.style.setProperty('--my', `${e.clientY - rect.top}px`);
+    });
+})();
+
+/**
+ * ===================== Background parallax =====================
+ * A subtle scroll-linked drift on the fixed faint rib texture (.site-bg)
+ * -- a single passive-listener transform update, GPU-composited, no
+ * layout/paint cost. Skipped entirely under prefers-reduced-motion.
+ */
+(function () {
+    const bg = document.querySelector('.site-bg');
+    if (!bg) return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+    let ticking = false;
+    function update() {
+        bg.style.transform = `translate3d(0, ${window.scrollY * 0.04}px, 0)`;
+        ticking = false;
+    }
+    window.addEventListener('scroll', () => {
+        if (!ticking) {
+            requestAnimationFrame(update);
+            ticking = true;
+        }
+    }, { passive: true });
 })();

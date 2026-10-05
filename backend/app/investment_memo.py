@@ -133,7 +133,7 @@ def _dedupe_for_financial_computation(scoped_leases: List[Dict[str, Any]]) -> Li
 
 
 def _relevant_discrepancies(
-    scoped_leases: List[Dict[str, Any]], scoped_lease_ids: set, normalized_target: Optional[str], portfolio_wide: bool
+    scoped_leases: List[Dict[str, Any]], scoped_lease_ids: set, normalized_target: Optional[str], portfolio_wide: bool, team_id: int
 ) -> List[Dict[str, Any]]:
     """
     Which persisted discrepancies (Item 2) belong in this document.
@@ -171,7 +171,7 @@ def _relevant_discrepancies(
     inherently portfolio-wide facts about a tenant, not about one
     property, so they're excluded from a property-scoped memo.
     """
-    all_discrepancies = database.list_discrepancies()
+    all_discrepancies = database.list_discrepancies(team_id=team_id)
 
     if portfolio_wide:
         current_tenant_names = {_normalize_tenant_name(field_value(l, "tenant")) for l in scoped_leases} - {None}
@@ -256,6 +256,7 @@ def _t12_cross_check_section(
 
 
 def build_investment_memo_data(
+    team_id: int,
     property_address: Optional[str] = None,
     t12_parsed: Optional[Dict[str, Any]] = None,
     reference_date: Optional[date] = None,
@@ -266,13 +267,13 @@ def build_investment_memo_data(
     docstring for why this is scoped the way it is.
     """
     reference_date = reference_date or date.today()
-    all_leases = database.get_all_effective_leases()
+    all_leases = database.get_all_effective_leases(team_id)
     scoped = _scoped_leases(all_leases, property_address)
     scoped_ids = {lease["id"] for lease in scoped}
     normalized_target = _normalize_building_address(property_address) if property_address else None
     financial_leases = _dedupe_for_financial_computation(scoped)
 
-    discrepancies = _relevant_discrepancies(scoped, scoped_ids, normalized_target, portfolio_wide=property_address is None)
+    discrepancies = _relevant_discrepancies(scoped, scoped_ids, normalized_target, property_address is None, team_id)
     discrepancies_with_resolutions = []
     open_count = 0
     for disc in discrepancies:

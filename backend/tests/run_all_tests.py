@@ -78,6 +78,8 @@ UNIT_TESTS = [
     "test_performance.py",
     "test_rent_roll_shape_detection.py",
     "test_teams_and_assignments.py",
+    "test_team_isolation.py",
+    "test_team_isolation_fixes.py",
     "test_owner_console.py",
     "test_assistant.py",
     "test_messaging.py",
