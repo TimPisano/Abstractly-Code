@@ -1156,6 +1156,11 @@ body.scrolled .site-header {
     line-height: 1.65;
 }
 
+.faq-item p a {
+    color: inherit;
+    text-decoration: underline;
+}
+
 /* ===================== Dark statement section (final CTA) ===================== */
 
 .statement {
@@ -1299,6 +1304,21 @@ body.scrolled .site-header {
 
 .demo-form-confirm.show {
     display: flex;
+}
+
+.demo-form-alt {
+    margin-top: 1.25rem;
+    font-size: 0.875rem;
+    color: rgba(246, 243, 236, 0.6);
+}
+
+.demo-form-alt a {
+    color: rgba(246, 243, 236, 0.85);
+    text-decoration: underline;
+}
+
+.demo-form-alt a:hover {
+    color: var(--lux-ivory);
 }
 
 .demo-form-confirm svg {

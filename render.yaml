@@ -63,8 +63,12 @@ services:
         sync: false
       - key: TOKEN_ENCRYPTION_KEY
         sync: false
+      # Every address the production site is served from: the custom
+      # domain (bare + www) and the original Render address, which still
+      # works. A missing entry makes the browser block every API call from
+      # that address ("Couldn't reach the server" on the demo form).
       - key: ADMIN_ALLOWED_ORIGINS
-        value: https://abstractly-n0id.onrender.com
+        value: https://getabstractly.com,https://www.getabstractly.com,https://abstractly-n0id.onrender.com
       - key: LOCAL_DEV_MODE
         value: "false"
       - key: LOG_LEVEL
@@ -84,6 +88,13 @@ services:
       # DEPLOYMENT.md "Getting alerted when something breaks".
       - key: ERROR_ALERT_EMAILS
         value: "true"
+      # Required, not optional: the Book a Demo form emails the founder
+      # and the visitor through these (dashboard-only secrets). Without
+      # them the form still saves, but nobody is told about it.
+      - key: EMAIL_USER
+        sync: false
+      - key: EMAIL_APP_PASSWORD
+        sync: false
       # Optional -- the app degrades gracefully (clear error/skip,
       # never a crash) if any of these are left unset. Uncomment and
       # fill in via the dashboard only for the features you want live
@@ -92,10 +103,6 @@ services:
       #   sync: false
       # - key: LEASE_AI_EXTRACTION      # "true" -> uploads abstracted by the model
       #   value: "true"
-      # - key: EMAIL_USER               # waitlist emails + error alerts
-      #   sync: false
-      # - key: EMAIL_APP_PASSWORD
-      #   sync: false
       # - key: GOOGLE_APPLICATION_CREDENTIALS   # "Export to Google Sheets"
       #   value: /app/credentials/google-service-account.json
 

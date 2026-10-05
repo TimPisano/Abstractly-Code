@@ -40,7 +40,25 @@ def test_footers_offer_business_email_and_book_a_call():
             f"{name} footer has no Book a call link"
 
 
+def test_tim_at_getabstractly_is_the_only_public_email():
+    for name in PUBLIC_PAGES:
+        emails = set(re.findall(r'[\w.%+-]+@[\w-]+(?:\.[\w-]+)+', _read(name)))
+        assert emails <= {'tim@getabstractly.com'}, f"{name} shows other emails: {emails}"
+
+
+def test_faqs_and_contact_section_link_the_email():
+    mailto = 'href="mailto:tim@getabstractly.com"'
+    for name, section in [('index.html', 'id="faq"'), ('index.html', 'id="book-demo"'),
+                          ('pricing.html', 'id="pricing-faq"')]:
+        html = _read(name)
+        body = html[html.index(section):]
+        body = body[:body.index('</section>')]
+        assert mailto in body, f"{name} {section} has no mailto link"
+
+
 if __name__ == "__main__":
     test_no_public_page_contains_the_personal_phone_number()
     test_footers_offer_business_email_and_book_a_call()
+    test_tim_at_getabstractly_is_the_only_public_email()
+    test_faqs_and_contact_section_link_the_email()
     print("\nAll public-contact tests passed.")
