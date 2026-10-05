@@ -1,0 +1,5 @@
+fips,stusps,hud_area_code,hud_area_name,countyname,fmr_0,fmr_1,fmr_2,fmr_3,fmr_4
+0603799999,CA,METRO31080M31080,"Los Angeles-Long Beach-Glendale, CA HUD Metro FMR Area",Los Angeles County,1666,1766,"$1,866",1966,2066
+3604799999,NY,METRO35620MM5600,"New York, NY HUD Metro FMR Area",Kings County,2000,2100,"$2,200",2300,2400
+3606199999,NY,METRO35620MM5600,"New York, NY HUD Metro FMR Area",New York County,2000,2100,"$2,200",2300,2400
+100199999,AL,METRO33860M33860,"Montgomery, AL MSA",Autauga County,1000,1100,"$1,200",1300,1400
