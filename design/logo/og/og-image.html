@@ -5,9 +5,14 @@
 <title>Abstractly social preview</title>
 <!--
   Source for frontend/og-image.png (1200x630). Rendered headlessly by
-  design/logo/render_assets.mjs; open it in a browser at 1200x630 to edit.
-  Sized to survive a ~300px-wide iMessage/Slack thumbnail: headline
-  >= 80px, nothing important under ~28px.
+  design/logo/render_assets.mjs (`node design/logo/render_assets.mjs og`
+  renders just this). Open it in a browser at 1200x630 to edit.
+
+  Deliberately minimal: the mark + wordmark and the fluted light bands,
+  no other text -- the page's og:title supplies the headline under the
+  image. Sized for a ~300px-wide iMessage/Slack thumbnail (a 1/4 scale):
+  the wordmark is ~150px so it lands near 37px, and the mark's thin rules
+  are ~9px so they stay visible at ~2px.
 -->
 <style>
 @font-face {
@@ -20,54 +25,39 @@ html, body { width: 1200px; height: 630px; background: #0a0a0b; overflow: hidden
 body { position: relative; font-family: 'Inter', sans-serif; color: #ffffff; }
 
 /* Fluted light bands, after the hero's WebGL shader: a warm gold glow
-   sliced into thin vertical ribs, brightest at the core and fading out
-   toward the top, bottom and the text side. */
+   across the full width, sliced into thin vertical ribs, brightest low
+   in the frame and fading out toward the top and the edges. Kept dim:
+   it's atmosphere, the logo is the subject. */
 .bands {
-  position: absolute; top: -40px; right: -40px; width: 700px; height: 710px;
+  position: absolute; inset: -20px;
   background:
-    radial-gradient(ellipse 52% 60% at 56% 48%, rgba(232, 196, 140, 1), rgba(182, 138, 78, 0.7) 36%, rgba(182, 138, 78, 0.18) 66%, transparent 84%);
+    radial-gradient(ellipse 60% 66% at 50% 80%, rgba(232, 196, 140, 0.72), rgba(182, 138, 78, 0.42) 38%, transparent 82%),
+    radial-gradient(ellipse 120% 85% at 50% 92%, rgba(182, 138, 78, 0.34), rgba(182, 138, 78, 0.12) 60%, transparent 92%);
   -webkit-mask-image:
-    repeating-linear-gradient(90deg, rgba(0,0,0,.18) 0px, #000 7px, rgba(0,0,0,.95) 11px, rgba(0,0,0,.12) 18px, rgba(0,0,0,.05) 22px),
-    linear-gradient(90deg, transparent 0%, #000 30%, #000 100%);
-  -webkit-mask-composite: source-in;
-  mask-composite: intersect;
+    repeating-linear-gradient(90deg, rgba(0,0,0,.16) 0px, #000 7px, rgba(0,0,0,.92) 11px, rgba(0,0,0,.1) 18px, rgba(0,0,0,.04) 22px);
+  mask-image:
+    repeating-linear-gradient(90deg, rgba(0,0,0,.16) 0px, #000 7px, rgba(0,0,0,.92) 11px, rgba(0,0,0,.1) 18px, rgba(0,0,0,.04) 22px);
   filter: blur(0.6px);
 }
-/* Soft dark wash so the headline never sits on a bright band. */
+/* Darkens the band of the frame the lockup sits in, so white never lands
+   on a bright rib, without hiding the bands above and below it. */
 .wash {
   position: absolute; inset: 0;
-  background: linear-gradient(90deg, #0a0a0b 0%, #0a0a0b 44%, rgba(10,10,11,0.7) 55%, rgba(10,10,11,0) 70%);
+  background: radial-gradient(ellipse 52% 30% at 50% 50%, rgba(10,10,11,0.82), rgba(10,10,11,0.5) 55%, rgba(10,10,11,0) 100%);
 }
 
-.content { position: absolute; inset: 0; padding: 64px 72px; display: flex; flex-direction: column; }
-.logo { display: flex; align-items: center; gap: 18px; height: 48px; }
-.logo img { height: 40px; width: auto; display: block; }
-.logo span { font-size: 40px; font-weight: 500; letter-spacing: -0.025em; line-height: 1; }
-
-h1 {
-  margin-top: auto;
-  font-size: 86px; line-height: 1.02; font-weight: 600; letter-spacing: -0.035em;
-  max-width: 720px;
+.lockup {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center; gap: 44px;
+  padding-bottom: 6px;  /* optical centre: the wordmark's caps sit high */
 }
-.figure {
-  margin-top: 34px;
-  font: 500 32px/1.2 ui-monospace, 'SF Mono', Menlo, monospace;
-  letter-spacing: -0.01em;
-  color: #b68a4e;
-}
-.figure small {
-  display: block; margin-bottom: 8px;
-  font-size: 17px; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(182, 138, 78, 0.75);
-}
+.lockup img { height: 150px; width: auto; display: block; }
+.lockup span { font-size: 150px; font-weight: 500; letter-spacing: -0.03em; line-height: 1; }
 </style>
 </head>
 <body>
 <div class="bands"></div>
 <div class="wash"></div>
-<div class="content">
-  <div class="logo"><img src="../final/abstractly-mark-white.svg" alt=""><span>Abstractly</span></div>
-  <h1>Catch rent roll<br>errors before<br>you close</h1>
-  <p class="figure"><small>Sample report</small>$42,780 annual income overstated</p>
-</div>
+<div class="lockup"><img src="../final/abstractly-mark-white.svg" alt=""><span>Abstractly</span></div>
 </body>
 </html>

@@ -4,7 +4,8 @@
 //   frontend/apple-touch-icon.png 180x180, white mark on near-black
 //   frontend/favicon.ico          16 + 32 + 48 px PNGs from final/favicon.svg
 // Run `python3 build.py` first (it writes final/). Then:
-//   node design/logo/render_assets.mjs
+//   node design/logo/render_assets.mjs        # all three
+//   node design/logo/render_assets.mjs og     # only og-image.png
 // Uses the same Playwright lookup as .claude/tools/screenshots.mjs.
 import { createRequire } from 'node:module';
 import fs from 'node:fs';
@@ -66,6 +67,12 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'abstractly-assets-'));
 
 // OG image.
 await shoot(fileUrl(path.join(HERE, 'og', 'og-image.html')), 1200, 630, path.join(FRONTEND, 'og-image.png'));
+
+if (process.argv[2] === 'og') {
+  await browser.close();
+  console.log('wrote og-image.png');
+  process.exit(0);
+}
 
 // Apple touch icon: iOS rounds the corners itself, so the square is full-bleed.
 const markUrl = fileUrl(path.join(HERE, 'final', 'abstractly-mark-white.svg'));
