@@ -138,9 +138,10 @@ loan-underwriting. (`landing-positioning` dropped — superseded.)
   database, and uploaded *files* are never persisted by design
   (`app/api.py:545` unlinks them; only extracted fields + page numbers are
   stored), so the DB disk covers everything durable.
-- **No document-level team isolation on main** — fine while each firm has
-  its own deployment; blocks multiple firms per deployment until
-  `feature/team-isolation` lands.
+- ~~No document-level team isolation on main~~ — **resolved**, merged as
+  `3cff20b`. Documents carry `team_id` and queries are scoped to the
+  authenticated caller, so multiple firms can now share a deployment.
+  Each still has its own in practice; that is a choice now, not a limit.
 
 ## Up next
 
