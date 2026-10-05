@@ -20,6 +20,11 @@ logger = logging.getLogger(__name__)
 WEBHOOK_URL_ENV = "DEMO_REQUEST_SHEET_WEBHOOK_URL"
 SECRET_ENV = "DEMO_REQUEST_SHEET_SECRET"
 TIMEOUT_SECONDS = 10
+# At most this many forwards in flight per worker; a burst beyond it is
+# dropped (logged) rather than piling up threads behind a slow Google.
+MAX_IN_FLIGHT = 4
+
+_in_flight = threading.BoundedSemaphore(MAX_IN_FLIGHT)
 
 _FIELDS = ("id", "name", "work_email", "company", "units", "message", "created_at")
 
@@ -79,8 +84,22 @@ def forward_in_background(record: Dict[str, Any]) -> None:
     """Fire-and-forget forward() on a daemon thread. No-op when the webhook is off."""
     if not webhook_url():
         return
+    if not _in_flight.acquire(blocking=False):
+        logger.error(
+            "Skipping Google Sheet forward of demo request %s: %d forwards already in flight",
+            record.get("id"), MAX_IN_FLIGHT,
+        )
+        return
     try:
-        threading.Thread(target=forward, args=(dict(record),), daemon=True,
+        threading.Thread(target=_forward_and_release, args=(dict(record),), daemon=True,
                          name="demo-request-sheet").start()
     except Exception:
+        _in_flight.release()
         logger.exception("Could not start the demo-request Sheet forwarding thread")
+
+
+def _forward_and_release(record: Dict[str, Any]) -> None:
+    try:
+        forward(record)
+    finally:
+        _in_flight.release()

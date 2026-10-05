@@ -263,10 +263,30 @@ def test_forward_in_background_uses_daemon_thread():
         with mock.patch("threading.Thread") as thread:
             demo_request_sheet.forward_in_background(_RECORD)
             kwargs = thread.call_args[1]
-            assert kwargs["target"] is demo_request_sheet.forward and kwargs["daemon"] is True
+            assert kwargs["target"] is demo_request_sheet._forward_and_release and kwargs["daemon"] is True
             assert kwargs["args"][0] == _RECORD and kwargs["args"][0] is not _RECORD  # copied
             thread.return_value.start.assert_called_once()
+    # The mocked thread never ran, so give back the slot it took.
+    demo_request_sheet._in_flight.release()
     print("✓ test_forward_in_background_uses_daemon_thread: PASS")
+
+
+def test_forward_in_background_caps_in_flight():
+    """Security-audit follow-up: a burst can't pile up unbounded 10s threads."""
+    cap = demo_request_sheet.MAX_IN_FLIGHT
+    with mock.patch.dict(os.environ, {demo_request_sheet.WEBHOOK_URL_ENV: HOOK}):
+        with mock.patch("threading.Thread") as thread:  # threads never run, so slots stay taken
+            for _ in range(cap + 3):
+                demo_request_sheet.forward_in_background(_RECORD)
+            assert thread.call_count == cap, thread.call_count
+        for _ in range(cap):
+            demo_request_sheet._in_flight.release()
+        # A finished forward frees its slot, even when forward() fails.
+        with mock.patch("requests.post", side_effect=RuntimeError("down")):
+            for _ in range(cap + 3):
+                assert demo_request_sheet._in_flight.acquire(blocking=False)
+                demo_request_sheet._forward_and_release(_RECORD)
+    print("✓ test_forward_in_background_caps_in_flight: PASS")
 
 
 # ------------------------------------------------ POST /demo-request wiring
@@ -358,6 +378,7 @@ if __name__ == "__main__":
     test_forward_posts_payload_and_secret()
     test_forward_swallows_network_errors()
     test_forward_in_background_uses_daemon_thread()
+    test_forward_in_background_caps_in_flight()
     test_submission_is_forwarded_with_saved_record()
     test_forwarding_end_to_end_through_mocked_post()
     test_no_forward_when_unset_or_honeypot()
