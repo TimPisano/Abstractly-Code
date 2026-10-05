@@ -498,6 +498,24 @@ print(json.dumps(out))
     print("✓ test_request_from_getabstractly_origin_is_accepted_with_production_config: PASS")
 
 
+def test_line_break_in_company_still_delivers_notification():
+    """A CR/LF in a user-supplied field that reaches the Subject must not
+    make the notification fail to build (the stdlib refuses such headers,
+    and the failure was swallowed, so Tim silently got nothing)."""
+    with mock.patch.dict(os.environ, _FAKE_ENV):
+        email_service._reset_rate_limit_state_for_tests()
+        mock_smtp_ssl, mock_server = _mocked_smtp()
+        with mock.patch("smtplib.SMTP_SSL", mock_smtp_ssl):
+            sent = email_service.send_demo_request_notification(
+                "Eve", "eve@example.com", "Acme\r\nBcc: victim@example.com", 10, None)
+    assert sent is True
+    headers = email.message_from_string(mock_server.sendmail.call_args.args[2])
+    assert headers["Bcc"] is None
+    assert "Acme" in headers["Subject"]
+
+    print("✓ test_line_break_in_company_still_delivers_notification: PASS")
+
+
 if __name__ == "__main__":
     test_valid_submission_succeeds_persists_and_sends_both_emails()
     test_submission_without_optional_message_succeeds()
@@ -518,4 +536,5 @@ if __name__ == "__main__":
     test_confirmation_includes_calendly_link_and_replies_to_tim()
     test_reply_to_cannot_inject_extra_headers()
     test_request_from_getabstractly_origin_is_accepted_with_production_config()
+    test_line_break_in_company_still_delivers_notification()
     print("\nAll demo-request tests passed.")

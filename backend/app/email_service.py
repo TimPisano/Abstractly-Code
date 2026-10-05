@@ -139,7 +139,10 @@ def _send(to_email: str, subject: str, text_body: str, html_body: str, reply_to:
         return False
 
     message = MIMEMultipart("alternative")
-    message["Subject"] = subject
+    # Subjects can carry user-submitted text (a demo request's company);
+    # the stdlib refuses a header with a line break in it, which would
+    # silently drop the email, so flatten any to spaces.
+    message["Subject"] = " ".join(subject.splitlines())
     message["From"] = f"{FROM_DISPLAY_NAME} <{email_user}>"
     # A CR/LF in a header value would let the caller add headers (Bcc...),
     # so anything containing one falls back to the default address.
