@@ -52,7 +52,30 @@ existed) — resolve those by taking **main's** TASKS.md, not the branch's.
    Held. Nothing on Render was changed. Same hold applies to pricing-page's
    `0a0d7a2` (#3): `plan: starter` on a non-upgraded account risks a
    failed deploy.
-8. ~~`main` is 76/77 on a clean checkout~~ — **fixed** by
+9. **Two content blockers on the pricing page — your call, I didn't touch
+   them** (outside what you asked me to fix, but both are customer-facing):
+   (a) `pricing.html` carries a visible **"Placeholder launch pricing"**
+   banner saying the prices "are not market-tested". It is **already live
+   on production** (`main:frontend/pricing.html:71`), not new to the
+   branch. CLAUDE.md states $499/$1,250 as the actual pricing, so the page
+   currently undercuts its own numbers to every visitor. (b) The branch's
+   version of that banner adds a claim that is now **false** — "no
+   usage-limits system exists in the product yet" — `feature/usage-limits`
+   merged as `ab7fb6f`. Decide whether to drop the banner, or keep it and
+   correct the usage-limits clause. Related: the pricing DoD line "no
+   placeholder text in the diff" fails until this is settled.
+10. **`main` is 78/79 on a clean checkout, not 79/79 — correction.**
+   `chore/demo-rent-roll-polish` added `test_demo_deal_regression.py`,
+   which repeats the exact fixture bug #8 described: it hardcodes
+   `sess["user_id"] = 1` (`:59`) without inserting a `users` row, so every
+   `/leases` upload 500s on a FOREIGN KEY in `usage_limits.log_usage_event`.
+   It passes **only** where a gitignored `backend/.env` seeds a user with
+   id 1 — i.e. in the primary checkout, which is where I ran it and
+   reported "79/79". Verified failing on plain `main` @ `7ac879b` in a
+   clean worktree. Fix is one line, mirroring what `fix/concession-detection`
+   did to the golden test (`database.create_user`, use the real id) — needs
+   its own branch.
+8. ~~`main` is 76/77 on a clean checkout~~ — **partly fixed** by
    `fix/concession-detection` (`953c00a`), which replaced
    `test_demo_deal_golden.py`'s hardcoded `sess["user_id"] = 1` with a
    real inserted user. `main` is now **78/78 on a clean checkout**, no
@@ -85,7 +108,7 @@ existed) — resolve those by taking **main's** TASKS.md, not the branch's.
 |---|---|---|---|
 | `fix/demo-deal-relative-dates` | `~/dev/projects/abstractly-demo-dates` | — | Pushed (`8e1084f`). Makes the Maple Ridge demo deal's dates relative to generation day (good change: kills the date drift QA_REPORT flagged). **MERGE ATTEMPTED 2026-10-04 AND ABORTED — needs a reconciliation task, not a merge.** `main` was untouched (`0545bec`). 3 conflicts vs `953c00a`, two of them semantic: (1) `expected_findings.json` — main has concession-detection's populated `monthly_dollar_impact` (89.58, 50.0) with hardcoded dates; this branch has computed dates with `monthly_dollar_impact: null`. The combination needs both, and the dollar impacts must be **re-derived for the new dates** (a concession's past/future position changes its classification), then the package regenerated. (2) `test_demo_deal_golden.py` — the two branches chose **opposite strategies for the same test**: main *pins* `today` to the fixture's as-of date to sidestep `expired_but_occupied` drift and asserts **10** findings; this branch *never* pins `today` (regenerates into a temp dir, real wall-clock, plus a freshness test that trips 2026-12-15) and asserts **7**. Someone must pick one strategy and re-derive the assertions for all 10 findings under it. Not resolvable mechanically. (3) `TASKS.md` (take main's). |
 | `docs/tester-pack` | `~/dev/projects/abstractly-tester-pack` | +7 / 0 | Overnight run, 2026-10-01: in-app Help & Guides (17 articles incl. Getting Started + troubleshooting), tester emails, 10-Q questionnaire, sales drafts updated (local). Frontend + docs only. Headless-verified at 3 widths. **Read `OVERNIGHT_REPORT.md` on the branch**: 12 product bugs found (report-page T-12 upload broken, T-12 income check never fires, only .csv/.xlsx rent rolls feed the report…). |
-| `feature/pricing-page` (round 2) | `~/dev/projects/abstractly-pricing` | +6 / −18 | Flat per-team pricing, fluted-glass WebGL hero, sticky header, Lenis, new logo. Clean, pushed. **Blocked twice over (see #3):** its tip commit `0a0d7a2` is the held Render disk + `plan: starter` billing change, and it conflicts with `main` in `frontend/config.js`. No reviewer verdict → run `/review-branch`. |
+| `feature/pricing-page` (round 2) | `~/dev/projects/abstractly-pricing` | +9 | Pushed `157b21d`. Flat per-team pricing ($499/$1,250/Contact us), fluted-glass hero, sticky header, Lenis, new logo. **Reviewed 2026-10-04: security-auditor MERGE (no findings at any severity); reviewer FIX FIRST — all 3 items now fixed.** (1) `4e5f213` duplicated already-merged `b6a46e9` tester routing — logic was byte-identical, resolved by taking **main's** `config.js` (`72bcef8`); the branch no longer touches that file. (2) the held Render billing change `0a0d7a2` reverted (`e06db8e`); `render.yaml` and `docs/DEPLOYMENT.md` are now byte-identical to main. (3) plan written (`docs/plans/feature-pricing-page.md`). Branch is now **frontend-only, 9 files**, merges with **zero conflicts**. Suite 78/79 — the one failure is the pre-existing main bug in #8, reproduced on plain main, not caused by this branch. Screenshots at 1440/768/375 looked at: layout correct, hero renders, prices right. **Two content blockers remain for you, both outside the review's scope — see #9.** |
 | `chore/render-persistent-disk` | `~/dev/projects/abstractly-render-disk` | +1 / 0 | Pushed (`22db0ea`). 1 GB Render disk + `DB_PATH` on `abstractly-api` and `abstractly-tester-api`, both to `plan: starter`; demo stays free by design. Config + docs only, no app code. Extracted from `feature/pricing-page` so that branch can merge frontend-only (billing change shouldn't ride on a CSS refresh). **Needs your Render dashboard actions + billing decision — nothing was changed on Render.** Verified: routing test 4/4; suite 76/77 (see the golden-test note below). Plan: `docs/plans/chore-render-persistent-disk.md`. |
 | `feature/landing-positioning` (round 2) | `~/dev/projects/abstractly-landing` | +2 / −24 | Scroll-linked fluted-glass shader, dark theme. **5 uncommitted files** (`background-fx.js`, `index.html`, `landing.css`, `pricing.html`, +1) — commit or discard first. Overlaps pricing-page round 2 (same files, competing hero). Its Book-a-Demo fix is already on main (`229ab23`). |
 
