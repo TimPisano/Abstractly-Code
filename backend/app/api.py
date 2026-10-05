@@ -3450,9 +3450,10 @@ def _send_email_best_effort(send_fn, *args):
     blocking a real signup — is exactly what this feature must never do.
     """
     try:
-        send_fn(*args)
+        return bool(send_fn(*args))
     except Exception:
         logger.exception("Unexpected error calling %s", getattr(send_fn, "__name__", send_fn))
+        return False
 
 
 # In-memory, per-process, per-IP fixed-window rate limit on POST
@@ -3537,6 +3538,8 @@ _DEMO_REQUEST_MIN_UNITS = 1
 _DEMO_REQUEST_MAX_UNITS = 1_000_000
 
 _DEMO_REQUEST_SUCCESS_MESSAGE = "Thanks — we've received your request and will be in touch to schedule a time."
+# Only claimed when the confirmation email actually went out with a link.
+_DEMO_REQUEST_SUCCESS_WITH_LINK_MESSAGE = "Thanks — we've emailed you a link to pick a time. Check your inbox."
 
 _demo_request_rate_limiter = RateLimiter(max_hits=8, window_seconds=60)  # per IP: 8 / minute
 
@@ -3600,12 +3603,29 @@ def request_demo():
     # Best-effort, same guarantee as the waitlist emails above -- the
     # submission is already committed regardless of whether either send
     # succeeds.
-    _send_email_best_effort(email_service.send_demo_request_confirmation, work_email, name)
+    confirmation_sent = _send_email_best_effort(email_service.send_demo_request_confirmation, work_email, name, company)
     _send_email_best_effort(
         email_service.send_demo_request_notification, name, work_email, company, units, message
     )
 
+    if confirmation_sent and email_service.calendly_url():
+        return jsonify({"message": _DEMO_REQUEST_SUCCESS_WITH_LINK_MESSAGE}), 201
     return jsonify({"message": _DEMO_REQUEST_SUCCESS_MESSAGE}), 201
+
+
+@app.route('/public-config', methods=['GET'])
+def public_config():
+    """
+    Non-secret settings the static marketing site needs before anyone
+    logs in. Public by design, like /health: no user or document data,
+    so no @require_role and nothing to team-scope. calendly_url is null
+    when CALENDLY_URL is unset; the site then keeps its "Book a call"
+    links pointed at the on-page form. Not logged as an error here --
+    this is hit on every page load; the demo-request email path logs it.
+    """
+    resp = jsonify({"calendly_url": email_service.calendly_url()})
+    resp.headers["Cache-Control"] = "public, max-age=300"
+    return resp
 
 
 # Generous relative to the waitlist limiter above -- this fires once per
