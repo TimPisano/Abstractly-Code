@@ -1,0 +1,347 @@
+{
+  "property": "Oak Hollow Apartments",
+  "program": "Project-Based Section 8 (PBRA)",
+  "review_date": "2026-10-01",
+  "fictional": true,
+  "findings": [
+    {
+      "id": "E1",
+      "units": [
+        "105"
+      ],
+      "severity": "high",
+      "category": "Missing signature",
+      "title": "Spouse did not sign the annual certification",
+      "detail": "Doreen Whitfield (Spouse, age 67) has a blank signature and date on the 04/01/2026 certification. Only the head and the agent signed.",
+      "rule": "Every adult household member (head, spouse, co-head, and other adults) must sign the certification. Without all signatures it is not a valid certification, and assistance paid on it can be recovered.",
+      "citation": "HUD Handbook 4350.3, Ch. 7 (recertification) and the HUD-50059 signature requirements",
+      "evidence": [
+        {
+          "file": "tenant_files/unit_105_whitfield.pdf",
+          "page": 6,
+          "document": "certification"
+        }
+      ],
+      "dollar_impact": {
+        "monthly": 481,
+        "months": 6,
+        "total": 2886,
+        "through": "10/01/2026",
+        "kind": "potential",
+        "basis": "HAP paid on an invalid certification is at risk of recovery"
+      }
+    },
+    {
+      "id": "E2",
+      "units": [
+        "108"
+      ],
+      "severity": "medium",
+      "category": "Missing consent form",
+      "title": "Adult son never signed HUD-9887 / 9887-A",
+      "detail": "Emeka Okafor turned 18 on 11/14/2025 and is listed as an adult on the 07/01/2026 certification, but his 9887 and 9887-A signature lines are blank.",
+      "rule": "Every household member age 18 or older must sign the consent forms (HUD-9887 and 9887-A), including members who turn 18 between certifications. Without consent the owner cannot verify that member's income.",
+      "citation": "24 CFR 5.230; HUD Handbook 4350.3, Ch. 5",
+      "evidence": [
+        {
+          "file": "tenant_files/unit_108_okafor.pdf",
+          "page": 3,
+          "document": "consents"
+        },
+        {
+          "file": "tenant_files/unit_108_okafor.pdf",
+          "page": 4,
+          "document": "household"
+        }
+      ],
+      "dollar_impact": null
+    },
+    {
+      "id": "E3",
+      "units": [
+        "108"
+      ],
+      "severity": "medium",
+      "category": "Stale verification",
+      "title": "Head's employment verification was too old when used",
+      "detail": "Grace Okafor's employment verification was received 01/20/2026; the certification it supports was signed 06/24/2026 and took effect 07/01/2026 - 162 days after receipt.",
+      "rule": "Third-party verifications are valid for 120 days from the date the owner receives them. Older verifications must be redone before the certification is completed.",
+      "citation": "HUD Handbook 4350.3, Ch. 5 (verification); see docs/research/section8.md \u00a72",
+      "evidence": [
+        {
+          "file": "tenant_files/unit_108_okafor.pdf",
+          "page": 7,
+          "document": "verification_1"
+        },
+        {
+          "file": "tenant_files/unit_108_okafor.pdf",
+          "page": 6,
+          "document": "certification"
+        }
+      ],
+      "dollar_impact": null
+    },
+    {
+      "id": "E4",
+      "units": [
+        "203"
+      ],
+      "severity": "high",
+      "category": "Unresolved EIV discrepancy",
+      "title": "EIV shows a second employer that is not on the certification",
+      "detail": "The EIV report pulled 05/10/2026 shows wages from Lakeside Logistics, Inc. ($3,120 in each of Q4 2025 and Q1 2026). The certification lists only Riverton Public Library income, and the discrepancy-resolution section is blank.",
+      "rule": "Owners must review EIV income reports and resolve every income discrepancy with the tenant, documenting the resolution in writing in the file. EIV discrepancies are the most common MOR finding.",
+      "citation": "24 CFR 5.233; HUD Handbook 4350.3, Ch. 9 (EIV)",
+      "evidence": [
+        {
+          "file": "tenant_files/unit_203_petrakis.pdf",
+          "page": 9,
+          "document": "eiv"
+        },
+        {
+          "file": "tenant_files/unit_203_petrakis.pdf",
+          "page": 6,
+          "document": "certification"
+        }
+      ],
+      "dollar_impact": {
+        "monthly": 312,
+        "months": 3,
+        "total": 936,
+        "through": "10/01/2026",
+        "kind": "potential",
+        "basis": "If the Lakeside wages are current (~$12,480/yr), tenant rent is understated by $312/mo ($382 certified vs $694) and HAP is overpaid by the same amount"
+      }
+    },
+    {
+      "id": "E5",
+      "units": [
+        "206"
+      ],
+      "severity": "high",
+      "category": "Rent calculation error",
+      "title": "Dependent and child-care deductions verified but not taken",
+      "detail": "The file verifies two dependent children and $3,600/yr of child care, but the certification shows $0 for both deductions. Adjusted income is $43,680 on the cert; it should be $39,120.",
+      "rule": "Adjusted income must subtract $480 per dependent and reasonable child-care expenses that enable a family member to work. TTP is the greater of 30% of monthly adjusted income, 10% of monthly gross income, or the minimum rent.",
+      "citation": "24 CFR 5.611 (adjusted income), 5.628 (TTP); HUD Handbook 4350.3, Ch. 5",
+      "evidence": [
+        {
+          "file": "tenant_files/unit_206_hollis.pdf",
+          "page": 6,
+          "document": "certification"
+        },
+        {
+          "file": "tenant_files/unit_206_hollis.pdf",
+          "page": 4,
+          "document": "household"
+        },
+        {
+          "file": "tenant_files/unit_206_hollis.pdf",
+          "page": 8,
+          "document": "verification_childcare"
+        }
+      ],
+      "dollar_impact": {
+        "monthly": 114,
+        "months": 4,
+        "total": 456,
+        "through": "10/01/2026",
+        "kind": "confirmed",
+        "basis": "Tenant overcharged $114/mo ($982 charged vs $868 correct); owed back to the tenant"
+      }
+    },
+    {
+      "id": "E6",
+      "units": [
+        "207"
+      ],
+      "severity": "high",
+      "category": "Late recertification",
+      "title": "Annual recertification is 2 months overdue and reminders were never sent",
+      "detail": "The annual recertification was due 08/01/2026. The 120-day notice went out 04/03/2026; the tenant never responded and no 90-, 60-, or 30-day reminder was sent. As of 10/01/2026 the household is still on the 08/01/2025 certification.",
+      "rule": "Owners must send the initial notice 120 days before the recertification date and reminders at 90 and 60 days (plus a 30-day notice) if the tenant has not responded, and complete the recertification by the anniversary date. Because the reminders were not sent, the owner cannot raise the tenant to market rent and is out of compliance.",
+      "citation": "HUD Handbook 4350.3, Ch. 7 (annual recertification notices and deadlines)",
+      "evidence": [
+        {
+          "file": "tenant_files/unit_207_ramirez_cole.pdf",
+          "page": 10,
+          "document": "notices"
+        },
+        {
+          "file": "tenant_files/unit_207_ramirez_cole.pdf",
+          "page": 6,
+          "document": "certification"
+        }
+      ],
+      "dollar_impact": {
+        "monthly": 815,
+        "months": 2,
+        "total": 1630,
+        "through": "10/01/2026",
+        "kind": "potential",
+        "basis": "HAP paid after the anniversary date on an expired certification is at risk"
+      }
+    },
+    {
+      "id": "E7",
+      "units": [
+        "301"
+      ],
+      "severity": "critical",
+      "category": "Over income at admission",
+      "title": "Adult daughter's income left off the move-in certification; household was over the income limit",
+      "detail": "The application and a third-party verification in the file show Freya Lindqvist employed at Harbor Coffee Roasters ($13,400/yr), but the move-in certification counts only Karin's $48,500. True household income is $61,902, over the $59,400 low-income limit for 2 people. The certified $48,502 made the household look eligible.",
+      "rule": "Annual income includes all adult members' income. At admission, household income may not exceed the applicable low-income limit for the household size.",
+      "citation": "24 CFR 5.609 (annual income), 5.653 (income eligibility at admission); HUD Handbook 4350.3, Ch. 3",
+      "evidence": [
+        {
+          "file": "tenant_files/unit_301_lindqvist.pdf",
+          "page": 2,
+          "document": "application"
+        },
+        {
+          "file": "tenant_files/unit_301_lindqvist.pdf",
+          "page": 8,
+          "document": "verification_2"
+        },
+        {
+          "file": "tenant_files/unit_301_lindqvist.pdf",
+          "page": 6,
+          "document": "certification"
+        }
+      ],
+      "dollar_impact": {
+        "monthly": 137,
+        "months": 7,
+        "total": 959,
+        "through": "10/01/2026",
+        "kind": "potential",
+        "basis": "Household was not eligible; all HAP since move-in is at risk"
+      }
+    },
+    {
+      "id": "E8",
+      "units": [
+        "304",
+        "309"
+      ],
+      "severity": "high",
+      "category": "Duplicate household member",
+      "title": "Same child counted in two assisted households",
+      "detail": "Jaylen Brooks (SSN 000-00-0021, DOB 02/11/2019) is a dependent on both the Unit 304 certification (mother) and the Unit 309 certification (father). Unit 309's own custody summary says he spends 2 of 7 nights there, so he belongs to Unit 304 only.",
+      "rule": "A person may be a member of only one assisted household. For joint custody, the child is counted in the household where they live more than 50% of the time, and only that household takes the dependent deduction.",
+      "citation": "24 CFR 5.216 (SSN disclosure lets duplicates be caught); HUD Handbook 4350.3, Ch. 3 (household composition, joint custody)",
+      "evidence": [
+        {
+          "file": "tenant_files/unit_304_brooks_t.pdf",
+          "page": 4,
+          "document": "household"
+        },
+        {
+          "file": "tenant_files/unit_304_brooks_t.pdf",
+          "page": 6,
+          "document": "certification"
+        },
+        {
+          "file": "tenant_files/unit_309_brooks_d.pdf",
+          "page": 4,
+          "document": "household"
+        },
+        {
+          "file": "tenant_files/unit_309_brooks_d.pdf",
+          "page": 6,
+          "document": "certification"
+        },
+        {
+          "file": "tenant_files/unit_309_brooks_d.pdf",
+          "page": 9,
+          "document": "custody"
+        }
+      ],
+      "dollar_impact": {
+        "monthly": 12,
+        "months": 5,
+        "total": 60,
+        "through": "10/01/2026",
+        "kind": "confirmed",
+        "basis": "Unit 309 took a $480 dependent deduction it isn't entitled to: tenant rent $918 should be $930, so HAP is overpaid by the difference. Unit 309 is also certified at household size 2 instead of 1."
+      }
+    },
+    {
+      "id": "E9",
+      "units": [
+        "304"
+      ],
+      "severity": "high",
+      "category": "Rent roll vs certification",
+      "title": "Rent roll still charges the pre-interim rent",
+      "detail": "The 05/01/2026 interim recertification lowered tenant rent to $428, but the rent roll still charges $615 (the 01/01/2026 amount). On the rent roll, tenant rent plus HAP ($812) adds up to $1,427, which is $187 more than the $1,240 contract rent.",
+      "rule": "Tenant rent must equal the amount on the current effective certification. When an interim decrease is processed, the new rent applies from its effective date.",
+      "citation": "HUD Handbook 4350.3, Ch. 7 (interim recertifications)",
+      "evidence": [
+        {
+          "file": "tenant_files/unit_304_brooks_t.pdf",
+          "page": 6,
+          "document": "certification"
+        },
+        {
+          "file": "tenant_files/unit_304_brooks_t.pdf",
+          "page": 10,
+          "document": "lease"
+        },
+        {
+          "file": "rent_roll/oak_hollow_rent_roll_40unit.xlsx",
+          "row": "Unit 304"
+        }
+      ],
+      "dollar_impact": {
+        "monthly": 187,
+        "months": 5,
+        "total": 935,
+        "through": "10/01/2026",
+        "kind": "confirmed",
+        "basis": "Tenant overcharged $187/mo; owed back to the tenant"
+      }
+    },
+    {
+      "id": "E10",
+      "units": [
+        "307"
+      ],
+      "severity": "critical",
+      "category": "Ineligible student",
+      "title": "Full-time student household with no exemption or parental-income documentation",
+      "detail": "Tyler Ostrander (age 20) is a full-time student living alone. He is unmarried, not a veteran, not disabled, and has no dependent child. The file has no independent-student documentation and no certification of his parents' income.",
+      "rule": "A student under 24 who is not a veteran, not married, has no dependent child, and is not a person with disabilities is ineligible for Section 8 assistance unless the student is independent of their parents or the parents are also income-eligible - and that must be documented.",
+      "citation": "24 CFR 5.612; HUD Handbook 4350.3, Ch. 3 (student eligibility)",
+      "evidence": [
+        {
+          "file": "tenant_files/unit_307_ostrander.pdf",
+          "page": 5,
+          "document": "student"
+        },
+        {
+          "file": "tenant_files/unit_307_ostrander.pdf",
+          "page": 4,
+          "document": "household"
+        },
+        {
+          "file": "tenant_files/unit_307_ostrander.pdf",
+          "page": 6,
+          "document": "certification"
+        }
+      ],
+      "dollar_impact": {
+        "monthly": 890,
+        "months": 13,
+        "total": 11570,
+        "through": "10/01/2026",
+        "kind": "potential",
+        "basis": "Household may never have been eligible; HAP since move-in is at risk (amount uses the current HAP for every month)"
+      }
+    }
+  ],
+  "clean_units": [
+    "102"
+  ]
+}
