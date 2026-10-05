@@ -178,22 +178,8 @@ services:
     runtime: docker
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
-    plan: starter
+    plan: free
     healthCheckPath: /health
-    # Persistent disk, same reasoning as abstractly-api above. This one
-    # matters most in practice: on the free tier this service also
-    # spins down after ~15 minutes idle, so a tester who uploads a rent
-    # roll, goes to lunch, and comes back finds an empty account -- the
-    # worst possible first impression during a paid beta.
-    #
-    # The disk NAME is deliberately distinct from abstractly-data so
-    # the two are unambiguous in the dashboard's disk list; the
-    # mountPath can safely repeat, since each service has its own
-    # filesystem.
-    disk:
-      name: abstractly-tester-data
-      mountPath: /app/data
-      sizeGB: 1
     envVars:
       # All four generated fresh for this deployment, never reused from
       # abstractly-api/abstractly-demo-api -- entered directly in the
@@ -221,9 +207,13 @@ services:
         sync: false
       - key: LEASE_EXTRACTION_QUEUE
         value: extraction-tester
-      # Must live under the disk's mountPath above -- see abstractly-api.
-      - key: DB_PATH
-        value: /app/data/lease_portfolio.db
+      # No persistent disk and still plan: free, deliberately -- only
+      # abstractly-api gets a disk in this change. The tester's uploads
+      # are therefore still wiped on restart and on the free tier's
+      # ~15-min idle spindown. Fine for a short trial; to make a tester
+      # run durable later, mirror the disk + DB_PATH block on
+      # abstractly-api above (and note that a disk requires a paid
+      # instance type, so it's a billing decision too).
 
   # ---- Tester frontend: same static files as abstractly, points at the tester backend ----
   - type: web
@@ -321,7 +311,7 @@ services:
       - key: LEASE_EXTRACTION_QUEUE
         value: extraction-demo
       # Deliberately still plan: free with NO disk, unlike
-      # abstractly-api and abstractly-tester-api above -- here losing
+      # abstractly-api above -- here losing
       # the database is a feature, not a caveat: a cold restart
       # after Render's free-tier idle spindown wipes the demo database,
       # and DEMO_MODE's startup seed immediately repopulates it, so a

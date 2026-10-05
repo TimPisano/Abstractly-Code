@@ -2,10 +2,18 @@
 
 ## Goal
 
-Give `abstractly-api` (production) and `abstractly-tester-api` (beta)
-persistent storage for the SQLite database, so a deploy or restart stops
-wiping customer and tester data. Config and documentation only — no
-application code, and no changes made on Render itself.
+Give `abstractly-api` (production) persistent storage for the SQLite
+database, so a deploy or restart stops wiping customer data. Config and
+documentation only — no application code, and no changes made on Render
+itself.
+
+**Scope narrowed 2026-10-04 on the user's instruction:** this branch
+originally also put a disk and `plan: starter` on
+`abstractly-tester-api`. That was trimmed out — the tester service
+stays on `plan: free` with no disk, so only one service incurs a paid
+instance type. Tester data therefore still vanishes on restart and on
+the free tier's idle spindown, which remains an open risk for the beta
+(see TASKS.md "Blocked").
 
 ## Why this is its own branch
 
@@ -49,13 +57,16 @@ irrelevant).
 ## Scope
 
 - `render.yaml`: `plan: starter` + 1 GB disk + `DB_PATH` on
-  `abstractly-api` and `abstractly-tester-api`.
-- `docs/DEPLOYMENT.md`: rewrite "Adding persistent storage" to cover
-  both services, the no-data-migration warning, the two Render
-  tradeoffs, and a verification procedure with a negative control.
+  `abstractly-api` only.
+- `docs/DEPLOYMENT.md`: rewrite "Adding persistent storage" for that one
+  service, the no-data-migration warning, the two Render tradeoffs, and
+  a verification procedure with a negative control.
 
 ## Out of scope
 
+- `abstractly-tester-api` stays `plan: free` with no disk (user's
+  decision, to avoid a second paid instance). Its data keeps vanishing
+  on restart and idle spindown.
 - `abstractly-demo-api` stays `plan: free` with no disk. Losing its
   database on restart is the mechanism that resets the demo for free;
   `DEMO_MODE`'s startup seed repopulates it.

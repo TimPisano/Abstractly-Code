@@ -218,12 +218,19 @@ database then lives on the disk. See "Adding persistent storage" below.
 
 ## Adding persistent storage
 
-`render.yaml` on `chore/render-persistent-disk` declares a 1 GB disk on
-**`abstractly-api`** (`abstractly-data`) and **`abstractly-tester-api`**
-(`abstractly-tester-data`), both mounted at `/app/data`, both with
-`DB_PATH=/app/data/lease_portfolio.db`, and both moved to `plan: starter`.
-`abstractly-demo-api` stays on `free` with no disk on purpose — losing
-its database on restart is how the demo resets itself for free.
+`render.yaml` declares a 1 GB disk on **`abstractly-api`** only
+(`abstractly-data`, mounted at `/app/data`, with
+`DB_PATH=/app/data/lease_portfolio.db`), and moves that one service to
+`plan: starter`.
+
+**`abstractly-tester-api` and `abstractly-demo-api` both stay on `plan:
+free` with no disk.** For the demo that is by design — losing its
+database on restart is how it resets itself for free. For the tester it
+is a deliberate cost decision: tester data is still wiped on every
+restart and on the free tier's ~15-minute idle spindown. To make a
+tester run durable later, mirror the `disk:` block and the `DB_PATH`
+env var from `abstractly-api`, and budget for a second paid instance —
+Render will not attach a disk to a free service.
 
 ### What a disk does and does not cover
 
@@ -248,16 +255,17 @@ by every deploy — but if there are Book a Demo submissions or waitlist
 rows on the live service you care about, export them *before* making the
 change, because this is the last deploy that silently discards them.
 
-### Dashboard steps (do these per service)
+### Dashboard steps (on `abstractly-api` only)
 
 Render applies `disk:` and `plan:` from `render.yaml` on Blueprint sync,
-but the plan change is a billing action, so confirm it in the dashboard:
+but the plan change is a billing action, so confirm it in the dashboard.
+Do **not** apply these to the tester or demo service — both are meant to
+stay on `free` with no disk:
 
 1. **Settings → Instance Type**: change `Free` → `Starter`. Render shows
    the exact monthly price on this screen before you confirm — read it
    there rather than trusting the figure below.
-2. **Disks → Add Disk**: name `abstractly-data` (or
-   `abstractly-tester-data` for the tester service), mount path
+2. **Disks → Add Disk**: name `abstractly-data`, mount path
    `/app/data`, size `1` GB.
 3. **Environment → Add Environment Variable**:
    `DB_PATH` = `/app/data/lease_portfolio.db`.
@@ -281,9 +289,13 @@ but the plan change is a billing action, so confirm it in the dashboard:
 
 ### Verifying data actually survives a redeploy
 
-Do this on `abstractly-tester-api` first, not production:
+`abstractly-api` is the only service with a disk, so this has to be run
+there — there is no longer a staging service with the same
+configuration to rehearse on. Do it at a quiet moment: step 4 is a real
+redeploy of production, and a disk-backed service is no longer
+zero-downtime.
 
-1. `curl https://abstractly-tester-api.onrender.com/health` → expect
+1. `curl https://abstractly-api.onrender.com/health` → expect
    `{"status":"healthy"}`. This endpoint runs a real query, so a 503
    `{"status":"degraded"}` means `DB_PATH` points somewhere the app
    cannot open — catch that here before going further.
@@ -300,9 +312,10 @@ Do this on `abstractly-tester-api` first, not production:
 6. **Disks tab** → disk usage should be non-zero and should have grown
    between steps 3 and 5.
 
-A useful negative control: `abstractly-demo-api` has no disk, so the
-same sequence there should *lose* the record. If both services behave
-identically, the disk is not doing what you think it is.
+A useful negative control: `abstractly-demo-api` and
+`abstractly-tester-api` both have no disk, so the same sequence on
+either should *lose* the record. If they behave identically to
+`abstractly-api`, the disk is not doing what you think it is.
 
 ## Logging and monitoring
 
@@ -488,10 +501,10 @@ data isolation within one deployment (every logged-in user reads the
 same shared `leases` table — see the demo section above), so a tester
 account added to `abstractly-api` itself would see every real
 customer's leases, not a sandbox of their own. Free tier, same
-tradeoff as prod and demo: the tester's uploads are wiped on restart
-or 15-minute idle spindown — fine for a short trial; see "Adding
-persistent storage later" above if a given tester run needs to
-outlive that.
+tradeoff as demo but **unlike prod, which now has a disk**: the
+tester's uploads are wiped on restart or 15-minute idle spindown —
+fine for a short trial; see "Adding persistent storage" above if a
+given tester run needs to outlive that.
 
 **Deploying it:**
 
