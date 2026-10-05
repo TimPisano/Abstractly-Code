@@ -6,8 +6,8 @@ Commit changes with `git commit -m "TASKS: …" -- TASKS.md` (the hooks
 allow TASKS.md-only commits on main). `/status` reconciles this file with
 git; `/session-handoff` writes the handoff blocks; `/resume-task` reads them.
 
-Last reconciled with git: **2026-10-04** (`fix/concession-detection`
-rounds 3–4 merged + pushed). `main` @ `f68a287` == `origin/main`.
+Last reconciled with git: **2026-10-04** (`research/section8` merged
++ pushed). `main` @ `2fbb542` == `origin/main`.
 `+a/−b` = commits ahead/behind `main`; the per-branch numbers below
 predate recent merges. **Every open branch now also conflicts in
 `TASKS.md`** (they each edited it before that rule existed) — resolve
@@ -159,9 +159,8 @@ loan-underwriting. (`landing-positioning` dropped — superseded.)
    — **the slash form specifically**: prose like "approve merge X" arms
    the lock but records `branch: ""`, and the merge-branch skill is
    `disable-model-invocation`, so it cannot be run any other way.
-   Approved by the user 2026-10-04 and queued next, both verified to
-   merge **clean** against `f68a287`:
-   `research/section8` → `chore/render-persistent-disk`.
+   Queued next, verified to merge **clean**:
+   `chore/render-persistent-disk`.
    Then: `feature/pricing-page` (ready, `a50097b`, merges clean — but
    see the two content blockers in #9 and the false trust claim in #11);
    `feature/team-isolation` (#2); `docs/tester-pack`.
@@ -173,9 +172,13 @@ loan-underwriting. (`landing-positioning` dropped — superseded.)
    needs real tester credentials.
 4. Invite the first 3 testers.
 5. Finish `feature/team-isolation`; then rebase `feature/loan-underwriting` on it.
-6. `research/section8` (`2050414`, pushed) — Section 8 / LIHTC market
-   research by another session, docs only. Decide whether it's a product
-   direction or shelf it.
+6. ~~`research/section8`~~ — **merged** `2fbb542`. The strategic question
+   it raises is still open and is yours: the briefing's own finding is
+   that for **Housing Choice Voucher** properties the PHA does the
+   certification paperwork, not the owner — so the compliance burden
+   Abstractly could help with sits with **Project-Based Section 8 and
+   LIHTC**, where the owner/agent certifies. Decide whether that's a
+   product direction or shelf it; merging the doc didn't decide it.
 
 ### Housekeeping (safe, low priority — each needs a yes)
 
@@ -200,6 +203,7 @@ loan-underwriting. (`landing-positioning` dropped — superseded.)
 | Branch | Merged as | Notes |
 |---|---|---|
 | `chore/demo-rent-roll-polish` | `5d7fdbe` | Maple Ridge demo polish: rent rolls regenerated as PMS-style **xlsx + landscape PDF** (the two `*_appfolio.csv` files are **deleted** — fixture paths now point at the xlsx), 15 lease PDFs reworked into real-looking signed leases, T-12 as a clean operating statement, institutional-looking Deal Mismatch Report PDF (`deal_mismatch_export.py`), new data-driven `test_demo_deal_regression.py`, and `DEMO_WALKTHROUGH.md` sales script. Merged 2026-10-04. **Resolved on the branch, not on main:** the primary checkout is read-only (rule 3), so a combined conflict resolution is impossible there — merged `main` *into* the branch instead (`5139d3f`), fixed it up (`7dec3d1`), pushed, after which main merged with **zero conflicts**. Two stale expectations fixed in the process: the golden test still demanded `"(no concession shown)"` though the new rent rolls carry a real `$0.00` Concessions column (detector deliberately distinguishes the two; all 3 `concession_missing` findings fire correctly), and the demo README still warned that `detect_concession_missing` is a stub — false since `953c00a`, and actively misleading for sales. Suite **79/79 on merged main**, run post-merge. |
+| `research/section8` | `2fbb542` | Section 8 / LIHTC founder's briefing by another session — **docs only**, one new file (`docs/research/section8.md`, 224 lines), nothing modified, no code. Merged 2026-10-04 on the user's typed approval. Scanned before merging: no placeholders, secrets, or PII (the one `$KEY` hit is a shell variable in an illustrative `curl` example). Suite **79/79** post-merge; all three Render services healthy after the push. **Merging it was not a product decision** — see Up next #6 for the question it leaves open. Deviation worth noting: it was in Up next, not "Ready for review", and carried no reviewer verdict; merged anyway as an additive docs-only file on the user's explicit instruction. |
 | `fix/concession-detection` (rounds 3–4) | `f68a287` | **Merged 2026-10-04 on the user's typed approval; pushed.** The gap this closed: `main`'s earlier merge `953c00a` took the branch at its **round-2** tip (`1380198`), but the branch then gained three more commits — `b4e3f4a` (round 3), `1f8ec14` (round 4), `500f368` — which stayed unmerged and untracked while TASKS.md recorded the branch as done. Brings `concessions.py` (+40/−9), `rent_roll_import.py`, and 65 lines of tests: interest-free deposit wording no longer reads as free rent, default **forfeiture** clauses now read as negations rather than conditional grants, credits **applied to the deposit** are excluded from effective rent, plus clause-splitting fixes. Merged **clean** (prepared on the branch first — see the Decisions log). Suite **79/79** in the primary checkout post-merge; note that is 78/79 on a clean checkout because of the separate fixture bug in #10, which this merge does not touch. All three Render services returned `{"status":"healthy"}` after the push and all three frontends serve bytes identical to `main`. Backend-only change, so no UI to verify. |
 | `fix/concession-detection` (rounds 1–2) | `953c00a` | Real concession detection in the Deal Mismatch Report (was a stub): new `app/concessions.py` (free months, recurring discounts, one-time credits, net effective rent), `concessions` from both extraction engines, rent-roll Concession column, new `concession_missing`/`concession_mismatch`/`concession_expiring` checks, effective-rent-aware `rent_mismatch`. Maple Ridge now catches all 10 planted issues ($45,355/yr). Two reviewer rounds fixed (`7b67ea2`, `1380198`). Merged 2026-10-04 on the user's typed approval, **ahead of team-isolation** (TASKS.md recommended the reverse): verified safe to reorder — no new API routes, `api.py` untouched, its only SQL is in a test helper, so there was no team-scoping surface. Cost of the reorder: team-isolation inherits the `test_demo_deal_golden.py` conflict and owes the `test_concessions.py` `team_id` update (#4). Suite **78/78 on merged main**, run post-merge; also fixed the long-standing 76/77 fixture bug (#8). `concessions` deliberately **not** editable in the lease-detail UI yet. |
 | `chore/agent-os` | `c6c873d` | Agent OS v2: CLAUDE.md + Definition of Done, TASKS.md handoff blocks, reviewer/security-auditor/qa-tester/ui-checker, 8 skills incl. resume-task + prompt-builder, safety hooks, `docs/HOW_TO_RUN_AGENTS.md`. Merged 2026-10-04 by finishing the half-done merge left in the primary checkout (21 staged files already matched the branch tip byte-for-byte; only `TASKS.md` needed resolving — taken as a union of main's rent-roll-hardening facts and the branch's new structure). Suite **77/77 on merged main**, run post-merge. Pushed; prod + tester + demo all returned `{"status":"healthy"}`. Tooling/docs only — no app code, so the redeploy was functionally a no-op. |
