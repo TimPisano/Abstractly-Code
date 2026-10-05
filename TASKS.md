@@ -6,11 +6,12 @@ Commit changes with `git commit -m "TASKS: …" -- TASKS.md` (the hooks
 allow TASKS.md-only commits on main). `/status` reconciles this file with
 git; `/session-handoff` writes the handoff blocks; `/resume-task` reads them.
 
-Last reconciled with git: **2026-10-04** (`chore/agent-os` merged + pushed).
-`main` @ `c6c873d` == `origin/main`. `+a/−b` = commits ahead/behind `main`;
-the per-branch numbers below predate the agent-os merge. **Every open branch
-now also conflicts in `TASKS.md`** (they each edited it before that rule
-existed) — resolve those by taking **main's** TASKS.md, not the branch's.
+Last reconciled with git: **2026-10-04** (`fix/concession-detection`
+rounds 3–4 merged + pushed). `main` @ `f68a287` == `origin/main`.
+`+a/−b` = commits ahead/behind `main`; the per-branch numbers below
+predate recent merges. **Every open branch now also conflicts in
+`TASKS.md`** (they each edited it before that rule existed) — resolve
+those by taking **main's** TASKS.md, not the branch's.
 
 ## ⚠️ Waiting on you
 
@@ -34,9 +35,11 @@ existed) — resolve those by taking **main's** TASKS.md, not the branch's.
    removed from pricing-page. To merge pricing-page frontend-only, drop or
    revert `0a0d7a2` on the branch first. Also still conflicts in
    `frontend/config.js`, and has no reviewer verdict.
-4. ~~`fix/concession-detection`~~ — **merged** `953c00a`, pushed. See Done.
+4. ~~`fix/concession-detection`~~ — **fully merged**: rounds 1–2 as
+   `953c00a`, rounds 3–4 as `f68a287` (2026-10-04). Both pushed. See Done.
    **It landed first, so `feature/team-isolation` now owes the `team_id`
-   test update.** team-isolation makes `team_id` a required arg of
+   test update** — and note rounds 3–4 added 65 more lines to
+   `test_concessions.py`, so that update is now slightly larger. team-isolation makes `team_id` a required arg of
    `build_deal_mismatch_report_data` and `insert_lease`; whichever branch
    lands second must update `tests/test_concessions.py` (report/insert
    calls + session `team_id`). That is now team-isolation's job, plus the
@@ -151,15 +154,19 @@ loan-underwriting. (`landing-positioning` dropped — superseded.)
 
 ## Up next
 
-1. ~~Push local `main`~~ — done (`c6c873d`, agent-os merged).
-2. **Merge train, in this order** — each needs you to type
-   `/merge-branch <branch>`, and the suite re-run after each:
-   `fix/concession-detection` → `fix/demo-deal-relative-dates` →
-   `chore/demo-rent-roll-polish` (the last three all touch the demo deal /
-   `test_demo_deal_golden.py`, so order matters). Then `docs/tester-pack`.
-   `feature/pricing-page` only after `0a0d7a2` is dropped from it (#3);
-   `feature/team-isolation` is ready now and should go first (#2);
-   `chore/render-persistent-disk` only after you confirm the Render upgrade (#7).
+1. ~~Push local `main`~~ — done (`f68a287`).
+2. **Merge train.** Each needs the user to type `/merge-branch <branch>`
+   — **the slash form specifically**: prose like "approve merge X" arms
+   the lock but records `branch: ""`, and the merge-branch skill is
+   `disable-model-invocation`, so it cannot be run any other way.
+   Approved by the user 2026-10-04 and queued next, both verified to
+   merge **clean** against `f68a287`:
+   `research/section8` → `chore/render-persistent-disk`.
+   Then: `feature/pricing-page` (ready, `a50097b`, merges clean — but
+   see the two content blockers in #9 and the false trust claim in #11);
+   `feature/team-isolation` (#2); `docs/tester-pack`.
+   `fix/demo-deal-relative-dates` still needs a reconciliation task, not
+   a merge. `feature/landing-positioning` is **superseded — do not merge**.
 3. Smoke test the tester deployment **beyond `/health`**: login, Maple Ridge
    lease + rent roll upload, Deal Mismatch Report, PDF/Excel export, T-12.
    Only `/health` was checked on 2026-10-04 (all three healthy); the rest
@@ -193,7 +200,8 @@ loan-underwriting. (`landing-positioning` dropped — superseded.)
 | Branch | Merged as | Notes |
 |---|---|---|
 | `chore/demo-rent-roll-polish` | `5d7fdbe` | Maple Ridge demo polish: rent rolls regenerated as PMS-style **xlsx + landscape PDF** (the two `*_appfolio.csv` files are **deleted** — fixture paths now point at the xlsx), 15 lease PDFs reworked into real-looking signed leases, T-12 as a clean operating statement, institutional-looking Deal Mismatch Report PDF (`deal_mismatch_export.py`), new data-driven `test_demo_deal_regression.py`, and `DEMO_WALKTHROUGH.md` sales script. Merged 2026-10-04. **Resolved on the branch, not on main:** the primary checkout is read-only (rule 3), so a combined conflict resolution is impossible there — merged `main` *into* the branch instead (`5139d3f`), fixed it up (`7dec3d1`), pushed, after which main merged with **zero conflicts**. Two stale expectations fixed in the process: the golden test still demanded `"(no concession shown)"` though the new rent rolls carry a real `$0.00` Concessions column (detector deliberately distinguishes the two; all 3 `concession_missing` findings fire correctly), and the demo README still warned that `detect_concession_missing` is a stub — false since `953c00a`, and actively misleading for sales. Suite **79/79 on merged main**, run post-merge. |
-| `fix/concession-detection` | `953c00a` | Real concession detection in the Deal Mismatch Report (was a stub): new `app/concessions.py` (free months, recurring discounts, one-time credits, net effective rent), `concessions` from both extraction engines, rent-roll Concession column, new `concession_missing`/`concession_mismatch`/`concession_expiring` checks, effective-rent-aware `rent_mismatch`. Maple Ridge now catches all 10 planted issues ($45,355/yr). Two reviewer rounds fixed (`7b67ea2`, `1380198`). Merged 2026-10-04 on the user's typed approval, **ahead of team-isolation** (TASKS.md recommended the reverse): verified safe to reorder — no new API routes, `api.py` untouched, its only SQL is in a test helper, so there was no team-scoping surface. Cost of the reorder: team-isolation inherits the `test_demo_deal_golden.py` conflict and owes the `test_concessions.py` `team_id` update (#4). Suite **78/78 on merged main**, run post-merge; also fixed the long-standing 76/77 fixture bug (#8). `concessions` deliberately **not** editable in the lease-detail UI yet. |
+| `fix/concession-detection` (rounds 3–4) | `f68a287` | **Merged 2026-10-04 on the user's typed approval; pushed.** The gap this closed: `main`'s earlier merge `953c00a` took the branch at its **round-2** tip (`1380198`), but the branch then gained three more commits — `b4e3f4a` (round 3), `1f8ec14` (round 4), `500f368` — which stayed unmerged and untracked while TASKS.md recorded the branch as done. Brings `concessions.py` (+40/−9), `rent_roll_import.py`, and 65 lines of tests: interest-free deposit wording no longer reads as free rent, default **forfeiture** clauses now read as negations rather than conditional grants, credits **applied to the deposit** are excluded from effective rent, plus clause-splitting fixes. Merged **clean** (prepared on the branch first — see the Decisions log). Suite **79/79** in the primary checkout post-merge; note that is 78/79 on a clean checkout because of the separate fixture bug in #10, which this merge does not touch. All three Render services returned `{"status":"healthy"}` after the push and all three frontends serve bytes identical to `main`. Backend-only change, so no UI to verify. |
+| `fix/concession-detection` (rounds 1–2) | `953c00a` | Real concession detection in the Deal Mismatch Report (was a stub): new `app/concessions.py` (free months, recurring discounts, one-time credits, net effective rent), `concessions` from both extraction engines, rent-roll Concession column, new `concession_missing`/`concession_mismatch`/`concession_expiring` checks, effective-rent-aware `rent_mismatch`. Maple Ridge now catches all 10 planted issues ($45,355/yr). Two reviewer rounds fixed (`7b67ea2`, `1380198`). Merged 2026-10-04 on the user's typed approval, **ahead of team-isolation** (TASKS.md recommended the reverse): verified safe to reorder — no new API routes, `api.py` untouched, its only SQL is in a test helper, so there was no team-scoping surface. Cost of the reorder: team-isolation inherits the `test_demo_deal_golden.py` conflict and owes the `test_concessions.py` `team_id` update (#4). Suite **78/78 on merged main**, run post-merge; also fixed the long-standing 76/77 fixture bug (#8). `concessions` deliberately **not** editable in the lease-detail UI yet. |
 | `chore/agent-os` | `c6c873d` | Agent OS v2: CLAUDE.md + Definition of Done, TASKS.md handoff blocks, reviewer/security-auditor/qa-tester/ui-checker, 8 skills incl. resume-task + prompt-builder, safety hooks, `docs/HOW_TO_RUN_AGENTS.md`. Merged 2026-10-04 by finishing the half-done merge left in the primary checkout (21 staged files already matched the branch tip byte-for-byte; only `TASKS.md` needed resolving — taken as a union of main's rent-roll-hardening facts and the branch's new structure). Suite **77/77 on merged main**, run post-merge. Pushed; prod + tester + demo all returned `{"status":"healthy"}`. Tooling/docs only — no app code, so the redeploy was functionally a no-op. |
 | `fix/rent-roll-hardening` | `03cebb5` (+ test fix `74d3237`) | Rent roll edge cases, negative-rent sign loss, multifamily tenant extraction, route roles, Maple Ridge demo deal + golden test. Merged on the user's explicit instruction. An earlier "72/72 passed" claim in this file was false; real post-merge run was 76/77, fixed to 77/77. Pushed. |
 | `feature/usage-limits` | `ab7fb6f` | `teams` table + `users.team_id`, per-team limits/quotas, upload dedup (billing scope only). Pushed. |
@@ -206,6 +214,24 @@ loan-underwriting. (`landing-positioning` dropped — superseded.)
 
 ## Decisions log
 
+- **2026-10-04 — A merged branch can still have unmerged commits; check
+  the tip, not the table.** `fix/concession-detection` was recorded here
+  as done at `953c00a`, but that merge captured only its round-2 tip.
+  Rounds 3 and 4 — real detection fixes, reviewed, with a MERGE verdict
+  in their own commit messages — sat on `origin` for days, invisible
+  because the row said "merged". Found by diffing `main` against every
+  branch tip rather than trusting this file. Worth repeating that diff
+  periodically: `git diff --stat main...<branch>` on anything marked
+  done is cheap and catches exactly this.
+- **2026-10-04 — Two unrelated reports collided on `OVERNIGHT_REPORT.md`.**
+  Merging rounds 3–4 hit an add/add conflict on that filename: `main`'s
+  copy is the `chore/demo-rent-roll-polish` run, the branch's is the
+  concession run. Taking either side would have silently destroyed a
+  document, so both were kept — `main`'s keeps the root filename and the
+  concession one moved to `docs/reports/2026-10-02-concession-detection.md`,
+  following the path `feature/team-isolation` already chose. Root-level
+  `OVERNIGHT_REPORT.md` is a collision magnet for autonomous runs;
+  new reports should go straight to `docs/reports/<date>-<topic>.md`.
 - **2026-10-04 — Resolve merge conflicts on the feature branch, not on
   `main`.** The read-only-primary-checkout hook (rule 3) blocks editing any
   file but `TASKS.md` there, so a conflict needing a *combined* resolution
