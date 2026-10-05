@@ -49,7 +49,12 @@ function ico(pngs) {
 }
 
 const { chromium } = loadPlaywright();
-const browser = await chromium.launch({ headless: true });
+// SwiftShader flags give headless Chromium a working WebGL context, which
+// the OG image needs for the hero shader.
+const browser = await chromium.launch({
+  headless: true,
+  args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'],
+});
 
 async function shoot(url, width, height, out, opts = {}) {
   const page = await browser.newPage({ viewport: { width, height }, deviceScaleFactor: 1 });
@@ -65,8 +70,28 @@ async function shoot(url, width, height, out, opts = {}) {
 const fileUrl = (p) => pathToFileURL(p).href;
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'abstractly-assets-'));
 
-// OG image.
-await shoot(fileUrl(path.join(HERE, 'og', 'og-image.html')), 1200, 630, path.join(FRONTEND, 'og-image.png'));
+// OG image. Its light bands are the landing hero's own shader, read out of
+// frontend/landing.js so the preview can't drift from the live site.
+// Spotlight: centred horizontally, a little below centre so the brightest
+// rods sit under the wordmark rather than behind its strokes.
+const OG_LIGHT = { x: 600, y: 360 };
+{
+  const landing = fs.readFileSync(path.join(FRONTEND, 'landing.js'), 'utf8');
+  const grab = (name) => {
+    const m = landing.match(new RegExp('const ' + name + ' = `([\\s\\S]*?)`;'));
+    if (!m) throw new Error(`${name} not found in frontend/landing.js -- did the hero shader move?`);
+    return m[1];
+  };
+  const page = await browser.newPage({ viewport: { width: 1200, height: 630 }, deviceScaleFactor: 1 });
+  await page.goto(fileUrl(path.join(HERE, 'og', 'og-image.html')));
+  await page.evaluate(() => document.fonts.ready);
+  const drawn = await page.evaluate(([v, f, light]) => window.renderBands(v, f, light),
+    [grab('VERT_SRC'), grab('FRAG_SRC'), OG_LIGHT]);
+  if (!drawn) throw new Error('No WebGL in headless Chromium; refusing to write a blank og-image.png');
+  await page.waitForTimeout(300);
+  fs.writeFileSync(path.join(FRONTEND, 'og-image.png'), await page.screenshot());
+  await page.close();
+}
 
 if (process.argv[2] === 'og') {
   await browser.close();

@@ -32,6 +32,16 @@ The user's task prompt (2026-10-05) is treated as the plan approval.
    headline and dollar figure; it now describes the new image.
    `og:title` is unchanged.
 
+## Round 2 (user: "the same gold light bands effect from our landing page hero")
+
+The first version imitated the hero with CSS ribs: denser, dimmer and more
+uniform than the real thing. `og-image.html` now draws the hero's **own**
+WebGL shader. `render_assets.mjs og` reads `VERT_SRC`/`FRAG_SRC` out of
+`frontend/landing.js` at render time and draws one still frame: motion
+off, time 0, full brightness, spotlight at (600, 360), just below
+centre. It refuses to write a blank PNG if WebGL is missing. The lockup
+gets a soft drop shadow so white stays clean over the brightest rods.
+
 ## Not changed
 
 - `og:title` and descriptions.
