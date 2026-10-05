@@ -42,6 +42,13 @@ function formatDate(iso) {
     return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
+function formatDateTime(iso) {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    if (isNaN(d)) return iso;
+    return d.toLocaleString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
 async function ownerFetch(path, options = {}) {
     let response;
     try {
@@ -761,6 +768,81 @@ const Teams = {
     },
 };
 
+/* ===================== Demo Requests ===================== */
+
+const DemoRequests = {
+    requests: [],
+
+    async load() {
+        const content = document.getElementById('demoRequestsContent');
+        content.innerHTML = '<p class="loading-inline" role="status"><span class="spinner-small"></span> Loading demo requests…</p>';
+        try {
+            this.requests = await ownerFetch('/owner/demo-requests');
+            this.render();
+        } catch (err) {
+            content.innerHTML = `<p class="error-text">Failed to load demo requests: ${escapeHtml(err.message)}</p>`;
+        }
+    },
+
+    render() {
+        const content = document.getElementById('demoRequestsContent');
+        if (this.requests.length === 0) {
+            content.innerHTML = '<p class="owner-empty">No demo requests yet.</p>';
+            return;
+        }
+        content.innerHTML = `
+            <p class="owner-panel-subtitle">${this.requests.length} request${this.requests.length === 1 ? '' : 's'}</p>
+            <div class="owner-table-scroll">
+            <table class="owner-table owner-demo-table">
+                <thead>
+                    <tr><th>Date</th><th>Name</th><th>Email</th><th>Company</th><th>Units</th><th>Message</th></tr>
+                </thead>
+                <tbody>
+                    ${this.requests.map(r => `
+                        <tr>
+                            <td class="owner-nowrap">${escapeHtml(formatDateTime(r.created_at))}</td>
+                            <td>${escapeHtml(r.name)}</td>
+                            <td><a href="mailto:${encodeURIComponent(r.work_email).replace(/%40/g, '@')}">${escapeHtml(r.work_email)}</a></td>
+                            <td>${escapeHtml(r.company)}</td>
+                            <td class="owner-num">${escapeHtml(Number(r.units).toLocaleString('en-US'))}</td>
+                            <td class="owner-demo-message">${r.message ? escapeHtml(r.message) : '<span class="owner-muted">—</span>'}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+            </div>
+        `;
+    },
+
+    // A plain <a href> to the API would be a cross-origin navigation the
+    // session cookie may not ride along on; fetch with credentials (like
+    // every other owner call) and hand the browser a blob instead.
+    async exportCsv() {
+        const btn = document.getElementById('exportDemoRequestsBtn');
+        btn.disabled = true;
+        try {
+            const response = await fetch(`${API_BASE_URL}/owner/demo-requests/export.csv`, { credentials: 'include' });
+            if (response.status === 401) {
+                window.location.href = 'login.html?expired=1';
+                return;
+            }
+            if (!response.ok) throw new Error(`Server returned ${response.status}`);
+            const url = URL.createObjectURL(await response.blob());
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `demo-requests-${new Date().toISOString().slice(0, 10)}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+        } catch (err) {
+            showToast(`Export failed: ${err.message}`, 'error');
+        } finally {
+            btn.disabled = false;
+        }
+    },
+};
+
 /* ===================== Tabs ===================== */
 
 function switchTab(tab) {
@@ -771,6 +853,7 @@ function switchTab(tab) {
     if (tab === 'finance') Finance.load();
     if (tab === 'quality') ExtractionQuality.load();
     if (tab === 'analytics') Analytics.load();
+    if (tab === 'demos') DemoRequests.load();
 }
 
 /* ===================== Bootstrap ===================== */
@@ -793,6 +876,8 @@ async function initOwnerConsole() {
     document.querySelectorAll('.owner-tab').forEach(el => {
         el.addEventListener('click', () => switchTab(el.dataset.tab));
     });
+
+    document.getElementById('exportDemoRequestsBtn').addEventListener('click', () => DemoRequests.exportCsv());
 
     document.getElementById('clearFiltersBtn').addEventListener('click', () => {
         document.getElementById('filterEmail').value = '';

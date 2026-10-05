@@ -99,6 +99,7 @@ UNIT_TESTS = [
     "test_deal_mismatch.py",
     "test_concessions.py",
     "test_demo_request.py",
+    "test_demo_requests_view.py",
     "test_obligations.py",
     "test_rent_roll_multiformat.py",
     # New this QA hardening pass (2026-10).

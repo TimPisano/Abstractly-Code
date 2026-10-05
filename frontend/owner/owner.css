@@ -138,9 +138,19 @@
     padding: 0 1.75rem;
     border-bottom: 1px solid var(--border-color);
     background: var(--white);
+    /* Six tabs don't fit a phone: scroll the strip sideways instead of
+       widening the whole page. */
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+
+.owner-tabs::-webkit-scrollbar {
+    display: none;
 }
 
 .owner-tab {
+    flex: 0 0 auto;
+    white-space: nowrap;
     padding: 0.875rem 1.125rem;
     background: none;
     border: none;
@@ -473,6 +483,41 @@
     color: var(--text-medium);
     font-size: 0.875rem;
     padding: 1rem 0;
+}
+
+/* ---- Demo Requests table ---- */
+
+.owner-nowrap { white-space: nowrap; }
+.owner-num { text-align: right; font-variant-numeric: tabular-nums; }
+.owner-muted { color: var(--text-medium); }
+
+/* The table scrolls inside its own box below ~900px rather than being
+   clipped by .owner-table's overflow:hidden or widening the page. */
+.owner-table-scroll {
+    overflow-x: auto;
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-sm);
+}
+
+.owner-table-scroll .owner-table {
+    box-shadow: none;
+}
+
+@media (max-width: 720px) {
+    /* Undo the generic phone rule (display:block) here: the wrapper
+       already scrolls, and a block-level table loses its column widths. */
+    .owner-table-scroll .owner-table {
+        display: table;
+    }
+}
+
+.owner-demo-message {
+    /* Free text from a public form: wrap it, keep newlines, and stop a
+       single long unbroken string from stretching the table. */
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    min-width: 14rem;
+    max-width: 32rem;
 }
 
 @media (max-width: 720px) {

@@ -30,6 +30,7 @@
             <button class="owner-tab" data-tab="finance">Revenue &amp; Expenses</button>
             <button class="owner-tab" data-tab="quality">Extraction Quality</button>
             <button class="owner-tab" data-tab="analytics">Analytics</button>
+            <button class="owner-tab" data-tab="demos">Demo Requests</button>
         </nav>
 
         <main class="owner-main">
@@ -154,6 +155,20 @@
                         <div id="analyticsTopReferrers"></div>
                     </div>
                 </div>
+            </section>
+
+            <!-- ===================== Demo Requests ===================== -->
+            <section class="owner-panel" id="panel-demos">
+                <div class="owner-panel-header">
+                    <h1>Demo Requests</h1>
+                    <p class="owner-panel-subtitle">Every Book a Demo submission from the marketing site, newest first.</p>
+                </div>
+
+                <div class="owner-filters">
+                    <button class="btn-secondary" id="exportDemoRequestsBtn">Export CSV</button>
+                </div>
+
+                <div id="demoRequestsContent"><p class="loading-inline"><span class="spinner-small"></span> Loading demo requests…</p></div>
             </section>
         </main>
     </div>

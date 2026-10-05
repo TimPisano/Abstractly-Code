@@ -2011,12 +2011,22 @@ def insert_demo_request(name: str, work_email: str, company: str, units: int, me
 
 
 def get_all_demo_requests() -> List[Dict[str, Any]]:
+    """Every Book a Demo submission, newest first (id breaks same-instant ties)."""
     conn = get_connection()
     try:
         rows = conn.execute(
-            "SELECT * FROM demo_requests ORDER BY created_at DESC"
+            "SELECT * FROM demo_requests ORDER BY created_at DESC, id DESC"
         ).fetchall()
         return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def get_demo_request(request_id: int) -> Optional[Dict[str, Any]]:
+    conn = get_connection()
+    try:
+        row = conn.execute("SELECT * FROM demo_requests WHERE id = ?", (request_id,)).fetchone()
+        return dict(row) if row else None
     finally:
         conn.close()
 

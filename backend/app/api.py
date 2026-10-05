@@ -56,6 +56,7 @@ from app import extraction_quality
 from app import document_extractor
 from app.document_extractor import DocumentExtractionError
 from app import database
+from app import demo_request_sheet
 from app import email_service
 from app import jobs
 from app import sample_deal
@@ -3585,7 +3586,7 @@ def request_demo():
     if message and len(message) > _DEMO_REQUEST_MAX_MESSAGE_LEN:
         message = message[:_DEMO_REQUEST_MAX_MESSAGE_LEN]
 
-    database.insert_demo_request(name, work_email, company, units, message)
+    request_id = database.insert_demo_request(name, work_email, company, units, message)
 
     # Best-effort, same guarantee as the waitlist emails above -- the
     # submission is already committed regardless of whether either send
@@ -3594,6 +3595,9 @@ def request_demo():
     _send_email_best_effort(
         email_service.send_demo_request_notification, name, work_email, company, units, message
     )
+    # Optional Google Sheet copy (off unless DEMO_REQUEST_SHEET_WEBHOOK_URL
+    # is set); runs on a background thread and never raises.
+    _send_email_best_effort(_forward_demo_request_to_sheet, request_id)
 
     return jsonify({"message": _DEMO_REQUEST_SUCCESS_MESSAGE}), 201
 
@@ -3633,6 +3637,63 @@ def record_pageview():
 
     database.insert_pageview(path, referrer, session_id)
     return jsonify({"status": "ok"}), 201
+
+
+def _forward_demo_request_to_sheet(request_id):
+    if not demo_request_sheet.webhook_url():
+        return
+    record = database.get_demo_request(request_id)
+    if record:
+        demo_request_sheet.forward_in_background(record)
+
+
+_DEMO_REQUEST_CSV_COLUMNS = [
+    ("Date (UTC)", "created_at"),
+    ("Name", "name"),
+    ("Email", "work_email"),
+    ("Company", "company"),
+    ("Units", "units"),
+    ("Message", "message"),
+]
+
+
+def _csv_safe(value):
+    """
+    Neutralize spreadsheet formula injection. These cells are typed by
+    anyone on the internet (the public Book a Demo form); Excel and
+    Sheets execute a cell starting with = + - @ (or a tab/CR that hides
+    one) as a formula -- e.g. =HYPERLINK(...) exfiltrating the sheet.
+    A leading apostrophe makes the spreadsheet show it as plain text.
+    """
+    if value is None:
+        return ""
+    text = str(value)
+    if text and text[0] in ("=", "+", "-", "@", "\t", "\r"):
+        return "'" + text
+    return text
+
+
+@app.route('/owner/demo-requests', methods=['GET'])
+@require_owner()  # Abstractly's own sales leads: platform-wide, never visible to a customer firm's admin
+def owner_list_demo_requests():
+    """Every Book a Demo submission, newest first."""
+    return jsonify(database.get_all_demo_requests()), 200
+
+
+@app.route('/owner/demo-requests/export.csv', methods=['GET'])
+@require_owner()
+def owner_export_demo_requests_csv():
+    """Same rows as GET /owner/demo-requests, as a CSV download."""
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow([label for label, _ in _DEMO_REQUEST_CSV_COLUMNS])
+    for r in database.get_all_demo_requests():
+        writer.writerow([_csv_safe(r.get(key)) for _, key in _DEMO_REQUEST_CSV_COLUMNS])
+    return Response(
+        buf.getvalue(),
+        mimetype='text/csv',
+        headers={"Content-Disposition": "attachment; filename=demo-requests.csv"},
+    )
 
 
 @app.route('/waitlist', methods=['GET'])

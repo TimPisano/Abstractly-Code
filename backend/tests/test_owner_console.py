@@ -74,6 +74,8 @@ OWNER_ROUTES_GET = [
     "/owner/expenses",
     "/owner/finance/summary",
     "/owner/analytics/summary",
+    "/owner/demo-requests",
+    "/owner/demo-requests/export.csv",
 ]
 
 
