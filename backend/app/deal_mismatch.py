@@ -51,12 +51,20 @@ exactly one place; every OTHER detector here is new (see PROGRESS.md/
 the approved plan for why: the existing reconciliation functions only
 ever look at matched pairs and never estimate a dollar amount).
 
-concession_missing intentionally returns an empty list for now -- it
-needs the lease's own concessions field, which doesn't exist until
-Phase 2 (multifamily lease fields) lands. Left in place, not omitted
-entirely, so build_deal_mismatch_report_data's discrepancy_type list
-and the exporters don't need to change shape again when Phase 2 wires
-it up for real.
+Concession checks (detect_concession_missing, detect_concession_mismatch,
+detect_concession_expiring) read the lease PDF's `concessions` field --
+a structured schedule of free months, recurring discounts and one-time
+credits, see concessions.py -- and price it into the lease's net
+effective rent. Their dollar impact is the ANNUALIZED concession value:
+(gross rent - net effective rent) x 12, i.e. how much more income per
+year the rent roll's gross rent implies than the lease actually yields.
+rent_mismatch is effective-rent aware too: a rent roll that already
+shows the lease's discounted current rent, or its net effective rent, is
+reflecting the concession correctly and isn't reported as a mismatch.
+
+All three concession checks skip a lease whose term has already ended
+-- detect_expired_but_occupied already counts that unit's ENTIRE rent
+as overstated, so also counting its concession would double count it.
 
 T12 detectors (detect_t12_income_gap, detect_t12_occupancy_mismatch,
 detect_t12_concession_gap, detect_t12_bad_debt_trend) take optional
@@ -67,6 +75,14 @@ T-12 file.
 from datetime import date
 from typing import Any, Dict, List, Optional
 
+from .concessions import (
+    add_months,
+    describe_item,
+    effective_rent_for_lease,
+    has_unreadable_concession,
+    rent_reflects_concession,
+    timing_note,
+)
 from .database import get_all_effective_leases
 from .discrepancies import _severity_for_monthly_impact
 from .normalize import parse_currency, parse_date
@@ -85,6 +101,8 @@ DISCREPANCY_TYPES = [
     "unit_no_lease",
     "lease_no_unit",
     "concession_missing",
+    "concession_mismatch",
+    "concession_expiring",
     "dates_mismatch",
     "tenant_mismatch",
     "t12_income_gap",
@@ -139,7 +157,71 @@ def _address_groups(leases: List[Dict[str, Any]]) -> Dict[str, Dict[str, List[Di
     return groups
 
 
-def detect_rent_mismatch(leases: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def _same_amount(a: float, b: float) -> bool:
+    """Not a disagreement under compute_rent_roll_reconciliation's own two tolerance constants -- the one definition of "close enough" for money here."""
+    diff_abs = abs(a - b)
+    larger = max(abs(a), abs(b))
+    diff_pct = (diff_abs / larger * 100) if larger > 0 else 0.0
+    return not (diff_abs > _RENT_DISAGREEMENT_TOLERANCE_ABS and diff_pct > _RENT_DISAGREEMENT_TOLERANCE_PCT)
+
+
+def _effective_rent_summary(effective: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """The compact effective-rent block attached to concession-related rows (the full priced schedule stays out of the row -- the row's own lease_value/source already describe it)."""
+    if not effective:
+        return None
+    return {
+        "base_rent": effective["base_rent"],
+        "net_effective_rent": effective["net_effective_rent"],
+        "current_rent": effective["current_rent"],
+        "total_concession_value": effective["total_concession_value"],
+        "annualized_concession_value": effective["annualized_concession_value"],
+        "term_months": effective["term_months"],
+        "term_assumed": effective["term_assumed"],
+    }
+
+
+def _is_expired(doc_lease: Dict[str, Any], today: date) -> bool:
+    doc_end = parse_date(field_value(doc_lease, "lease_end_date"))
+    return doc_end is not None and doc_end < today
+
+
+def _concession_sources(effective: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """One {page, quote} citation per distinct concession clause -- a stacked concession can span several sections or pages."""
+    sources, seen = [], set()
+    for item in effective["items"]:
+        key = (item.get("page"), item.get("quote"))
+        if item.get("quote") and key not in seen:
+            seen.add(key)
+            sources.append({"page": item.get("page") or 1, "quote": item["quote"]})
+    return sources
+
+
+def _unreadable_concession_value(doc_lease: Dict[str, Any]) -> Optional[str]:
+    """The lease's concession text when one was found but couldn't be priced into a schedule, else None."""
+    entry = (doc_lease.get("extracted_fields") or {}).get("concessions")
+    return entry.get("value") if has_unreadable_concession(entry) else None
+
+
+def _rr_concession_monthly(rr_lease: Dict[str, Any]) -> Optional[float]:
+    """The monthly concession the rent roll itself shows, if it has a concession column (rent_roll_import.py's `concessions`); None if it doesn't."""
+    amount = parse_currency(field_value(rr_lease, "concessions"))
+    return abs(amount) if amount is not None else None
+
+
+def detect_rent_mismatch(leases: List[Dict[str, Any]], today: Optional[date] = None) -> List[Dict[str, Any]]:
+    """
+    Rent roll rent vs. the lease's rent, effective-rent aware: when the
+    lease grants a concession and the rent roll's figure matches the
+    lease's discounted CURRENT rent (as of `today`) or its NET EFFECTIVE
+    rent, the rent roll is reflecting that concession -- not misstating
+    rent -- so no rent_mismatch is reported (detect_concession_expiring
+    separately flags a discounted rent that's about to step back up).
+    Any other disagreement is measured against the lease's gross base
+    rent exactly as before; the concession itself is then reported on
+    its own by detect_concession_missing, so the two rows add up to the
+    full gap between the rent roll and the lease's effective rent.
+    """
+    today = today or date.today()
     rows: List[Dict[str, Any]] = []
     for group in _address_groups(leases).values():
         if not group["rent_roll"] or not group["lease_document"]:
@@ -150,11 +232,14 @@ def detect_rent_mismatch(leases: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
                 doc_rent = parse_currency(field_value(doc_lease, "rent_amount"))
                 if rr_rent is None or doc_rent is None or rr_rent == doc_rent:
                     continue
-                diff_abs = abs(rr_rent - doc_rent)
-                larger = max(rr_rent, doc_rent)
-                diff_pct = (diff_abs / larger * 100) if larger > 0 else 0.0
-                if not (diff_abs > _RENT_DISAGREEMENT_TOLERANCE_ABS and diff_pct > _RENT_DISAGREEMENT_TOLERANCE_PCT):
+                if _same_amount(rr_rent, doc_rent):
                     continue
+                effective = effective_rent_for_lease(doc_lease, today)
+                if effective and rent_reflects_concession(
+                    rr_rent, effective, _RENT_DISAGREEMENT_TOLERANCE_ABS, _RENT_DISAGREEMENT_TOLERANCE_PCT
+                ):
+                    continue
+                diff_abs = abs(rr_rent - doc_rent)
 
                 monthly_impact = diff_abs
                 rows.append({
@@ -170,6 +255,7 @@ def detect_rent_mismatch(leases: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
                     "income_direction": "overstate" if rr_rent > doc_rent else "understate",
                     "rent_roll_lease_id": rr_lease.get("id"),
                     "lease_document_id": doc_lease.get("id"),
+                    "effective_rent": _effective_rent_summary(effective),
                 })
     return rows
 
@@ -281,15 +367,281 @@ def detect_lease_no_unit(leases: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return rows
 
 
-def detect_concession_missing(leases: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def detect_concession_missing(leases: List[Dict[str, Any]], today: Optional[date] = None) -> List[Dict[str, Any]]:
     """
-    Stub until Phase 2 (multifamily lease fields) adds a `concessions`
-    extracted field to compare against -- always returns an empty list
-    for now. Kept as its own function (rather than omitted) so
-    DISCREPANCY_TYPES / build_deal_mismatch_report_data's shape doesn't
-    change again once Phase 2 wires this up for real.
+    The lease grants a concession (free month, move-in special, recurring
+    discount, one-time credit) and the rent roll shows the full gross
+    rent with no concession -- so the rent roll implies more income than
+    the lease actually yields. Dollar impact is the concession's
+    annualized value, (gross rent - net effective rent) x 12; for a
+    typical 12-month lease that's simply the concession's total value
+    ($100/mo off for 6 months -> $600/yr; one month free on $1,075 ->
+    $1,075/yr).
+
+    Fires whether or not the concession has already been used up by
+    `today`: net effective rent is measured over the whole lease term,
+    which is how an underwriter prices a unit that needed a concession to
+    lease. The row's `note` says plainly whether each concession is
+    already used, active, or upcoming, so a reader can tell "rent roll is
+    right going forward but the lease's real yield is lower" apart from
+    "the resident is paying less than the rent roll says right now".
+
+    Not reported here (handled elsewhere instead):
+      - rent roll has its own concession column with a non-zero amount
+        -> detect_concession_mismatch compares the two amounts.
+      - rent roll already shows the discounted current rent or the net
+        effective rent -> the concession IS reflected.
+      - rent roll rent is below the lease's base rent by an unexplained
+        amount -> detect_rent_mismatch's row; adding a concession row on
+        top would guess at which number the rent roll meant.
+      - lease term already ended -> detect_expired_but_occupied.
+
+    A concession the parser found but couldn't price (e.g. a free month
+    on a lease whose rent wasn't extracted) is still reported, with
+    dollar impact None -- "found, amount unknown", never a guessed $0.
     """
-    return []
+    today = today or date.today()
+    rows: List[Dict[str, Any]] = []
+    for group in _address_groups(leases).values():
+        if not group["rent_roll"] or not group["lease_document"]:
+            continue
+        for doc_lease in group["lease_document"]:
+            if _is_expired(doc_lease, today):
+                continue
+            effective = effective_rent_for_lease(doc_lease, today)
+            if not effective:
+                unreadable = _unreadable_concession_value(doc_lease)
+                if unreadable:
+                    rows.extend(_unreadable_concession_missing_rows(group["rent_roll"], doc_lease, unreadable))
+                continue
+            for rr_lease in group["rent_roll"]:
+                rr_concession = _rr_concession_monthly(rr_lease)
+                if rr_concession is not None and rr_concession > 0:
+                    continue
+                rr_rent = parse_currency(field_value(rr_lease, "rent_amount"))
+                base = effective["base_rent"]
+                if rr_rent is not None and base is not None:
+                    if rent_reflects_concession(rr_rent, effective, _RENT_DISAGREEMENT_TOLERANCE_ABS, _RENT_DISAGREEMENT_TOLERANCE_PCT):
+                        continue
+                    if rr_rent < base and not _same_amount(rr_rent, base):
+                        continue
+
+                monthly = effective["monthly_concession_equivalent"]
+                annual = effective["annualized_concession_value"]
+                rr_display = field_value(rr_lease, "rent_amount") or "(no rent shown)"
+                rr_note = " (concession column shows $0.00)" if rr_concession == 0 else " (no concession shown)"
+                sources = _concession_sources(effective)
+                rows.append({
+                    "discrepancy_type": "concession_missing",
+                    "unit": _display_unit(rr_lease, doc_lease),
+                    "field": "concessions",
+                    "rent_roll_value": rr_display + rr_note,
+                    "lease_value": "; ".join(describe_item(i) for i in effective["items"]),
+                    "source": sources[0] if sources else _field_source(doc_lease, "concessions"),
+                    "sources": sources,
+                    "severity": _severity_for_monthly_impact(monthly),
+                    "monthly_dollar_impact": monthly,
+                    "annual_dollar_impact": annual,
+                    "income_direction": "overstate",
+                    "rent_roll_lease_id": rr_lease.get("id"),
+                    "lease_document_id": doc_lease.get("id"),
+                    "effective_rent": _effective_rent_summary(effective),
+                    "note": timing_note(effective, today),
+                })
+    return rows
+
+
+def _unreadable_concession_missing_rows(rent_roll_rows, doc_lease, lease_text):
+    """
+    The lease states a concession nobody could price (see
+    concessions.has_unreadable_concession) and the rent roll shows none:
+    still a concession_missing finding, but with no dollar figure -- the
+    "found, amount unknown" case, never a silent pass and never a guess.
+    """
+    rows = []
+    for rr_lease in rent_roll_rows:
+        rr_concession = _rr_concession_monthly(rr_lease)
+        if rr_concession is not None and rr_concession > 0:
+            continue
+        rows.append({
+            "discrepancy_type": "concession_missing",
+            "unit": _display_unit(rr_lease, doc_lease),
+            "field": "concessions",
+            "rent_roll_value": (field_value(rr_lease, "rent_amount") or "(no rent shown)") + " (no concession shown)",
+            "lease_value": f"{lease_text} (amount couldn't be read automatically -- review the lease)",
+            "source": _field_source(doc_lease, "concessions"),
+            "sources": [],
+            "severity": "medium",
+            "monthly_dollar_impact": None,
+            "annual_dollar_impact": None,
+            "income_direction": "overstate",
+            "rent_roll_lease_id": rr_lease.get("id"),
+            "lease_document_id": doc_lease.get("id"),
+            "effective_rent": None,
+            "note": None,
+        })
+    return rows
+
+
+def detect_concession_mismatch(leases: List[Dict[str, Any]], today: Optional[date] = None) -> List[Dict[str, Any]]:
+    """
+    The rent roll HAS a concession column showing a non-zero monthly
+    concession, and it disagrees with what the lease grants -- including
+    the lease granting none at all. Compared against both ways a PMS
+    commonly books a concession: the lease's amortized monthly
+    equivalent (total concession / term months) and the discount
+    actually active in `today`'s month; matching either one is
+    agreement. Otherwise the gap, measured against the amortized
+    equivalent and annualized, is the dollar impact: a rent roll showing
+    a smaller concession than the lease grants overstates income, a
+    larger one (or one the lease doesn't support) understates it.
+    """
+    today = today or date.today()
+    rows: List[Dict[str, Any]] = []
+    for group in _address_groups(leases).values():
+        if not group["rent_roll"] or not group["lease_document"]:
+            continue
+        for doc_lease in group["lease_document"]:
+            if _is_expired(doc_lease, today):
+                continue
+            effective = effective_rent_for_lease(doc_lease, today)
+            for rr_lease in group["rent_roll"]:
+                rr_concession = _rr_concession_monthly(rr_lease)
+                if rr_concession is None or rr_concession == 0:
+                    continue
+
+                unreadable = _unreadable_concession_value(doc_lease) if effective is None else None
+                if unreadable:
+                    # The lease DOES grant something -- just not readably.
+                    # Comparing against "no concession" would be a
+                    # confident wrong answer; report it unpriced instead.
+                    lease_equiv, lease_current = None, None
+                    lease_value = f"{unreadable} (amount couldn't be read automatically -- review the lease)"
+                    sources = []
+                    source = _field_source(doc_lease, "concessions")
+                elif effective is None:
+                    lease_equiv, lease_current, lease_value = 0.0, None, "No concession in lease"
+                    sources: List[Dict[str, Any]] = []
+                    source = _field_source(doc_lease, "rent_amount")
+                else:
+                    lease_equiv = effective["monthly_concession_equivalent"]
+                    lease_current = None
+                    if effective["current_rent"] is not None and effective["base_rent"] is not None:
+                        lease_current = round(effective["base_rent"] - effective["current_rent"], 2)
+                    lease_value = "; ".join(describe_item(i) for i in effective["items"])
+                    sources = _concession_sources(effective)
+                    source = sources[0] if sources else _field_source(doc_lease, "concessions")
+
+                if lease_equiv is not None and _same_amount(rr_concession, lease_equiv):
+                    continue
+                if lease_current and _same_amount(rr_concession, lease_current):
+                    continue
+
+                if lease_equiv is None:
+                    monthly = annual = direction = None
+                else:
+                    gap = lease_equiv - rr_concession
+                    monthly = round(abs(gap), 2)
+                    annual = round(abs(gap) * 12, 2)
+                    direction = "overstate" if gap > 0 else "understate"
+                rows.append({
+                    "discrepancy_type": "concession_mismatch",
+                    "unit": _display_unit(rr_lease, doc_lease),
+                    "field": "concessions",
+                    "rent_roll_value": f"${rr_concession:,.2f}/mo concession",
+                    "lease_value": lease_value,
+                    "source": source,
+                    "sources": sources,
+                    "severity": _severity_for_monthly_impact(monthly),
+                    "monthly_dollar_impact": monthly,
+                    "annual_dollar_impact": annual,
+                    "income_direction": direction,
+                    "rent_roll_lease_id": rr_lease.get("id"),
+                    "lease_document_id": doc_lease.get("id"),
+                    "effective_rent": _effective_rent_summary(effective),
+                    "note": timing_note(effective, today) if effective else None,
+                })
+    return rows
+
+
+def detect_concession_expiring(leases: List[Dict[str, Any]], today: Optional[date] = None) -> List[Dict[str, Any]]:
+    """
+    The rent roll shows the lease's DISCOUNTED current rent as the unit's
+    in-place rent, but that discount burns off before the lease ends --
+    after which the resident owes the full base rent. Underwriting off
+    the rent roll would then understate income for the rest of the term.
+
+    Only recurring discounts that are active as of `today` and end before
+    the lease does count (a discount that runs to the end of the term
+    never steps up within this lease, and what a renewal would charge
+    isn't knowable from the lease). Monthly impact is the step-up; annual
+    impact is the step-up times the months of lease term remaining after
+    the burn-off, within the 12 months after `today` -- the income the
+    rent roll's in-place figure leaves out over the next year.
+    """
+    today = today or date.today()
+    rows: List[Dict[str, Any]] = []
+    for group in _address_groups(leases).values():
+        if not group["rent_roll"] or not group["lease_document"]:
+            continue
+        for doc_lease in group["lease_document"]:
+            if _is_expired(doc_lease, today):
+                continue
+            effective = effective_rent_for_lease(doc_lease, today)
+            if not effective or effective["current_rent"] is None or effective["base_rent"] is None:
+                continue
+            if effective["current_rent"] >= effective["base_rent"]:
+                continue
+            lease_end = parse_date(field_value(doc_lease, "lease_end_date"))
+            burning = [
+                i for i in effective["items"]
+                if i["kind"] == "recurring_discount" and i["status"] == "active" and i["end_date"]
+                and i["monthly_value"] and (lease_end is None or date.fromisoformat(i["end_date"]) < lease_end)
+            ]
+            if not burning:
+                continue
+            for rr_lease in group["rent_roll"]:
+                rr_rent = parse_currency(field_value(rr_lease, "rent_amount"))
+                if rr_rent is None or not _same_amount(rr_rent, effective["current_rent"]):
+                    continue
+                step_up = round(sum(i["monthly_value"] for i in burning), 2)
+                # Months at full rent after each burn-off, still inside
+                # the lease term and inside the next 12 months.
+                last_month = add_months(date(today.year, today.month, 1), 11)
+                if lease_end is not None:
+                    last_month = min(last_month, date(lease_end.year, lease_end.month, 1))
+                annual = 0.0
+                for item in burning:
+                    burn_off = date.fromisoformat(item["end_date"])
+                    first_full = add_months(date(burn_off.year, burn_off.month, 1), 1)
+                    months_after = (last_month.year - first_full.year) * 12 + last_month.month - first_full.month + 1
+                    annual += item["monthly_value"] * max(0, min(12, months_after))
+                annual = round(annual, 2)
+                if annual <= 0:
+                    continue
+                ends = ", ".join(sorted({i["end_date"] for i in burning}))
+                sources = _concession_sources(effective)
+                rows.append({
+                    "discrepancy_type": "concession_expiring",
+                    "unit": _display_unit(rr_lease, doc_lease),
+                    "field": "concessions",
+                    "rent_roll_value": f"{field_value(rr_lease, 'rent_amount')} (discounted rent shown as in-place rent)",
+                    "lease_value": (
+                        "; ".join(describe_item(i) for i in burning)
+                        + f" -- ends {ends}; rent then steps up to ${effective['base_rent']:,.2f}"
+                    ),
+                    "source": sources[0] if sources else _field_source(doc_lease, "concessions"),
+                    "sources": sources,
+                    "severity": _severity_for_monthly_impact(step_up),
+                    "monthly_dollar_impact": step_up,
+                    "annual_dollar_impact": annual,
+                    "income_direction": "understate",
+                    "rent_roll_lease_id": rr_lease.get("id"),
+                    "lease_document_id": doc_lease.get("id"),
+                    "effective_rent": _effective_rent_summary(effective),
+                    "note": timing_note(effective, today),
+                })
+    return rows
 
 
 def detect_dates_mismatch(leases: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -598,9 +950,23 @@ _DETECTORS = [
     detect_unit_no_lease,
     detect_lease_no_unit,
     detect_concession_missing,
+    detect_concession_mismatch,
+    detect_concession_expiring,
     detect_dates_mismatch,
     detect_tenant_mismatch,
 ]
+
+# Detectors whose answer depends on what day it is (an expiry, or which
+# concession months are active) -- they take build_deal_mismatch_report_data's
+# `today` so a report run with an explicit as-of date is consistent across
+# every row.
+_DATE_AWARE_DETECTORS = {
+    detect_rent_mismatch,
+    detect_expired_but_occupied,
+    detect_concession_missing,
+    detect_concession_mismatch,
+    detect_concession_expiring,
+}
 
 _T12_DETECTORS = [
     detect_t12_income_gap,
@@ -608,6 +974,35 @@ _T12_DETECTORS = [
     detect_t12_concession_gap,
     detect_t12_bad_debt_trend,
 ]
+
+
+def _concession_summary(leases: List[Dict[str, Any]], today: date) -> Dict[str, Any]:
+    """
+    Portfolio-level view of every lease PDF in scope that grants a
+    concession (whether or not the rent roll reflects it): how many, and
+    their combined annualized value -- the "how much of this deal's rent
+    is really concession" number. Expired leases are left out for the
+    same double-counting reason the detectors skip them. Value is None if
+    any concession couldn't be priced, rather than a silently low total.
+    """
+    priced = []
+    unreadable = 0
+    for lease in leases:
+        if _is_rent_roll_import(lease) or _is_expired(lease, today):
+            continue
+        effective = effective_rent_for_lease(lease, today)
+        if effective:
+            priced.append(effective)
+        elif _unreadable_concession_value(lease):
+            unreadable += 1
+    if not priced and not unreadable:
+        return {"leases_with_concessions": 0, "annualized_concession_value": 0.0}
+    values = [e["annualized_concession_value"] for e in priced]
+    complete = not unreadable and all(v is not None for v in values)
+    return {
+        "leases_with_concessions": len(priced) + unreadable,
+        "annualized_concession_value": round(sum(values), 2) if complete else None,
+    }
 
 
 def _total_units_checked(leases: List[Dict[str, Any]]) -> int:
@@ -643,7 +1038,7 @@ def build_deal_mismatch_report_data(
 
     discrepancies: List[Dict[str, Any]] = []
     for detector in _DETECTORS:
-        if detector is detect_expired_but_occupied:
+        if detector in _DATE_AWARE_DETECTORS:
             discrepancies.extend(detector(leases, today))
         else:
             discrepancies.extend(detector(leases))
@@ -685,6 +1080,7 @@ def build_deal_mismatch_report_data(
         "total_discrepancies": len(discrepancies) + len(t12_rows),
         "annual_income_overstatement": annual_income_overstatement,
         "discrepancies": discrepancies,
+        "concession_summary": _concession_summary(leases, today or date.today()),
     }
 
     if t12_data:

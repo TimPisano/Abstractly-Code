@@ -1,46 +1,103 @@
 ---
 name: start-task
-description: Claim a task from TASKS.md, create its branch and worktree, write PLAN.md, and stop for the user's approval before touching code. Step 1-3 of The Loop (CLAUDE.md).
+description: Start a new task the disciplined way — check for duplicate/prior work on other branches, claim it in TASKS.md, create its own branch + worktree, write a plan, then STOP for the user's approval before touching code. Loop steps 1-3. Use whenever beginning any new piece of work.
+argument-hint: "<task description or TASKS.md item> [--type feature|fix|chore]"
 ---
 
 # start-task
 
-Steps 1–3 of The Loop. Do all three before writing a single line of
-application code.
+> `$P` = the primary checkout (normally `~/dev/projects/lease-abstraction`, always on `main`). Each Bash call that uses it starts with
+> `P=$(git rev-parse --path-format=absolute --git-common-dir); P=${P%/.git}`.
+> Task worktrees live beside it: `${P%/*}/abstractly-<topic>`.
 
-## 1. Claim the task in TASKS.md
+Task: **$ARGUMENTS**
 
-- Read `TASKS.md` and `CLAUDE.md` first (every session should have, but
-  confirm you're not duplicating something already In progress or
-  Ready for review).
-- Pick (or confirm with the user) which task you're claiming.
-- Edit `TASKS.md`: move the task into **In progress**, with a branch
-  name you're about to create and a one-line purpose. If it's a brand
-  new task not yet in the file, add the row.
+Loop steps 1–3 (CLAUDE.md). Write no application code in this skill.
 
-## 2. Create the branch and worktree
+Current worktrees (other sessions may be using any of these — never touch
+a worktree you didn't create, never switch its branch):
+!`git worktree list`
 
-- Run `git worktree list` first — never assume no one else is using a
-  worktree, and never switch branches inside someone else's worktree.
-- Create the branch and its own worktree **under `~/dev/projects/`**,
-  named after the topic, e.g.:
-  ```
-  git worktree add ~/dev/projects/abstractly-<topic> -b <type>/<topic>
-  ```
-  (`<type>` is `feature/` or `fix/`, matching this repo's existing
-  branch names in `TASKS.md`.)
-- `cd` into the new worktree for everything that follows.
+## 0. Sanity-check the request
 
-## 3. Write PLAN.md and stop
+- If the task text contains placeholder-looking text (`(the real …)`,
+  `<your …>`, `[insert …]`, `TBD`, `@example.com`) or is ambiguous
+  about what "done" means, **ask before going further**. Don't guess.
+- If it's a rough one-liner, suggest `/prompt-builder` first.
 
-- In the new worktree, write `PLAN.md`: what you read first, what you
-  found that constrains the approach (existing patterns, the current
-  tenancy/team-isolation state from `CLAUDE.md`, any overlap with
-  other branches in `TASKS.md`), and the concrete steps you intend to
-  take.
-- If the task needs team-level data isolation that doesn't exist yet
-  on `main`, say so explicitly in the plan and build on
-  `feature/team-isolation`'s model rather than inventing a new one
-  (CLAUDE.md rule 3).
-- **Stop here.** Do not start building. Present the plan and wait for
-  the user's explicit approval before step 4 (Build) of The Loop.
+## 1. Prior-art check (prevents duplicated work and scope creep)
+
+Before designing anything, find out whether it already exists anywhere:
+
+```bash
+P=$(git rev-parse --path-format=absolute --git-common-dir); P=${P%/.git}   # primary checkout
+git -C $P fetch -q --all
+grep -n -i "<keyword>" $P/TASKS.md
+git -C $P log --all --oneline -i --grep="<keyword>" | head -20
+git -C $P log --all --oneline -S"<identifier, e.g. CREATE TABLE teams>" | head -20
+git -C $P grep -n -i "<identifier>" $(git -C $P for-each-ref --format='%(refname:short)' refs/heads) -- backend frontend | head -40
+git -C $P stash list
+```
+
+Use 2–4 keywords/identifiers that a previous attempt would have used
+(table names, route paths, function names). Record what you found in
+the plan's **Prior art** section, including "none found" and the
+searches you ran. If another branch already does part of this, the plan
+must build on it (or explain why not) — never create a parallel version
+(e.g. a second teams/accounts schema). If the task overlaps an
+**In progress** row owned by another session, stop and ask the user.
+
+## 2. Claim it in TASKS.md
+
+Edit **`$P/TASKS.md`** (the primary
+checkout; this is the only copy that counts — never edit TASKS.md on a
+feature branch). Add a row to **In progress** and a handoff block:
+
+```markdown
+### <type>/<topic>
+- Worktree: ${P%/*}/abstractly-<topic>
+- Goal: <one sentence>
+- Loop step: 3 — plan written, waiting for user approval
+- Last update: <YYYY-MM-DD HH:MM> by start-task
+- Next action: user reviews docs/plans/<type>-<topic>.md
+```
+
+Commit only that file on main (the hooks allow TASKS.md-only commits):
+`git -C $P commit -m "TASKS: claim <type>/<topic>" -- TASKS.md`
+
+## 3. Branch + worktree
+
+```bash
+P=$(git rev-parse --path-format=absolute --git-common-dir); P=${P%/.git}   # primary checkout
+git -C $P worktree add ${P%/*}/abstractly-<topic> -b <type>/<topic> main
+cd ${P%/*}/abstractly-<topic>
+ln -s $P/backend/venv backend/venv   # share the venv
+python backend/tests/create_sample_lease.py                         # gitignored fixture
+```
+
+`<type>` is `feature`, `fix`, or `chore`. From here on, work **only**
+in this worktree. The primary checkout stays on `main`.
+
+## 4. Write the plan, then stop
+
+Write `docs/plans/<type>-<topic>.md` in the worktree (committed with the
+branch, so the reviewer sees it):
+
+- **Goal** — one paragraph, user-visible outcome.
+- **Prior art** — what step 1 found, and the searches run.
+- **Approach** — numbered steps.
+- **Files to change** / **Files not to touch**.
+- **Team isolation & roles** — which routes/queries are touched and how
+  each is scoped (rule 3). If it needs document-level isolation that
+  `main` lacks, say so and build on `feature/team-isolation`'s `team_id`.
+- **Feature flag** — if not tester-ready, the env var (default off).
+- **Verification** — the tests to add, and for UI work the pages and
+  widths for headless screenshots.
+- **Out of scope** — tempting extras you will *not* do.
+- **Open questions** — anything the user must decide.
+
+Commit it (`git add docs/plans/... && git commit -m "Plan: <topic>"`).
+
+**STOP.** Show the user the plan path and a 5-line summary. Do not
+start building until the user explicitly approves in chat. When they
+do, update the TASKS.md handoff (`Loop step: 4 — building`).

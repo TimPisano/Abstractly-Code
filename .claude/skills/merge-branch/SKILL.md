@@ -1,66 +1,90 @@
 ---
 name: merge-branch
-description: Merge a branch into main and push main — only when the user explicitly says to merge in this session. Pulls main, merges, runs the full test suite, pushes, smoke tests, updates TASKS.md, removes the worktree. Steps 10-13 of The Loop (CLAUDE.md).
+description: Merge one reviewed branch into main, push main, smoke test, update TASKS.md, remove the worktree. Loop steps 11-13. User-only — the user types /merge-branch <branch> in the designated merger session; that typed command is the approval.
+argument-hint: "<branch>"
+disable-model-invocation: true
 ---
 
 # merge-branch
 
-Steps 10–13 of The Loop. **Never run this skill speculatively.**
-CLAUDE.md rule 2 is absolute: never merge into `main` or push `main`
-unless the user explicitly says so *in that session*. If you weren't
-just told to merge this specific branch, stop and ask — don't infer
-approval from an earlier "looks good" on the diff.
+> `$P` = the primary checkout (normally `~/dev/projects/lease-abstraction`, always on `main`). Each Bash call that uses it starts with
+> `P=$(git rev-parse --path-format=absolute --git-common-dir); P=${P%/.git}`.
+> Task worktrees live beside it: `${P%/*}/abstractly-<topic>`.
 
-## 1. Confirm approval, then prep
+Branch to merge: **$ARGUMENTS**
 
-- Confirm the branch name and that the user approved merging it now.
-- `git status` on the main checkout — stash or commit anything already
-  there before switching/pulling (never discard uncommitted work).
-- `git pull` to get local `main` current with `origin` first, so you're
-  not merging onto a stale base.
+The user typing `/merge-branch <branch>` in this session is the approval
+(CLAUDE.md rule 2). The project hooks recorded it for this session only,
+for 2 hours, and they enforce a **single repo-wide merge lock**: if
+another session is merging, every main-changing command here is blocked.
+Don't work around a block — report it and wait.
+
+If `$ARGUMENTS` is empty or ambiguous, ask which branch. Merge only that
+branch. Approval for one branch never covers another.
+
+All commands run in the **primary checkout**
+`$P` (the only place `main` lives).
+
+## 1. Preconditions — stop and report if any fails
+
+```bash
+P=$(git rev-parse --path-format=absolute --git-common-dir); P=${P%/.git}   # primary checkout
+python3 $P/.claude/hooks/guard.py merge-lock status   # must be free or this session
+git -C $P status --short                               # must be clean except TASKS.md / drafts/
+git -C $P fetch -q origin
+git -C $P log --oneline origin/main..main              # unpushed local commits on main?
+git -C $P log --oneline main..origin/main              # remote ahead?
+```
+
+- If local `main` has unpushed commits that **aren't** TASKS.md
+  bookkeeping or this merge, list them and ask the user whether they
+  approved them — pushing would ship them too.
+- TASKS.md must show the branch in **Ready for review** with a MERGE
+  verdict. If not, ask whether to run `/review-branch` first.
+- `git -C $P pull --ff-only` if remote is ahead.
 
 ## 2. Merge
 
-- Check `TASKS.md`'s recommended merge order and any noted file
-  overlaps with other open branches before merging — merge in that
-  order, and expect the specific conflicts already flagged there.
-- `git merge <branch>` (no `--squash` unless the user asked for one;
-  this repo's convention is small real commits, not squashed history).
-- Resolve conflicts per `TASKS.md`'s guidance (e.g. "take t12's
-  version" style notes). If a conflict shows up that TASKS.md didn't
-  anticipate, stop and flag it rather than guessing.
-
-## 3. Full test suite
-
-```
-python backend/tests/run_all_tests.py
-python backend/tests/run_all_tests.py --live   # needs run.py up locally
+```bash
+P=$(git rev-parse --path-format=absolute --git-common-dir); P=${P%/.git}   # primary checkout
+git -C $P merge --no-ff <branch> -m "Merge <branch> into main"
 ```
 
-Every failure here blocks the push — this is the last gate before
-`main` moves. Known pre-existing OCR failures are the only exception
-(CLAUDE.md rule 9).
+Any conflict outside what TASKS.md predicted → `git -C $P merge --abort`,
+release the lock (step 6), and report. Don't resolve unplanned
+conflicts by guessing.
 
-## 4. Push main
+## 3. Full test suite on merged main
 
-Only now, with tests green and the user's approval already confirmed
-in step 1: `git push origin main`. Remember `render.yaml` auto-deploys
-prod, tester, and demo from this one push — say so out loud before
-pushing if it isn't already obvious to the user in this session.
+```bash
+P=$(git rev-parse --path-format=absolute --git-common-dir); P=${P%/.git}   # primary checkout
+cd $P && backend/venv/bin/python backend/tests/run_all_tests.py
+```
 
-## 5. Smoke test
+Any non-OCR failure → **don't push**. Report it; ask whether to revert the
+merge (`git -C $P reset --hard ORIG_HEAD`, needs the user's yes).
 
-Hit the tester deployment (or whichever this push affects):
-`/health`, login, upload a sample lease + rent roll, Deal Mismatch
-Report, PDF/Excel export, T-12 cross-check. Use headless Playwright or
-`curl`/API calls — never the user's browser (CLAUDE.md rule 1).
+## 4. Push
 
-## 6. Update TASKS.md and clean up
+Tell the user in one line: "Pushing main redeploys prod, tester, and demo
+on Render." Then `git -C $P push origin main`.
 
-- Move the branch to **Done**, with its merge commit SHA.
-- Remove the merged branch's entry from any "Ready for review" /
-  "In progress" table it was in.
-- `git worktree remove <path>` for its worktree, then
-  `git branch -d <branch>` once you've confirmed nothing else needs it.
-- Log anything non-obvious in the Decisions log (e.g. a conflict
-  resolution choice that wasn't purely mechanical).
+## 5. Smoke test (headless only — never open a browser)
+
+After Render redeploys (poll `curl -s https://abstractly-tester-api.onrender.com/health`
+every ~30s, up to 10 min), check the tester deployment with `curl` and
+`node .claude/tools/screenshots.mjs https://abstractly-tester.onrender.com/`
+(Read the PNGs). Cover: `/health`, login, Maple Ridge lease + rent roll
+upload, Deal Mismatch Report, PDF/Excel export, T-12 cross-check — as
+far as possible without real credentials; say which steps need the user.
+
+## 6. Clean up and release
+
+- TASKS.md (primary): move the row to **Done** with the merge SHA and
+  smoke-test result; delete its handoff block; add a Decisions log line
+  for any non-mechanical choice. Commit `-- TASKS.md` and push main
+  again (still covered by this session's approval).
+- `git -C $P worktree remove ${P%/*}/abstractly-<topic>` (only if
+  clean — if dirty, ask) and `git -C $P branch -d <branch>`.
+- **Always** release the lock, including after a failure:
+  `python3 $P/.claude/hooks/guard.py merge-lock release ${CLAUDE_SESSION_ID}`

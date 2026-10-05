@@ -95,6 +95,7 @@ UNIT_TESTS = [
     # SS3.3 but never actually landed. All pass standalone.
     "test_analytics.py",
     "test_deal_mismatch.py",
+    "test_concessions.py",
     "test_demo_request.py",
     "test_obligations.py",
     "test_rent_roll_multiformat.py",
@@ -102,6 +103,9 @@ UNIT_TESTS = [
     "test_demo_deal_golden.py",
     "test_rent_roll_edge_cases.py",
     "test_field_extractor_party_names.py",
+    # Demo deal rent-roll/lease/T12/report polish pass (2026-10) -- data-
+    # driven regression guard, see its own module docstring.
+    "test_demo_deal_regression.py",
 ]
 
 LIVE_API_TESTS = [
