@@ -43,12 +43,16 @@ flat monthly fee per team: Starter $499 ($399/mo annual), Growth $1,250
 - **Auth/roles:** session cookie (admin) + bearer token (`app/` client).
   `viewer < analyst < admin` via `@require_role(...)`; `is_owner` /
   `@require_owner` is separate and never implied by admin.
-- **Tenancy:** `main` has `teams` + `users.team_id`, but **only for
-  billing/quota** (`usage_events`, `/teams`). Document tables (`leases`,
-  `discrepancies`, `alerts`, `tasks`, …) are **not** scoped: any user on a
-  deployment can see every lease on it. Firms are isolated per deployment
-  for now. `feature/team-isolation` extends `team_id` to documents —
-  build on that, never a second `accounts`/`account_id` schema.
+- **Tenancy:** real document-level isolation, merged as `3cff20b`.
+  `teams` + `users.team_id` cover billing/quota (`usage_events`,
+  `/teams`), and document tables (`leases`, `discrepancies`, `alerts`,
+  `tasks`, …) carry `team_id` too — every document query must be scoped
+  to the **authenticated caller's** `team_id`, never one from the
+  request. `tests/test_team_isolation.py` and
+  `test_team_isolation_fixes.py` are the regression suite; add a case
+  there for any new document table or route. Never introduce a second
+  `accounts`/`account_id` schema. Multiple firms can now share a
+  deployment, though each still has its own in practice.
 - **Render** (`render.yaml`, free plan, no `branch:` → all deploy from
   `main`): `abstractly-api` + `abstractly` (prod),
   `abstractly-tester-api` + `abstractly-tester` (beta, own DB),
