@@ -6,11 +6,12 @@ Commit changes with `git commit -m "TASKS: …" -- TASKS.md` (the hooks
 allow TASKS.md-only commits on main). `/status` reconciles this file with
 git; `/session-handoff` writes the handoff blocks; `/resume-task` reads them.
 
-Last reconciled with git: **2026-10-04** (`chore/agent-os` merged + pushed).
-`main` @ `c6c873d` == `origin/main`. `+a/−b` = commits ahead/behind `main`;
-the per-branch numbers below predate the agent-os merge. **Every open branch
-now also conflicts in `TASKS.md`** (they each edited it before that rule
-existed) — resolve those by taking **main's** TASKS.md, not the branch's.
+Last reconciled with git: **2026-10-04** (`feature/team-isolation`
+merged + pushed). `main` @ `3cff20b` == `origin/main`.
+`+a/−b` = commits ahead/behind `main`; the per-branch numbers below
+predate recent merges. **Every open branch now also conflicts in
+`TASKS.md`** (they each edited it before that rule existed) — resolve
+those by taking **main's** TASKS.md, not the branch's.
 
 ## ⚠️ Waiting on you
 
@@ -20,12 +21,8 @@ existed) — resolve those by taking **main's** TASKS.md, not the branch's.
    like "merge these one at a time" does **not** arm it (`guard.py:427-440`,
    `APPROVE_RE`). A 2026-10-04 request to merge five branches in one pass
    was therefore not actionable; see #2–#4 for what each one actually needs.
-2. **`feature/team-isolation` is ready to merge** (2026-10-04). All review
-   findings fixed in `fe520c9` (pushed); reviewer **MERGE**, security-auditor
-   **MERGE** on that commit; suite 79/79. Merge it **before**
-   `fix/concession-detection` and before rebasing `feature/deal-assistant`
-   (see its row for the expected conflicts). Merging needs
-   `/merge-branch feature/team-isolation` typed in the merger session.
+2. ~~`feature/team-isolation` is ready to merge~~ — **MERGED** `3cff20b`
+   (2026-10-04), pushed, all three services healthy. See Done.
 3. **`feature/pricing-page` r2 would ship the Render billing change you
    asked to hold.** Its tip commit *is* `0a0d7a2` — the persistent disk +
    `plan: free → starter` on `abstractly-api` and `abstractly-tester-api`,
@@ -34,19 +31,23 @@ existed) — resolve those by taking **main's** TASKS.md, not the branch's.
    removed from pricing-page. To merge pricing-page frontend-only, drop or
    revert `0a0d7a2` on the branch first. Also still conflicts in
    `frontend/config.js`, and has no reviewer verdict.
-4. ~~`fix/concession-detection`~~ — **merged** `953c00a`, pushed. See Done.
+4. ~~`fix/concession-detection`~~ — **fully merged**: rounds 1–2 as
+   `953c00a`, rounds 3–4 as `f68a287` (2026-10-04). Both pushed. See Done.
    **It landed first, so `feature/team-isolation` now owes the `team_id`
-   test update.** team-isolation makes `team_id` a required arg of
+   test update** — and note rounds 3–4 added 65 more lines to
+   `test_concessions.py`, so that update is now slightly larger.
+   team-isolation makes `team_id` a required arg of
    `build_deal_mismatch_report_data` and `insert_lease`; whichever branch
    lands second must update `tests/test_concessions.py` (report/insert
-   calls + session `team_id`). That is now team-isolation's job, plus the
+   calls + session `team_id`). **Done** in `d8aeed5` on the branch, plus the
    one predicted `test_demo_deal_golden.py` conflict. (An earlier note here
    called the `team_id` test update a no-op — wrong: it referred to
    document-level `team_id` on `main`, not these required args.)
 5. ~~GateGuard decision~~ — **done**: tuned in `~/.claude/settings.json`
    (routine-Bash and per-file prompts off; destructive-command check kept).
-6. **Pick one fluted-glass hero**: `feature/pricing-page` and
-   `feature/landing-positioning` both rewrite the same marketing files.
+6. ~~Pick one fluted-glass hero~~ — **decided 2026-10-04: `feature/pricing-page`.**
+   `feature/landing-positioning` is superseded and must not be merged
+   (see its row in Ready for review for why a blend was impossible).
 7. **Render plan upgrade** — you asked (2026-10-04) to hold
    `chore/render-persistent-disk` until you confirm the plan is upgraded.
    Held. Nothing on Render was changed. Same hold applies to pricing-page's
@@ -64,6 +65,20 @@ existed) — resolve those by taking **main's** TASKS.md, not the branch's.
    merged as `ab7fb6f`. Decide whether to drop the banner, or keep it and
    correct the usage-limits clause. Related: the pricing DoD line "no
    placeholder text in the diff" fails until this is settled.
+11. ~~The marketing page makes a security claim that is false~~ —
+   **RESOLVED by merging `feature/team-isolation` (`3cff20b`).** The
+   `index.html` card "Isolated per team — Each team's documents and
+   results are only visible to that team's members" is now accurate:
+   document tables are team-scoped as of that merge, and 17
+   cross-team isolation tests pass. **CLAUDE.md is now stale on this
+   point** — its Tenancy section still says document tables are "not
+   scoped" and that `feature/team-isolation` is unmerged. Worth a
+   follow-up edit so the next session isn't misled.
+12. **`chore/contact-email` already exists** (worktree
+   `~/dev/projects/abstractly-contact-email`, tip `9171d36`), created by
+   another session. It overlaps the requested "change displayed contact
+   email to tim@getabstractly.com" work. **Check it before starting that
+   task** — do not build a parallel second version (rule 5).
 10. **`main` is 78/79 on a clean checkout, not 79/79 — correction.**
    `chore/demo-rent-roll-polish` added `test_demo_deal_regression.py`,
    which repeats the exact fixture bug #8 described: it hardcodes
@@ -86,7 +101,6 @@ existed) — resolve those by taking **main's** TASKS.md, not the branch's.
 
 | Branch | Worktree | +/− main | State |
 |---|---|---|---|
-| `feature/team-isolation` | `~/dev/projects/abstractly-teams` | +5 / 0 | **Ready to merge.** Pushed `fe520c9`. Re-reviewed 2026-10-04: reviewer MERGE, security-auditor MERGE (every original attack re-run and now fails), suite 79/79 incl. 14 new regression tests in `test_team_isolation_fixes.py` (12 fail on `b75b947`). Fixed: undo-edit cross-team write; field-edit/version-chain helpers require team_id; `/teams` + `/waitlist` owner-only; per-team natural keys (migration) for tenant-concentration alerts and T-12 discrepancies; assignments UNIQUE per team (table rebuild); live sessions re-read user/team per request; owner account protected from team admins; root report moved to `docs/reports/`. **Merge order / conflicts:** before `fix/concession-detection` (1 conflict, `test_demo_deal_golden.py`); `feature/deal-assistant` must rebase after (3 trivial `api.py` conflicts + its session-faking tests need `sync_session_user`); `TASKS.md` conflicts (take main's). **Follow-up (not blocking):** bind tokens to the user's email so an old token can't act as a different user after a deploy-time DB wipe (`auth._live_user`). |
 | `feature/loan-underwriting` | `~/dev/projects/abstractly-loan` | +2 / −16 | ~19 uncommitted files (`api.py`, `database.py`, tests, plan); not pushed. Feature-flagged off. Merge **after** team isolation (its plan defers all tenancy to it). Another session may be active — don't touch. |
 | `feature/deal-assistant` | `~/dev/projects/abstractly-assistant` | 0 / −7 | Worktree only, nothing built. Not started. |
 | `feature/calendly-booking` | `~/dev/projects/abstractly-calendly` | +1 / 0 | Branched off `7ac879b` 2026-10-04. Calendly popup on all 9 Book-a-Demo CTAs (`index.html` ×5, `pricing.html` ×4), keeping `href="#book-demo"` as a fallback so no CTA can become a dead click. **Plan written, awaiting user approval** — `docs/plans/feature-calendly-booking.md`. Key finding: the task as given would have shipped a popup that never opens — all 3 frontends run `default-src 'self'` with no external hosts, so **5** CSP directives in `render.yaml` block Calendly (script, style, frame, img, font). Prior art: none (no Calendly anywhere, any branch, any stash). Will collide with `feature/pricing-page` / `feature/landing-positioning`, which both rewrite the same two files. |
@@ -108,12 +122,12 @@ existed) — resolve those by taking **main's** TASKS.md, not the branch's.
 |---|---|---|---|
 | `fix/demo-deal-relative-dates` | `~/dev/projects/abstractly-demo-dates` | — | Pushed (`8e1084f`). Makes the Maple Ridge demo deal's dates relative to generation day (good change: kills the date drift QA_REPORT flagged). **MERGE ATTEMPTED 2026-10-04 AND ABORTED — needs a reconciliation task, not a merge.** `main` was untouched (`0545bec`). 3 conflicts vs `953c00a`, two of them semantic: (1) `expected_findings.json` — main has concession-detection's populated `monthly_dollar_impact` (89.58, 50.0) with hardcoded dates; this branch has computed dates with `monthly_dollar_impact: null`. The combination needs both, and the dollar impacts must be **re-derived for the new dates** (a concession's past/future position changes its classification), then the package regenerated. (2) `test_demo_deal_golden.py` — the two branches chose **opposite strategies for the same test**: main *pins* `today` to the fixture's as-of date to sidestep `expired_but_occupied` drift and asserts **10** findings; this branch *never* pins `today` (regenerates into a temp dir, real wall-clock, plus a freshness test that trips 2026-12-15) and asserts **7**. Someone must pick one strategy and re-derive the assertions for all 10 findings under it. Not resolvable mechanically. (3) `TASKS.md` (take main's). |
 | `docs/tester-pack` | `~/dev/projects/abstractly-tester-pack` | +7 / 0 | Overnight run, 2026-10-01: in-app Help & Guides (17 articles incl. Getting Started + troubleshooting), tester emails, 10-Q questionnaire, sales drafts updated (local). Frontend + docs only. Headless-verified at 3 widths. **Read `OVERNIGHT_REPORT.md` on the branch**: 12 product bugs found (report-page T-12 upload broken, T-12 income check never fires, only .csv/.xlsx rent rolls feed the report…). |
-| `feature/pricing-page` (round 2) | `~/dev/projects/abstractly-pricing` | +9 | Pushed `157b21d`. Flat per-team pricing ($499/$1,250/Contact us), fluted-glass hero, sticky header, Lenis, new logo. **Reviewed 2026-10-04: security-auditor MERGE (no findings at any severity); reviewer FIX FIRST — all 3 items now fixed.** (1) `4e5f213` duplicated already-merged `b6a46e9` tester routing — logic was byte-identical, resolved by taking **main's** `config.js` (`72bcef8`); the branch no longer touches that file. (2) the held Render billing change `0a0d7a2` reverted (`e06db8e`); `render.yaml` and `docs/DEPLOYMENT.md` are now byte-identical to main. (3) plan written (`docs/plans/feature-pricing-page.md`). Branch is now **frontend-only, 9 files**, merges with **zero conflicts**. Suite 78/79 — the one failure is the pre-existing main bug in #8, reproduced on plain main, not caused by this branch. Screenshots at 1440/768/375 looked at: layout correct, hero renders, prices right. **Two content blockers remain for you, both outside the review's scope — see #9.** |
-| `chore/render-persistent-disk` | `~/dev/projects/abstractly-render-disk` | +1 / 0 | Pushed (`22db0ea`). 1 GB Render disk + `DB_PATH` on `abstractly-api` and `abstractly-tester-api`, both to `plan: starter`; demo stays free by design. Config + docs only, no app code. Extracted from `feature/pricing-page` so that branch can merge frontend-only (billing change shouldn't ride on a CSS refresh). **Needs your Render dashboard actions + billing decision — nothing was changed on Render.** Verified: routing test 4/4; suite 76/77 (see the golden-test note below). Plan: `docs/plans/chore-render-persistent-disk.md`. |
-| `feature/landing-positioning` (round 2) | `~/dev/projects/abstractly-landing` | +2 / −24 | Scroll-linked fluted-glass shader, dark theme. **5 uncommitted files** (`background-fx.js`, `index.html`, `landing.css`, `pricing.html`, +1) — commit or discard first. Overlaps pricing-page round 2 (same files, competing hero). Its Book-a-Demo fix is already on main (`229ab23`). |
+| `feature/pricing-page` (round 2) | `~/dev/projects/abstractly-pricing` | +11 | **This is the design that ships** (user's 2026-10-04 decision; `feature/landing-positioning` dropped as superseded). `main` merged in and pushed as **`a50097b`** — zero conflicts, branch still frontend-only (10 files). Suite **78/79** post-merge (only the pre-existing `test_demo_deal_regression.py` bug in #10). Previewed headlessly at 1440/768/375 and looked at: dark page coherent throughout, **every card and text readable** (this branch was designed dark from the ground up — `html { background: var(--lux-black) }` with card tokens redefined to match, unlike landing-positioning which bolted dark onto a light design), new logo renders, WebGL hero bands render, flat pricing correct ($499/$1,250/Contact us), no horizontal overflow at any width. **Merging this also fixes the per-property pricing ($25/$20) currently live on production.** Earlier history: Pushed `157b21d`. Flat per-team pricing ($499/$1,250/Contact us), fluted-glass hero, sticky header, Lenis, new logo. **Reviewed 2026-10-04: security-auditor MERGE (no findings at any severity); reviewer FIX FIRST — all 3 items now fixed.** (1) `4e5f213` duplicated already-merged `b6a46e9` tester routing — logic was byte-identical, resolved by taking **main's** `config.js` (`72bcef8`); the branch no longer touches that file. (2) the held Render billing change `0a0d7a2` reverted (`e06db8e`); `render.yaml` and `docs/DEPLOYMENT.md` are now byte-identical to main. (3) plan written (`docs/plans/feature-pricing-page.md`). Branch is now **frontend-only, 9 files**, merges with **zero conflicts**. Suite 78/79 — the one failure is the pre-existing main bug in #8, reproduced on plain main, not caused by this branch. Screenshots at 1440/768/375 looked at: layout correct, hero renders, prices right. **Two content blockers remain for you, both outside the review's scope — see #9.** |
+| `chore/render-persistent-disk` | `~/dev/projects/abstractly-render-disk` | +3 / 0 | **Scope narrowed 2026-10-04 on the user's instruction: `abstractly-api` ONLY.** The tester's `plan: starter` + disk were trimmed out (`6d14c95`); tester and demo both stay `plan: free` with no disk. `main` merged in; pushed as **`95b609f`**, merges clean. Post-merge `render.yaml` verified by parsing: one `disk:` (`abstractly-data`, `/app/data`, 1 GB) and one `plan: starter`, both on `abstractly-api`, with `DB_PATH` correctly under `envVars`. Docs corrected in three places that still assumed two disks — dashboard steps are now prod-only, and the verification procedure no longer says to rehearse on the tester (that service has no disk, so it would prove nothing). Suite **78/79** post-merge; routing test 4/4. The user is attaching the disk on Render themselves. Earlier history: Pushed (`22db0ea`). 1 GB Render disk + `DB_PATH` on `abstractly-api` and `abstractly-tester-api`, both to `plan: starter`; demo stays free by design. Config + docs only, no app code. Extracted from `feature/pricing-page` so that branch can merge frontend-only (billing change shouldn't ride on a CSS refresh). **Needs your Render dashboard actions + billing decision — nothing was changed on Render.** Verified: routing test 4/4; suite 76/77 (see the golden-test note below). Plan: `docs/plans/chore-render-persistent-disk.md`. |
+| ~~`feature/landing-positioning`~~ | `~/dev/projects/abstractly-landing` | — | **SUPERSEDED 2026-10-04 by `feature/pricing-page` — do not merge.** The user's decision: pricing-page carries the design that ships (dark theme, cursor spotlight, new logo, flat per-team pricing, Book-a-call CTAs). Kept on the branch for history, not queued. Work done before the call, in case any of it is ever wanted back: its 4 uncommitted files were committed (`ff2fe40`) and `main` was merged in and resolved (`a2c2a23`, pushed) — that merge is **knowingly broken** and must never reach `main`: `main`'s cards keep ivory backgrounds while the branch's dark token override turns their text ivory too, so the sample-report card and all three pricing cards render white-on-white. Root cause worth remembering: the two branches are **opposite polarity** (`main` = light body, dark hero; this branch = dark body sitewide), so "take main's code but this branch's design" was unsatisfiable — the design *was* the code. `main` also already had a better-engineered fluted-glass hero (`landing.js` `#heroCanvas`: respects `prefers-reduced-motion`, pauses off-screen and on hidden tabs, CSS fallback) than this branch's WebGL `#bgfx-canvas` re-implementation. |
 
-Recommended order: pricing-page → (decide the hero) landing-positioning →
-team-isolation (when built) → loan-underwriting.
+Recommended order: pricing-page → team-isolation (when built) →
+loan-underwriting. (`landing-positioning` dropped — superseded.)
 
 ## Blocked (needs you)
 
@@ -135,24 +149,31 @@ team-isolation (when built) → loan-underwriting.
 
 ## Up next
 
-1. ~~Push local `main`~~ — done (`c6c873d`, agent-os merged).
-2. **Merge train, in this order** — each needs you to type
-   `/merge-branch <branch>`, and the suite re-run after each:
-   `fix/concession-detection` → `fix/demo-deal-relative-dates` →
-   `chore/demo-rent-roll-polish` (the last three all touch the demo deal /
-   `test_demo_deal_golden.py`, so order matters). Then `docs/tester-pack`.
-   `feature/pricing-page` only after `0a0d7a2` is dropped from it (#3);
-   `feature/team-isolation` is ready now and should go first (#2);
-   `chore/render-persistent-disk` only after you confirm the Render upgrade (#7).
+1. ~~Push local `main`~~ — done (`f68a287`).
+2. **Merge train.** Each needs the user to type `/merge-branch <branch>`
+   — **the slash form specifically**: prose like "approve merge X" arms
+   the lock but records `branch: ""`, and the merge-branch skill is
+   `disable-model-invocation`, so it cannot be run any other way.
+   Queued next, verified to merge **clean**:
+   `chore/render-persistent-disk`.
+   Then: `feature/pricing-page` (ready, `a50097b`, merges clean — but
+   see the two content blockers in #9 and the false trust claim in #11);
+   `feature/team-isolation` (#2); `docs/tester-pack`.
+   `fix/demo-deal-relative-dates` still needs a reconciliation task, not
+   a merge. `feature/landing-positioning` is **superseded — do not merge**.
 3. Smoke test the tester deployment **beyond `/health`**: login, Maple Ridge
    lease + rent roll upload, Deal Mismatch Report, PDF/Excel export, T-12.
    Only `/health` was checked on 2026-10-04 (all three healthy); the rest
    needs real tester credentials.
 4. Invite the first 3 testers.
 5. Finish `feature/team-isolation`; then rebase `feature/loan-underwriting` on it.
-6. `research/section8` (`2050414`, pushed) — Section 8 / LIHTC market
-   research by another session, docs only. Decide whether it's a product
-   direction or shelf it.
+6. ~~`research/section8`~~ — **merged** `2fbb542`. The strategic question
+   it raises is still open and is yours: the briefing's own finding is
+   that for **Housing Choice Voucher** properties the PHA does the
+   certification paperwork, not the owner — so the compliance burden
+   Abstractly could help with sits with **Project-Based Section 8 and
+   LIHTC**, where the owner/agent certifies. Decide whether that's a
+   product direction or shelf it; merging the doc didn't decide it.
 
 ### Housekeeping (safe, low priority — each needs a yes)
 
@@ -177,7 +198,10 @@ team-isolation (when built) → loan-underwriting.
 | Branch | Merged as | Notes |
 |---|---|---|
 | `chore/demo-rent-roll-polish` | `5d7fdbe` | Maple Ridge demo polish: rent rolls regenerated as PMS-style **xlsx + landscape PDF** (the two `*_appfolio.csv` files are **deleted** — fixture paths now point at the xlsx), 15 lease PDFs reworked into real-looking signed leases, T-12 as a clean operating statement, institutional-looking Deal Mismatch Report PDF (`deal_mismatch_export.py`), new data-driven `test_demo_deal_regression.py`, and `DEMO_WALKTHROUGH.md` sales script. Merged 2026-10-04. **Resolved on the branch, not on main:** the primary checkout is read-only (rule 3), so a combined conflict resolution is impossible there — merged `main` *into* the branch instead (`5139d3f`), fixed it up (`7dec3d1`), pushed, after which main merged with **zero conflicts**. Two stale expectations fixed in the process: the golden test still demanded `"(no concession shown)"` though the new rent rolls carry a real `$0.00` Concessions column (detector deliberately distinguishes the two; all 3 `concession_missing` findings fire correctly), and the demo README still warned that `detect_concession_missing` is a stub — false since `953c00a`, and actively misleading for sales. Suite **79/79 on merged main**, run post-merge. |
-| `fix/concession-detection` | `953c00a` | Real concession detection in the Deal Mismatch Report (was a stub): new `app/concessions.py` (free months, recurring discounts, one-time credits, net effective rent), `concessions` from both extraction engines, rent-roll Concession column, new `concession_missing`/`concession_mismatch`/`concession_expiring` checks, effective-rent-aware `rent_mismatch`. Maple Ridge now catches all 10 planted issues ($45,355/yr). Two reviewer rounds fixed (`7b67ea2`, `1380198`). Merged 2026-10-04 on the user's typed approval, **ahead of team-isolation** (TASKS.md recommended the reverse): verified safe to reorder — no new API routes, `api.py` untouched, its only SQL is in a test helper, so there was no team-scoping surface. Cost of the reorder: team-isolation inherits the `test_demo_deal_golden.py` conflict and owes the `test_concessions.py` `team_id` update (#4). Suite **78/78 on merged main**, run post-merge; also fixed the long-standing 76/77 fixture bug (#8). `concessions` deliberately **not** editable in the lease-detail UI yet. |
+| `feature/team-isolation` | `3cff20b` | **Real document-level multi-tenancy** — `team_id` on `leases`, `discrepancies`, `alerts`, `tasks`, etc., every document query scoped to the authenticated caller's team. 82 files, +7948/−1117; adds `app/sample_deal.py`, `tests/_session_users.py`, `test_team_isolation.py`, `test_team_isolation_fixes.py`, `frontend/app/team-setup.html`. Merged 2026-10-04 on the user's typed approval; **zero conflicts** (the branch had already merged `main` at `0ae5438` and fixed the `test_concessions.py` `team_id` args in `d8aeed5`). Suite **80/81 in a clean worktree** — only the pre-existing `test_demo_deal_regression.py` bug (#10). Smoke test: all three services `{"status":"healthy"}` across a 2-minute window after the push, and `/app/team-setup.html` (a file new on this branch) returns 200 with real content on the tester — which is what proves the redeploy actually landed rather than just reporting healthy. **Caveat:** merged tip `d8aeed5` is 2 commits past the reviewed `fe520c9`; both are a mechanical `main` merge and a 6-line test-only change, so no unreviewed production code shipped. **Follow-up (not blocking):** bind tokens to the user's email so an old token can't act as a different user after a deploy-time DB wipe (`auth._live_user`); and `feature/deal-assistant` must rebase (3 trivial `api.py` conflicts + its session-faking tests need `sync_session_user`). |
+| `research/section8` | `2fbb542` | Section 8 / LIHTC founder's briefing by another session — **docs only**, one new file (`docs/research/section8.md`, 224 lines), nothing modified, no code. Merged 2026-10-04 on the user's typed approval. Scanned before merging: no placeholders, secrets, or PII (the one `$KEY` hit is a shell variable in an illustrative `curl` example). Suite **79/79** post-merge; all three Render services healthy after the push. **Merging it was not a product decision** — see Up next #6 for the question it leaves open. Deviation worth noting: it was in Up next, not "Ready for review", and carried no reviewer verdict; merged anyway as an additive docs-only file on the user's explicit instruction. |
+| `fix/concession-detection` (rounds 3–4) | `f68a287` | **Merged 2026-10-04 on the user's typed approval; pushed.** The gap this closed: `main`'s earlier merge `953c00a` took the branch at its **round-2** tip (`1380198`), but the branch then gained three more commits — `b4e3f4a` (round 3), `1f8ec14` (round 4), `500f368` — which stayed unmerged and untracked while TASKS.md recorded the branch as done. Brings `concessions.py` (+40/−9), `rent_roll_import.py`, and 65 lines of tests: interest-free deposit wording no longer reads as free rent, default **forfeiture** clauses now read as negations rather than conditional grants, credits **applied to the deposit** are excluded from effective rent, plus clause-splitting fixes. Merged **clean** (prepared on the branch first — see the Decisions log). Suite **79/79** in the primary checkout post-merge; note that is 78/79 on a clean checkout because of the separate fixture bug in #10, which this merge does not touch. All three Render services returned `{"status":"healthy"}` after the push and all three frontends serve bytes identical to `main`. Backend-only change, so no UI to verify. |
+| `fix/concession-detection` (rounds 1–2) | `953c00a` | Real concession detection in the Deal Mismatch Report (was a stub): new `app/concessions.py` (free months, recurring discounts, one-time credits, net effective rent), `concessions` from both extraction engines, rent-roll Concession column, new `concession_missing`/`concession_mismatch`/`concession_expiring` checks, effective-rent-aware `rent_mismatch`. Maple Ridge now catches all 10 planted issues ($45,355/yr). Two reviewer rounds fixed (`7b67ea2`, `1380198`). Merged 2026-10-04 on the user's typed approval, **ahead of team-isolation** (TASKS.md recommended the reverse): verified safe to reorder — no new API routes, `api.py` untouched, its only SQL is in a test helper, so there was no team-scoping surface. Cost of the reorder: team-isolation inherits the `test_demo_deal_golden.py` conflict and owes the `test_concessions.py` `team_id` update (#4). Suite **78/78 on merged main**, run post-merge; also fixed the long-standing 76/77 fixture bug (#8). `concessions` deliberately **not** editable in the lease-detail UI yet. |
 | `chore/agent-os` | `c6c873d` | Agent OS v2: CLAUDE.md + Definition of Done, TASKS.md handoff blocks, reviewer/security-auditor/qa-tester/ui-checker, 8 skills incl. resume-task + prompt-builder, safety hooks, `docs/HOW_TO_RUN_AGENTS.md`. Merged 2026-10-04 by finishing the half-done merge left in the primary checkout (21 staged files already matched the branch tip byte-for-byte; only `TASKS.md` needed resolving — taken as a union of main's rent-roll-hardening facts and the branch's new structure). Suite **77/77 on merged main**, run post-merge. Pushed; prod + tester + demo all returned `{"status":"healthy"}`. Tooling/docs only — no app code, so the redeploy was functionally a no-op. |
 | `fix/rent-roll-hardening` | `03cebb5` (+ test fix `74d3237`) | Rent roll edge cases, negative-rent sign loss, multifamily tenant extraction, route roles, Maple Ridge demo deal + golden test. Merged on the user's explicit instruction. An earlier "72/72 passed" claim in this file was false; real post-merge run was 76/77, fixed to 77/77. Pushed. |
 | `feature/usage-limits` | `ab7fb6f` | `teams` table + `users.team_id`, per-team limits/quotas, upload dedup (billing scope only). Pushed. |
@@ -190,6 +214,39 @@ team-isolation (when built) → loan-underwriting.
 
 ## Decisions log
 
+- **2026-10-04 — `backend/.env` in the primary checkout corrupts test
+  results in BOTH directions; trust a clean worktree instead.** Merging
+  team-isolation gave **72/81** in the primary checkout — 8 failures
+  (`test_ai_extraction`, `test_async_extraction`, `test_cache`,
+  `test_audit_trail`, `test_team_isolation`, …) that looked like a broken
+  merge. All 8 were artifacts of the local `.env`: `EMAIL_USER` /
+  `EMAIL_APP_PASSWORD` make the team-setup test's "no email backend
+  configured" assumption false, and `LEASE_AI_EXTRACTION` /
+  `LEASE_EXTRACTION_ENGINE` redirect the extraction tests. The same file
+  simultaneously makes a genuinely broken test *pass* (#10). Re-run in a
+  clean detached worktree: **80/81**, only the known failure. The clean
+  worktree is also closer to production, since Render injects env vars
+  from the dashboard and has no `.env` file. **Run the suite in a clean
+  worktree before believing any failure or any pass.**
+
+- **2026-10-04 — A merged branch can still have unmerged commits; check
+  the tip, not the table.** `fix/concession-detection` was recorded here
+  as done at `953c00a`, but that merge captured only its round-2 tip.
+  Rounds 3 and 4 — real detection fixes, reviewed, with a MERGE verdict
+  in their own commit messages — sat on `origin` for days, invisible
+  because the row said "merged". Found by diffing `main` against every
+  branch tip rather than trusting this file. Worth repeating that diff
+  periodically: `git diff --stat main...<branch>` on anything marked
+  done is cheap and catches exactly this.
+- **2026-10-04 — Two unrelated reports collided on `OVERNIGHT_REPORT.md`.**
+  Merging rounds 3–4 hit an add/add conflict on that filename: `main`'s
+  copy is the `chore/demo-rent-roll-polish` run, the branch's is the
+  concession run. Taking either side would have silently destroyed a
+  document, so both were kept — `main`'s keeps the root filename and the
+  concession one moved to `docs/reports/2026-10-02-concession-detection.md`,
+  following the path `feature/team-isolation` already chose. Root-level
+  `OVERNIGHT_REPORT.md` is a collision magnet for autonomous runs;
+  new reports should go straight to `docs/reports/<date>-<topic>.md`.
 - **2026-10-04 — Resolve merge conflicts on the feature branch, not on
   `main`.** The read-only-primary-checkout hook (rule 3) blocks editing any
   file but `TASKS.md` there, so a conflict needing a *combined* resolution

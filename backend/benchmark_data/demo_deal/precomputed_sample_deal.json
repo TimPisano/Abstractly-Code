@@ -1,0 +1,3858 @@
+[
+  {
+    "filename": "A102_jordan_boone.pdf",
+    "extracted_fields": {
+      "tenant": {
+        "value": "Jordan Boone",
+        "source": {
+          "page": 1,
+          "quote": "t Residential Management, LLC (\"Management\"), and Jordan Boone (\"Resident\"), for the apartment home described below. 1. PREMI"
+        },
+        "confidence": "high"
+      },
+      "landlord": {
+        "value": "Maple Ridge Apartments Owner, LLC",
+        "source": {
+          "page": 1,
+          "quote": "greement (\"Lease\") is entered into by and between Maple Ridge Apartments Owner, LLC (\"Owner\"), acting through its agent Cordant Residential Man"
+        },
+        "confidence": "high"
+      },
+      "rent_amount": {
+        "value": "$1,075.00",
+        "source": {
+          "page": 1,
+          "quote": "-month premium. 3. RENT. Resident shall pay Owner Base Rent of $1,075.00 per month, due in advance on or before the 1st day of each"
+        },
+        "confidence": "high"
+      },
+      "lease_start_date": {
+        "value": "July 1, 2026",
+        "source": {
+          "page": 1,
+          "quote": "ly 500 square feet. 2. LEASE TERM. The Lease Term begins on July 1, 2026 and ends on June 30, 2027 (12 months). Unless eit"
+        },
+        "confidence": "medium"
+      },
+      "lease_end_date": {
+        "value": "June 30, 2027",
+        "source": {
+          "page": 1,
+          "quote": "E TERM. The Lease Term begins on July 1, 2026 and ends on June 30, 2027 (12 months). Unless either party gives written no"
+        },
+        "confidence": "medium"
+      },
+      "property_address": {
+        "value": "4500 Maple Ridge Trail, Dallas, TX 75248, Suite A102",
+        "source": {
+          "page": 1,
+          "quote": "from Owner, Suite A102 at Maple Ridge Apartments, located at 4500 Maple Ridge Trail, Dallas, TX 75248, Suite A102 (the \"Premises\"), consisting of a studio apartment, approximately"
+        },
+        "confidence": "high"
+      },
+      "security_deposit": {
+        "value": "$1,075.00",
+        "source": {
+          "page": 1,
+          "quote": "nt at its designated payment portal or office. 4. SECURITY DEPOSIT. Resident has paid Owner a security deposit of $1,075.00, refundable in accordance with Texas Property Cod"
+        },
+        "confidence": "high"
+      },
+      "cam_charges": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "rent_escalation": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "renewal_options": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "termination_options": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "permitted_use": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "exclusivity_clause": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "insurance_requirements": {
+        "value": "$100,000",
+        "source": {
+          "page": 1,
+          "quote": "or no commercial or business purpose. 8. RENTER'S INSURANCE. Resident shall maintain a renter's liability insurance policy with minimum liability coverage of $100,000 throughout the Lease Term and shall provide Manag"
+        },
+        "confidence": "high"
+      },
+      "default_cure_period": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "square_footage": {
+        "value": "500 sq ft",
+        "source": {
+          "page": 1,
+          "quote": "he \"Premises\"), consisting of a studio apartment, approximately 500 square feet. 2. LEASE TERM. The Lease Term begins on July 1,"
+        },
+        "confidence": "high"
+      }
+    },
+    "document_type": "lease",
+    "date_candidates": {
+      "start": [
+        {
+          "value": "July 1, 2026",
+          "source": {
+            "page": 1,
+            "quote": "ly 500 square feet. 2. LEASE TERM. The Lease Term begins on July 1, 2026 and ends on June 30, 2027 (12 months). Unless eit"
+          }
+        }
+      ],
+      "end": [
+        {
+          "value": "June 30, 2027",
+          "source": {
+            "page": 1,
+            "quote": "E TERM. The Lease Term begins on July 1, 2026 and ends on June 30, 2027 (12 months). Unless either party gives written no"
+          }
+        }
+      ]
+    },
+    "display_name": "Jordan Boone - 4500 Maple Ridge Trail, Dallas, TX 75248, Suite A102",
+    "source_page_start": 1,
+    "source_page_end": 2
+  },
+  {
+    "filename": "A104_perpetua_zabrinsky.pdf",
+    "extracted_fields": {
+      "tenant": {
+        "value": "Perpetua Zabrinsky",
+        "source": {
+          "page": 1,
+          "quote": "t Residential Management, LLC (\"Management\"), and Perpetua Zabrinsky (\"Resident\"), for the apartment home described below. 1. PREMI"
+        },
+        "confidence": "high"
+      },
+      "landlord": {
+        "value": "Maple Ridge Apartments Owner, LLC",
+        "source": {
+          "page": 1,
+          "quote": "greement (\"Lease\") is entered into by and between Maple Ridge Apartments Owner, LLC (\"Owner\"), acting through its agent Cordant Residential Man"
+        },
+        "confidence": "high"
+      },
+      "rent_amount": {
+        "value": "$1,075.00",
+        "source": {
+          "page": 1,
+          "quote": "-month premium. 3. RENT. Resident shall pay Owner Base Rent of $1,075.00 per month, due in advance on or before the 1st day of each"
+        },
+        "confidence": "high"
+      },
+      "lease_start_date": {
+        "value": "October 1, 2025",
+        "source": {
+          "page": 1,
+          "quote": "ly 500 square feet. 2. LEASE TERM. The Lease Term begins on October 1, 2025 and ends on September 30, 2026 (12 months). Unles"
+        },
+        "confidence": "medium"
+      },
+      "lease_end_date": {
+        "value": "September 30, 2026",
+        "source": {
+          "page": 1,
+          "quote": "ERM. The Lease Term begins on October 1, 2025 and ends on September 30, 2026 (12 months). Unless either party gives written no"
+        },
+        "confidence": "medium"
+      },
+      "property_address": {
+        "value": "4500 Maple Ridge Trail, Dallas, TX 75248, Suite A104",
+        "source": {
+          "page": 1,
+          "quote": "from Owner, Suite A104 at Maple Ridge Apartments, located at 4500 Maple Ridge Trail, Dallas, TX 75248, Suite A104 (the \"Premises\"), consisting of a studio apartment, approximately"
+        },
+        "confidence": "high"
+      },
+      "security_deposit": {
+        "value": "$1,075.00",
+        "source": {
+          "page": 1,
+          "quote": "er months of the Lease Term, remain unchanged. 4. SECURITY DEPOSIT. Resident has paid Owner a security deposit of $1,075.00, refundable in accordance with Texas Property Cod"
+        },
+        "confidence": "high"
+      },
+      "cam_charges": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "rent_escalation": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "renewal_options": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "termination_options": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "permitted_use": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "exclusivity_clause": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "insurance_requirements": {
+        "value": "$100,000",
+        "source": {
+          "page": 2,
+          "quote": "r no commercial or business purpose. 8. RENTER'S INSURANCE. Resident shall maintain a renter's liability insurance policy with minimum liability coverage of $100,000 throughout the Lease Term and shall provide Manag"
+        },
+        "confidence": "high"
+      },
+      "default_cure_period": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "square_footage": {
+        "value": "500 sq ft",
+        "source": {
+          "page": 1,
+          "quote": "he \"Premises\"), consisting of a studio apartment, approximately 500 square feet. 2. LEASE TERM. The Lease Term begins on October"
+        },
+        "confidence": "high"
+      }
+    },
+    "document_type": "lease",
+    "date_candidates": {
+      "start": [
+        {
+          "value": "October 1, 2025",
+          "source": {
+            "page": 1,
+            "quote": "ly 500 square feet. 2. LEASE TERM. The Lease Term begins on October 1, 2025 and ends on September 30, 2026 (12 months). Unles"
+          }
+        }
+      ],
+      "end": [
+        {
+          "value": "September 30, 2026",
+          "source": {
+            "page": 1,
+            "quote": "ERM. The Lease Term begins on October 1, 2025 and ends on September 30, 2026 (12 months). Unless either party gives written no"
+          }
+        }
+      ]
+    },
+    "display_name": "Perpetua Zabrinsky - 4500 Maple Ridge Trail, Dallas, TX 75248, Suite A104",
+    "source_page_start": 1,
+    "source_page_end": 2
+  },
+  {
+    "filename": "B104_magnolia_fennimore.pdf",
+    "extracted_fields": {
+      "tenant": {
+        "value": "Magnolia Fennimore",
+        "source": {
+          "page": 1,
+          "quote": "t Residential Management, LLC (\"Management\"), and Magnolia Fennimore (\"Resident\"), for the apartment home described below. 1. PREMI"
+        },
+        "confidence": "high"
+      },
+      "landlord": {
+        "value": "Maple Ridge Apartments Owner, LLC",
+        "source": {
+          "page": 1,
+          "quote": "greement (\"Lease\") is entered into by and between Maple Ridge Apartments Owner, LLC (\"Owner\"), acting through its agent Cordant Residential Man"
+        },
+        "confidence": "high"
+      },
+      "rent_amount": {
+        "value": "$1,285.00",
+        "source": {
+          "page": 1,
+          "quote": "-month premium. 3. RENT. Resident shall pay Owner Base Rent of $1,285.00 per month, due in advance on or before the 1st day of each"
+        },
+        "confidence": "high"
+      },
+      "lease_start_date": {
+        "value": "September 1, 2025",
+        "source": {
+          "page": 1,
+          "quote": "ly 700 square feet. 2. LEASE TERM. The Lease Term begins on September 1, 2025 and ends on August 31, 2026 (12 months). Unless e"
+        },
+        "confidence": "medium"
+      },
+      "lease_end_date": {
+        "value": "August 31, 2026",
+        "source": {
+          "page": 1,
+          "quote": "M. The Lease Term begins on September 1, 2025 and ends on August 31, 2026 (12 months). Unless either party gives written no"
+        },
+        "confidence": "medium"
+      },
+      "property_address": {
+        "value": "4500 Maple Ridge Trail, Dallas, TX 75248, Suite B104",
+        "source": {
+          "page": 1,
+          "quote": "from Owner, Suite B104 at Maple Ridge Apartments, located at 4500 Maple Ridge Trail, Dallas, TX 75248, Suite B104 (the \"Premises\"), consisting of a one-bedroom, one-bath apartment,"
+        },
+        "confidence": "high"
+      },
+      "security_deposit": {
+        "value": "$1,285.00",
+        "source": {
+          "page": 1,
+          "quote": "nt at its designated payment portal or office. 4. SECURITY DEPOSIT. Resident has paid Owner a security deposit of $1,285.00, refundable in accordance with Texas Property Cod"
+        },
+        "confidence": "high"
+      },
+      "cam_charges": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "rent_escalation": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "renewal_options": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "termination_options": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "permitted_use": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "exclusivity_clause": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "insurance_requirements": {
+        "value": "$100,000",
+        "source": {
+          "page": 1,
+          "quote": "or no commercial or business purpose. 8. RENTER'S INSURANCE. Resident shall maintain a renter's liability insurance policy with minimum liability coverage of $100,000 throughout the Lease Term and shall provide Manag"
+        },
+        "confidence": "high"
+      },
+      "default_cure_period": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "square_footage": {
+        "value": "700 sq ft",
+        "source": {
+          "page": 1,
+          "quote": "consisting of a one-bedroom, one-bath apartment, approximately 700 square feet. 2. LEASE TERM. The Lease Term begins on Septembe"
+        },
+        "confidence": "high"
+      }
+    },
+    "document_type": "lease",
+    "date_candidates": {
+      "start": [
+        {
+          "value": "September 1, 2025",
+          "source": {
+            "page": 1,
+            "quote": "ly 700 square feet. 2. LEASE TERM. The Lease Term begins on September 1, 2025 and ends on August 31, 2026 (12 months). Unless e"
+          }
+        }
+      ],
+      "end": [
+        {
+          "value": "August 31, 2026",
+          "source": {
+            "page": 1,
+            "quote": "M. The Lease Term begins on September 1, 2025 and ends on August 31, 2026 (12 months). Unless either party gives written no"
+          }
+        }
+      ]
+    },
+    "display_name": "Magnolia Fennimore - 4500 Maple Ridge Trail, Dallas, TX 75248, Suite B104",
+    "source_page_start": 1,
+    "source_page_end": 2
+  },
+  {
+    "filename": "B303_delphine_ordway.pdf",
+    "extracted_fields": {
+      "tenant": {
+        "value": "Delphine Ordway",
+        "source": {
+          "page": 1,
+          "quote": "t Residential Management, LLC (\"Management\"), and Delphine Ordway (\"Resident\"), for the apartment home described below. 1. PREMI"
+        },
+        "confidence": "high"
+      },
+      "landlord": {
+        "value": "Maple Ridge Apartments Owner, LLC",
+        "source": {
+          "page": 1,
+          "quote": "greement (\"Lease\") is entered into by and between Maple Ridge Apartments Owner, LLC (\"Owner\"), acting through its agent Cordant Residential Man"
+        },
+        "confidence": "high"
+      },
+      "rent_amount": {
+        "value": "$1,310.00",
+        "source": {
+          "page": 1,
+          "quote": "-month premium. 3. RENT. Resident shall pay Owner Base Rent of $1,310.00 per month, due in advance on or before the 1st day of each"
+        },
+        "confidence": "high"
+      },
+      "lease_start_date": {
+        "value": "February 1, 2026",
+        "source": {
+          "page": 1,
+          "quote": "ly 700 square feet. 2. LEASE TERM. The Lease Term begins on February 1, 2026 and ends on January 31, 2027 (12 months). Unless"
+        },
+        "confidence": "medium"
+      },
+      "lease_end_date": {
+        "value": "January 31, 2027",
+        "source": {
+          "page": 1,
+          "quote": "RM. The Lease Term begins on February 1, 2026 and ends on January 31, 2027 (12 months). Unless either party gives written no"
+        },
+        "confidence": "medium"
+      },
+      "property_address": {
+        "value": "4500 Maple Ridge Trail, Dallas, TX 75248, Suite B303",
+        "source": {
+          "page": 1,
+          "quote": "from Owner, Suite B303 at Maple Ridge Apartments, located at 4500 Maple Ridge Trail, Dallas, TX 75248, Suite B303 (the \"Premises\"), consisting of a one-bedroom, one-bath apartment,"
+        },
+        "confidence": "high"
+      },
+      "security_deposit": {
+        "value": "$1,310.00",
+        "source": {
+          "page": 1,
+          "quote": "nt at its designated payment portal or office. 4. SECURITY DEPOSIT. Resident has paid Owner a security deposit of $1,310.00, refundable in accordance with Texas Property Cod"
+        },
+        "confidence": "high"
+      },
+      "cam_charges": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "rent_escalation": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "renewal_options": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "termination_options": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "permitted_use": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "exclusivity_clause": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "insurance_requirements": {
+        "value": "$100,000",
+        "source": {
+          "page": 1,
+          "quote": "or no commercial or business purpose. 8. RENTER'S INSURANCE. Resident shall maintain a renter's liability insurance policy with minimum liability coverage of $100,000 throughout the Lease Term and shall provide Manag"
+        },
+        "confidence": "high"
+      },
+      "default_cure_period": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "square_footage": {
+        "value": "700 sq ft",
+        "source": {
+          "page": 1,
+          "quote": "consisting of a one-bedroom, one-bath apartment, approximately 700 square feet. 2. LEASE TERM. The Lease Term begins on February"
+        },
+        "confidence": "high"
+      }
+    },
+    "document_type": "lease",
+    "date_candidates": {
+      "start": [
+        {
+          "value": "February 1, 2026",
+          "source": {
+            "page": 1,
+            "quote": "ly 700 square feet. 2. LEASE TERM. The Lease Term begins on February 1, 2026 and ends on January 31, 2027 (12 months). Unless"
+          }
+        }
+      ],
+      "end": [
+        {
+          "value": "January 31, 2027",
+          "source": {
+            "page": 1,
+            "quote": "RM. The Lease Term begins on February 1, 2026 and ends on January 31, 2027 (12 months). Unless either party gives written no"
+          }
+        }
+      ]
+    },
+    "display_name": "Delphine Ordway - 4500 Maple Ridge Trail, Dallas, TX 75248, Suite B303",
+    "source_page_start": 1,
+    "source_page_end": 2
+  },
+  {
+    "filename": "C203_chester_tigerstrom.pdf",
+    "extracted_fields": {
+      "tenant": {
+        "value": "Chester Tigerstrom",
+        "source": {
+          "page": 1,
+          "quote": "t Residential Management, LLC (\"Management\"), and Chester Tigerstrom (\"Resident\"), for the apartment home described below. 1. PREMI"
+        },
+        "confidence": "high"
+      },
+      "landlord": {
+        "value": "Maple Ridge Apartments Owner, LLC",
+        "source": {
+          "page": 1,
+          "quote": "greement (\"Lease\") is entered into by and between Maple Ridge Apartments Owner, LLC (\"Owner\"), acting through its agent Cordant Residential Man"
+        },
+        "confidence": "high"
+      },
+      "rent_amount": {
+        "value": "$1,290.00",
+        "source": {
+          "page": 1,
+          "quote": "-month premium. 3. RENT. Resident shall pay Owner Base Rent of $1,290.00 per month, due in advance on or before the 1st day of each"
+        },
+        "confidence": "high"
+      },
+      "lease_start_date": {
+        "value": "March 1, 2025",
+        "source": {
+          "page": 1,
+          "quote": "ly 700 square feet. 2. LEASE TERM. The Lease Term begins on March 1, 2025 and ends on February 28, 2026 (12 months). Unless"
+        },
+        "confidence": "medium"
+      },
+      "lease_end_date": {
+        "value": "February 28, 2026",
+        "source": {
+          "page": 1,
+          "quote": "TERM. The Lease Term begins on March 1, 2025 and ends on February 28, 2026 (12 months). Unless either party gives written no"
+        },
+        "confidence": "medium"
+      },
+      "property_address": {
+        "value": "4500 Maple Ridge Trail, Dallas, TX 75248, Suite C203",
+        "source": {
+          "page": 1,
+          "quote": "from Owner, Suite C203 at Maple Ridge Apartments, located at 4500 Maple Ridge Trail, Dallas, TX 75248, Suite C203 (the \"Premises\"), consisting of a one-bedroom, one-bath apartment,"
+        },
+        "confidence": "high"
+      },
+      "security_deposit": {
+        "value": "$1,290.00",
+        "source": {
+          "page": 1,
+          "quote": "nt at its designated payment portal or office. 4. SECURITY DEPOSIT. Resident has paid Owner a security deposit of $1,290.00, refundable in accordance with Texas Property Cod"
+        },
+        "confidence": "high"
+      },
+      "cam_charges": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "rent_escalation": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "renewal_options": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "termination_options": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "permitted_use": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "exclusivity_clause": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "insurance_requirements": {
+        "value": "$100,000",
+        "source": {
+          "page": 1,
+          "quote": "or no commercial or business purpose. 8. RENTER'S INSURANCE. Resident shall maintain a renter's liability insurance policy with minimum liability coverage of $100,000 throughout the Lease Term and shall provide Manag"
+        },
+        "confidence": "high"
+      },
+      "default_cure_period": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "square_footage": {
+        "value": "700 sq ft",
+        "source": {
+          "page": 1,
+          "quote": "consisting of a one-bedroom, one-bath apartment, approximately 700 square feet. 2. LEASE TERM. The Lease Term begins on March 1,"
+        },
+        "confidence": "high"
+      }
+    },
+    "document_type": "lease",
+    "date_candidates": {
+      "start": [
+        {
+          "value": "March 1, 2025",
+          "source": {
+            "page": 1,
+            "quote": "ly 700 square feet. 2. LEASE TERM. The Lease Term begins on March 1, 2025 and ends on February 28, 2026 (12 months). Unless"
+          }
+        }
+      ],
+      "end": [
+        {
+          "value": "February 28, 2026",
+          "source": {
+            "page": 1,
+            "quote": "TERM. The Lease Term begins on March 1, 2025 and ends on February 28, 2026 (12 months). Unless either party gives written no"
+          }
+        }
+      ]
+    },
+    "display_name": "Chester Tigerstrom - 4500 Maple Ridge Trail, Dallas, TX 75248, Suite C203",
+    "source_page_start": 1,
+    "source_page_end": 2
+  },
+  {
+    "filename": "D104_juniper_foss.pdf",
+    "extracted_fields": {
+      "tenant": {
+        "value": "Juniper Foss",
+        "source": {
+          "page": 1,
+          "quote": "t Residential Management, LLC (\"Management\"), and Juniper Foss (\"Resident\"), for the apartment home described below. 1. PREMI"
+        },
+        "confidence": "high"
+      },
+      "landlord": {
+        "value": "Maple Ridge Apartments Owner, LLC",
+        "source": {
+          "page": 1,
+          "quote": "greement (\"Lease\") is entered into by and between Maple Ridge Apartments Owner, LLC (\"Owner\"), acting through its agent Cordant Residential Man"
+        },
+        "confidence": "high"
+      },
+      "rent_amount": {
+        "value": "$1,285.00",
+        "source": {
+          "page": 1,
+          "quote": "-month premium. 3. RENT. Resident shall pay Owner Base Rent of $1,285.00 per month, due in advance on or before the 1st day of each"
+        },
+        "confidence": "high"
+      },
+      "lease_start_date": {
+        "value": "December 1, 2025",
+        "source": {
+          "page": 1,
+          "quote": "ly 700 square feet. 2. LEASE TERM. The Lease Term begins on December 1, 2025 and ends on November 30, 2026 (12 months). Unless"
+        },
+        "confidence": "medium"
+      },
+      "lease_end_date": {
+        "value": "November 30, 2026",
+        "source": {
+          "page": 1,
+          "quote": "RM. The Lease Term begins on December 1, 2025 and ends on November 30, 2026 (12 months). Unless either party gives written no"
+        },
+        "confidence": "medium"
+      },
+      "property_address": {
+        "value": "4500 Maple Ridge Trail, Dallas, TX 75248, Suite D104",
+        "source": {
+          "page": 1,
+          "quote": "from Owner, Suite D104 at Maple Ridge Apartments, located at 4500 Maple Ridge Trail, Dallas, TX 75248, Suite D104 (the \"Premises\"), consisting of a one-bedroom, one-bath apartment,"
+        },
+        "confidence": "high"
+      },
+      "security_deposit": {
+        "value": "$1,285.00",
+        "source": {
+          "page": 1,
+          "quote": "nt at its designated payment portal or office. 4. SECURITY DEPOSIT. Resident has paid Owner a security deposit of $1,285.00, refundable in accordance with Texas Property Cod"
+        },
+        "confidence": "high"
+      },
+      "cam_charges": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "rent_escalation": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "renewal_options": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "termination_options": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "permitted_use": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "exclusivity_clause": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "insurance_requirements": {
+        "value": "$100,000",
+        "source": {
+          "page": 1,
+          "quote": "or no commercial or business purpose. 8. RENTER'S INSURANCE. Resident shall maintain a renter's liability insurance policy with minimum liability coverage of $100,000 throughout the Lease Term and shall provide Manag"
+        },
+        "confidence": "high"
+      },
+      "default_cure_period": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "square_footage": {
+        "value": "700 sq ft",
+        "source": {
+          "page": 1,
+          "quote": "consisting of a one-bedroom, one-bath apartment, approximately 700 square feet. 2. LEASE TERM. The Lease Term begins on December"
+        },
+        "confidence": "high"
+      }
+    },
+    "document_type": "lease",
+    "date_candidates": {
+      "start": [
+        {
+          "value": "December 1, 2025",
+          "source": {
+            "page": 1,
+            "quote": "ly 700 square feet. 2. LEASE TERM. The Lease Term begins on December 1, 2025 and ends on November 30, 2026 (12 months). Unless"
+          }
+        }
+      ],
+      "end": [
+        {
+          "value": "November 30, 2026",
+          "source": {
+            "page": 1,
+            "quote": "RM. The Lease Term begins on December 1, 2025 and ends on November 30, 2026 (12 months). Unless either party gives written no"
+          }
+        }
+      ]
+    },
+    "display_name": "Juniper Foss - 4500 Maple Ridge Trail, Dallas, TX 75248, Suite D104",
+    "source_page_start": 1,
+    "source_page_end": 2
+  },
+  {
+    "filename": "D203_omar_ostrander.pdf",
+    "extracted_fields": {
+      "tenant": {
+        "value": "Omar Ostrander",
+        "source": {
+          "page": 1,
+          "quote": "t Residential Management, LLC (\"Management\"), and Omar Ostrander (\"Resident\"), for the apartment home described below. 1. PREMI"
+        },
+        "confidence": "high"
+      },
+      "landlord": {
+        "value": "Maple Ridge Apartments Owner, LLC",
+        "source": {
+          "page": 1,
+          "quote": "greement (\"Lease\") is entered into by and between Maple Ridge Apartments Owner, LLC (\"Owner\"), acting through its agent Cordant Residential Man"
+        },
+        "confidence": "high"
+      },
+      "rent_amount": {
+        "value": "$1,300.00",
+        "source": {
+          "page": 1,
+          "quote": "-month premium. 3. RENT. Resident shall pay Owner Base Rent of $1,300.00 per month, due in advance on or before the 1st day of each"
+        },
+        "confidence": "high"
+      },
+      "lease_start_date": {
+        "value": "March 1, 2026",
+        "source": {
+          "page": 1,
+          "quote": "ly 700 square feet. 2. LEASE TERM. The Lease Term begins on March 1, 2026 and ends on February 28, 2027 (12 months). Unless"
+        },
+        "confidence": "medium"
+      },
+      "lease_end_date": {
+        "value": "February 28, 2027",
+        "source": {
+          "page": 1,
+          "quote": "TERM. The Lease Term begins on March 1, 2026 and ends on February 28, 2027 (12 months). Unless either party gives written no"
+        },
+        "confidence": "medium"
+      },
+      "property_address": {
+        "value": "4500 Maple Ridge Trail, Dallas, TX 75248, Suite D203",
+        "source": {
+          "page": 1,
+          "quote": "from Owner, Suite D203 at Maple Ridge Apartments, located at 4500 Maple Ridge Trail, Dallas, TX 75248, Suite D203 (the \"Premises\"), consisting of a one-bedroom, one-bath apartment,"
+        },
+        "confidence": "high"
+      },
+      "security_deposit": {
+        "value": "$1,300.00",
+        "source": {
+          "page": 1,
+          "quote": "nt at its designated payment portal or office. 4. SECURITY DEPOSIT. Resident has paid Owner a security deposit of $1,300.00, refundable in accordance with Texas Property Cod"
+        },
+        "confidence": "high"
+      },
+      "cam_charges": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "rent_escalation": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "renewal_options": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "termination_options": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "permitted_use": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "exclusivity_clause": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "insurance_requirements": {
+        "value": "$100,000",
+        "source": {
+          "page": 1,
+          "quote": "or no commercial or business purpose. 8. RENTER'S INSURANCE. Resident shall maintain a renter's liability insurance policy with minimum liability coverage of $100,000 throughout the Lease Term and shall provide Manag"
+        },
+        "confidence": "high"
+      },
+      "default_cure_period": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "square_footage": {
+        "value": "700 sq ft",
+        "source": {
+          "page": 1,
+          "quote": "consisting of a one-bedroom, one-bath apartment, approximately 700 square feet. 2. LEASE TERM. The Lease Term begins on March 1,"
+        },
+        "confidence": "high"
+      }
+    },
+    "document_type": "lease",
+    "date_candidates": {
+      "start": [
+        {
+          "value": "March 1, 2026",
+          "source": {
+            "page": 1,
+            "quote": "ly 700 square feet. 2. LEASE TERM. The Lease Term begins on March 1, 2026 and ends on February 28, 2027 (12 months). Unless"
+          }
+        }
+      ],
+      "end": [
+        {
+          "value": "February 28, 2027",
+          "source": {
+            "page": 1,
+            "quote": "TERM. The Lease Term begins on March 1, 2026 and ends on February 28, 2027 (12 months). Unless either party gives written no"
+          }
+        }
+      ]
+    },
+    "display_name": "Omar Ostrander - 4500 Maple Ridge Trail, Dallas, TX 75248, Suite D203",
+    "source_page_start": 1,
+    "source_page_end": 2
+  },
+  {
+    "filename": "E301_fiona_rourke.pdf",
+    "extracted_fields": {
+      "tenant": {
+        "value": "Fiona Rourke",
+        "source": {
+          "page": 1,
+          "quote": "t Residential Management, LLC (\"Management\"), and Fiona Rourke (\"Resident\"), for the apartment home described below. 1. PREMI"
+        },
+        "confidence": "high"
+      },
+      "landlord": {
+        "value": "Maple Ridge Apartments Owner, LLC",
+        "source": {
+          "page": 1,
+          "quote": "greement (\"Lease\") is entered into by and between Maple Ridge Apartments Owner, LLC (\"Owner\"), acting through its agent Cordant Residential Man"
+        },
+        "confidence": "high"
+      },
+      "rent_amount": {
+        "value": "$1,290.00",
+        "source": {
+          "page": 1,
+          "quote": "-month premium. 3. RENT. Resident shall pay Owner Base Rent of $1,290.00 per month, due in advance on or before the 1st day of each"
+        },
+        "confidence": "high"
+      },
+      "lease_start_date": {
+        "value": "April 1, 2026",
+        "source": {
+          "page": 1,
+          "quote": "ly 700 square feet. 2. LEASE TERM. The Lease Term begins on April 1, 2026 and ends on March 31, 2027 (12 months). Unless ei"
+        },
+        "confidence": "medium"
+      },
+      "lease_end_date": {
+        "value": "March 31, 2027",
+        "source": {
+          "page": 1,
+          "quote": "TERM. The Lease Term begins on April 1, 2026 and ends on March 31, 2027 (12 months). Unless either party gives written no"
+        },
+        "confidence": "medium"
+      },
+      "property_address": {
+        "value": "4500 Maple Ridge Trail, Dallas, TX 75248, Suite E301",
+        "source": {
+          "page": 1,
+          "quote": "from Owner, Suite E301 at Maple Ridge Apartments, located at 4500 Maple Ridge Trail, Dallas, TX 75248, Suite E301 (the \"Premises\"), consisting of a one-bedroom, one-bath apartment,"
+        },
+        "confidence": "high"
+      },
+      "security_deposit": {
+        "value": "$1,290.00",
+        "source": {
+          "page": 1,
+          "quote": "er months of the Lease Term, remain unchanged. 4. SECURITY DEPOSIT. Resident has paid Owner a security deposit of $1,290.00, refundable in accordance with Texas Property Cod"
+        },
+        "confidence": "high"
+      },
+      "cam_charges": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "rent_escalation": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "renewal_options": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "termination_options": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "permitted_use": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "exclusivity_clause": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "insurance_requirements": {
+        "value": "$100,000",
+        "source": {
+          "page": 1,
+          "quote": "or no commercial or business purpose. 8. RENTER'S INSURANCE. Resident shall maintain a renter's liability insurance policy with minimum liability coverage of $100,000 throughout the Lease Term and shall provide Manag"
+        },
+        "confidence": "high"
+      },
+      "default_cure_period": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "square_footage": {
+        "value": "700 sq ft",
+        "source": {
+          "page": 1,
+          "quote": "consisting of a one-bedroom, one-bath apartment, approximately 700 square feet. 2. LEASE TERM. The Lease Term begins on April 1,"
+        },
+        "confidence": "high"
+      }
+    },
+    "document_type": "lease",
+    "date_candidates": {
+      "start": [
+        {
+          "value": "April 1, 2026",
+          "source": {
+            "page": 1,
+            "quote": "ly 700 square feet. 2. LEASE TERM. The Lease Term begins on April 1, 2026 and ends on March 31, 2027 (12 months). Unless ei"
+          }
+        }
+      ],
+      "end": [
+        {
+          "value": "March 31, 2027",
+          "source": {
+            "page": 1,
+            "quote": "TERM. The Lease Term begins on April 1, 2026 and ends on March 31, 2027 (12 months). Unless either party gives written no"
+          }
+        }
+      ]
+    },
+    "display_name": "Fiona Rourke - 4500 Maple Ridge Trail, Dallas, TX 75248, Suite E301",
+    "source_page_start": 1,
+    "source_page_end": 2
+  },
+  {
+    "filename": "G204_junia_levine.pdf",
+    "extracted_fields": {
+      "tenant": {
+        "value": "Junia Levine",
+        "source": {
+          "page": 1,
+          "quote": "t Residential Management, LLC (\"Management\"), and Junia Levine (\"Resident\"), for the apartment home described below. 1. PREMI"
+        },
+        "confidence": "high"
+      },
+      "landlord": {
+        "value": "Maple Ridge Apartments Owner, LLC",
+        "source": {
+          "page": 1,
+          "quote": "greement (\"Lease\") is entered into by and between Maple Ridge Apartments Owner, LLC (\"Owner\"), acting through its agent Cordant Residential Man"
+        },
+        "confidence": "high"
+      },
+      "rent_amount": {
+        "value": "$1,695.00",
+        "source": {
+          "page": 1,
+          "quote": "-month premium. 3. RENT. Resident shall pay Owner Base Rent of $1,695.00 per month, due in advance on or before the 1st day of each"
+        },
+        "confidence": "high"
+      },
+      "lease_start_date": {
+        "value": "November 1, 2025",
+        "source": {
+          "page": 1,
+          "quote": "1,050 square feet. 2. LEASE TERM. The Lease Term begins on November 1, 2025 and ends on October 31, 2026 (12 months). Unless"
+        },
+        "confidence": "medium"
+      },
+      "lease_end_date": {
+        "value": "October 31, 2026",
+        "source": {
+          "page": 1,
+          "quote": "RM. The Lease Term begins on November 1, 2025 and ends on October 31, 2026 (12 months). Unless either party gives written no"
+        },
+        "confidence": "medium"
+      },
+      "property_address": {
+        "value": "4500 Maple Ridge Trail, Dallas, TX 75248, Suite G204",
+        "source": {
+          "page": 1,
+          "quote": "from Owner, Suite G204 at Maple Ridge Apartments, located at 4500 Maple Ridge Trail, Dallas, TX 75248, Suite G204 (the \"Premises\"), consisting of a two-bedroom, two-bath apartment,"
+        },
+        "confidence": "high"
+      },
+      "security_deposit": {
+        "value": "$1,695.00",
+        "source": {
+          "page": 1,
+          "quote": "nt at its designated payment portal or office. 4. SECURITY DEPOSIT. Resident has paid Owner a security deposit of $1,695.00, refundable in accordance with Texas Property Cod"
+        },
+        "confidence": "high"
+      },
+      "cam_charges": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "rent_escalation": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "renewal_options": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "termination_options": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "permitted_use": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "exclusivity_clause": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "insurance_requirements": {
+        "value": "$100,000",
+        "source": {
+          "page": 1,
+          "quote": "or no commercial or business purpose. 8. RENTER'S INSURANCE. Resident shall maintain a renter's liability insurance policy with minimum liability coverage of $100,000 throughout the Lease Term and shall provide Manag"
+        },
+        "confidence": "high"
+      },
+      "default_cure_period": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "square_footage": {
+        "value": "1,050 sq ft",
+        "source": {
+          "page": 1,
+          "quote": "consisting of a two-bedroom, two-bath apartment, approximately 1,050 square feet. 2. LEASE TERM. The Lease Term begins on November"
+        },
+        "confidence": "high"
+      }
+    },
+    "document_type": "lease",
+    "date_candidates": {
+      "start": [
+        {
+          "value": "November 1, 2025",
+          "source": {
+            "page": 1,
+            "quote": "1,050 square feet. 2. LEASE TERM. The Lease Term begins on November 1, 2025 and ends on October 31, 2026 (12 months). Unless"
+          }
+        }
+      ],
+      "end": [
+        {
+          "value": "October 31, 2026",
+          "source": {
+            "page": 1,
+            "quote": "RM. The Lease Term begins on November 1, 2025 and ends on October 31, 2026 (12 months). Unless either party gives written no"
+          }
+        }
+      ]
+    },
+    "display_name": "Junia Levine - 4500 Maple Ridge Trail, Dallas, TX 75248, Suite G204",
+    "source_page_start": 1,
+    "source_page_end": 2
+  },
+  {
+    "filename": "G303_sonny_bostwick.pdf",
+    "extracted_fields": {
+      "tenant": {
+        "value": "Sonny Bostwick",
+        "source": {
+          "page": 1,
+          "quote": "t Residential Management, LLC (\"Management\"), and Sonny Bostwick (\"Resident\"), for the apartment home described below. 1. PREMI"
+        },
+        "confidence": "high"
+      },
+      "landlord": {
+        "value": "Maple Ridge Apartments Owner, LLC",
+        "source": {
+          "page": 1,
+          "quote": "greement (\"Lease\") is entered into by and between Maple Ridge Apartments Owner, LLC (\"Owner\"), acting through its agent Cordant Residential Man"
+        },
+        "confidence": "high"
+      },
+      "rent_amount": {
+        "value": "$1,725.00",
+        "source": {
+          "page": 1,
+          "quote": "-month premium. 3. RENT. Resident shall pay Owner Base Rent of $1,725.00 per month, due in advance on or before the 1st day of each"
+        },
+        "confidence": "high"
+      },
+      "lease_start_date": {
+        "value": "May 1, 2026",
+        "source": {
+          "page": 1,
+          "quote": "1,050 square feet. 2. LEASE TERM. The Lease Term begins on May 1, 2026 and ends on April 30, 2027 (12 months). Unless ei"
+        },
+        "confidence": "medium"
+      },
+      "lease_end_date": {
+        "value": "April 30, 2027",
+        "source": {
+          "page": 1,
+          "quote": "SE TERM. The Lease Term begins on May 1, 2026 and ends on April 30, 2027 (12 months). Unless either party gives written no"
+        },
+        "confidence": "medium"
+      },
+      "property_address": {
+        "value": "4500 Maple Ridge Trail, Dallas, TX 75248, Suite G303",
+        "source": {
+          "page": 1,
+          "quote": "from Owner, Suite G303 at Maple Ridge Apartments, located at 4500 Maple Ridge Trail, Dallas, TX 75248, Suite G303 (the \"Premises\"), consisting of a two-bedroom, two-bath apartment,"
+        },
+        "confidence": "high"
+      },
+      "security_deposit": {
+        "value": "$1,725.00",
+        "source": {
+          "page": 1,
+          "quote": "nt at its designated payment portal or office. 4. SECURITY DEPOSIT. Resident has paid Owner a security deposit of $1,725.00, refundable in accordance with Texas Property Cod"
+        },
+        "confidence": "high"
+      },
+      "cam_charges": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "rent_escalation": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "renewal_options": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "termination_options": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "permitted_use": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "exclusivity_clause": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "insurance_requirements": {
+        "value": "$100,000",
+        "source": {
+          "page": 1,
+          "quote": "or no commercial or business purpose. 8. RENTER'S INSURANCE. Resident shall maintain a renter's liability insurance policy with minimum liability coverage of $100,000 throughout the Lease Term and shall provide Manag"
+        },
+        "confidence": "high"
+      },
+      "default_cure_period": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "square_footage": {
+        "value": "1,050 sq ft",
+        "source": {
+          "page": 1,
+          "quote": "consisting of a two-bedroom, two-bath apartment, approximately 1,050 square feet. 2. LEASE TERM. The Lease Term begins on May 1, 2"
+        },
+        "confidence": "high"
+      }
+    },
+    "document_type": "lease",
+    "date_candidates": {
+      "start": [
+        {
+          "value": "May 1, 2026",
+          "source": {
+            "page": 1,
+            "quote": "1,050 square feet. 2. LEASE TERM. The Lease Term begins on May 1, 2026 and ends on April 30, 2027 (12 months). Unless ei"
+          }
+        }
+      ],
+      "end": [
+        {
+          "value": "April 30, 2027",
+          "source": {
+            "page": 1,
+            "quote": "SE TERM. The Lease Term begins on May 1, 2026 and ends on April 30, 2027 (12 months). Unless either party gives written no"
+          }
+        }
+      ]
+    },
+    "display_name": "Sonny Bostwick - 4500 Maple Ridge Trail, Dallas, TX 75248, Suite G303",
+    "source_page_start": 1,
+    "source_page_end": 2
+  },
+  {
+    "filename": "H104_ellery_fairweather.pdf",
+    "extracted_fields": {
+      "tenant": {
+        "value": "Ellery Fairweather",
+        "source": {
+          "page": 1,
+          "quote": "t Residential Management, LLC (\"Management\"), and Ellery Fairweather (\"Resident\"), for the apartment home described below. 1. PREMI"
+        },
+        "confidence": "high"
+      },
+      "landlord": {
+        "value": "Maple Ridge Apartments Owner, LLC",
+        "source": {
+          "page": 1,
+          "quote": "greement (\"Lease\") is entered into by and between Maple Ridge Apartments Owner, LLC (\"Owner\"), acting through its agent Cordant Residential Man"
+        },
+        "confidence": "high"
+      },
+      "rent_amount": {
+        "value": "$1,720.00",
+        "source": {
+          "page": 1,
+          "quote": "-month premium. 3. RENT. Resident shall pay Owner Base Rent of $1,720.00 per month, due in advance on or before the 1st day of each"
+        },
+        "confidence": "high"
+      },
+      "lease_start_date": {
+        "value": "June 1, 2025",
+        "source": {
+          "page": 1,
+          "quote": "1,050 square feet. 2. LEASE TERM. The Lease Term begins on June 1, 2025 and ends on May 31, 2026 (12 months). Unless eith"
+        },
+        "confidence": "medium"
+      },
+      "lease_end_date": {
+        "value": "May 31, 2026",
+        "source": {
+          "page": 1,
+          "quote": "E TERM. The Lease Term begins on June 1, 2025 and ends on May 31, 2026 (12 months). Unless either party gives written no"
+        },
+        "confidence": "medium"
+      },
+      "property_address": {
+        "value": "4500 Maple Ridge Trail, Dallas, TX 75248, Suite H104",
+        "source": {
+          "page": 1,
+          "quote": "from Owner, Suite H104 at Maple Ridge Apartments, located at 4500 Maple Ridge Trail, Dallas, TX 75248, Suite H104 (the \"Premises\"), consisting of a two-bedroom, two-bath apartment,"
+        },
+        "confidence": "high"
+      },
+      "security_deposit": {
+        "value": "$1,720.00",
+        "source": {
+          "page": 1,
+          "quote": "nt at its designated payment portal or office. 4. SECURITY DEPOSIT. Resident has paid Owner a security deposit of $1,720.00, refundable in accordance with Texas Property Cod"
+        },
+        "confidence": "high"
+      },
+      "cam_charges": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "rent_escalation": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "renewal_options": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "termination_options": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "permitted_use": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "exclusivity_clause": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "insurance_requirements": {
+        "value": "$100,000",
+        "source": {
+          "page": 1,
+          "quote": "or no commercial or business purpose. 8. RENTER'S INSURANCE. Resident shall maintain a renter's liability insurance policy with minimum liability coverage of $100,000 throughout the Lease Term and shall provide Manag"
+        },
+        "confidence": "high"
+      },
+      "default_cure_period": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "square_footage": {
+        "value": "1,050 sq ft",
+        "source": {
+          "page": 1,
+          "quote": "consisting of a two-bedroom, two-bath apartment, approximately 1,050 square feet. 2. LEASE TERM. The Lease Term begins on June 1,"
+        },
+        "confidence": "high"
+      }
+    },
+    "document_type": "lease",
+    "date_candidates": {
+      "start": [
+        {
+          "value": "June 1, 2025",
+          "source": {
+            "page": 1,
+            "quote": "1,050 square feet. 2. LEASE TERM. The Lease Term begins on June 1, 2025 and ends on May 31, 2026 (12 months). Unless eith"
+          }
+        }
+      ],
+      "end": [
+        {
+          "value": "May 31, 2026",
+          "source": {
+            "page": 1,
+            "quote": "E TERM. The Lease Term begins on June 1, 2025 and ends on May 31, 2026 (12 months). Unless either party gives written no"
+          }
+        }
+      ]
+    },
+    "display_name": "Ellery Fairweather - 4500 Maple Ridge Trail, Dallas, TX 75248, Suite H104",
+    "source_page_start": 1,
+    "source_page_end": 2
+  },
+  {
+    "filename": "H204_camille_vasilenko.pdf",
+    "extracted_fields": {
+      "tenant": {
+        "value": "Camille Vasilenko",
+        "source": {
+          "page": 1,
+          "quote": "t Residential Management, LLC (\"Management\"), and Camille Vasilenko (\"Resident\"), for the apartment home described below. 1. PREMI"
+        },
+        "confidence": "high"
+      },
+      "landlord": {
+        "value": "Maple Ridge Apartments Owner, LLC",
+        "source": {
+          "page": 1,
+          "quote": "greement (\"Lease\") is entered into by and between Maple Ridge Apartments Owner, LLC (\"Owner\"), acting through its agent Cordant Residential Man"
+        },
+        "confidence": "high"
+      },
+      "rent_amount": {
+        "value": "$1,710.00",
+        "source": {
+          "page": 1,
+          "quote": "-month premium. 3. RENT. Resident shall pay Owner Base Rent of $1,710.00 per month, due in advance on or before the 1st day of each"
+        },
+        "confidence": "high"
+      },
+      "lease_start_date": {
+        "value": "September 1, 2025",
+        "source": {
+          "page": 1,
+          "quote": "1,050 square feet. 2. LEASE TERM. The Lease Term begins on September 1, 2025 and ends on August 31, 2026 (12 months). Unless e"
+        },
+        "confidence": "medium"
+      },
+      "lease_end_date": {
+        "value": "August 31, 2026",
+        "source": {
+          "page": 1,
+          "quote": "M. The Lease Term begins on September 1, 2025 and ends on August 31, 2026 (12 months). Unless either party gives written no"
+        },
+        "confidence": "medium"
+      },
+      "property_address": {
+        "value": "4500 Maple Ridge Trail, Dallas, TX 75248, Suite H204",
+        "source": {
+          "page": 1,
+          "quote": "from Owner, Suite H204 at Maple Ridge Apartments, located at 4500 Maple Ridge Trail, Dallas, TX 75248, Suite H204 (the \"Premises\"), consisting of a two-bedroom, two-bath apartment,"
+        },
+        "confidence": "high"
+      },
+      "security_deposit": {
+        "value": "$1,710.00",
+        "source": {
+          "page": 1,
+          "quote": "nt at its designated payment portal or office. 4. SECURITY DEPOSIT. Resident has paid Owner a security deposit of $1,710.00, refundable in accordance with Texas Property Cod"
+        },
+        "confidence": "high"
+      },
+      "cam_charges": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "rent_escalation": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "renewal_options": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "termination_options": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "permitted_use": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "exclusivity_clause": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "insurance_requirements": {
+        "value": "$100,000",
+        "source": {
+          "page": 1,
+          "quote": "or no commercial or business purpose. 8. RENTER'S INSURANCE. Resident shall maintain a renter's liability insurance policy with minimum liability coverage of $100,000 throughout the Lease Term and shall provide Manag"
+        },
+        "confidence": "high"
+      },
+      "default_cure_period": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "square_footage": {
+        "value": "1,050 sq ft",
+        "source": {
+          "page": 1,
+          "quote": "consisting of a two-bedroom, two-bath apartment, approximately 1,050 square feet. 2. LEASE TERM. The Lease Term begins on Septembe"
+        },
+        "confidence": "high"
+      }
+    },
+    "document_type": "lease",
+    "date_candidates": {
+      "start": [
+        {
+          "value": "September 1, 2025",
+          "source": {
+            "page": 1,
+            "quote": "1,050 square feet. 2. LEASE TERM. The Lease Term begins on September 1, 2025 and ends on August 31, 2026 (12 months). Unless e"
+          }
+        }
+      ],
+      "end": [
+        {
+          "value": "August 31, 2026",
+          "source": {
+            "page": 1,
+            "quote": "M. The Lease Term begins on September 1, 2025 and ends on August 31, 2026 (12 months). Unless either party gives written no"
+          }
+        }
+      ]
+    },
+    "display_name": "Camille Vasilenko - 4500 Maple Ridge Trail, Dallas, TX 75248, Suite H204",
+    "source_page_start": 1,
+    "source_page_end": 2
+  },
+  {
+    "filename": "I204_miriam_petrosyan.pdf",
+    "extracted_fields": {
+      "tenant": {
+        "value": "Miriam Petrosyan",
+        "source": {
+          "page": 1,
+          "quote": "t Residential Management, LLC (\"Management\"), and Miriam Petrosyan (\"Resident\"), for the apartment home described below. 1. PREMI"
+        },
+        "confidence": "high"
+      },
+      "landlord": {
+        "value": "Maple Ridge Apartments Owner, LLC",
+        "source": {
+          "page": 1,
+          "quote": "greement (\"Lease\") is entered into by and between Maple Ridge Apartments Owner, LLC (\"Owner\"), acting through its agent Cordant Residential Man"
+        },
+        "confidence": "high"
+      },
+      "rent_amount": {
+        "value": "$1,720.00",
+        "source": {
+          "page": 1,
+          "quote": "-month premium. 3. RENT. Resident shall pay Owner Base Rent of $1,720.00 per month, due in advance on or before the 1st day of each"
+        },
+        "confidence": "high"
+      },
+      "lease_start_date": {
+        "value": "January 1, 2026",
+        "source": {
+          "page": 1,
+          "quote": "1,050 square feet. 2. LEASE TERM. The Lease Term begins on January 1, 2026 and ends on December 31, 2026 (12 months). Unless"
+        },
+        "confidence": "medium"
+      },
+      "lease_end_date": {
+        "value": "December 31, 2026",
+        "source": {
+          "page": 1,
+          "quote": "ERM. The Lease Term begins on January 1, 2026 and ends on December 31, 2026 (12 months). Unless either party gives written no"
+        },
+        "confidence": "medium"
+      },
+      "property_address": {
+        "value": "4500 Maple Ridge Trail, Dallas, TX 75248, Suite I204",
+        "source": {
+          "page": 1,
+          "quote": "from Owner, Suite I204 at Maple Ridge Apartments, located at 4500 Maple Ridge Trail, Dallas, TX 75248, Suite I204 (the \"Premises\"), consisting of a two-bedroom, two-bath apartment,"
+        },
+        "confidence": "high"
+      },
+      "security_deposit": {
+        "value": "$1,720.00",
+        "source": {
+          "page": 1,
+          "quote": "er months of the Lease Term, remain unchanged. 4. SECURITY DEPOSIT. Resident has paid Owner a security deposit of $1,720.00, refundable in accordance with Texas Property Cod"
+        },
+        "confidence": "high"
+      },
+      "cam_charges": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "rent_escalation": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "renewal_options": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "termination_options": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "permitted_use": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "exclusivity_clause": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "insurance_requirements": {
+        "value": "$100,000",
+        "source": {
+          "page": 2,
+          "quote": "r no commercial or business purpose. 8. RENTER'S INSURANCE. Resident shall maintain a renter's liability insurance policy with minimum liability coverage of $100,000 throughout the Lease Term and shall provide Manag"
+        },
+        "confidence": "high"
+      },
+      "default_cure_period": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "square_footage": {
+        "value": "1,050 sq ft",
+        "source": {
+          "page": 1,
+          "quote": "consisting of a two-bedroom, two-bath apartment, approximately 1,050 square feet. 2. LEASE TERM. The Lease Term begins on January"
+        },
+        "confidence": "high"
+      }
+    },
+    "document_type": "lease",
+    "date_candidates": {
+      "start": [
+        {
+          "value": "January 1, 2026",
+          "source": {
+            "page": 1,
+            "quote": "1,050 square feet. 2. LEASE TERM. The Lease Term begins on January 1, 2026 and ends on December 31, 2026 (12 months). Unless"
+          }
+        }
+      ],
+      "end": [
+        {
+          "value": "December 31, 2026",
+          "source": {
+            "page": 1,
+            "quote": "ERM. The Lease Term begins on January 1, 2026 and ends on December 31, 2026 (12 months). Unless either party gives written no"
+          }
+        }
+      ]
+    },
+    "display_name": "Miriam Petrosyan - 4500 Maple Ridge Trail, Dallas, TX 75248, Suite I204",
+    "source_page_start": 1,
+    "source_page_end": 2
+  },
+  {
+    "filename": "J102_camille_pellikaan.pdf",
+    "extracted_fields": {
+      "tenant": {
+        "value": "Camille Pellikaan",
+        "source": {
+          "page": 1,
+          "quote": "t Residential Management, LLC (\"Management\"), and Camille Pellikaan (\"Resident\"), for the apartment home described below. 1. PREMI"
+        },
+        "confidence": "high"
+      },
+      "landlord": {
+        "value": "Maple Ridge Apartments Owner, LLC",
+        "source": {
+          "page": 1,
+          "quote": "greement (\"Lease\") is entered into by and between Maple Ridge Apartments Owner, LLC (\"Owner\"), acting through its agent Cordant Residential Man"
+        },
+        "confidence": "high"
+      },
+      "rent_amount": {
+        "value": "$1,990.00",
+        "source": {
+          "page": 1,
+          "quote": "-month premium. 3. RENT. Resident shall pay Owner Base Rent of $1,990.00 per month, due in advance on or before the 1st day of each"
+        },
+        "confidence": "high"
+      },
+      "lease_start_date": {
+        "value": "April 1, 2026",
+        "source": {
+          "page": 1,
+          "quote": "1,250 square feet. 2. LEASE TERM. The Lease Term begins on April 1, 2026 and ends on March 31, 2027 (12 months). Unless ei"
+        },
+        "confidence": "medium"
+      },
+      "lease_end_date": {
+        "value": "March 31, 2027",
+        "source": {
+          "page": 1,
+          "quote": "TERM. The Lease Term begins on April 1, 2026 and ends on March 31, 2027 (12 months). Unless either party gives written no"
+        },
+        "confidence": "medium"
+      },
+      "property_address": {
+        "value": "4500 Maple Ridge Trail, Dallas, TX 75248, Suite J102",
+        "source": {
+          "page": 1,
+          "quote": "from Owner, Suite J102 at Maple Ridge Apartments, located at 4500 Maple Ridge Trail, Dallas, TX 75248, Suite J102 (the \"Premises\"), consisting of a three-bedroom, two-bath apartmen"
+        },
+        "confidence": "high"
+      },
+      "security_deposit": {
+        "value": "$1,990.00",
+        "source": {
+          "page": 1,
+          "quote": "nt at its designated payment portal or office. 4. SECURITY DEPOSIT. Resident has paid Owner a security deposit of $1,990.00, refundable in accordance with Texas Property Cod"
+        },
+        "confidence": "high"
+      },
+      "cam_charges": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "rent_escalation": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "renewal_options": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "termination_options": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "permitted_use": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "exclusivity_clause": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "insurance_requirements": {
+        "value": "$100,000",
+        "source": {
+          "page": 1,
+          "quote": "or no commercial or business purpose. 8. RENTER'S INSURANCE. Resident shall maintain a renter's liability insurance policy with minimum liability coverage of $100,000 throughout the Lease Term and shall provide Manag"
+        },
+        "confidence": "high"
+      },
+      "default_cure_period": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "square_footage": {
+        "value": "1,250 sq ft",
+        "source": {
+          "page": 1,
+          "quote": "onsisting of a three-bedroom, two-bath apartment, approximately 1,250 square feet. 2. LEASE TERM. The Lease Term begins on April 1,"
+        },
+        "confidence": "high"
+      }
+    },
+    "document_type": "lease",
+    "date_candidates": {
+      "start": [
+        {
+          "value": "April 1, 2026",
+          "source": {
+            "page": 1,
+            "quote": "1,250 square feet. 2. LEASE TERM. The Lease Term begins on April 1, 2026 and ends on March 31, 2027 (12 months). Unless ei"
+          }
+        }
+      ],
+      "end": [
+        {
+          "value": "March 31, 2027",
+          "source": {
+            "page": 1,
+            "quote": "TERM. The Lease Term begins on April 1, 2026 and ends on March 31, 2027 (12 months). Unless either party gives written no"
+          }
+        }
+      ]
+    },
+    "display_name": "Camille Pellikaan - 4500 Maple Ridge Trail, Dallas, TX 75248, Suite J102",
+    "source_page_start": 1,
+    "source_page_end": 2
+  },
+  {
+    "filename": "J303_silas_vasilenko.pdf",
+    "extracted_fields": {
+      "tenant": {
+        "value": "Silas Vasilenko",
+        "source": {
+          "page": 1,
+          "quote": "t Residential Management, LLC (\"Management\"), and Silas Vasilenko (\"Resident\"), for the apartment home described below. 1. PREMI"
+        },
+        "confidence": "high"
+      },
+      "landlord": {
+        "value": "Maple Ridge Apartments Owner, LLC",
+        "source": {
+          "page": 1,
+          "quote": "greement (\"Lease\") is entered into by and between Maple Ridge Apartments Owner, LLC (\"Owner\"), acting through its agent Cordant Residential Man"
+        },
+        "confidence": "high"
+      },
+      "rent_amount": {
+        "value": "$1,975.00",
+        "source": {
+          "page": 1,
+          "quote": "-month premium. 3. RENT. Resident shall pay Owner Base Rent of $1,975.00 per month, due in advance on or before the 1st day of each"
+        },
+        "confidence": "high"
+      },
+      "lease_start_date": {
+        "value": "June 1, 2026",
+        "source": {
+          "page": 1,
+          "quote": "1,250 square feet. 2. LEASE TERM. The Lease Term begins on June 1, 2026 and ends on May 31, 2027 (12 months). Unless eith"
+        },
+        "confidence": "medium"
+      },
+      "lease_end_date": {
+        "value": "May 31, 2027",
+        "source": {
+          "page": 1,
+          "quote": "E TERM. The Lease Term begins on June 1, 2026 and ends on May 31, 2027 (12 months). Unless either party gives written no"
+        },
+        "confidence": "medium"
+      },
+      "property_address": {
+        "value": "4500 Maple Ridge Trail, Dallas, TX 75248, Suite J303",
+        "source": {
+          "page": 1,
+          "quote": "from Owner, Suite J303 at Maple Ridge Apartments, located at 4500 Maple Ridge Trail, Dallas, TX 75248, Suite J303 (the \"Premises\"), consisting of a three-bedroom, two-bath apartmen"
+        },
+        "confidence": "high"
+      },
+      "security_deposit": {
+        "value": "$1,975.00",
+        "source": {
+          "page": 1,
+          "quote": "nt at its designated payment portal or office. 4. SECURITY DEPOSIT. Resident has paid Owner a security deposit of $1,975.00, refundable in accordance with Texas Property Cod"
+        },
+        "confidence": "high"
+      },
+      "cam_charges": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "rent_escalation": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "renewal_options": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "termination_options": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "permitted_use": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "exclusivity_clause": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "insurance_requirements": {
+        "value": "$100,000",
+        "source": {
+          "page": 1,
+          "quote": "or no commercial or business purpose. 8. RENTER'S INSURANCE. Resident shall maintain a renter's liability insurance policy with minimum liability coverage of $100,000 throughout the Lease Term and shall provide Manag"
+        },
+        "confidence": "high"
+      },
+      "default_cure_period": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "square_footage": {
+        "value": "1,250 sq ft",
+        "source": {
+          "page": 1,
+          "quote": "onsisting of a three-bedroom, two-bath apartment, approximately 1,250 square feet. 2. LEASE TERM. The Lease Term begins on June 1,"
+        },
+        "confidence": "high"
+      }
+    },
+    "document_type": "lease",
+    "date_candidates": {
+      "start": [
+        {
+          "value": "June 1, 2026",
+          "source": {
+            "page": 1,
+            "quote": "1,250 square feet. 2. LEASE TERM. The Lease Term begins on June 1, 2026 and ends on May 31, 2027 (12 months). Unless eith"
+          }
+        }
+      ],
+      "end": [
+        {
+          "value": "May 31, 2027",
+          "source": {
+            "page": 1,
+            "quote": "E TERM. The Lease Term begins on June 1, 2026 and ends on May 31, 2027 (12 months). Unless either party gives written no"
+          }
+        }
+      ]
+    },
+    "display_name": "Silas Vasilenko - 4500 Maple Ridge Trail, Dallas, TX 75248, Suite J303",
+    "source_page_start": 1,
+    "source_page_end": 2
+  },
+  {
+    "filename": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+    "extracted_fields": {
+      "tenant": {
+        "value": "Jordan Boone",
+        "source": {
+          "row": 6,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "Jordan Boone"
+        },
+        "confidence": "high"
+      },
+      "landlord": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "rent_amount": {
+        "value": "$1,075.00",
+        "source": {
+          "row": 6,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "1075.00"
+        },
+        "confidence": "high"
+      },
+      "lease_start_date": {
+        "value": "07/01/2026",
+        "source": {
+          "row": 6,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "07/01/2026"
+        },
+        "confidence": "high"
+      },
+      "lease_end_date": {
+        "value": "06/30/2027",
+        "source": {
+          "row": 6,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "06/30/2027"
+        },
+        "confidence": "high"
+      },
+      "property_address": {
+        "value": "4500 Maple Ridge Trail, Dallas, TX 75248, Suite A102",
+        "source": {
+          "row": 6,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "A102"
+        },
+        "confidence": "high"
+      },
+      "security_deposit": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "cam_charges": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "rent_escalation": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "renewal_options": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "termination_options": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "permitted_use": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "exclusivity_clause": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "insurance_requirements": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "default_cure_period": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "square_footage": {
+        "value": "500 sq ft",
+        "source": {
+          "row": 6,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "500"
+        },
+        "confidence": "high"
+      }
+    },
+    "document_type": "lease",
+    "date_candidates": null,
+    "display_name": "Jordan Boone - 4500 Maple Ridge Trail, Dallas, TX 75248, Suite A102",
+    "source_page_start": null,
+    "source_page_end": null
+  },
+  {
+    "filename": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+    "extracted_fields": {
+      "tenant": {
+        "value": "Perpetua Zabrinsky",
+        "source": {
+          "row": 7,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "Perpetua Zabrinsky"
+        },
+        "confidence": "high"
+      },
+      "landlord": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "rent_amount": {
+        "value": "$1,075.00",
+        "source": {
+          "row": 7,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "1075.00"
+        },
+        "confidence": "high"
+      },
+      "lease_start_date": {
+        "value": "10/01/2025",
+        "source": {
+          "row": 7,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "10/01/2025"
+        },
+        "confidence": "high"
+      },
+      "lease_end_date": {
+        "value": "09/30/2026",
+        "source": {
+          "row": 7,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "09/30/2026"
+        },
+        "confidence": "high"
+      },
+      "property_address": {
+        "value": "4500 Maple Ridge Trail, Dallas, TX 75248, Suite A104",
+        "source": {
+          "row": 7,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "A104"
+        },
+        "confidence": "high"
+      },
+      "security_deposit": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "cam_charges": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "rent_escalation": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "renewal_options": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "termination_options": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "permitted_use": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "exclusivity_clause": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "insurance_requirements": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "default_cure_period": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "square_footage": {
+        "value": "500 sq ft",
+        "source": {
+          "row": 7,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "500"
+        },
+        "confidence": "high"
+      }
+    },
+    "document_type": "lease",
+    "date_candidates": null,
+    "display_name": "Perpetua Zabrinsky - 4500 Maple Ridge Trail, Dallas, TX 75248, Suite A104",
+    "source_page_start": null,
+    "source_page_end": null
+  },
+  {
+    "filename": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+    "extracted_fields": {
+      "tenant": {
+        "value": "Magnolia Fennimore",
+        "source": {
+          "row": 8,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "Magnolia Fennimore"
+        },
+        "confidence": "high"
+      },
+      "landlord": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "rent_amount": {
+        "value": "$1,360.00",
+        "source": {
+          "row": 8,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "1360.00"
+        },
+        "confidence": "high"
+      },
+      "lease_start_date": {
+        "value": "09/01/2025",
+        "source": {
+          "row": 8,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "09/01/2025"
+        },
+        "confidence": "high"
+      },
+      "lease_end_date": {
+        "value": "08/31/2026",
+        "source": {
+          "row": 8,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "08/31/2026"
+        },
+        "confidence": "high"
+      },
+      "property_address": {
+        "value": "4500 Maple Ridge Trail, Dallas, TX 75248, Suite B104",
+        "source": {
+          "row": 8,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "B104"
+        },
+        "confidence": "high"
+      },
+      "security_deposit": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "cam_charges": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "rent_escalation": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "renewal_options": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "termination_options": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "permitted_use": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "exclusivity_clause": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "insurance_requirements": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "default_cure_period": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "square_footage": {
+        "value": "700 sq ft",
+        "source": {
+          "row": 8,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "700"
+        },
+        "confidence": "high"
+      }
+    },
+    "document_type": "lease",
+    "date_candidates": null,
+    "display_name": "Magnolia Fennimore - 4500 Maple Ridge Trail, Dallas, TX 75248, Suite B104",
+    "source_page_start": null,
+    "source_page_end": null
+  },
+  {
+    "filename": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+    "extracted_fields": {
+      "tenant": {
+        "value": "Delphine Ordway",
+        "source": {
+          "row": 9,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "Delphine Ordway"
+        },
+        "confidence": "high"
+      },
+      "landlord": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "rent_amount": {
+        "value": "$1,310.00",
+        "source": {
+          "row": 9,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "1310.00"
+        },
+        "confidence": "high"
+      },
+      "lease_start_date": {
+        "value": "02/01/2026",
+        "source": {
+          "row": 9,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "02/01/2026"
+        },
+        "confidence": "high"
+      },
+      "lease_end_date": {
+        "value": "01/31/2027",
+        "source": {
+          "row": 9,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "01/31/2027"
+        },
+        "confidence": "high"
+      },
+      "property_address": {
+        "value": "4500 Maple Ridge Trail, Dallas, TX 75248, Suite B303",
+        "source": {
+          "row": 9,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "B303"
+        },
+        "confidence": "high"
+      },
+      "security_deposit": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "cam_charges": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "rent_escalation": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "renewal_options": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "termination_options": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "permitted_use": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "exclusivity_clause": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "insurance_requirements": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "default_cure_period": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "square_footage": {
+        "value": "700 sq ft",
+        "source": {
+          "row": 9,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "700"
+        },
+        "confidence": "high"
+      }
+    },
+    "document_type": "lease",
+    "date_candidates": null,
+    "display_name": "Delphine Ordway - 4500 Maple Ridge Trail, Dallas, TX 75248, Suite B303",
+    "source_page_start": null,
+    "source_page_end": null
+  },
+  {
+    "filename": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+    "extracted_fields": {
+      "tenant": {
+        "value": "Chester Tigerstrom",
+        "source": {
+          "row": 10,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "Chester Tigerstrom"
+        },
+        "confidence": "high"
+      },
+      "landlord": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "rent_amount": {
+        "value": "$1,290.00",
+        "source": {
+          "row": 10,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "1290.00"
+        },
+        "confidence": "high"
+      },
+      "lease_start_date": {
+        "value": "03/01/2025",
+        "source": {
+          "row": 10,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "03/01/2025"
+        },
+        "confidence": "high"
+      },
+      "lease_end_date": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "property_address": {
+        "value": "4500 Maple Ridge Trail, Dallas, TX 75248, Suite C203",
+        "source": {
+          "row": 10,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "C203"
+        },
+        "confidence": "high"
+      },
+      "security_deposit": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "cam_charges": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "rent_escalation": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "renewal_options": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "termination_options": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "permitted_use": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "exclusivity_clause": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "insurance_requirements": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "default_cure_period": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "square_footage": {
+        "value": "700 sq ft",
+        "source": {
+          "row": 10,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "700"
+        },
+        "confidence": "high"
+      }
+    },
+    "document_type": "lease",
+    "date_candidates": null,
+    "display_name": "Chester Tigerstrom - 4500 Maple Ridge Trail, Dallas, TX 75248, Suite C203",
+    "source_page_start": null,
+    "source_page_end": null
+  },
+  {
+    "filename": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+    "extracted_fields": {
+      "tenant": {
+        "value": "Juniper Foss",
+        "source": {
+          "row": 11,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "Juniper Foss"
+        },
+        "confidence": "high"
+      },
+      "landlord": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "rent_amount": {
+        "value": "$1,285.00",
+        "source": {
+          "row": 11,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "1285.00"
+        },
+        "confidence": "high"
+      },
+      "lease_start_date": {
+        "value": "12/01/2025",
+        "source": {
+          "row": 11,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "12/01/2025"
+        },
+        "confidence": "high"
+      },
+      "lease_end_date": {
+        "value": "11/30/2026",
+        "source": {
+          "row": 11,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "11/30/2026"
+        },
+        "confidence": "high"
+      },
+      "property_address": {
+        "value": "4500 Maple Ridge Trail, Dallas, TX 75248, Suite D104",
+        "source": {
+          "row": 11,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "D104"
+        },
+        "confidence": "high"
+      },
+      "security_deposit": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "cam_charges": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "rent_escalation": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "renewal_options": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "termination_options": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "permitted_use": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "exclusivity_clause": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "insurance_requirements": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "default_cure_period": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "square_footage": {
+        "value": "700 sq ft",
+        "source": {
+          "row": 11,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "700"
+        },
+        "confidence": "high"
+      }
+    },
+    "document_type": "lease",
+    "date_candidates": null,
+    "display_name": "Juniper Foss - 4500 Maple Ridge Trail, Dallas, TX 75248, Suite D104",
+    "source_page_start": null,
+    "source_page_end": null
+  },
+  {
+    "filename": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+    "extracted_fields": {
+      "tenant": {
+        "value": "Omar Ostrander",
+        "source": {
+          "row": 12,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "Omar Ostrander"
+        },
+        "confidence": "high"
+      },
+      "landlord": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "rent_amount": {
+        "value": "$1,420.00",
+        "source": {
+          "row": 12,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "1420.00"
+        },
+        "confidence": "high"
+      },
+      "lease_start_date": {
+        "value": "03/01/2026",
+        "source": {
+          "row": 12,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "03/01/2026"
+        },
+        "confidence": "high"
+      },
+      "lease_end_date": {
+        "value": "02/28/2027",
+        "source": {
+          "row": 12,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "02/28/2027"
+        },
+        "confidence": "high"
+      },
+      "property_address": {
+        "value": "4500 Maple Ridge Trail, Dallas, TX 75248, Suite D203",
+        "source": {
+          "row": 12,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "D203"
+        },
+        "confidence": "high"
+      },
+      "security_deposit": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "cam_charges": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "rent_escalation": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "renewal_options": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "termination_options": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "permitted_use": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "exclusivity_clause": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "insurance_requirements": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "default_cure_period": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "square_footage": {
+        "value": "700 sq ft",
+        "source": {
+          "row": 12,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "700"
+        },
+        "confidence": "high"
+      }
+    },
+    "document_type": "lease",
+    "date_candidates": null,
+    "display_name": "Omar Ostrander - 4500 Maple Ridge Trail, Dallas, TX 75248, Suite D203",
+    "source_page_start": null,
+    "source_page_end": null
+  },
+  {
+    "filename": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+    "extracted_fields": {
+      "tenant": {
+        "value": "Fiona Rourke",
+        "source": {
+          "row": 13,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "Fiona Rourke"
+        },
+        "confidence": "high"
+      },
+      "landlord": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "rent_amount": {
+        "value": "$1,290.00",
+        "source": {
+          "row": 13,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "1290.00"
+        },
+        "confidence": "high"
+      },
+      "lease_start_date": {
+        "value": "04/01/2026",
+        "source": {
+          "row": 13,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "04/01/2026"
+        },
+        "confidence": "high"
+      },
+      "lease_end_date": {
+        "value": "03/31/2027",
+        "source": {
+          "row": 13,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "03/31/2027"
+        },
+        "confidence": "high"
+      },
+      "property_address": {
+        "value": "4500 Maple Ridge Trail, Dallas, TX 75248, Suite E301",
+        "source": {
+          "row": 13,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "E301"
+        },
+        "confidence": "high"
+      },
+      "security_deposit": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "cam_charges": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "rent_escalation": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "renewal_options": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "termination_options": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "permitted_use": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "exclusivity_clause": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "insurance_requirements": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "default_cure_period": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "square_footage": {
+        "value": "700 sq ft",
+        "source": {
+          "row": 13,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "700"
+        },
+        "confidence": "high"
+      }
+    },
+    "document_type": "lease",
+    "date_candidates": null,
+    "display_name": "Fiona Rourke - 4500 Maple Ridge Trail, Dallas, TX 75248, Suite E301",
+    "source_page_start": null,
+    "source_page_end": null
+  },
+  {
+    "filename": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+    "extracted_fields": {
+      "tenant": {
+        "value": "Marcus Boone",
+        "source": {
+          "row": 14,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "Marcus Boone"
+        },
+        "confidence": "high"
+      },
+      "landlord": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "rent_amount": {
+        "value": "$1,710.00",
+        "source": {
+          "row": 14,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "1710.00"
+        },
+        "confidence": "high"
+      },
+      "lease_start_date": {
+        "value": "05/01/2026",
+        "source": {
+          "row": 14,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "05/01/2026"
+        },
+        "confidence": "high"
+      },
+      "lease_end_date": {
+        "value": "04/30/2027",
+        "source": {
+          "row": 14,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "04/30/2027"
+        },
+        "confidence": "high"
+      },
+      "property_address": {
+        "value": "4500 Maple Ridge Trail, Dallas, TX 75248, Suite F203",
+        "source": {
+          "row": 14,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "F203"
+        },
+        "confidence": "high"
+      },
+      "security_deposit": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "cam_charges": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "rent_escalation": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "renewal_options": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "termination_options": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "permitted_use": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "exclusivity_clause": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "insurance_requirements": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "default_cure_period": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "square_footage": {
+        "value": "1,050 sq ft",
+        "source": {
+          "row": 14,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "1050"
+        },
+        "confidence": "high"
+      }
+    },
+    "document_type": "lease",
+    "date_candidates": null,
+    "display_name": "Marcus Boone - 4500 Maple Ridge Trail, Dallas, TX 75248, Suite F203",
+    "source_page_start": null,
+    "source_page_end": null
+  },
+  {
+    "filename": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+    "extracted_fields": {
+      "tenant": {
+        "value": "Junia Levine",
+        "source": {
+          "row": 15,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "Junia Levine"
+        },
+        "confidence": "high"
+      },
+      "landlord": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "rent_amount": {
+        "value": "$1,955.00",
+        "source": {
+          "row": 15,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "1955.00"
+        },
+        "confidence": "high"
+      },
+      "lease_start_date": {
+        "value": "11/01/2025",
+        "source": {
+          "row": 15,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "11/01/2025"
+        },
+        "confidence": "high"
+      },
+      "lease_end_date": {
+        "value": "10/31/2026",
+        "source": {
+          "row": 15,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "10/31/2026"
+        },
+        "confidence": "high"
+      },
+      "property_address": {
+        "value": "4500 Maple Ridge Trail, Dallas, TX 75248, Suite G204",
+        "source": {
+          "row": 15,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "G204"
+        },
+        "confidence": "high"
+      },
+      "security_deposit": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "cam_charges": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "rent_escalation": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "renewal_options": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "termination_options": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "permitted_use": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "exclusivity_clause": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "insurance_requirements": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "default_cure_period": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "square_footage": {
+        "value": "1,050 sq ft",
+        "source": {
+          "row": 15,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "1050"
+        },
+        "confidence": "high"
+      }
+    },
+    "document_type": "lease",
+    "date_candidates": null,
+    "display_name": "Junia Levine - 4500 Maple Ridge Trail, Dallas, TX 75248, Suite G204",
+    "source_page_start": null,
+    "source_page_end": null
+  },
+  {
+    "filename": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+    "extracted_fields": {
+      "tenant": {
+        "value": "Sonny Bostwick",
+        "source": {
+          "row": 16,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "Sonny Bostwick"
+        },
+        "confidence": "high"
+      },
+      "landlord": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "rent_amount": {
+        "value": "$1,725.00",
+        "source": {
+          "row": 16,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "1725.00"
+        },
+        "confidence": "high"
+      },
+      "lease_start_date": {
+        "value": "05/01/2026",
+        "source": {
+          "row": 16,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "05/01/2026"
+        },
+        "confidence": "high"
+      },
+      "lease_end_date": {
+        "value": "04/30/2027",
+        "source": {
+          "row": 16,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "04/30/2027"
+        },
+        "confidence": "high"
+      },
+      "property_address": {
+        "value": "4500 Maple Ridge Trail, Dallas, TX 75248, Suite G303",
+        "source": {
+          "row": 16,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "G303"
+        },
+        "confidence": "high"
+      },
+      "security_deposit": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "cam_charges": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "rent_escalation": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "renewal_options": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "termination_options": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "permitted_use": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "exclusivity_clause": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "insurance_requirements": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "default_cure_period": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "square_footage": {
+        "value": "1,050 sq ft",
+        "source": {
+          "row": 16,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "1050"
+        },
+        "confidence": "high"
+      }
+    },
+    "document_type": "lease",
+    "date_candidates": null,
+    "display_name": "Sonny Bostwick - 4500 Maple Ridge Trail, Dallas, TX 75248, Suite G303",
+    "source_page_start": null,
+    "source_page_end": null
+  },
+  {
+    "filename": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+    "extracted_fields": {
+      "tenant": {
+        "value": "Ellery Fairweather",
+        "source": {
+          "row": 17,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "Ellery Fairweather"
+        },
+        "confidence": "high"
+      },
+      "landlord": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "rent_amount": {
+        "value": "$1,720.00",
+        "source": {
+          "row": 17,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "1720.00"
+        },
+        "confidence": "high"
+      },
+      "lease_start_date": {
+        "value": "06/01/2025",
+        "source": {
+          "row": 17,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "06/01/2025"
+        },
+        "confidence": "high"
+      },
+      "lease_end_date": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "property_address": {
+        "value": "4500 Maple Ridge Trail, Dallas, TX 75248, Suite H104",
+        "source": {
+          "row": 17,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "H104"
+        },
+        "confidence": "high"
+      },
+      "security_deposit": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "cam_charges": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "rent_escalation": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "renewal_options": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "termination_options": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "permitted_use": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "exclusivity_clause": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "insurance_requirements": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "default_cure_period": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "square_footage": {
+        "value": "1,050 sq ft",
+        "source": {
+          "row": 17,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "1050"
+        },
+        "confidence": "high"
+      }
+    },
+    "document_type": "lease",
+    "date_candidates": null,
+    "display_name": "Ellery Fairweather - 4500 Maple Ridge Trail, Dallas, TX 75248, Suite H104",
+    "source_page_start": null,
+    "source_page_end": null
+  },
+  {
+    "filename": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+    "extracted_fields": {
+      "tenant": {
+        "value": "Camille Vasilenko",
+        "source": {
+          "row": 18,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "Camille Vasilenko"
+        },
+        "confidence": "high"
+      },
+      "landlord": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "rent_amount": {
+        "value": "$1,710.00",
+        "source": {
+          "row": 18,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "1710.00"
+        },
+        "confidence": "high"
+      },
+      "lease_start_date": {
+        "value": "09/01/2025",
+        "source": {
+          "row": 18,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "09/01/2025"
+        },
+        "confidence": "high"
+      },
+      "lease_end_date": {
+        "value": "08/31/2026",
+        "source": {
+          "row": 18,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "08/31/2026"
+        },
+        "confidence": "high"
+      },
+      "property_address": {
+        "value": "4500 Maple Ridge Trail, Dallas, TX 75248, Suite H204",
+        "source": {
+          "row": 18,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "H204"
+        },
+        "confidence": "high"
+      },
+      "security_deposit": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "cam_charges": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "rent_escalation": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "renewal_options": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "termination_options": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "permitted_use": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "exclusivity_clause": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "insurance_requirements": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "default_cure_period": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "square_footage": {
+        "value": "1,050 sq ft",
+        "source": {
+          "row": 18,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "1050"
+        },
+        "confidence": "high"
+      }
+    },
+    "document_type": "lease",
+    "date_candidates": null,
+    "display_name": "Camille Vasilenko - 4500 Maple Ridge Trail, Dallas, TX 75248, Suite H204",
+    "source_page_start": null,
+    "source_page_end": null
+  },
+  {
+    "filename": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+    "extracted_fields": {
+      "tenant": {
+        "value": "Miriam Petrosyan",
+        "source": {
+          "row": 19,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "Miriam Petrosyan"
+        },
+        "confidence": "high"
+      },
+      "landlord": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "rent_amount": {
+        "value": "$1,720.00",
+        "source": {
+          "row": 19,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "1720.00"
+        },
+        "confidence": "high"
+      },
+      "lease_start_date": {
+        "value": "01/01/2026",
+        "source": {
+          "row": 19,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "01/01/2026"
+        },
+        "confidence": "high"
+      },
+      "lease_end_date": {
+        "value": "12/31/2026",
+        "source": {
+          "row": 19,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "12/31/2026"
+        },
+        "confidence": "high"
+      },
+      "property_address": {
+        "value": "4500 Maple Ridge Trail, Dallas, TX 75248, Suite I204",
+        "source": {
+          "row": 19,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "I204"
+        },
+        "confidence": "high"
+      },
+      "security_deposit": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "cam_charges": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "rent_escalation": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "renewal_options": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "termination_options": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "permitted_use": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "exclusivity_clause": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "insurance_requirements": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "default_cure_period": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "square_footage": {
+        "value": "1,050 sq ft",
+        "source": {
+          "row": 19,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "1050"
+        },
+        "confidence": "high"
+      }
+    },
+    "document_type": "lease",
+    "date_candidates": null,
+    "display_name": "Miriam Petrosyan - 4500 Maple Ridge Trail, Dallas, TX 75248, Suite I204",
+    "source_page_start": null,
+    "source_page_end": null
+  },
+  {
+    "filename": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+    "extracted_fields": {
+      "tenant": {
+        "value": "Camille Pellikaan",
+        "source": {
+          "row": 20,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "Camille Pellikaan"
+        },
+        "confidence": "high"
+      },
+      "landlord": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "rent_amount": {
+        "value": "$1,990.00",
+        "source": {
+          "row": 20,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "1990.00"
+        },
+        "confidence": "high"
+      },
+      "lease_start_date": {
+        "value": "04/01/2026",
+        "source": {
+          "row": 20,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "04/01/2026"
+        },
+        "confidence": "high"
+      },
+      "lease_end_date": {
+        "value": "03/31/2027",
+        "source": {
+          "row": 20,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "03/31/2027"
+        },
+        "confidence": "high"
+      },
+      "property_address": {
+        "value": "4500 Maple Ridge Trail, Dallas, TX 75248, Suite J102",
+        "source": {
+          "row": 20,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "J102"
+        },
+        "confidence": "high"
+      },
+      "security_deposit": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "cam_charges": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "rent_escalation": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "renewal_options": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "termination_options": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "permitted_use": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "exclusivity_clause": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "insurance_requirements": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "default_cure_period": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "square_footage": {
+        "value": "1,250 sq ft",
+        "source": {
+          "row": 20,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "1250"
+        },
+        "confidence": "high"
+      }
+    },
+    "document_type": "lease",
+    "date_candidates": null,
+    "display_name": "Camille Pellikaan - 4500 Maple Ridge Trail, Dallas, TX 75248, Suite J102",
+    "source_page_start": null,
+    "source_page_end": null
+  },
+  {
+    "filename": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+    "extracted_fields": {
+      "tenant": {
+        "value": "Silas Vasilenko",
+        "source": {
+          "row": 21,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "Silas Vasilenko"
+        },
+        "confidence": "high"
+      },
+      "landlord": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "rent_amount": {
+        "value": "$2,075.00",
+        "source": {
+          "row": 21,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "2075.00"
+        },
+        "confidence": "high"
+      },
+      "lease_start_date": {
+        "value": "06/01/2026",
+        "source": {
+          "row": 21,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "06/01/2026"
+        },
+        "confidence": "high"
+      },
+      "lease_end_date": {
+        "value": "05/31/2027",
+        "source": {
+          "row": 21,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "05/31/2027"
+        },
+        "confidence": "high"
+      },
+      "property_address": {
+        "value": "4500 Maple Ridge Trail, Dallas, TX 75248, Suite J303",
+        "source": {
+          "row": 21,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "J303"
+        },
+        "confidence": "high"
+      },
+      "security_deposit": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "cam_charges": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "rent_escalation": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "renewal_options": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "termination_options": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "permitted_use": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "exclusivity_clause": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "insurance_requirements": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "default_cure_period": {
+        "value": null,
+        "source": null,
+        "confidence": null
+      },
+      "square_footage": {
+        "value": "1,250 sq ft",
+        "source": {
+          "row": 21,
+          "file": "maple_ridge_rent_roll_demo_subset_16unit_appfolio.csv",
+          "quote": "1250"
+        },
+        "confidence": "high"
+      }
+    },
+    "document_type": "lease",
+    "date_candidates": null,
+    "display_name": "Silas Vasilenko - 4500 Maple Ridge Trail, Dallas, TX 75248, Suite J303",
+    "source_page_start": null,
+    "source_page_end": null
+  }
+]

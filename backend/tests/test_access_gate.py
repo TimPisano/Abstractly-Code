@@ -19,6 +19,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 from app.api import app
 from app import database
+from _session_users import sync_session_user
 
 # This file exercises real /waitlist POST routes through
 # app.test_client(), unlike test_waitlist_email.py, which mocks
@@ -49,9 +50,14 @@ def _login_as_admin(client):
     """GET /waitlist and POST /waitlist/<id>/approve now require an admin-role session (see app/auth.py's require_role) -- set directly via session_transaction() rather than driving a real login POST through bcrypt for every test that needs one."""
     with client.session_transaction() as sess:
         sess["user_id"] = 1
+        sess["team_id"] = 1
         sess["email"] = "timmypisano24@gmail.com"
         sess["name"] = "Test Admin"
         sess["role"] = "admin"
+        # The waitlist is platform-wide (every firm's prospects), so it's
+        # owner-only now, not any team admin -- this account is the owner.
+        sess["is_owner"] = True
+        sync_session_user(sess)
 
 
 def test_config_reports_local_dev_mode_off_by_default():

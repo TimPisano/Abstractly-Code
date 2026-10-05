@@ -51,9 +51,9 @@ def _severity_for_monthly_impact(monthly_impact: Optional[float]) -> str:
     return "low"
 
 
-def _annotate(flag_like: Dict[str, Any], discrepancy_id: int) -> None:
+def _annotate(flag_like: Dict[str, Any], discrepancy_id: int, team_id: int) -> None:
     """Mutates flag_like in place, adding discrepancy_id/resolution_status/resolution."""
-    discrepancy = database.get_discrepancy(discrepancy_id)
+    discrepancy = database.get_discrepancy(discrepancy_id, team_id=team_id)
     flag_like["discrepancy_id"] = discrepancy_id
     flag_like["resolution_status"] = discrepancy["status"]
     flag_like["resolution"] = None
@@ -65,7 +65,7 @@ def _annotate(flag_like: Dict[str, Any], discrepancy_id: int) -> None:
                 break
 
 
-def sync_lease_risk_flags(lease_id: int, flags: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def sync_lease_risk_flags(lease_id: int, flags: List[Dict[str, Any]], team_id: int) -> List[Dict[str, Any]]:
     """
     Upserts every flag in this lease's risk-flag list (single-lease
     categories AND cross_lease_mismatch flags -- both share this one
@@ -109,6 +109,7 @@ def sync_lease_risk_flags(lease_id: int, flags: List[Dict[str, Any]]) -> List[Di
                 details=flag,
                 lease_id=row_lease_id,
                 related_lease_id=row_related_id,
+            team_id=team_id,
             )
         else:
             slot = f"{lease_id}:{category}:{field}"
@@ -123,14 +124,15 @@ def sync_lease_risk_flags(lease_id: int, flags: List[Dict[str, Any]]) -> List[Di
                 message=flag.get("message", ""),
                 details=flag,
                 lease_id=lease_id,
+            team_id=team_id,
             )
 
-        _annotate(flag, discrepancy_id)
+        _annotate(flag, discrepancy_id, team_id)
 
     return flags
 
 
-def sync_all_lease_risk_flags_bulk(per_lease_flags: List[tuple]) -> None:
+def sync_all_lease_risk_flags_bulk(per_lease_flags: List[tuple], team_id: int) -> None:
     """
     Bulk sibling of sync_lease_risk_flags for syncing EVERY lease's risk
     flags in one pass (GET /portfolio/risks) instead of one lease at a
@@ -200,9 +202,9 @@ def sync_all_lease_risk_flags_bulk(per_lease_flags: List[tuple]) -> None:
     if not payloads:
         return
 
-    ids_by_natural_key = database.upsert_discrepancies_bulk(payloads)
+    ids_by_natural_key = database.upsert_discrepancies_bulk(payloads, team_id=team_id)
     all_ids = list(ids_by_natural_key.values())
-    discrepancies_by_id = database.get_discrepancies_by_ids(all_ids)
+    discrepancies_by_id = database.get_discrepancies_by_ids(all_ids, team_id=team_id)
     resolved_ids = [d["id"] for d in discrepancies_by_id.values() if d["status"] == "resolved"]
     resolutions_by_id = database.get_discrepancy_resolutions_bulk(resolved_ids)
 
@@ -246,7 +248,7 @@ def _rent_roll_mismatch_severity_and_impact(mismatch: Dict[str, Any]) -> Tuple[s
     return "medium", None
 
 
-def sync_rent_roll_reconciliation(mismatches: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def sync_rent_roll_reconciliation(mismatches: List[Dict[str, Any]], team_id: int) -> List[Dict[str, Any]]:
     """Upserts every rent-roll-vs-lease-PDF mismatch and annotates each dict in place. Returns the same list."""
     for mismatch in mismatches:
         rr_id = mismatch.get("rent_roll_lease_id")
@@ -269,12 +271,13 @@ def sync_rent_roll_reconciliation(mismatches: List[Dict[str, Any]]) -> List[Dict
             lease_id=rr_id,
             related_lease_id=doc_id,
             estimated_dollar_impact=estimated_dollar_impact,
+        team_id=team_id,
         )
-        _annotate(mismatch, discrepancy_id)
+        _annotate(mismatch, discrepancy_id, team_id)
     return mismatches
 
 
-def sync_t12_reconciliation(result: Dict[str, Any]) -> Dict[str, Any]:
+def sync_t12_reconciliation(result: Dict[str, Any], team_id: int) -> Dict[str, Any]:
     """
     Upserts (and annotates in place) the one T12-vs-rent-roll
     discrepancy for this property, IF it's currently flagged or a
@@ -292,9 +295,11 @@ def sync_t12_reconciliation(result: Dict[str, Any]) -> Dict[str, Any]:
     normalized = _normalize_building_address(result.get("property_address"))
     if not normalized:
         return result
-    natural_key = f"t12_recon:{normalized}"
+    # team in the key: two firms can hold the same building address
+    # (see database._migrate_scope_natural_keys_by_team).
+    natural_key = f"t12_recon:team{team_id}:{normalized}"
 
-    existing = database.get_discrepancy_by_natural_key(natural_key)
+    existing = database.get_discrepancy_by_natural_key(natural_key, team_id)
     if not result.get("flagged") and not existing:
         return result
 
@@ -324,12 +329,13 @@ def sync_t12_reconciliation(result: Dict[str, Any]) -> Dict[str, Any]:
         message=message,
         details=result,
         estimated_dollar_impact=estimated_dollar_impact,
+    team_id=team_id,
     )
-    _annotate(result, discrepancy_id)
+    _annotate(result, discrepancy_id, team_id)
     return result
 
 
-def sync_deal_mismatch_report(data: Dict[str, Any]) -> Dict[str, Any]:
+def sync_deal_mismatch_report(data: Dict[str, Any], team_id: int) -> Dict[str, Any]:
     """
     Upserts every row in a Deal Mismatch Report's discrepancy list (see
     deal_mismatch.build_deal_mismatch_report_data) as a
@@ -379,9 +385,9 @@ def sync_deal_mismatch_report(data: Dict[str, Any]) -> Dict[str, Any]:
             "estimated_dollar_impact": row.get("monthly_dollar_impact"),
         })
 
-    ids_by_natural_key = database.upsert_discrepancies_bulk(payloads)
+    ids_by_natural_key = database.upsert_discrepancies_bulk(payloads, team_id=team_id)
     all_ids = list(ids_by_natural_key.values())
-    discrepancies_by_id = database.get_discrepancies_by_ids(all_ids)
+    discrepancies_by_id = database.get_discrepancies_by_ids(all_ids, team_id=team_id)
     resolved_ids = [d["id"] for d in discrepancies_by_id.values() if d["status"] == "resolved"]
     resolutions_by_id = database.get_discrepancy_resolutions_bulk(resolved_ids)
 
@@ -415,7 +421,7 @@ def sync_deal_mismatch_report(data: Dict[str, Any]) -> Dict[str, Any]:
 DEFAULT_PATTERN_MIN_LEASE_COUNT = 3
 
 
-def detect_discrepancy_patterns(min_lease_count: int = DEFAULT_PATTERN_MIN_LEASE_COUNT) -> List[Dict[str, Any]]:
+def detect_discrepancy_patterns(team_id: int, min_lease_count: int = DEFAULT_PATTERN_MIN_LEASE_COUNT) -> List[Dict[str, Any]]:
     """
     Groups every currently-OPEN discrepancy by (discrepancy_type,
     category, field) and keeps groups touching at least
@@ -434,7 +440,7 @@ def detect_discrepancy_patterns(min_lease_count: int = DEFAULT_PATTERN_MIN_LEASE
     GET /discrepancies?status=open -- there's no separate "pattern
     resolved" state to manage.
     """
-    open_discrepancies = database.list_discrepancies(status="open")
+    open_discrepancies = database.list_discrepancies(status="open", team_id=team_id)
 
     groups: Dict[Any, Dict[str, Any]] = {}
     for disc in open_discrepancies:

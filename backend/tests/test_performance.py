@@ -3,7 +3,7 @@ Performance regression tests at real portfolio scale. These exist to
 catch the two N+1 patterns found and fixed during the reliability
 hardening pass -- see DECISIONS.md:
 
-1. database.get_all_effective_leases() used to call get_lease() and
+1. database.get_all_effective_leases(team_id=1) used to call get_lease() and
    get_amendments() (each opening its OWN sqlite3 connection) 2x
    each per lease. At 831 leases (the real 500-unit synthetic rent
    roll's actual imported count, most units splitting into one lease
@@ -90,6 +90,7 @@ def _seed_leases(n):
         database.insert_lease(
             filename=f"lease_{i}.pdf",
             extracted_fields=_fields(rent=1500 + i, sqft=sqft, tenant=f"Tenant {i} LLC", i=i),
+        team_id=1,
         )
 
 
@@ -126,9 +127,9 @@ def main():
         print(f"--- Seeding {LEASE_COUNT} synthetic leases ---")
         _seed_leases(LEASE_COUNT)
 
-        print("\n--- database.get_all_effective_leases() at scale ---")
+        print("\n--- database.get_all_effective_leases(team_id=1) at scale ---")
         t0 = time.time()
-        leases = database.get_all_effective_leases()
+        leases = database.get_all_effective_leases(team_id=1)
         elapsed = time.time() - t0
         check(f"get_all_effective_leases returns all {LEASE_COUNT} leases", len(leases) == LEASE_COUNT, f"got {len(leases)}")
         check(f"get_all_effective_leases completes in well under 1s for {LEASE_COUNT} leases (regression guard against the old N+1 pattern)", elapsed < 1.0, f"{elapsed:.3f}s")
@@ -147,7 +148,7 @@ def main():
             )
             per_lease_flags.append((lease["id"], flags))
             total_flags += len(flags)
-        sync_all_lease_risk_flags_bulk(per_lease_flags)
+        sync_all_lease_risk_flags_bulk(per_lease_flags, team_id=1)
         elapsed = time.time() - t0
         check(f"risk analysis + bulk discrepancy sync produced flags", total_flags > 0, f"{total_flags} flags")
         check(f"full risk analysis + sync pass completes in well under 2s for {LEASE_COUNT} leases / {total_flags} flags", elapsed < 2.0, f"{elapsed:.3f}s")
@@ -175,7 +176,7 @@ def main():
         # ---- Re-running the same sync must be idempotent and still fast ----
         print("\n--- Re-running the same sync (idempotency + repeat-call performance) ---")
         t0 = time.time()
-        sync_all_lease_risk_flags_bulk(per_lease_flags)
+        sync_all_lease_risk_flags_bulk(per_lease_flags, team_id=1)
         elapsed = time.time() - t0
         conn = database.get_connection()
         disc_count_2 = conn.execute("SELECT COUNT(*) AS n FROM discrepancies").fetchone()["n"]

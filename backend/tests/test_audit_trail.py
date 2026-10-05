@@ -19,6 +19,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 from app.api import app
 from app import database
+from _session_users import sync_session_user
 from app.portfolio import FIELD_NAMES
 from app.pdf_extractor import PDFExtractor
 from app.field_extractor import FieldExtractor
@@ -52,10 +53,12 @@ def _authed_client():
     client = app.test_client()
     with client.session_transaction() as sess:
         sess["user_id"] = 1
+        sess["team_id"] = 1
         sess["email"] = "test-analyst@example.com"
         sess["name"] = "Test Analyst"
         sess["role"] = "analyst"
         sess["team_id"] = 1  # the 'Legacy' team, always id 1 in a fresh test DB
+        sync_session_user(sess)
     return client
 
 
@@ -169,8 +172,8 @@ def test_every_pms_rent_roll_fixture_satisfies_the_source_invariant():
 def test_source_chain_for_base_lease_only():
     db_path = _fresh_temp_db()
     try:
-        lease_id = database.insert_lease("base.pdf", _fields(rent_amount="$5,000.00"))
-        chain = database.get_field_source_chain(lease_id, "rent_amount")
+        lease_id = database.insert_lease("base.pdf", _fields(rent_amount="$5,000.00"), team_id=1)
+        chain = database.get_field_source_chain(lease_id, "rent_amount", team_id=1)
 
         assert chain["effective_value"] == "$5,000.00"
         assert chain["effective_source"]["quote"] == "...$5,000.00..."
@@ -185,15 +188,16 @@ def test_source_chain_for_base_lease_only():
 def test_source_chain_reflects_amendment_override_but_keeps_full_history():
     db_path = _fresh_temp_db()
     try:
-        base_id = database.insert_lease("base.pdf", _fields(rent_amount="$5,000.00"))
+        base_id = database.insert_lease("base.pdf", _fields(rent_amount="$5,000.00"), team_id=1)
         amendment_id = database.insert_lease(
             "amendment.pdf",
             _fields(rent_amount="$5,500.00"),
             document_type="amendment",
             base_lease_id=base_id,
+            team_id=1,
         )
 
-        chain = database.get_field_source_chain(base_id, "rent_amount")
+        chain = database.get_field_source_chain(base_id, "rent_amount", team_id=1)
 
         assert chain["effective_value"] == "$5,500.00", "amendment must win"
         assert chain["effective_document_id"] == amendment_id
@@ -211,15 +215,16 @@ def test_source_chain_reflects_amendment_override_but_keeps_full_history():
 def test_source_chain_amendment_that_does_not_touch_field_does_not_override_it():
     db_path = _fresh_temp_db()
     try:
-        base_id = database.insert_lease("base.pdf", _fields(rent_amount="$5,000.00"))
+        base_id = database.insert_lease("base.pdf", _fields(rent_amount="$5,000.00"), team_id=1)
         database.insert_lease(
             "amendment.pdf",
             _fields(lease_end_date="December 31, 2030"),  # doesn't touch rent_amount
             document_type="amendment",
             base_lease_id=base_id,
+            team_id=1,
         )
 
-        chain = database.get_field_source_chain(base_id, "rent_amount")
+        chain = database.get_field_source_chain(base_id, "rent_amount", team_id=1)
         assert chain["effective_value"] == "$5,000.00"
         assert chain["effective_document_id"] == base_id
         assert chain["history"][1]["value"] is None
@@ -232,8 +237,8 @@ def test_source_chain_amendment_that_does_not_touch_field_does_not_override_it()
 def test_source_chain_field_never_found_returns_none_effective_value():
     db_path = _fresh_temp_db()
     try:
-        lease_id = database.insert_lease("base.pdf", _fields())  # nothing set
-        chain = database.get_field_source_chain(lease_id, "cam_charges")
+        lease_id = database.insert_lease("base.pdf", _fields(), team_id=1)  # nothing set
+        chain = database.get_field_source_chain(lease_id, "cam_charges", team_id=1)
         assert chain["effective_value"] is None
         assert chain["effective_source"] is None
         assert chain["effective_document_id"] is None
@@ -246,7 +251,7 @@ def test_source_chain_field_never_found_returns_none_effective_value():
 def test_source_chain_nonexistent_lease_returns_none():
     db_path = _fresh_temp_db()
     try:
-        assert database.get_field_source_chain(999999, "rent_amount") is None
+        assert database.get_field_source_chain(999999, "rent_amount", team_id=1) is None
     finally:
         os.unlink(db_path)
     print("✓ test_source_chain_nonexistent_lease_returns_none: PASS")
@@ -286,7 +291,7 @@ def test_field_source_route_unknown_field_returns_400():
     db_path = _fresh_temp_db()
     try:
         client = _authed_client()
-        lease_id = database.insert_lease("base.pdf", _fields(rent_amount="$5,000.00"))
+        lease_id = database.insert_lease("base.pdf", _fields(rent_amount="$5,000.00"), team_id=1)
         resp = client.get(f"/leases/{lease_id}/fields/not_a_real_field/source")
         assert resp.status_code == 400
         assert "Unknown field" in resp.get_json()["error"]

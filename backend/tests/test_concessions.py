@@ -469,7 +469,7 @@ def test_upload_route_ai_engine_end_to_end_concession_reaches_report():
                          content_type="multipart/form-data")
         assert resp.status_code == 201, resp.get_json()
 
-        data = dm.build_deal_mismatch_report_data(today=date(2026, 3, 15))
+        data = dm.build_deal_mismatch_report_data(team_id=1, today=date(2026, 3, 15))
         rows = [r for r in data["discrepancies"] if r["discrepancy_type"] == "concession_missing"]
         assert len(rows) == 1, data["discrepancies"]
         assert rows[0]["annual_dollar_impact"] == 600.0 and rows[0]["monthly_dollar_impact"] == 50.0
@@ -663,12 +663,12 @@ def test_report_totals_net_concession_rows_and_summary():
     try:
         u1 = "9 Oak Ct, Suite 1"
         u2 = "9 Oak Ct, Suite 2"
-        database.insert_lease("rr.csv", _fields(property_address=u1, tenant="A One", rent_amount="$1,720.00"), display_name="A")
-        database.insert_lease("a.pdf", _fields(I204_TEXT, property_address=u1, tenant="A One", rent_amount="$1,720.00", **TERM_12), display_name="A")
-        database.insert_lease("rr.csv", _fields(property_address=u2, tenant="B Two", rent_amount="$1,190.00"), display_name="B")
+        database.insert_lease("rr.csv", _fields(property_address=u1, tenant="A One", rent_amount="$1,720.00"), display_name="A", team_id=1)
+        database.insert_lease("a.pdf", _fields(I204_TEXT, property_address=u1, tenant="A One", rent_amount="$1,720.00", **TERM_12), display_name="A", team_id=1)
+        database.insert_lease("rr.csv", _fields(property_address=u2, tenant="B Two", rent_amount="$1,190.00"), display_name="B", team_id=1)
         database.insert_lease("b.pdf", _fields(E301_TEXT, property_address=u2, tenant="B Two", rent_amount="$1,290.00",
-                                               lease_start_date="April 1, 2026", lease_end_date="March 31, 2027"), display_name="B")
-        data = dm.build_deal_mismatch_report_data(today=AS_OF)
+                                               lease_start_date="April 1, 2026", lease_end_date="March 31, 2027"), display_name="B", team_id=1)
+        data = dm.build_deal_mismatch_report_data(team_id=1, today=AS_OF)
         assert _types(data["discrepancies"]) == ["concession_expiring", "concession_missing"], data["discrepancies"]
         assert data["annual_income_overstatement"] == 900.0 - 600.0
         assert data["concession_summary"] == {"leases_with_concessions": 2, "annualized_concession_value": 1500.0}
@@ -833,6 +833,67 @@ def test_review2_summary_is_none_when_a_concession_is_unreadable():
     print("✓ test_review2_summary_is_none_when_a_concession_is_unreadable: PASS")
 
 
+# ----------------------------------------------------------------------
+# Reviewer round 3
+# ----------------------------------------------------------------------
+
+def test_review3_interest_free_deposit_is_still_not_free_rent():
+    for text in (
+        "Tenant shall deposit one month's rent, which shall be held interest-free and credited toward the last month's rent.",
+        "Tenant shall pay one month's rent as a security deposit, free of interest, to be applied to the last month's rent.",
+    ):
+        assert _items(text) == [], (text, _items(text))
+    print("✓ test_review3_interest_free_deposit_is_still_not_free_rent: PASS")
+
+
+def test_review3_forfeiture_clauses_are_negations():
+    for text in (
+        "If Tenant defaults, Tenant shall not be entitled to one month of free rent.",
+        "If Resident breaks the lease, Resident will not receive two months free.",
+        "Upon any default, Tenant shall not receive the $500 move-in credit.",
+        "If this Lease is renewed, Resident will not receive a $50 per month renewal discount.",
+        "Even if Resident renews, Resident will not receive two months free.",
+    ):
+        assert _items(text) == [], (text, _items(text))
+    print("✓ test_review3_forfeiture_clauses_are_negations: PASS")
+
+
+def test_review3_and_clause_and_deposit_credit():
+    for text, amount in (
+        ("The $150 application fee is waived and residents receive a $50 per month discount for six (6) months.", 50.0),
+        ("Resident pays a reduced deposit of $200 and receives $50 per month off for the first six (6) months.", 50.0),
+    ):
+        (item,) = _items(text)
+        assert item["monthly_amount"] == amount and item["months"] == 6, (text, item)
+    assert _items("Resident receives a $200 move-in credit, applied toward the security deposit.") == []
+    result = parse_rent_roll_rows(["Unit", "Tenant", "Rent", "Concession/Month"], [["101", "Pat", "1200", "75"]], "rr.csv", "1 Elm St")
+    assert result["column_mapping"].get("concessions") == 3, result["column_mapping"]
+    print("✓ test_review3_and_clause_and_deposit_credit: PASS")
+
+
+# ----------------------------------------------------------------------
+# Reviewer round 4 (non-blocking cleanups)
+# ----------------------------------------------------------------------
+
+def test_review4_cleanups():
+    for text in (
+        "Parking is $50 per month and is discounted by $10 per month for a second car.",
+        "Utilities are billed at $100 per month and will be discounted by $20 per month for autopay.",
+        "Storage is available and is offered at a $10 per month discount.",
+    ):
+        assert _items(text) == [], (text, _items(text))
+    for text in (
+        "Resident receives $50 off rent each month, and any pet fee will be applied toward the security deposit.",
+        "Resident receives a $500 move-in credit, and any overpayment will be credited to the deposit.",
+        "So long as Tenant is not then in monetary or material non-monetary default, Base Rent shall be abated for the first two (2) months.",
+        "Provided Resident is not late with rent, Base Rent is reduced by $50.00 per month for the full term.",
+    ):
+        assert len(_items(text)) == 1, (text, _items(text))
+    result = parse_rent_roll_rows(["Unit", "Tenant", "Rent", "Concessions/Month"], [["101", "Pat", "1200", "75"]], "rr.csv", "1 Elm St")
+    assert result["column_mapping"].get("concessions") == 3
+    print("✓ test_review4_cleanups: PASS")
+
+
 if __name__ == "__main__":
     test_parse_single_free_month_with_trigger_and_calendar_month()
     test_parse_recurring_discount_with_duration_and_explicit_range()
@@ -887,4 +948,8 @@ if __name__ == "__main__":
     test_review2_remaining_non_rent_discounts_ignored()
     test_review2_concession_per_month_header_is_the_amount()
     test_review2_summary_is_none_when_a_concession_is_unreadable()
+    test_review3_interest_free_deposit_is_still_not_free_rent()
+    test_review3_forfeiture_clauses_are_negations()
+    test_review3_and_clause_and_deposit_credit()
+    test_review4_cleanups()
     print("\nAll concession tests passed.")

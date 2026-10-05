@@ -162,6 +162,7 @@ def handle_oauth_callback(provider: str, code: str, state: str, http=requests) -
         refresh_token_encrypted=encrypt_token(refresh_token),
         token_expires_at=expires_at,
         scopes=" ".join(cfg["scopes"]),
+        team_id=database.get_user(user_id)["team_id"],
     )
     return account_detail(database.get_linked_email_account(account_id))
 

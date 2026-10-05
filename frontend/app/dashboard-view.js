@@ -112,6 +112,29 @@ const Dashboard = {
         }
     },
 
+    // Loads the fictional Maple Ridge demo deal (15 leases + a 16-unit
+    // rent roll) straight into this team's own workspace -- a direct
+    // database insert server-side from a precomputed fixture, never a
+    // real extraction/API call (see app/sample_deal.py). Reloads the
+    // whole dashboard afterward rather than jumping to one lease like
+    // trySampleLease does, since the point here is showing the full
+    // rent-roll-vs-lease picture, not a single document.
+    async loadSampleDeal(btn) {
+        const originalText = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = 'Loading sample deal...';
+        try {
+            await Api.loadSampleDeal();
+            showToast('Maple Ridge sample deal loaded.', 'success');
+            await this.load();
+        } catch (err) {
+            showError(`Couldn't load the sample deal: ${err.message}`);
+        } finally {
+            btn.disabled = false;
+            btn.textContent = originalText;
+        }
+    },
+
     // ===================== Today Briefing =====================
     // Real data from GET /today (backend/app/assignments.py's
     // compute_today_view) -- this user's tasks due today/overdue, what's
@@ -1320,6 +1343,9 @@ function _initDashboardViewBindings() {
     });
     document.getElementById('dashboardTrySampleLeaseBtn').addEventListener('click', () => {
         Dashboard.trySampleLease();
+    });
+    document.getElementById('dashboardLoadSampleDealBtn').addEventListener('click', (e) => {
+        Dashboard.loadSampleDeal(e.currentTarget);
     });
 
     document.getElementById('dashboardFilter').addEventListener('input', () => {

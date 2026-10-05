@@ -116,8 +116,8 @@ def test_find_duplicate_upload_finds_match():
 
         content_hash = hashlib.sha256(b"test content").hexdigest()
         lease_id = conn.execute(
-            "INSERT INTO leases (filename, uploaded_at, extracted_fields, content_hash, status) VALUES (?, ?, ?, ?, ?) RETURNING id",
-            ("test.pdf", datetime.now(timezone.utc).isoformat(), '{"fields": {}}', content_hash, "active")
+            "INSERT INTO leases (filename, uploaded_at, extracted_fields, content_hash, status, team_id) VALUES (?, ?, ?, ?, ?, ?) RETURNING id",
+            ("test.pdf", datetime.now(timezone.utc).isoformat(), '{"fields": {}}', content_hash, "active", team_id)
         ).fetchone()[0]
         conn.commit()
         conn.close()

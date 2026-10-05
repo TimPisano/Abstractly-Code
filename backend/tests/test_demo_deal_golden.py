@@ -42,6 +42,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 from app.api import app
 from app import database
+from _session_users import sync_session_user
 from app.deal_mismatch import build_deal_mismatch_report_data
 
 DEMO_DIR = os.path.join(os.path.dirname(__file__), '..', 'benchmark_data', 'demo_deal')
@@ -84,15 +85,22 @@ def _authed_client():
         legacy_team = conn.execute("SELECT id FROM teams WHERE name='Legacy' LIMIT 1").fetchone()
     finally:
         conn.close()
+    team_id = legacy_team[0] if legacy_team else None
     # A REAL users row, not a hardcoded user_id=1: every upload writes a
     # usage_events row with a foreign key to users(id), and a fresh temp
     # DB only has a user 1 when the machine's backend/.env happens to set
     # ADMIN_EMAIL (database's bootstrap-admin migration). Without one,
     # every upload here 500'd with "FOREIGN KEY constraint failed" on a
     # clean checkout (found 2026-10-02, fix/concession-detection).
+    #
+    # Both halves of this are load-bearing after the team-isolation merge:
+    # the session below needs `user_id` (that FK) *and* `team_id` (the
+    # /leases 403 gate from feature/usage-limits, now a required arg on
+    # database.create_user), so neither side's version works alone.
+    from app.auth import hash_password
     created = database.create_user(
-        "test-analyst@example.com", "Test Analyst", "not-a-real-hash", role="analyst",
-        team_id=legacy_team[0] if legacy_team else None,
+        "test-analyst@example.com", "Test Analyst", hash_password("x"), role="analyst",
+        team_id=team_id,
     )
     user_id = created["id"] if created["status"] == "created" else database.get_user_by_email("test-analyst@example.com")["id"]
     client = app.test_client()
@@ -101,7 +109,8 @@ def _authed_client():
         sess["email"] = "test-analyst@example.com"
         sess["name"] = "Test Analyst"
         sess["role"] = "analyst"
-        sess["team_id"] = legacy_team[0] if legacy_team else None
+        sess["team_id"] = team_id
+        sync_session_user(sess)
     return client
 
 
@@ -158,7 +167,7 @@ def test_demo_deal_16unit_subset_matches_expected_findings_exactly():
 
         # Exact-findings assertion, anchored to the demo deal's own
         # documented as-of date (see module docstring re: date drift).
-        data = build_deal_mismatch_report_data(today=DEMO_AS_OF)
+        data = build_deal_mismatch_report_data(team_id=1, today=DEMO_AS_OF)
         by_type = {}
         for row in data["discrepancies"]:
             by_type.setdefault(row["discrepancy_type"], []).append(row)
@@ -306,7 +315,7 @@ def test_demo_deal_120unit_file_adds_only_background_no_lease_rows():
         # handling) -- not a bug, confirmed by inspecting the fixture.
         assert rr_result["imported_count"] == 114, rr_result
 
-        data = build_deal_mismatch_report_data(today=DEMO_AS_OF)
+        data = build_deal_mismatch_report_data(team_id=1, today=DEMO_AS_OF)
         by_type = {}
         for row in data["discrepancies"]:
             by_type.setdefault(row["discrepancy_type"], []).append(row)

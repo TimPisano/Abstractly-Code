@@ -22,6 +22,9 @@ from app import database
 from app.portfolio import FIELD_NAMES
 
 
+from _session_users import sync_session_user
+
+
 def _fresh_temp_db():
     tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
     tmp.close()
@@ -43,9 +46,11 @@ def _authed_client():
     client = app.test_client()
     with client.session_transaction() as sess:
         sess["user_id"] = 1
+        sess["team_id"] = 1
         sess["email"] = "test-analyst@example.com"
         sess["name"] = "Test Analyst"
         sess["role"] = "analyst"
+        sync_session_user(sess)
     return client
 
 
@@ -99,7 +104,7 @@ def test_reconciliation_route_real_import_plus_real_pdf_style_lease():
         )
 
         # Real "lease PDF" record (ordinary insert_lease, .pdf filename) with a different (stale) rent
-        database.insert_lease("acme_lease.pdf", _pdf_fields(tenant="Acme Corp", address="500 Main St", rent="$4,800.00"))
+        database.insert_lease("acme_lease.pdf", _pdf_fields(tenant="Acme Corp", address="500 Main St", rent="$4,800.00"), team_id=1)
 
         resp = client.get("/portfolio/rent-roll-reconciliation")
         data = resp.get_json()
@@ -129,10 +134,11 @@ def test_reconciliation_route_reflects_amendment_on_lease_document_side():
             content_type="multipart/form-data",
         )
 
-        base_id = database.insert_lease("acme_lease.pdf", _pdf_fields(tenant="Acme Corp", address="500 Main St", rent="$4,000.00"))
+        base_id = database.insert_lease("acme_lease.pdf", _pdf_fields(tenant="Acme Corp", address="500 Main St", rent="$4,000.00"), team_id=1)
         database.insert_lease(
             "amendment.pdf", _pdf_fields(rent="$5,500.00"),
             document_type="amendment", base_lease_id=base_id,
+        team_id=1,
         )
 
         resp = client.get("/portfolio/rent-roll-reconciliation")

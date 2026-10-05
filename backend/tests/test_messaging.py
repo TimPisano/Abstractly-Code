@@ -21,6 +21,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 from app.api import app
 from app import database
+from _session_users import sync_session_user
 from app.auth import hash_password
 from app import messaging
 
@@ -42,9 +43,11 @@ def _client_for(user_id, role="analyst"):
     client = app.test_client()
     with client.session_transaction() as sess:
         sess["user_id"] = user_id
+        sess["team_id"] = 1
         sess["email"] = user["email"]
         sess["name"] = user["name"]
         sess["role"] = role
+        sync_session_user(sess)
     return client
 
 
@@ -57,10 +60,10 @@ def test_create_direct_thread_reuses_existing():
     try:
         a = _make_user("a@example.com")
         b = _make_user("b@example.com")
-        t1 = database.create_thread("direct", [a, b], a)
-        t2 = database.create_thread("direct", [a, b], b)
+        t1 = database.create_thread("direct", [a, b], a, team_id=1)
+        t2 = database.create_thread("direct", [a, b], b, team_id=1)
         assert t1 == t2, "starting a DM with someone you already have a thread with must reuse it"
-        t3 = database.create_thread("direct", [b, a], a)  # order shouldn't matter
+        t3 = database.create_thread("direct", [b, a], a, team_id=1)  # order shouldn't matter
         assert t3 == t1
     finally:
         os.unlink(db_path)
@@ -71,8 +74,8 @@ def test_create_group_thread_never_reused():
     db_path = _fresh_temp_db()
     try:
         a, b, c = _make_user("a@example.com"), _make_user("b@example.com"), _make_user("c@example.com")
-        t1 = database.create_thread("group", [a, b, c], a, name="Team Chat")
-        t2 = database.create_thread("group", [a, b, c], a, name="Team Chat")
+        t1 = database.create_thread("group", [a, b, c], a, name="Team Chat", team_id=1)
+        t2 = database.create_thread("group", [a, b, c], a, name="Team Chat", team_id=1)
         assert t1 != t2, "group threads are never deduped, even with identical participants/name"
         assert len(database.get_thread_participants(t1)) == 3
     finally:
@@ -84,7 +87,7 @@ def test_is_thread_participant():
     db_path = _fresh_temp_db()
     try:
         a, b, c = _make_user("a@example.com"), _make_user("b@example.com"), _make_user("c@example.com")
-        t = database.create_thread("direct", [a, b], a)
+        t = database.create_thread("direct", [a, b], a, team_id=1)
         assert database.is_thread_participant(t, a) is True
         assert database.is_thread_participant(t, b) is True
         assert database.is_thread_participant(t, c) is False
@@ -98,10 +101,10 @@ def test_messages_ordered_and_since_filter_works():
     db_path = _fresh_temp_db()
     try:
         a, b = _make_user("a@example.com"), _make_user("b@example.com")
-        t = database.create_thread("direct", [a, b], a)
-        database.insert_message(t, a, "first")
-        m2 = database.insert_message(t, b, "second")
-        database.insert_message(t, a, "third")
+        t = database.create_thread("direct", [a, b], a, team_id=1)
+        database.insert_message(t, a, "first", team_id=1)
+        m2 = database.insert_message(t, b, "second", team_id=1)
+        database.insert_message(t, a, "third", team_id=1)
 
         all_msgs = database.get_messages(t)
         assert [m["body"] for m in all_msgs] == ["first", "second", "third"]
@@ -118,16 +121,16 @@ def test_unread_counts_exclude_own_messages_and_respect_last_read():
     db_path = _fresh_temp_db()
     try:
         a, b = _make_user("a@example.com"), _make_user("b@example.com")
-        t = database.create_thread("direct", [a, b], a)
+        t = database.create_thread("direct", [a, b], a, team_id=1)
 
-        database.insert_message(t, a, "hello from a")
+        database.insert_message(t, a, "hello from a", team_id=1)
         assert database.get_unread_counts_for_user(a).get(t, 0) == 0, "your own message is never unread for you"
         assert database.get_unread_counts_for_user(b).get(t, 0) == 1, "but it IS unread for the other participant"
 
         database.mark_thread_read(t, b)
         assert database.get_unread_counts_for_user(b).get(t, 0) == 0, "marking read clears it"
 
-        database.insert_message(t, a, "second message")
+        database.insert_message(t, a, "second message", team_id=1)
         assert database.get_unread_counts_for_user(b).get(t, 0) == 1, "a new message after mark-read is unread again"
     finally:
         os.unlink(db_path)
@@ -139,13 +142,13 @@ def test_concurrent_message_sends_all_persist():
     db_path = _fresh_temp_db()
     try:
         a, b = _make_user("a@example.com"), _make_user("b@example.com")
-        t = database.create_thread("direct", [a, b], a)
+        t = database.create_thread("direct", [a, b], a, team_id=1)
         errors = []
         lock = threading.Lock()
 
         def send(i):
             try:
-                database.insert_message(t, a if i % 2 == 0 else b, f"message {i}")
+                database.insert_message(t, a if i % 2 == 0 else b, f"message {i}", team_id=1)
             except Exception as e:
                 with lock:
                     errors.append(e)

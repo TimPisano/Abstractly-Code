@@ -20,6 +20,9 @@ from app.api import app
 from app import database
 
 
+from _session_users import sync_session_user
+
+
 def _fresh_temp_db():
     tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
     tmp.close()
@@ -41,9 +44,11 @@ def _authed_client():
     client = app.test_client()
     with client.session_transaction() as sess:
         sess["user_id"] = 1
+        sess["team_id"] = 1
         sess["email"] = "test-analyst@example.com"
         sess["name"] = "Test Analyst"
         sess["role"] = "analyst"
+        sync_session_user(sess)
     return client
 
 
@@ -72,7 +77,7 @@ def test_import_route_happy_path_persists_real_leases():
         assert data["imported_count"] == 2
         assert data["skipped_rows"] == []
 
-        leases = database.get_all_effective_leases()
+        leases = database.get_all_effective_leases(team_id=1)
         assert len(leases) == 2
         tenants = {l["extracted_fields"]["tenant"]["value"] for l in leases}
         assert tenants == {"Acme Corp", "Beta LLC"}
@@ -148,7 +153,7 @@ def test_import_route_rejects_wrong_file_type():
             content_type="multipart/form-data",
         )
         assert resp.status_code == 400
-        assert database.get_all_effective_leases() == []
+        assert database.get_all_effective_leases(team_id=1) == []
     finally:
         os.unlink(db_path)
 
@@ -167,7 +172,7 @@ def test_import_route_rejects_file_with_no_recognizable_columns():
         )
         assert resp.status_code == 400
         assert "error" in resp.get_json()
-        assert database.get_all_effective_leases() == []  # nothing partially imported
+        assert database.get_all_effective_leases(team_id=1) == []  # nothing partially imported
     finally:
         os.unlink(db_path)
 

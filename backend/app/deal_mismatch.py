@@ -1011,6 +1011,7 @@ def _total_units_checked(leases: List[Dict[str, Any]]) -> int:
 
 
 def build_deal_mismatch_report_data(
+    team_id: int,
     property_address: Optional[str] = None,
     today: Optional[date] = None,
     t12_data: Optional[Dict[str, Any]] = None,
@@ -1033,7 +1034,7 @@ def build_deal_mismatch_report_data(
     """
     from .investment_memo import _scoped_leases  # local import: avoids a module-level cycle, investment_memo.py doesn't import this module
 
-    all_leases = get_all_effective_leases()
+    all_leases = get_all_effective_leases(team_id)
     leases = _scoped_leases(all_leases, property_address)
 
     discrepancies: List[Dict[str, Any]] = []

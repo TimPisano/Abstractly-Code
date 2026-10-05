@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 from app.api import app
 from app import database
+from _session_users import sync_session_user
 from app.portfolio import FIELD_NAMES
 
 FIXTURES_DIR = os.path.dirname(__file__)
@@ -40,9 +41,11 @@ def _authed_client():
     client = app.test_client()
     with client.session_transaction() as sess:
         sess["user_id"] = 1
+        sess["team_id"] = 1
         sess["email"] = "test-analyst@example.com"
         sess["name"] = "Test Analyst"
         sess["role"] = "analyst"
+        sync_session_user(sess)
     return client
 
 
@@ -64,9 +67,9 @@ def _fields(**overrides):
 def test_add_and_get_lease_comments_chronological():
     db_path = _fresh_temp_db()
     try:
-        lease_id = database.insert_lease("base.pdf", _fields())
-        database.add_comment("Jane Analyst", "First pass looks fine.", lease_id=lease_id)
-        database.add_comment("Bob Reviewer", "Agreed, but check the CAM number.", lease_id=lease_id, author_email="bob@firm.com")
+        lease_id = database.insert_lease("base.pdf", _fields(), team_id=1)
+        database.add_comment("Jane Analyst", "First pass looks fine.", lease_id=lease_id, team_id=1)
+        database.add_comment("Bob Reviewer", "Agreed, but check the CAM number.", lease_id=lease_id, author_email="bob@firm.com", team_id=1)
 
         comments = database.get_lease_comments(lease_id)
         assert len(comments) == 2
@@ -85,8 +88,9 @@ def test_add_and_get_discrepancy_comments():
     try:
         disc_id = database.upsert_discrepancy(
             discrepancy_type="lease_risk_flag", natural_key="k1", category="missing_clause", message="m", details={}, lease_id=1,
+        team_id=1,
         )
-        database.add_comment("Jane Analyst", "Confirmed with the broker this is intentional.", discrepancy_id=disc_id)
+        database.add_comment("Jane Analyst", "Confirmed with the broker this is intentional.", discrepancy_id=disc_id, team_id=1)
 
         comments = database.get_discrepancy_comments(disc_id)
         assert len(comments) == 1
@@ -100,11 +104,11 @@ def test_add_and_get_discrepancy_comments():
 def test_lease_comments_deleted_with_lease():
     db_path = _fresh_temp_db()
     try:
-        lease_id = database.insert_lease("base.pdf", _fields())
-        database.add_comment("Jane Analyst", "note", lease_id=lease_id)
+        lease_id = database.insert_lease("base.pdf", _fields(), team_id=1)
+        database.add_comment("Jane Analyst", "note", lease_id=lease_id, team_id=1)
         assert len(database.get_lease_comments(lease_id)) == 1
 
-        database.delete_lease(lease_id)
+        database.delete_lease(lease_id, team_id=1)
         assert database.get_lease_comments(lease_id) == []
     finally:
         os.unlink(db_path)
@@ -119,7 +123,7 @@ def test_lease_comment_routes_happy_path():
     db_path = _fresh_temp_db()
     try:
         client = _authed_client()
-        lease_id = database.insert_lease("base.pdf", _fields())
+        lease_id = database.insert_lease("base.pdf", _fields(), team_id=1)
 
         resp = client.get(f"/leases/{lease_id}/comments")
         assert resp.status_code == 200
@@ -146,7 +150,7 @@ def test_lease_comment_routes_validate_required_fields():
     db_path = _fresh_temp_db()
     try:
         client = _authed_client()
-        lease_id = database.insert_lease("base.pdf", _fields())
+        lease_id = database.insert_lease("base.pdf", _fields(), team_id=1)
 
         # author_name is no longer a request-body field at all (see
         # test_lease_comment_routes_happy_path) -- only body is validated.
@@ -176,7 +180,7 @@ def test_discrepancy_comment_routes_happy_path_and_404():
     db_path = _fresh_temp_db()
     try:
         client = _authed_client()
-        lease_id = database.insert_lease("base.pdf", _fields())  # missing everything -> real flags
+        lease_id = database.insert_lease("base.pdf", _fields(), team_id=1)  # missing everything -> real flags
         flags = client.get(f"/leases/{lease_id}/risks").get_json()
         disc_id = flags[0]["discrepancy_id"]
 
@@ -203,7 +207,7 @@ def test_comments_are_visible_regardless_of_which_client_posted_them():
     try:
         client_a = _authed_client()
         client_b = _authed_client()
-        lease_id = database.insert_lease("base.pdf", _fields())
+        lease_id = database.insert_lease("base.pdf", _fields(), team_id=1)
 
         client_a.post(f"/leases/{lease_id}/comments", json={"body": "from Jane's session"})
         resp = client_b.get(f"/leases/{lease_id}/comments")
@@ -218,10 +222,11 @@ def test_recent_comments_route_merges_lease_and_discrepancy_comments():
     db_path = _fresh_temp_db()
     try:
         client = _authed_client()
-        lease_id = database.insert_lease("base.pdf", _fields(), display_name="123 Main St Lease")
+        lease_id = database.insert_lease("base.pdf", _fields(), display_name="123 Main St Lease", team_id=1)
         disc_id = database.upsert_discrepancy(
             discrepancy_type="lease_risk_flag", natural_key="k", category="missing_clause",
             message="m", details={}, lease_id=lease_id,
+        team_id=1,
         )
 
         resp = client.get("/comments/recent")
@@ -251,7 +256,7 @@ def test_recent_comments_route_respects_limit():
     db_path = _fresh_temp_db()
     try:
         client = _authed_client()
-        lease_id = database.insert_lease("base.pdf", _fields())
+        lease_id = database.insert_lease("base.pdf", _fields(), team_id=1)
         for i in range(5):
             client.post(f"/leases/{lease_id}/comments", json={"body": f"note {i}"})
 
