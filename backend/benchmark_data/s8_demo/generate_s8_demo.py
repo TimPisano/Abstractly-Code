@@ -731,7 +731,7 @@ def build_findings(by_unit, calcs, cites):
     rec = d(h["income"][0]["received"]); eff = d(h["cert"]["effective"])
     F.append({"id": "E3", "units": ["108"], "severity": "medium", "category": "Stale verification",
               "title": "Head's employment verification was too old when used",
-              "detail": f"Grace Okafor's employment verification was received {fmt_date(rec)}; the certification it supports was signed {fmt_date(d(h['cert']['signed']))} and took effect {fmt_date(eff)} - {(eff - rec).days} days after receipt.",
+              "detail": f"Grace Okafor's employment verification was received {fmt_date(rec)}; the certification it supports was signed {fmt_date(d(h['cert']['signed']))} and took effect {fmt_date(eff)}: {(d(h['cert']['signed']) - rec).days} days from receipt to signing and {(eff - rec).days} days to the effective date, both past the {VERIFICATION_VALID_DAYS}-day limit.",
               "rule": f"Third-party verifications are valid for {VERIFICATION_VALID_DAYS} days from the date the owner receives them. Older verifications must be redone before the certification is completed.",
               "citation": "HUD Handbook 4350.3, Ch. 5 (verification); see docs/research/section8.md §2",
               "evidence": cite("108", "verification_1", "certification"), "dollar_impact": None})
@@ -762,7 +762,7 @@ def build_findings(by_unit, calcs, cites):
     F.append({"id": "E6", "units": ["207"], "severity": "high", "category": "Late recertification",
               "title": "Annual recertification is 2 months overdue and reminders were never sent",
               "detail": f"The annual recertification was due {fmt_date(due)}. The 120-day notice went out {fmt_date(d(h['notices']['120']))}; the tenant never responded and no 90-, 60-, or 30-day reminder was sent. As of {fmt_date(REVIEW_DATE)} the household is still on the {fmt_date(d(h['cert']['effective']))} certification.",
-              "rule": "Owners must send the initial notice 120 days before the recertification date and reminders at 90 and 60 days (plus a 30-day notice) if the tenant has not responded, and complete the recertification by the anniversary date. Because the reminders were not sent, the owner cannot raise the tenant to market rent and is out of compliance.",
+              "rule": "Owners must send the initial notice 120 days before the recertification date and reminders at 90 and 60 days (plus a 30-day notice) if the tenant has not responded, and complete the recertification by the anniversary date.",
               "citation": "HUD Handbook 4350.3, Ch. 7 (annual recertification notices and deadlines)",
               "evidence": cite("207", "notices", "certification"),
               "dollar_impact": impact(c["hap"], due, "HAP paid after the anniversary date on an expired certification is at risk", True)})
@@ -785,7 +785,7 @@ def build_findings(by_unit, calcs, cites):
               "citation": "24 CFR 5.216 (SSN disclosure lets duplicates be caught); HUD Handbook 4350.3, Ch. 3 (household composition, joint custody)",
               "evidence": cite("304", "household", "certification") + cite("309", "household", "certification", "custody"),
               "dollar_impact": impact(t309["tenant_rent"] - c309["tenant_rent"], d(h309["cert"]["effective"]),
-                                      f"Unit 309 took a ${DEPENDENT_DEDUCTION} dependent deduction it isn't entitled to: tenant rent {money(c309['tenant_rent'])} should be {money(t309['tenant_rent'])}, so HAP is overpaid by the difference. Unit 309 is also certified at household size 2 instead of 1.")})
+                                      f"Unit 309 took a ${DEPENDENT_DEDUCTION} dependent deduction it isn't entitled to: tenant rent {money(c309['tenant_rent'])} should be {money(t309['tenant_rent'])}, so HAP is overpaid by the difference. Unit 309 is also certified at household size 2 instead of 1 (which would leave one person in a 2BR - occupancy standards are out of scope for this demo).")})
     h = by_unit["304"]; c = calcs["304"]["cert"]
     diff = h["rent_roll_tenant_rent"] - c["tenant_rent"]
     F.append({"id": "E9", "units": ["304"], "severity": "high", "category": "Rent roll vs certification",
@@ -800,7 +800,7 @@ def build_findings(by_unit, calcs, cites):
     F.append({"id": "E10", "units": ["307"], "severity": "critical", "category": "Ineligible student",
               "title": "Full-time student household with no exemption or parental-income documentation",
               "detail": "Tyler Ostrander (age 20) is a full-time student living alone. He is unmarried, not a veteran, not disabled, and has no dependent child. The file has no independent-student documentation and no certification of his parents' income.",
-              "rule": "A student under 24 who is not a veteran, not married, has no dependent child, and is not a person with disabilities is ineligible for Section 8 assistance unless the student is independent of their parents or the parents are also income-eligible - and that must be documented.",
+              "rule": "A student under 24 who is not a veteran, not married, has no dependent child, and is not a person with disabilities is ineligible for Section 8 assistance unless the student is individually income-eligible and either is independent of their parents or the parents are also income-eligible - and that must be documented.",
               "citation": "24 CFR 5.612; HUD Handbook 4350.3, Ch. 3 (student eligibility)",
               "evidence": cite("307", "student", "household", "certification"),
               "dollar_impact": impact(c["hap"], d(h["move_in"]), "Household may never have been eligible; HAP since move-in is at risk (amount uses the current HAP for every month)", True)})
@@ -848,7 +848,8 @@ def rent_roll_rows(by_unit, calcs):
                              "HAP": c["hap"], "Utility Reimb.": c["utility_reimbursement"], "Balance": 0})
                 continue
             # Filler household: consistent numbers, nothing planted.
-            size = min(t["beds"] * 2, rng.choice([1, 2, 2, 3, 3, 4]))
+            # Size each household to its unit so no filler looks over- or under-housed.
+            size = rng.choice({1: [1, 2], 2: [2, 3, 3, 4], 3: [3, 4, 5]}[t["beds"]])
             annual = rng.randrange(9000, 38000, 10)
             deps = max(0, size - rng.choice([1, 1, 2]))
             adjusted = annual - DEPENDENT_DEDUCTION * deps

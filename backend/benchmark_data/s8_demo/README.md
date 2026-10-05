@@ -75,7 +75,7 @@ overcharges owed back, plus HAP overpaid on the duplicate dependent), and **$17,
 ### E3 - Unit 108: Head's employment verification was too old when used
 
 - **Severity:** medium · **Category:** Stale verification
-- **What's wrong:** Grace Okafor's employment verification was received 01/20/2026; the certification it supports was signed 06/24/2026 and took effect 07/01/2026 - 162 days after receipt.
+- **What's wrong:** Grace Okafor's employment verification was received 01/20/2026; the certification it supports was signed 06/24/2026 and took effect 07/01/2026: 155 days from receipt to signing and 162 days to the effective date, both past the 120-day limit.
 - **Rule it breaks:** Third-party verifications are valid for 120 days from the date the owner receives them. Older verifications must be redone before the certification is completed.
 - **Citation:** HUD Handbook 4350.3, Ch. 5 (verification); see docs/research/section8.md §2
 - **Where to look:** `unit_108_okafor.pdf` p.7, `unit_108_okafor.pdf` p.6
@@ -103,7 +103,7 @@ overcharges owed back, plus HAP overpaid on the duplicate dependent), and **$17,
 
 - **Severity:** high · **Category:** Late recertification
 - **What's wrong:** The annual recertification was due 08/01/2026. The 120-day notice went out 04/03/2026; the tenant never responded and no 90-, 60-, or 30-day reminder was sent. As of 10/01/2026 the household is still on the 08/01/2025 certification.
-- **Rule it breaks:** Owners must send the initial notice 120 days before the recertification date and reminders at 90 and 60 days (plus a 30-day notice) if the tenant has not responded, and complete the recertification by the anniversary date. Because the reminders were not sent, the owner cannot raise the tenant to market rent and is out of compliance.
+- **Rule it breaks:** Owners must send the initial notice 120 days before the recertification date and reminders at 90 and 60 days (plus a 30-day notice) if the tenant has not responded, and complete the recertification by the anniversary date.
 - **Citation:** HUD Handbook 4350.3, Ch. 7 (annual recertification notices and deadlines)
 - **Where to look:** `unit_207_ramirez_cole.pdf` p.10, `unit_207_ramirez_cole.pdf` p.6
 - **Dollar impact:** $1,630 potential ($815/mo x 2 mo). HAP paid after the anniversary date on an expired certification is at risk.
@@ -124,7 +124,7 @@ overcharges owed back, plus HAP overpaid on the duplicate dependent), and **$17,
 - **Rule it breaks:** A person may be a member of only one assisted household. For joint custody, the child is counted in the household where they live more than 50% of the time, and only that household takes the dependent deduction.
 - **Citation:** 24 CFR 5.216 (SSN disclosure lets duplicates be caught); HUD Handbook 4350.3, Ch. 3 (household composition, joint custody)
 - **Where to look:** `unit_304_brooks_t.pdf` p.4, `unit_304_brooks_t.pdf` p.6, `unit_309_brooks_d.pdf` p.4, `unit_309_brooks_d.pdf` p.6, `unit_309_brooks_d.pdf` p.9
-- **Dollar impact:** $60 confirmed ($12/mo x 5 mo). Unit 309 took a $480 dependent deduction it isn't entitled to: tenant rent $918 should be $930, so HAP is overpaid by the difference. Unit 309 is also certified at household size 2 instead of 1..
+- **Dollar impact:** $60 confirmed ($12/mo x 5 mo). Unit 309 took a $480 dependent deduction it isn't entitled to: tenant rent $918 should be $930, so HAP is overpaid by the difference. Unit 309 is also certified at household size 2 instead of 1 (which would leave one person in a 2BR - occupancy standards are out of scope for this demo)..
 
 ### E9 - Unit 304: Rent roll still charges the pre-interim rent
 
@@ -139,7 +139,7 @@ overcharges owed back, plus HAP overpaid on the duplicate dependent), and **$17,
 
 - **Severity:** critical · **Category:** Ineligible student
 - **What's wrong:** Tyler Ostrander (age 20) is a full-time student living alone. He is unmarried, not a veteran, not disabled, and has no dependent child. The file has no independent-student documentation and no certification of his parents' income.
-- **Rule it breaks:** A student under 24 who is not a veteran, not married, has no dependent child, and is not a person with disabilities is ineligible for Section 8 assistance unless the student is independent of their parents or the parents are also income-eligible - and that must be documented.
+- **Rule it breaks:** A student under 24 who is not a veteran, not married, has no dependent child, and is not a person with disabilities is ineligible for Section 8 assistance unless the student is individually income-eligible and either is independent of their parents or the parents are also income-eligible - and that must be documented.
 - **Citation:** 24 CFR 5.612; HUD Handbook 4350.3, Ch. 3 (student eligibility)
 - **Where to look:** `unit_307_ostrander.pdf` p.5, `unit_307_ostrander.pdf` p.4, `unit_307_ostrander.pdf` p.6
 - **Dollar impact:** $11,570 potential ($890/mo x 13 mo). Household may never have been eligible; HAP since move-in is at risk (amount uses the current HAP for every month).
