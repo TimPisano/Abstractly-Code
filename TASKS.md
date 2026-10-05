@@ -75,7 +75,7 @@ those by taking **main's** TASKS.md, not the branch's.
    now done, plus a regression test. Merges clean. See Ready for review.
 10. **`main` is 78/79 on a clean checkout, not 79/79 — correction.**
    `chore/demo-rent-roll-polish` added `test_demo_deal_regression.py`,
-   which repeats the exact fixture bug #8 described: it hardcodes
+   (**symptom changed 2026-10-05:** since team isolation merged it fails with `401 Login required` on the first upload, reproduced on clean `origin/main` `b18bbe3`, not the FK error below), which repeats the exact fixture bug #8 described: it hardcodes
    `sess["user_id"] = 1` (`:59`) without inserting a `users` row, so every
    `/leases` upload 500s on a FOREIGN KEY in `usage_limits.log_usage_event`.
    It passes **only** where a gitignored `backend/.env` seeds a user with
@@ -100,7 +100,6 @@ those by taking **main's** TASKS.md, not the branch's.
 | `feature/deal-assistant` | `~/dev/projects/abstractly-assistant` | 0 / −7 | Worktree only, nothing built. Not started. |
 | `feature/calendly-booking` | `~/dev/projects/abstractly-calendly` | +1 / 0 | Branched off `7ac879b` 2026-10-04. Calendly popup on all 9 Book-a-Demo CTAs (`index.html` ×5, `pricing.html` ×4), keeping `href="#book-demo"` as a fallback so no CTA can become a dead click. **Plan written, awaiting user approval** — `docs/plans/feature-calendly-booking.md`. Key finding: the task as given would have shipped a popup that never opens — all 3 frontends run `default-src 'self'` with no external hosts, so **5** CSP directives in `render.yaml` block Calendly (script, style, frame, img, font). Prior art: none (no Calendly anywhere, any branch, any stash). Will collide with `feature/pricing-page` / `feature/landing-positioning`, which both rewrite the same two files. |
 
-| `feature/s8-hud-data` | `~/dev/projects/abstractly-s8-data` | — | Branched off `origin/main` `b18bbe3` 2026-10-05. Self-contained `backend/app/section8/hud_data/` (HUD income limits, FMRs, LIHTC/MTSP limits; versioned by effective year; lookup + refresh CLI) behind `SECTION8_HUD_DATA_ENABLED` (off). Plan: `docs/plans/feature-s8-hud-data.md`. Building. |
 | `design/logo` | `~/dev/projects/abstractly-logo` | — | Branched off `origin/main` `b18bbe3` 2026-10-05. Three original A logomark concepts (split crossbar, fluted, ledger) as standalone SVGs + preview page in `design/logo/`. Design exploration only — **live site untouched**. Prior art: current brass-square favicon on `main` (from `feature/pricing-page`); no other logo branch/stash. |
 
 ### Handoff blocks
@@ -111,13 +110,6 @@ those by taking **main's** TASKS.md, not the branch's.
 - Loop step: 4 — building (user's task prompt was the approval)
 - Last update: 2026-10-05
 - Next action: user picks a concept; then a separate task swaps it into the live site
-
-#### feature/s8-hud-data
-- Worktree: `~/dev/projects/abstractly-s8-data`
-- Goal: HUD reference data (IL, FMR, MTSP/LIHTC) loadable by year/area with a lookup function and refresh command, flag off.
-- Loop step: 4 — building (user's task prompt was the approval)
-- Last update: 2026-10-05 by builder session
-- Next action: finish tests, commit, push, run reviewer
 
 #### feature/calendly-booking
 - Worktree: `~/dev/projects/abstractly-calendly`
@@ -132,6 +124,7 @@ those by taking **main's** TASKS.md, not the branch's.
 
 | Branch | Worktree | +/− main | Notes |
 |---|---|---|---|
+| `feature/s8-hud-data` | `~/dev/projects/abstractly-s8-data` | +3 | **Ready.** Pushed `130e784`, off `origin/main` `b18bbe3`. New self-contained `backend/app/section8/hud_data/`: HUD Section 8 income limits, Fair Market Rents and MTSP (LIHTC) limits from HUD's bulk CSV/XLSX files, in its **own** SQLite file (`HUD_DATA_DB_PATH`, else `hud_data.db` beside `DB_PATH`), versioned by effective year (a reload replaces one year atomically; append-only load log with sha256). Lookups by year / as-of date / latest; derived LIHTC income limits (20–80% AIT) and §42 gross rent caps; CLI `python -m app.section8.hud_data refresh|status` (`--url` only https huduser.gov, no redirects, 50 MB cap). Behind `SECTION8_HUD_DATA_ENABLED` (off); no routes, nothing in the app imports it. Only outside edit: one line in `run_all_tests.py`. Tests: `test_section8_hud_data.py` 16 functions, small illustrative fixtures, no network. Suite **81/82** in a clean worktree (only `test_demo_deal_regression.py`, reproduced on clean `origin/main`). **reviewer: MERGE**; its follow-ups 1–4 applied anyway in `130e784` (filename year check, zero/inf/nan + monotonic checks, flag wording), with regression tests verified failing first; not re-reviewed (small, test-covered). **Not verified:** header patterns against real FY2025/26 HUD files — run `refresh --url` on the live files before depending on it. |
 | `chore/contact-email` | `~/dev/projects/abstractly-contact-email` | +3 | **Ready.** Pushed `0d2297d`, merges **clean**, 4 files. Public contact details: footer email -> `tim@getabstractly.com` on `index.html` + `pricing.html`, personal phone `631-697-8711` removed from both. Those two footers were the **only** public-facing appearances of either -- `main` has no legal or help pages (`404.html` is the only other public page). `email_service.py` sets `Reply-To: tim@getabstractly.com` while `From` stays `EMAIL_USER`, because Gmail SMTP rejects a `From` the authenticated account doesn't own. New regression test pins both headers; verified it fails without the fix. Suite **80/81** in a clean worktree. **Left deliberately unchanged** (not public-facing): `backend/.env.example` (`EMAIL_USER` is the SMTP *login* -- changing it would break sending), test fixtures using the address as a value, and `docs/PROGRESS.md`/`DECISIONS.md` history. **Watch out:** `docs/tester-pack` still carries the old email AND phone in both footers, so merging it later would reintroduce them. |
 | `fix/demo-deal-relative-dates` | `~/dev/projects/abstractly-demo-dates` | — | Pushed (`8e1084f`). Makes the Maple Ridge demo deal's dates relative to generation day (good change: kills the date drift QA_REPORT flagged). **MERGE ATTEMPTED 2026-10-04 AND ABORTED — needs a reconciliation task, not a merge.** `main` was untouched (`0545bec`). 3 conflicts vs `953c00a`, two of them semantic: (1) `expected_findings.json` — main has concession-detection's populated `monthly_dollar_impact` (89.58, 50.0) with hardcoded dates; this branch has computed dates with `monthly_dollar_impact: null`. The combination needs both, and the dollar impacts must be **re-derived for the new dates** (a concession's past/future position changes its classification), then the package regenerated. (2) `test_demo_deal_golden.py` — the two branches chose **opposite strategies for the same test**: main *pins* `today` to the fixture's as-of date to sidestep `expired_but_occupied` drift and asserts **10** findings; this branch *never* pins `today` (regenerates into a temp dir, real wall-clock, plus a freshness test that trips 2026-12-15) and asserts **7**. Someone must pick one strategy and re-derive the assertions for all 10 findings under it. Not resolvable mechanically. (3) `TASKS.md` (take main's). |
 | `docs/tester-pack` | `~/dev/projects/abstractly-tester-pack` | +7 / 0 | Overnight run, 2026-10-01: in-app Help & Guides (17 articles incl. Getting Started + troubleshooting), tester emails, 10-Q questionnaire, sales drafts updated (local). Frontend + docs only. Headless-verified at 3 widths. **Read `OVERNIGHT_REPORT.md` on the branch**: 12 product bugs found (report-page T-12 upload broken, T-12 income check never fires, only .csv/.xlsx rent rolls feed the report…). |
