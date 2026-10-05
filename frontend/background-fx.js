@@ -20,11 +20,37 @@
  * They fall back to the static CSS layer defined in landing.css
  * (html.bgfx-static), and native `scroll-behavior: smooth` handles
  * anchor navigation instead.
+ *
+ * Separately, and unconditionally for every visitor: toggles
+ * .nav-scrolled on the fixed header once the page has scrolled past a
+ * small threshold, so it's transparent over the hero and picks up a
+ * translucent blurred fill after that (see landing.css).
  */
 (function () {
     'use strict';
 
     var root = document.documentElement;
+
+    // ---- Fixed-nav scroll toggle: transparent over the hero, a
+    // translucent blurred fill once scrolled. This is a basic header
+    // affordance, not part of the motion effect, so it runs
+    // unconditionally -- reduced-motion and touch visitors get it too,
+    // even though they skip everything below.
+    var navEl = document.querySelector('.landing-nav');
+    if (navEl) {
+        var navTicking = false;
+        var updateNav = function () {
+            navTicking = false;
+            navEl.classList.toggle('nav-scrolled', (window.scrollY || window.pageYOffset || 0) > 24);
+        };
+        updateNav();
+        window.addEventListener('scroll', function () {
+            if (navTicking) return;
+            navTicking = true;
+            requestAnimationFrame(updateNav);
+        }, { passive: true });
+    }
+
     var prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     var isTouch = window.matchMedia('(hover: none), (pointer: coarse)').matches;
 
@@ -83,7 +109,7 @@
         '    vec3 ribShade = vec3(0.085, 0.083, 0.086);',
         '    vec3 accent = vec3(0.714, 0.541, 0.306);',
         '',
-        '    vec3 color = base + ribShade * (0.5 + 0.5 * wave) * 0.4;',
+        '    vec3 color = base + ribShade * (0.5 + 0.5 * wave) * 0.55;',
         '',
         '    float shimmer = 0.012 * sin(u_time * 0.25 + phase * 2.0);',
         '    color += accent * shimmer * 0.4;',
@@ -190,7 +216,9 @@
             var target = document.getElementById(id);
             if (!target) return;
             e.preventDefault();
-            lenis.scrollTo(target, { offset: -16, duration: 1.3 });
+            // -88 clears the fixed nav's height so the anchor target's
+            // own heading doesn't land underneath it.
+            lenis.scrollTo(target, { offset: -88, duration: 1.3 });
         });
 
         window.__lenis = lenis;
@@ -208,15 +236,22 @@
     refreshDocLimit();
     window.addEventListener('resize', refreshDocLimit);
 
+    // Floor of 0.38 (not near-zero) is deliberate: the ribs must stay
+    // clearly visible for the rest of the page, never fade close enough
+    // to the base color to read as "solid black" next to the bright
+    // hero -- that contrast is exactly what looked like a hard seam.
+    var FADE_FLOOR = 0.38;
+    var FADE_SWING = 1 - FADE_FLOOR;
+
     function computeIntensity(scrollY) {
         var vh = window.innerHeight;
         var heroT = Math.min(Math.max(scrollY / (vh * 1.5), 0), 1);
-        var heroIntensity = 1 - easeInOutCubic(heroT) * 0.85;
+        var heroIntensity = 1 - easeInOutCubic(heroT) * FADE_SWING;
 
         var distFromBottom = docLimit - scrollY;
         var bottomWindow = vh * 1.3;
         var bottomT = 1 - Math.min(Math.max(distFromBottom / bottomWindow, 0), 1);
-        var bottomIntensity = 0.15 + easeInOutCubic(bottomT) * 0.85;
+        var bottomIntensity = FADE_FLOOR + easeInOutCubic(bottomT) * FADE_SWING;
 
         return Math.max(heroIntensity, bottomIntensity);
     }

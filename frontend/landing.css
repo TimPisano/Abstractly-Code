@@ -134,15 +134,37 @@ html.bgfx-static body::before {
 
 /* ===================== Nav ===================== */
 
+/* Fixed over the whole page (not an in-flow sibling before the hero
+   any more) so it's transparent over the hero and stays put while
+   scrolling -- background-fx.js toggles .nav-scrolled once the page
+   has scrolled past a small threshold, fading in the translucent
+   blurred fill below. Runs unconditionally (not gated behind the
+   shader/Lenis path), so reduced-motion and touch visitors get the
+   same header behavior. */
 .landing-nav {
-    position: relative;
-    z-index: 2;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 20;
     display: flex;
     align-items: center;
     justify-content: space-between;
     max-width: 1200px;
     margin: 0 auto;
-    padding: 2rem 1.5rem 0;
+    padding: 1.25rem 1.5rem;
+    background: transparent;
+    border-bottom: 1px solid transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    transition: background-color 0.35s ease, backdrop-filter 0.35s ease, border-color 0.35s ease;
+}
+
+.landing-nav.nav-scrolled {
+    background: rgba(10, 10, 11, 0.62);
+    border-bottom-color: var(--border-color);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
 }
 
 /* The page background is dark site-wide now (the shader shows through
@@ -157,6 +179,7 @@ html.bgfx-static body::before {
     font-size: 1.0625rem;
     letter-spacing: -0.01em;
     color: var(--text-dark);
+    text-decoration: none;
     white-space: nowrap;
 }
 
@@ -206,30 +229,15 @@ html.bgfx-static body::before {
 
 .hero {
     position: relative;
-    overflow: hidden;
     /* No background of its own -- the fluted-glass shader (#bgfx-canvas)
        shows through at full intensity here, the same layer that stays
-       faintly visible behind every section below. */
+       faintly visible behind every section below. Previously had a
+       charcoal skyline silhouette pinned to its bottom edge; removed --
+       it drew a continuous, nearly-opaque band across the full width
+       right at the hero/next-section boundary, which read as exactly
+       the hard seam this page must not have. */
     padding: 6rem 1.5rem 7rem;
     text-align: center;
-}
-
-.hero-bg {
-    position: absolute;
-    inset: 0;
-    z-index: 0;
-    pointer-events: none;
-}
-
-.hero-skyline {
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    width: 100%;
-    height: 200px;
-    color: var(--lux-charcoal-2);
-    opacity: 0.4;
 }
 
 .hero-inner {
@@ -1270,6 +1278,17 @@ html.bgfx-static body::before {
         flex-wrap: wrap;
         justify-content: center;
         gap: 0.5rem 1.25rem;
+    }
+
+    /* The fixed nav can wrap to two or three lines at this width --
+       extra top clearance keeps it from overlapping the hero/pricing
+       heading while it's transparent (pre-scroll). */
+    .hero {
+        padding-top: 11rem;
+    }
+
+    .pricing-header {
+        padding-top: 9rem;
     }
 }
 
