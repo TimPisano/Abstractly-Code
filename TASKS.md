@@ -6,8 +6,8 @@ Commit changes with `git commit -m "TASKS: …" -- TASKS.md` (the hooks
 allow TASKS.md-only commits on main). `/status` reconciles this file with
 git; `/session-handoff` writes the handoff blocks; `/resume-task` reads them.
 
-Last reconciled with git: **2026-10-04** (`feature/pricing-page`
-merged + pushed). `main` @ `c21ced5` == `origin/main`.
+Last reconciled with git: **2026-10-04** (`chore/render-persistent-disk`
+merged + pushed). `main` @ `92013f7` == `origin/main`.
 `+a/−b` = commits ahead/behind `main`; the per-branch numbers below
 predate recent merges. **Every open branch now also conflicts in
 `TASKS.md`** (they each edited it before that rule existed) — resolve
@@ -44,11 +44,15 @@ those by taking **main's** TASKS.md, not the branch's.
 6. ~~Pick one fluted-glass hero~~ — **decided 2026-10-04: `feature/pricing-page`.**
    `feature/landing-positioning` is superseded and must not be merged
    (see its row in Ready for review for why a blend was impossible).
-7. **Render plan upgrade** — you asked (2026-10-04) to hold
-   `chore/render-persistent-disk` until you confirm the plan is upgraded.
-   Held. Nothing on Render was changed. Same hold applies to pricing-page's
-   `0a0d7a2` (#3): `plan: starter` on a non-upgraded account risks a
-   failed deploy.
+7. ~~Render plan upgrade hold~~ — **released and merged** `92013f7`
+   (2026-10-04), narrowed to `abstractly-api` only on your
+   instruction. **Still yours to confirm on Render:** that the disk is
+   actually attached and `DB_PATH` is set in the dashboard. A healthy
+   `/health` does NOT prove the database is on the disk — it only
+   proves the app can open *a* database. The real proof is the
+   procedure in `docs/DEPLOYMENT.md` -> "Verifying data actually
+   survives a redeploy": create a record, redeploy, confirm it lives.
+   That needs login credentials, so it could not be done from here.
 9. ~~Two content blockers on the pricing page~~ — **RESOLVED 2026-10-04**:
    you chose to drop the placeholder-pricing banner entirely. Removed
    markup + its dead CSS in `67afbe1`, shipped in `c21ced5`. That
@@ -189,6 +193,7 @@ loan-underwriting. (`landing-positioning` dropped — superseded.)
 | Branch | Merged as | Notes |
 |---|---|---|
 | `chore/demo-rent-roll-polish` | `5d7fdbe` | Maple Ridge demo polish: rent rolls regenerated as PMS-style **xlsx + landscape PDF** (the two `*_appfolio.csv` files are **deleted** — fixture paths now point at the xlsx), 15 lease PDFs reworked into real-looking signed leases, T-12 as a clean operating statement, institutional-looking Deal Mismatch Report PDF (`deal_mismatch_export.py`), new data-driven `test_demo_deal_regression.py`, and `DEMO_WALKTHROUGH.md` sales script. Merged 2026-10-04. **Resolved on the branch, not on main:** the primary checkout is read-only (rule 3), so a combined conflict resolution is impossible there — merged `main` *into* the branch instead (`5139d3f`), fixed it up (`7dec3d1`), pushed, after which main merged with **zero conflicts**. Two stale expectations fixed in the process: the golden test still demanded `"(no concession shown)"` though the new rent rolls carry a real `$0.00` Concessions column (detector deliberately distinguishes the two; all 3 `concession_missing` findings fire correctly), and the demo README still warned that `detect_concession_missing` is a stub — false since `953c00a`, and actively misleading for sales. Suite **79/79 on merged main**, run post-merge. |
+| `chore/render-persistent-disk` | `92013f7` | 1 GB persistent disk (`abstractly-data`, `/app/data`) + `DB_PATH` + `plan: starter` on **`abstractly-api` only**. Config + docs, no app code. **Scope narrowed from the original branch on the user's instruction** (`6d14c95`): the tester's disk and `plan: starter` were removed, so tester and demo both stay `plan: free` with no disk and keep losing data on restart. Docs corrected in three places that still assumed two disks. Merged 2026-10-04, zero conflicts. `test_frontend_api_routing.py` (the test that parses `render.yaml`) passes; suite **80/81 in a clean worktree**. Smoke test: all three APIs healthy. **`abstractly-demo-api` returned 502/503 for ~7 minutes after the push and then recovered on its own** — a slow free-tier redeploy plus `DEMO_MODE` reseed, not a failure, and notable because demo is the service this change does not touch. Expect that window on future pushes. **Not verified from here:** whether the disk is actually mounted and in use — see Waiting-on-you #7. |
 | `feature/pricing-page` (round 2) | `c21ced5` | **The marketing design that ships.** Flat per-team pricing ($499/$399, $1,250/$999, Enterprise), dark theme, cursor-spotlight cards, new logo, Lenis, Book-a-demo CTAs with no self-serve checkout. 10 files, frontend-only. Merged 2026-10-04 on the user's typed approval, **zero conflicts** (fast-forward after `main` was merged into the branch first). **Fixes the per-property pricing ($25/$20) that was live on production.** Suite **80/81 in a clean worktree**; the primary checkout reported 72/81, which is the `.env` artifact in the Decisions log, not this merge — a frontend-only diff cannot break backend tests. Smoke test went beyond `/health`: polled production until the banner disappeared from the served HTML (11130 -> 10838 bytes), confirmed `pricing-config.js` now serves 499/399/1250/999, confirmed all three frontends serve the new build with zero `per-property` occurrences, and **looked at the live production page** — flat prices, no banner, readable. |
 | `feature/team-isolation` | `3cff20b` | **Real document-level multi-tenancy** — `team_id` on `leases`, `discrepancies`, `alerts`, `tasks`, etc., every document query scoped to the authenticated caller's team. 82 files, +7948/−1117; adds `app/sample_deal.py`, `tests/_session_users.py`, `test_team_isolation.py`, `test_team_isolation_fixes.py`, `frontend/app/team-setup.html`. Merged 2026-10-04 on the user's typed approval; **zero conflicts** (the branch had already merged `main` at `0ae5438` and fixed the `test_concessions.py` `team_id` args in `d8aeed5`). Suite **80/81 in a clean worktree** — only the pre-existing `test_demo_deal_regression.py` bug (#10). Smoke test: all three services `{"status":"healthy"}` across a 2-minute window after the push, and `/app/team-setup.html` (a file new on this branch) returns 200 with real content on the tester — which is what proves the redeploy actually landed rather than just reporting healthy. **Caveat:** merged tip `d8aeed5` is 2 commits past the reviewed `fe520c9`; both are a mechanical `main` merge and a 6-line test-only change, so no unreviewed production code shipped. **Follow-up (not blocking):** bind tokens to the user's email so an old token can't act as a different user after a deploy-time DB wipe (`auth._live_user`); and `feature/deal-assistant` must rebase (3 trivial `api.py` conflicts + its session-faking tests need `sync_session_user`). |
 | `research/section8` | `2fbb542` | Section 8 / LIHTC founder's briefing by another session — **docs only**, one new file (`docs/research/section8.md`, 224 lines), nothing modified, no code. Merged 2026-10-04 on the user's typed approval. Scanned before merging: no placeholders, secrets, or PII (the one `$KEY` hit is a shell variable in an illustrative `curl` example). Suite **79/79** post-merge; all three Render services healthy after the push. **Merging it was not a product decision** — see Up next #6 for the question it leaves open. Deviation worth noting: it was in Up next, not "Ready for review", and carried no reviewer verdict; merged anyway as an additive docs-only file on the user's explicit instruction. |
