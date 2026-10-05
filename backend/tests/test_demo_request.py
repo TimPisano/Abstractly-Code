@@ -8,7 +8,11 @@ Follows test_waitlist_email.py's pattern: Flask's in-process test_client(),
 mocked smtplib.SMTP_SSL, an isolated temp SQLite file per test.
 """
 
+import email
+import json
 import os
+import re
+import subprocess
 import sys
 import tempfile
 import unittest.mock as mock
@@ -51,6 +55,7 @@ def _fresh_temp_db():
     # the same "unknown" bucket) -- reset it alongside the DB so one
     # test's requests can't trip the cap for the next one.
     api_module._demo_request_rate_limiter.reset()
+    email_service._reset_rate_limit_state_for_tests()
     return tmp.name
 
 
@@ -85,7 +90,7 @@ def test_valid_submission_succeeds_persists_and_sends_both_emails():
             assert mock_server.sendmail.call_count == 2
             recipients = [call.args[1] for call in mock_server.sendmail.call_args_list]
             assert ["jane@example.com"] in recipients
-            assert ["timmypisano24@gmail.com"] in recipients
+            assert ["tim@getabstractly.com"] in recipients
     finally:
         os.unlink(db_path)
 
@@ -297,6 +302,7 @@ def test_rate_limit_blocks_after_max_requests_per_ip():
     from app import api as api_module
 
     api_module._demo_request_rate_limiter.reset()
+    email_service._reset_rate_limit_state_for_tests()
     db_path = _fresh_temp_db()
     try:
         client = app.test_client()
@@ -339,6 +345,159 @@ def test_cross_origin_request_rejected_by_csrf_middleware():
     print("✓ test_cross_origin_request_rejected_by_csrf_middleware: PASS")
 
 
+def _sent_messages(mock_server):
+    """{recipient: parsed email.message.Message} for every mocked sendmail call."""
+    return {
+        call.args[1][0]: email.message_from_string(call.args[2])
+        for call in mock_server.sendmail.call_args_list
+    }
+
+
+def _body_text(msg, subtype):
+    for part in msg.walk():
+        if part.get_content_type() == f"text/{subtype}":
+            return part.get_payload(decode=True).decode()
+    return ""
+
+
+def test_notification_goes_to_tim_with_reply_to_the_visitor():
+    """The founder gets every field and can hit Reply in Gmail to answer the
+    visitor directly -- regardless of what ADMIN_EMAIL (the admin login
+    seed) happens to be."""
+    db_path = _fresh_temp_db()
+    try:
+        env = dict(_FAKE_ENV, ADMIN_EMAIL="someone-else@example.com")
+        with mock.patch.dict(os.environ, env):
+            os.environ.pop("DEMO_REQUEST_NOTIFY_EMAIL", None)
+            mock_smtp_ssl, mock_server = _mocked_smtp()
+            with mock.patch("smtplib.SMTP_SSL", mock_smtp_ssl):
+                resp = app.test_client().post("/demo-request", json=_VALID_BODY)
+        assert resp.status_code == 201, resp.get_json()
+
+        sent = _sent_messages(mock_server)
+        assert "tim@getabstractly.com" in sent, list(sent)
+        assert "someone-else@example.com" not in sent
+        note = sent["tim@getabstractly.com"]
+        assert note["Reply-To"] == "jane@example.com", note["Reply-To"]
+        text = _body_text(note, "plain")
+        for value in ("Jane Doe", "jane@example.com", "Example Capital Partners",
+                      "240", _VALID_BODY["message"]):
+            assert value in text, (value, text)
+    finally:
+        os.unlink(db_path)
+
+    print("✓ test_notification_goes_to_tim_with_reply_to_the_visitor: PASS")
+
+
+def test_notification_recipient_can_be_overridden_by_env():
+    db_path = _fresh_temp_db()
+    try:
+        env = dict(_FAKE_ENV, DEMO_REQUEST_NOTIFY_EMAIL="sales@example.com")
+        with mock.patch.dict(os.environ, env):
+            mock_smtp_ssl, mock_server = _mocked_smtp()
+            with mock.patch("smtplib.SMTP_SSL", mock_smtp_ssl):
+                resp = app.test_client().post("/demo-request", json=_VALID_BODY)
+        assert resp.status_code == 201
+        assert "sales@example.com" in _sent_messages(mock_server)
+    finally:
+        os.unlink(db_path)
+
+    print("✓ test_notification_recipient_can_be_overridden_by_env: PASS")
+
+
+def test_confirmation_includes_calendly_link_and_replies_to_tim():
+    db_path = _fresh_temp_db()
+    try:
+        with mock.patch.dict(os.environ, _FAKE_ENV):
+            os.environ.pop("CALENDLY_URL", None)
+            mock_smtp_ssl, mock_server = _mocked_smtp()
+            with mock.patch("smtplib.SMTP_SSL", mock_smtp_ssl):
+                resp = app.test_client().post("/demo-request", json=_VALID_BODY)
+        assert resp.status_code == 201
+
+        confirm = _sent_messages(mock_server)["jane@example.com"]
+        assert confirm["Reply-To"] == "tim@getabstractly.com"
+        link = "https://calendly.com/timpisano/abstractly-intro-call"
+        assert link in _body_text(confirm, "plain")
+        assert f'href="{link}"' in _body_text(confirm, "html")
+    finally:
+        os.unlink(db_path)
+
+    print("✓ test_confirmation_includes_calendly_link_and_replies_to_tim: PASS")
+
+
+def test_reply_to_cannot_inject_extra_headers():
+    """Defence in depth: the route's email regex already rejects whitespace,
+    but _send must never let a CR/LF in a Reply-To add headers."""
+    with mock.patch.dict(os.environ, _FAKE_ENV):
+        email_service._reset_rate_limit_state_for_tests()
+        mock_smtp_ssl, mock_server = _mocked_smtp()
+        with mock.patch("smtplib.SMTP_SSL", mock_smtp_ssl):
+            email_service.send_demo_request_notification(
+                "Eve", "eve@example.com\r\nBcc: victim@example.com", "X", 10, None)
+        raw = mock_server.sendmail.call_args.args[2]
+    headers = email.message_from_string(raw)
+    assert headers["Bcc"] is None, raw
+    assert headers["Reply-To"] == "tim@getabstractly.com", headers["Reply-To"]
+
+    print("✓ test_reply_to_cannot_inject_extra_headers: PASS")
+
+
+def test_request_from_getabstractly_origin_is_accepted_with_production_config():
+    """The production bug: the site moved to getabstractly.com and the API
+    rejected its Origin, so the form showed "Couldn't reach the server".
+    Boots the app in a fresh process with ADMIN_ALLOWED_ORIGINS set to
+    exactly what render.yaml gives abstractly-api (the list is read once
+    at import), then sends a real browser-shaped preflight + POST from each
+    public origin. Email is mocked; no network."""
+    root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    with open(os.path.join(root, "render.yaml")) as f:
+        api_block = f.read().split("name: abstractly-api", 1)[1].split("\n  - type: ", 1)[0]
+    prod_origins = re.search(r"key: ADMIN_ALLOWED_ORIGINS\s+value: (\S+)", api_block).group(1)
+
+    script = r"""
+import json, os, sys, tempfile, unittest.mock as mock
+sys.path.insert(0, os.getcwd())
+from app.api import app
+from app import database
+tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False); tmp.close()
+database.configure(tmp.name); database.init_db()
+out = {}
+with mock.patch("smtplib.SMTP_SSL"):
+    client = app.test_client()
+    for origin in sys.argv[1:]:
+        pre = client.options("/demo-request", headers={
+            "Origin": origin, "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "Content-Type"})
+        resp = client.post("/demo-request", headers={"Origin": origin}, json={
+            "name": "Jane Doe", "work_email": "jane@example.com",
+            "company": "Example Capital", "units": 240})
+        out[origin] = [pre.headers.get("Access-Control-Allow-Origin"),
+                       resp.status_code, resp.headers.get("Access-Control-Allow-Origin")]
+os.unlink(tmp.name)
+print(json.dumps(out))
+"""
+    env = {k: v for k, v in os.environ.items() if k not in ("EMAIL_USER", "EMAIL_APP_PASSWORD")}
+    env["ADMIN_ALLOWED_ORIGINS"] = prod_origins
+    origins = ["https://getabstractly.com", "https://www.getabstractly.com",
+               "https://abstractly-n0id.onrender.com", "https://evil.example.com"]
+    proc = subprocess.run([sys.executable, "-c", script, *origins],
+                          cwd=os.path.join(root, "backend"), env=env,
+                          capture_output=True, text=True, timeout=120)
+    assert proc.returncode == 0, proc.stderr[-2000:]
+    result = json.loads(proc.stdout.strip().splitlines()[-1])
+
+    for origin in origins[:3]:
+        preflight_allow, status, post_allow = result[origin]
+        assert preflight_allow == origin, (origin, result[origin])
+        assert status == 201, (origin, result[origin])
+        assert post_allow == origin, (origin, result[origin])
+    # ...and the allow-list still means something.
+    assert result["https://evil.example.com"][1] == 403, result
+
+    print("✓ test_request_from_getabstractly_origin_is_accepted_with_production_config: PASS")
+
+
 if __name__ == "__main__":
     test_valid_submission_succeeds_persists_and_sends_both_emails()
     test_submission_without_optional_message_succeeds()
@@ -354,4 +513,9 @@ if __name__ == "__main__":
     test_error_response_never_leaks_internal_detail()
     test_rate_limit_blocks_after_max_requests_per_ip()
     test_cross_origin_request_rejected_by_csrf_middleware()
+    test_notification_goes_to_tim_with_reply_to_the_visitor()
+    test_notification_recipient_can_be_overridden_by_env()
+    test_confirmation_includes_calendly_link_and_replies_to_tim()
+    test_reply_to_cannot_inject_extra_headers()
+    test_request_from_getabstractly_origin_is_accepted_with_production_config()
     print("\nAll demo-request tests passed.")

@@ -45,11 +45,15 @@ def _api_frontend_pairs():
     for name, block in _render_services().items():
         if 'runtime: docker' not in block:
             continue
-        origin = re.search(
-            r'key: ADMIN_ALLOWED_ORIGINS\s+value: https://(\S+)', block
-        ).group(1)
-        pairs.append((origin, f'{name}.onrender.com'))
+        for origin in _allowed_origins(block):
+            pairs.append((origin.replace('https://', ''), f'{name}.onrender.com'))
     return pairs
+
+
+def _allowed_origins(block):
+    """Every origin in a service's comma-separated ADMIN_ALLOWED_ORIGINS."""
+    value = re.search(r'key: ADMIN_ALLOWED_ORIGINS\s+value: (\S+)', block).group(1)
+    return [o.strip() for o in value.split(',') if o.strip()]
 
 
 def _csp_connect_hosts():
@@ -86,6 +90,15 @@ def test_render_yaml_has_prod_tester_and_demo_pairs():
     }, hosts
 
 
+def test_production_api_allows_the_custom_domain_and_the_onrender_address():
+    # The site moved to getabstractly.com; the API must accept both the new
+    # domain (with and without www) and the original Render address.
+    origins = _allowed_origins(_render_services()['abstractly-api'])
+    for expected in ('https://getabstractly.com', 'https://www.getabstractly.com',
+                     'https://abstractly-n0id.onrender.com'):
+        assert expected in origins, (expected, origins)
+
+
 def test_every_frontend_routes_to_its_own_api():
     for frontend_host, api_host in _api_frontend_pairs():
         got = _resolve_api_base(frontend_host)
@@ -112,6 +125,7 @@ def test_each_frontend_csp_allows_the_api_config_js_picks():
 
 if __name__ == "__main__":
     test_render_yaml_has_prod_tester_and_demo_pairs()
+    test_production_api_allows_the_custom_domain_and_the_onrender_address()
     test_every_frontend_routes_to_its_own_api()
     test_tester_frontend_never_routes_to_production()
     test_each_frontend_csp_allows_the_api_config_js_picks()

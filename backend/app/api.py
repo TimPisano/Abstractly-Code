@@ -132,12 +132,22 @@ app = Flask(__name__)
 # `python3 -m http.server 8000` (the documented default, kept first so
 # it wins as the redirect-fallback origin at ALLOWED_ORIGINS[0]), 8080,
 # a Vite dev/preview server (5173/4173), and 3000. All are loopback-only
-# -- reachable solely from the developer's own machine -- so listing
-# them here has no bearing on the deployed service's CORS posture.
+# -- reachable solely from the developer's own machine. The production
+# site's own addresses (custom domain + original Render URL) are appended
+# so a deployment whose ADMIN_ALLOWED_ORIGINS is missing still accepts the
+# real site; they are our own HTTPS origins, so allowing them is safe.
+_PRODUCTION_SITE_ORIGINS = (
+    "https://getabstractly.com",
+    "https://www.getabstractly.com",
+    "https://abstractly-n0id.onrender.com",
+)
 _default_allowed_origins = ",".join(
-    f"http://{host}:{port}"
-    for host in ("localhost", "127.0.0.1")
-    for port in ("8000", "8080", "5173", "4173", "3000")
+    [
+        f"http://{host}:{port}"
+        for host in ("localhost", "127.0.0.1")
+        for port in ("8000", "8080", "5173", "4173", "3000")
+    ]
+    + list(_PRODUCTION_SITE_ORIGINS)
 )
 ALLOWED_ORIGINS = [
     origin.strip()

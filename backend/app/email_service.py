@@ -89,6 +89,16 @@ FROM_DISPLAY_NAME = "Tim Pisano — Abstractly"
 # contact address shown in the site footer.
 REPLY_TO_EMAIL = "tim@getabstractly.com"
 
+# Where Book a Demo notifications go. Deliberately NOT ADMIN_EMAIL: that
+# variable also seeds the admin login, so it can't be repointed freely.
+def _demo_notify_email() -> str:
+    return os.environ.get("DEMO_REQUEST_NOTIFY_EMAIL", "").strip() or REPLY_TO_EMAIL
+
+
+# The founder's booking page, sent to everyone who requests a demo.
+def _calendly_url() -> str:
+    return os.environ.get("CALENDLY_URL", "").strip() or "https://calendly.com/timpisano/abstractly-intro-call"
+
 # Landing page's luxury palette (see frontend/landing.css), reused here
 # so the confirmation email doesn't feel like a different product.
 _COLOR_BACKGROUND = "#f6f3ec"
@@ -107,7 +117,7 @@ def _credentials():
     return email_user, app_password
 
 
-def _send(to_email: str, subject: str, text_body: str, html_body: str) -> bool:
+def _send(to_email: str, subject: str, text_body: str, html_body: str, reply_to: Optional[str] = None) -> bool:
     email_user, app_password = _credentials()
     if not email_user or not app_password:
         logger.warning(
@@ -131,7 +141,11 @@ def _send(to_email: str, subject: str, text_body: str, html_body: str) -> bool:
     message = MIMEMultipart("alternative")
     message["Subject"] = subject
     message["From"] = f"{FROM_DISPLAY_NAME} <{email_user}>"
-    message["Reply-To"] = REPLY_TO_EMAIL
+    # A CR/LF in a header value would let the caller add headers (Bcc...),
+    # so anything containing one falls back to the default address.
+    if not reply_to or "\r" in reply_to or "\n" in reply_to:
+        reply_to = REPLY_TO_EMAIL
+    message["Reply-To"] = reply_to
     message["To"] = to_email
     message.attach(MIMEText(text_body, "plain"))
     message.attach(MIMEText(html_body, "html"))
@@ -233,17 +247,22 @@ def send_admin_new_request_notification(requester_email: str) -> bool:
 def send_demo_request_confirmation(to_email: str, name: str) -> bool:
     """Sent immediately when someone submits the landing page's Book a Demo form."""
     subject = "We've received your demo request"
+    calendly_url = _calendly_url()
     text_body = (
         f"Thanks for reaching out to Abstractly, {name}.\n\n"
-        "We've received your request for a demo and will follow up "
-        "personally to find a time.\n\n"
+        "We've received your request for a demo. Pick a time that works "
+        f"for you here: {calendly_url}\n\n"
+        "Or just reply to this email.\n\n"
         "Best,\nTim Pisano"
     )
     html_body = _email_html(
         heading="We've received your request.",
         paragraphs=[
             f"Thanks for reaching out, {html.escape(name)}. We&rsquo;ve received "
-            "your request for a demo and will follow up personally to find a time.",
+            "your request for a demo.",
+            f'<a href="{html.escape(calendly_url)}" style="color: {_COLOR_ACCENT}; '
+            'font-weight: 600;">Pick a time that works for you &rarr;</a>',
+            "Or just reply to this email.",
         ],
     )
     return _send(to_email, subject, text_body, html_body)
@@ -251,21 +270,11 @@ def send_demo_request_confirmation(to_email: str, name: str) -> bool:
 
 def send_demo_request_notification(name: str, work_email: str, company: str, units: int, message: Optional[str]) -> bool:
     """
-    Sent to the admin (ADMIN_EMAIL) whenever someone submits the landing
-    page's Book a Demo form -- mirrors send_admin_new_request_notification
-    for the waitlist, but carries the extra fields this form collects.
-    No-op (returns False) if ADMIN_EMAIL isn't configured, same
-    fail-open posture as the rest of this module.
+    Sent to the founder (DEMO_REQUEST_NOTIFY_EMAIL, default
+    tim@getabstractly.com) whenever someone submits the landing page's
+    Book a Demo form, with every field it collects. Reply-To is the
+    visitor, so hitting Reply in Gmail answers them directly.
     """
-    admin_email = os.environ.get("ADMIN_EMAIL", "").strip()
-    if not admin_email:
-        logger.warning(
-            "Demo request notification not sent for %r: ADMIN_EMAIL is not "
-            "configured. Set it in backend/.env — see backend/.env.example.",
-            work_email,
-        )
-        return False
-
     subject = f"New demo request: {company}"
     text_lines = [
         f"{name} at {company} requested a demo.",
@@ -288,7 +297,7 @@ def send_demo_request_notification(name: str, work_email: str, company: str, uni
         paragraphs.append(f"Message: {html.escape(message)}")
     html_body = _email_html(heading="New demo request.", paragraphs=paragraphs)
 
-    return _send(admin_email, subject, text_body, html_body)
+    return _send(_demo_notify_email(), subject, text_body, html_body, reply_to=work_email)
 
 
 def send_waitlist_approval_email(to_email: str) -> bool:
