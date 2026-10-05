@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Abstractly social preview</title>
+<!--
+  Source for frontend/og-image.png (1200x630). Rendered headlessly by
+  design/logo/render_assets.mjs; open it in a browser at 1200x630 to edit.
+  Sized to survive a ~300px-wide iMessage/Slack thumbnail: headline
+  >= 80px, nothing important under ~28px.
+-->
+<style>
+@font-face {
+  font-family: 'Inter';
+  src: url('../../../frontend/fonts/inter-latin-var.woff2') format('woff2');
+  font-weight: 100 900;
+}
+* { box-sizing: border-box; margin: 0; }
+html, body { width: 1200px; height: 630px; background: #0a0a0b; overflow: hidden; }
+body { position: relative; font-family: 'Inter', sans-serif; color: #ffffff; }
+
+/* Fluted light bands, after the hero's WebGL shader: a warm gold glow
+   sliced into thin vertical ribs, brightest at the core and fading out
+   toward the top, bottom and the text side. */
+.bands {
+  position: absolute; top: -40px; right: -40px; width: 700px; height: 710px;
+  background:
+    radial-gradient(ellipse 52% 60% at 56% 48%, rgba(232, 196, 140, 1), rgba(182, 138, 78, 0.7) 36%, rgba(182, 138, 78, 0.18) 66%, transparent 84%);
+  -webkit-mask-image:
+    repeating-linear-gradient(90deg, rgba(0,0,0,.18) 0px, #000 7px, rgba(0,0,0,.95) 11px, rgba(0,0,0,.12) 18px, rgba(0,0,0,.05) 22px),
+    linear-gradient(90deg, transparent 0%, #000 30%, #000 100%);
+  -webkit-mask-composite: source-in;
+  mask-composite: intersect;
+  filter: blur(0.6px);
+}
+/* Soft dark wash so the headline never sits on a bright band. */
+.wash {
+  position: absolute; inset: 0;
+  background: linear-gradient(90deg, #0a0a0b 0%, #0a0a0b 44%, rgba(10,10,11,0.7) 55%, rgba(10,10,11,0) 70%);
+}
+
+.content { position: absolute; inset: 0; padding: 64px 72px; display: flex; flex-direction: column; }
+.logo { display: flex; align-items: center; gap: 18px; height: 48px; }
+.logo img { height: 40px; width: auto; display: block; }
+.logo span { font-size: 40px; font-weight: 500; letter-spacing: -0.025em; line-height: 1; }
+
+h1 {
+  margin-top: auto;
+  font-size: 86px; line-height: 1.02; font-weight: 600; letter-spacing: -0.035em;
+  max-width: 720px;
+}
+.figure {
+  margin-top: 34px;
+  font: 500 32px/1.2 ui-monospace, 'SF Mono', Menlo, monospace;
+  letter-spacing: -0.01em;
+  color: #b68a4e;
+}
+.figure small {
+  display: block; margin-bottom: 8px;
+  font-size: 17px; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(182, 138, 78, 0.75);
+}
+</style>
+</head>
+<body>
+<div class="bands"></div>
+<div class="wash"></div>
+<div class="content">
+  <div class="logo"><img src="../final/abstractly-mark-white.svg" alt=""><span>Abstractly</span></div>
+  <h1>Catch rent roll<br>errors before<br>you close</h1>
+  <p class="figure"><small>Sample report</small>$42,780 annual income overstated</p>
+</div>
+</body>
+</html>

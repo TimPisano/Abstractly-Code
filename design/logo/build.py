@@ -408,7 +408,57 @@ document.querySelectorAll('canvas.px').forEach(function (cv) {
 '''
 
 
+# ---------------------------------------------------------- final assets
+# The chosen mark: Seven rows, all white, no gold. These feed the live
+# site (frontend/favicon.svg, the header/footer mark) and render_assets.mjs
+# (favicon.ico, apple-touch-icon.png, og-image.png).
+
+FINAL = VARIATIONS[1]
+
+# Header/footer mark, hinted for ~19px tall at 1x: seven 1px bars with
+# 2px gaps on a 24x19 pixel grid, so every edge lands on a whole pixel
+# (and on whole device pixels at 2x). The 32-grid mark at this size puts
+# its 1.05px bars on fractional pixels and they blur.
+HEADER_ROWS = [
+    R(0, (10, 14)),
+    R(3, (8, 16)),
+    R(6, (7, 11), (13, 17)),
+    R(9, (5, 19), shift=2),
+    R(12, (3, 7), (17, 21)),
+    R(15, (2, 6), (18, 22)),
+    R(18, (0, 4), (20, 24)),
+]
+
+
+def header_mark_svg(css_class):
+    # currentColor: takes the header text colour, so mark and wordmark
+    # always match.
+    body = bars(HEADER_ROWS, 1, 'currentColor', 'currentColor')
+    return (f'<svg class="{css_class}" viewBox="0 0 24 19" width="24" height="19" '
+            f'xmlns="http://www.w3.org/2000/svg" aria-hidden="true">{body}</svg>')
+
+
+def write_final():
+    out = os.path.join(HERE, 'final')
+    os.makedirs(out, exist_ok=True)
+    x0, y0, x1, y1 = bbox(FINAL['rows'], FINAL['bar'])
+    # Mark cropped to its bars, for apple-touch-icon and the OG image.
+    with open(os.path.join(out, 'abstractly-mark-white.svg'), 'w') as fh:
+        fh.write(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{x0:g} {y0:g} {x1 - x0:g} {y1 - y0:g}" '
+                 f'role="img" aria-label="Abstractly">{mark_body(FINAL, WHITE, WHITE)}</svg>\n')
+    with open(os.path.join(out, 'abstractly-lockup-white.svg'), 'w') as fh:
+        fh.write(lockup_svg(FINAL, 'white'))
+    with open(os.path.join(out, 'header-mark.svg.html'), 'w') as fh:
+        fh.write(header_mark_svg('landing-logo-mark') + '\n')
+    fav = favicon_svg(FINAL, False)
+    with open(os.path.join(out, 'favicon.svg'), 'w') as fh:
+        fh.write(fav)
+    with open(os.path.join(HERE, '..', '..', 'frontend', 'favicon.svg'), 'w') as fh:
+        fh.write(fav)
+
+
 if __name__ == '__main__':
     write_files()
     preview()
+    write_final()
     print(len(glob.glob(os.path.join(HERE, '*.svg'))), 'svgs + index.html')

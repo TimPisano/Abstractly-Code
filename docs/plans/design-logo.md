@@ -33,3 +33,26 @@ shifted bar; Inter Medium wordmark, slightly tight tracking. Three
 variations: 5 / 7 / 9 bars, differing in bar thickness and offset
 strength. No circles or spheres; must not resemble Ornn's or any other
 company's mark. Round-1 files were replaced (still in git history, `60b1131`).
+
+## Round 3 (2026-10-05) — ship Seven rows to the live site
+User's pick: **Seven rows, all white, no gold**. Swap it in:
+- Header + footer mark on `index.html` and `pricing.html` (pixel-hinted 24x19
+  SVG, `currentColor`); brand wordmark to Inter Medium, -0.025em, per the lockup.
+- `favicon.svg`, `favicon.ico` (16/32/48), `apple-touch-icon.png` (180).
+- New `og-image.png` 1200x630: near-black, gold fluted bands right, logo top
+  left, headline "Catch rent roll errors before you close", gold mono figure
+  "$42,780 annual income overstated" labelled *Sample report* (the same
+  fictional Maple Ridge figure the homepage hero shows).
+- og + twitter tags on every page (14 HTML files); `?v=2` on icon and OG URLs
+  so browsers and link-preview caches pick up the new files.
+- Favicon thickness: checked at real 16px — 1px bars land on whole pixels and
+  stay crisp, so no thickening was needed.
+
+Sources: `design/logo/build.py` (SVGs) → `design/logo/render_assets.mjs` (PNGs/ICO,
+`og/og-image.html`).
+
+### Out of scope (follow-up)
+- The app/admin/owner/404 screens still use the generic building icon next to
+  "Abstractly" (`.brand-icon`, `.owner-brand-icon`); they have their own light
+  styling, so swapping them is a separate UI task.
+- No route, auth, or backend change: rule 4 (roles/team scoping) is n/a.
