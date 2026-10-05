@@ -209,3 +209,94 @@ itself with `401 Login required` — separate fix).
 **Team isolation / roles:** still no new routes or queries;
 `/demo-request` is public intake by design and only its email bodies
 change.
+
+## Revision 2 — 2026-10-05 (supersedes the popup approach above)
+
+**The user's instruction:** when someone submits the Book a Demo form, save
+the request and email them a short note with the link from the
+`CALENDLY_URL` env var, Reply-To `tim@getabstractly.com`, sent with
+`EMAIL_USER` / `EMAIL_APP_PASSWORD` (all three now set on `abstractly-api`
+in Render). If any are missing, log a clear error instead of failing
+silently. Point every **Book a call** button on the site at `CALENDLY_URL`.
+
+**Already on `main`** (via `chore/contact-email`): the request is saved,
+the visitor gets a confirmation email containing a booking link, and
+Reply-To is `tim@getabstractly.com`. What's missing, and what this round
+builds:
+
+1. **`CALENDLY_URL` is the only source of the link.** Drop the hard-coded
+   fallback in `email_service._calendly_url()`. If it's unset, log an
+   ERROR that names the variable and still send the confirmation, minus
+   the link ("reply to this email and we'll set up a time"), so the visitor
+   is never left with nothing.
+2. **Missing `EMAIL_USER` / `EMAIL_APP_PASSWORD`:** `_send()` logs an
+   ERROR (was a WARNING) that names exactly which variable is missing.
+3. **Honest success message:** `/demo-request` says "we've emailed you a
+   link to pick a time" only when the confirmation actually went out with
+   a link; otherwise it keeps today's "we'll be in touch" text. The form
+   shows the server's message instead of a hard-coded one.
+4. **"Book a call" links → `CALENDLY_URL`.** The frontend is static and the
+   variable lives on the API, so a new public, read-only
+   `GET /public-config` returns `{"calendly_url": ... | null}`. `landing.js`
+   rewrites every `a[data-book-call]` to that URL (new tab). Until the
+   fetch returns, or if the URL is unset, the link keeps its current
+   `#book-demo` fallback to the form, so it's never a dead click. Four
+   links get the attribute: footer + FAQ on `index.html` and `pricing.html`.
+   The FAQ text "book a call below" drops "below".
+5. **No popup, so no CSP change.** A plain link to calendly.com is a
+   navigation, which the frontend CSP doesn't restrict. The widget script,
+   the 5 CSP directives, and the `render.yaml` edit above are dropped.
+
+**"Book a Demo" buttons stay pointed at the form** (the form is what now
+sends the link). Only links labeled "Book a call" go straight to Calendly,
+per the instruction's wording.
+
+**Team isolation / roles:** `GET /public-config` is public by design (the
+marketing site calls it before anyone logs in), like `/health` and
+`/demo-request`. It returns one non-secret config value, reads no
+documents or user data, and so has no `@require_role` and no team scope.
+`/demo-request` stays public intake.
+
+**Files:** `backend/app/email_service.py`, `backend/app/api.py`,
+`backend/tests/test_demo_request.py`, `frontend/index.html`,
+`frontend/pricing.html`, `frontend/landing.js`.
+
+**Overlap:** `feature/landing-interactive` adds a calculator "Book a call"
+button; whichever branch merges second adds `data-book-call` to it.
+
+**Bug found during local testing (fixed here, with a regression test):**
+every outgoing email's `From:` header was encoded whole, address
+included, because the display name "Tim Pisano — Abstractly" contains an
+em dash and `_send()` built the header as one f-string. Mail parsers found
+no sender address in it. Present since `2a7e344` (2026-08-13), so it
+affected all app email, not just this flow. Fix: `email.utils.formataddr`.
+
+**Added 2026-10-05 (user, mid-build):**
+
+- **Admin notification → `ADMIN_EMAIL`.** It went to
+  `tim@getabstractly.com`, which forwards into the same Gmail that sends
+  it, so Gmail hid it. `DEMO_REQUEST_NOTIFY_EMAIL` is removed; unset
+  `ADMIN_EMAIL` logs an ERROR and skips only the notification. Requester
+  emails keep Reply-To `tim@getabstractly.com`.
+- **Requester email didn't arrive in a live test** (Yahoo address; the
+  admin notification did arrive). Production runs `main`, which has the
+  broken `From:` header above, which is a likely cause (Yahoo rejects
+  malformed From headers after Gmail has accepted the send). Not
+  confirmable from here: such a bounce lands in the sending Gmail inbox,
+  not the app logs. This branch now logs every send's outcome: INFO
+  "Email sent to …" on success, ERROR "Email FAILED to …" with the exact
+  exception or the server's refusal, plus tests for each.
+- **Full suite green:** `test_demo_deal_regression.py` (TASKS "Waiting on
+  you" #10) gets a real users row and the now-required `team_id`, the
+  same fix `test_demo_deal_golden.py` already has. Test-only change.
+
+- **Requester email rewritten as a personal note** (user's exact copy):
+  subject "Thanks for reaching out, {first_name}", first name from the
+  form's name field ("there" if blank; all-lowercase gets a capital),
+  company sentence falls back to "your team", link text "Grab a time that
+  works for you →", signed Tim Pisano, Founder. Its own plain HTML layout
+  (white, no card or heading, fluid to 560px) plus a plain-text part; the
+  branded template other emails use is untouched.
+
+**Out of scope:** the Calendly popup widget, CSP changes, a startup-time
+config check, Book a Demo buttons going straight to Calendly.
