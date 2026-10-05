@@ -1391,6 +1391,31 @@ body.scrolled .site-header {
     padding: 5rem 1.5rem 2rem;
 }
 
+/* Same problem the hero solves with .hero-copy::before: the shader's
+   bright ribs can sit directly behind this copy and wash out the
+   eyebrow and subhead -- most visible at narrow widths, where the
+   bands are densest. Centered heading, so this scrim is symmetric
+   (radial) rather than the hero's left-to-right gradient. Same
+   stacking trick: position:relative + z-index:1 here makes a stacking
+   context so the ::before at z-index:-1 lands between the canvas and
+   the text instead of escaping behind the canvas. */
+.pricing-header .section-heading {
+    position: relative;
+    z-index: 1;
+}
+
+.pricing-header .section-heading::before {
+    content: '';
+    position: absolute;
+    inset: -2.5rem -3rem;
+    z-index: -1;
+    background: radial-gradient(ellipse at center,
+        rgba(9, 9, 10, 0.86) 0%,
+        rgba(9, 9, 10, 0.72) 55%,
+        transparent 100%);
+    pointer-events: none;
+}
+
 .pricing-h1 {
     font-size: clamp(2.25rem, 4.5vw, 3.5rem) !important;
     letter-spacing: -0.03em !important;
@@ -1404,35 +1429,6 @@ body.scrolled .site-header {
     max-width: 1200px;
     margin: 0 auto;
     padding: 1rem 1.5rem 7rem;
-}
-
-.pricing-placeholder-note {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.625rem;
-    max-width: 700px;
-    margin: 0 auto 3rem;
-    padding: 0.875rem 1.125rem;
-    background-color: rgba(166, 116, 31, 0.14);
-    color: #e0b374;
-    border: 1px solid rgba(166, 116, 31, 0.3);
-    border-radius: var(--radius-md);
-    font-size: 0.875rem;
-    line-height: 1.55;
-}
-
-.pricing-placeholder-note svg {
-    width: 1.25rem;
-    height: 1.25rem;
-    flex-shrink: 0;
-    margin-top: 0.0625rem;
-}
-
-.pricing-placeholder-note code {
-    color: inherit;
-    background: rgba(255, 255, 255, 0.08);
-    padding: 0.0625rem 0.3125rem;
-    border-radius: var(--radius-sm);
 }
 
 .pricing-toggle {
