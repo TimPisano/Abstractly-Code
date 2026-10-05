@@ -100,6 +100,7 @@ those by taking **main's** TASKS.md, not the branch's.
 | `feature/calendly-booking` | `~/dev/projects/abstractly-calendly` | +1 / 0 | Branched off `7ac879b` 2026-10-04. Calendly popup on all 9 Book-a-Demo CTAs (`index.html` ×5, `pricing.html` ×4), keeping `href="#book-demo"` as a fallback so no CTA can become a dead click. **Plan written, awaiting user approval** — `docs/plans/feature-calendly-booking.md`. Key finding: the task as given would have shipped a popup that never opens — all 3 frontends run `default-src 'self'` with no external hosts, so **5** CSP directives in `render.yaml` block Calendly (script, style, frame, img, font). Prior art: none (no Calendly anywhere, any branch, any stash). Will collide with `feature/pricing-page` / `feature/landing-positioning`, which both rewrite the same two files. |
 
 | `chore/repo-layout` | `~/dev/projects/abstractly-repo-layout` | — | Branched off `main` `1d203d2` 2026-10-05. Repo tidy-up: move stray root reports/plans into `docs/`, fill `.gitignore` gaps, README project-layout section. File moves + doc-comment path fixes only, no code behavior change. **Plan written, awaiting user approval** — `docs/plans/chore-repo-layout.md`. |
+| `design/og-image-minimal` | `~/dev/projects/abstractly-og-image` | — | Branched off `origin/main` `33b8665` 2026-10-05. Minimal OG image (logo + full-width gold bands, no text), `og:image` -> `?v=5` on all 14 pages. Plan: `docs/plans/design-og-image-minimal.md`. Building. |
 
 ### Handoff blocks
 
