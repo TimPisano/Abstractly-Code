@@ -42,6 +42,7 @@ UNIT_TESTS = [
     "test_report.py",
     "test_dashboard_features.py",
     "test_waitlist_email.py",
+    "test_public_contact.py",
     "test_access_gate.py",
     "test_admin_auth.py",
     "test_security_middleware.py",
