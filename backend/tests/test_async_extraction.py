@@ -33,13 +33,17 @@ def _fresh_temp_db():
     tmp.close()
     database.configure(tmp.name)
     database.init_db()
+    # Matches the fabricated session's user_id=1 with a real row --
+    # usage_events.user_id/team_id are FK-constrained, so a session
+    # pointing at a nonexistent user_id fails on any upload-route call.
+    database.create_user("a@example.com", "A", "x", role="analyst")
     return tmp.name
 
 
 def _analyst_client():
     c = app.test_client()
     with c.session_transaction() as s:
-        s.update({"user_id": 1, "email": "a@example.com", "name": "A", "role": "analyst"})
+        s.update({"user_id": 1, "email": "a@example.com", "name": "A", "role": "analyst", "team_id": 1})
     return c
 
 

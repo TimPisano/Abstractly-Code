@@ -38,6 +38,7 @@ UNIT_TESTS = [
     "test_portfolio.py",
     "test_comparison.py",
     "test_rent_roll_export.py",
+    "test_frontend_api_routing.py",
     "test_report.py",
     "test_dashboard_features.py",
     "test_waitlist_email.py",
@@ -62,6 +63,8 @@ UNIT_TESTS = [
     "test_t12_import.py",
     "test_t12_reconciliation_api.py",
     "test_t12_synthetic_fixture.py",
+    "test_t12_statement.py",
+    "test_deal_mismatch_t12.py",
     "test_audit_trail.py",
     "test_discrepancies.py",
     "test_portfolio_history.py",
@@ -84,6 +87,25 @@ UNIT_TESTS = [
     "test_lease_field_editing.py",
     "test_task_workflow_extensions.py",
     "test_table_upload_extraction.py",
+    "test_usage_limits.py",
+    "test_leases_sample_precomputed.py",
+    # Pre-existing files found missing from this list during QA hardening
+    # (2026-10) -- previously flagged as "pending commit" in
+    # docs/HARDENING_LOG.md SS3.3 / docs/TESTER_VERIFICATION_CHECKLIST.md
+    # SS3.3 but never actually landed. All pass standalone.
+    "test_analytics.py",
+    "test_deal_mismatch.py",
+    "test_concessions.py",
+    "test_demo_request.py",
+    "test_obligations.py",
+    "test_rent_roll_multiformat.py",
+    # New this QA hardening pass (2026-10).
+    "test_demo_deal_golden.py",
+    "test_rent_roll_edge_cases.py",
+    "test_field_extractor_party_names.py",
+    # Demo deal rent-roll/lease/T12/report polish pass (2026-10) -- data-
+    # driven regression guard, see its own module docstring.
+    "test_demo_deal_regression.py",
 ]
 
 LIVE_API_TESTS = [

@@ -642,6 +642,46 @@ def test_move_in_move_out_not_mistaken_for_lease_dates():
     print("✓ test_move_in_move_out_not_mistaken_for_lease_dates: PASS")
 
 
+def test_unit_designator_preservation_is_intentional():
+    """
+    REGRESSION TEST: unit designators are PRESERVED as-is (not canonicalized).
+    A unit written as "104" becomes "...Suite 104", but "Apt 104" stays
+    "...Apt 104" (literal preservation), and "#7" stays "#7".
+
+    This is INTENTIONAL per portfolio.py's _normalize_address docstring:
+    "a missed opportunity to flag something is a far smaller problem than
+    an actively misleading false match." Merging "Apt 104" with "Suite 104"
+    would be a false match (both might exist as different units), worse than
+    missing a real match. Portfolio-level matching is strict by design.
+
+    When a rent roll and lease PDF don't agree on designator wording, they
+    legitimately don't match (produce unit_no_lease + lease_no_unit pairs).
+    This is acceptable behavior, not a bug.
+    """
+    csv_bytes = _csv_bytes([
+        ["Tenant", "Rent", "Unit"],
+        ["Acme Corp", "$2,000.00", "104"],          # Bare -> Suite prepended
+        ["Beta Inc", "$2,100.00", "Apt 104"],       # Apt -> literal preservation
+        ["Charlie Co", "$2,200.00", "#7"],          # Hash -> literal preservation
+        ["Delta LLC", "$2,300.00", "Suite 200"],    # Suite -> literal preservation
+    ])
+    result = parse_csv_rent_roll(csv_bytes, "designators.csv", base_property_address="100 Main St")
+
+    addresses = [l["extracted_fields"]["property_address"]["value"] for l in result["leases"]]
+
+    # Each designator is preserved literally; bare units get "Suite " prepended
+    assert addresses[0] == "100 Main St, Suite 104", f"Bare identifier: {addresses[0]}"
+    assert addresses[1] == "100 Main St, Apt 104", f"Apt designation: {addresses[1]}"
+    assert addresses[2] == "100 Main St, #7", f"Hash designation: {addresses[2]}"
+    assert addresses[3] == "100 Main St, Suite 200", f"Suite designation: {addresses[3]}"
+
+    # Note: addresses[0] and addresses[1] are INTENTIONALLY DIFFERENT.
+    # If a lease PDF says "Apt 104" and a rent roll says "Suite 104",
+    # they don't match. This is correct: we'd rather miss a match than
+    # make a false match that hides a real unit mismatch.
+    print("✓ test_unit_designator_preservation_is_intentional: PASS")
+
+
 if __name__ == "__main__":
     test_csv_happy_path_standard_headers()
     test_xlsx_happy_path_with_real_numeric_and_date_cell_types()
@@ -676,4 +716,5 @@ if __name__ == "__main__":
     test_rent_psf_rate_column_never_used_as_rent_amount()
     test_property_manager_column_not_mistaken_for_property_address()
     test_move_in_move_out_not_mistaken_for_lease_dates()
+    test_unit_designator_preservation_is_intentional()
     print("\nAll rent roll import tests passed.")

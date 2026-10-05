@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Abstractly — Catch Rent Roll Errors Before They Cost You At Closing</title>
+    <title>Abstractly — Check The Rent Roll Before You Close</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml">
     <link rel="icon" href="/favicon.ico" sizes="32x32">
     <link rel="apple-touch-icon" href="/apple-touch-icon.png">
@@ -12,14 +12,14 @@
          here if the deployed frontend URL changes (same as config.js). -->
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="Abstractly">
-    <meta property="og:title" content="Abstractly — Catch Rent Roll Errors Before They Cost You At Closing">
+    <meta property="og:title" content="Abstractly — Check The Rent Roll Before You Close">
     <meta property="og:description" content="Abstractly reads the leases behind a multifamily rent roll and checks them against it unit by unit before your deal closes, then hands you every mismatch with its dollar impact — ready to export for your lender or LP. Built for mid-size multifamily syndicators.">
     <meta property="og:url" content="https://abstractly-n0id.onrender.com/">
     <meta property="og:image" content="https://abstractly-n0id.onrender.com/og-image.png">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="Abstractly — Catch Rent Roll Errors Before They Cost You At Closing">
+    <meta name="twitter:title" content="Abstractly — Check The Rent Roll Before You Close">
     <meta name="twitter:description" content="Abstractly reads the leases behind a multifamily rent roll and checks them against it unit by unit before your deal closes, then hands you every mismatch with its dollar impact — ready to export for your lender or LP. Built for mid-size multifamily syndicators.">
     <meta name="twitter:image" content="https://abstractly-n0id.onrender.com/og-image.png">
     <link rel="preload" href="fonts/inter-latin-var.woff2" as="font" type="font/woff2" crossorigin>
@@ -35,135 +35,106 @@
 
     <a class="skip-link" href="#mainContent">Skip to content</a>
 
-    <nav class="landing-nav">
-        <a class="landing-brand" href="index.html">
-            <svg class="landing-brand-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5"/>
-            </svg>
-            Abstractly
-        </a>
-        <div class="landing-nav-links">
-            <a href="#how-it-works">How It Works</a>
-            <a href="#sample">Sample Report</a>
-            <a href="#platform">Platform</a>
-            <a href="#trust">Trust &amp; Security</a>
-            <a href="#faq">FAQ</a>
-            <a href="pricing.html">Pricing</a>
-            <a href="#book-demo">Book a Demo</a>
-            <a href="/app/login.html" class="nav-client-login">Client Login</a>
-        </div>
-    </nav>
+    <div class="announcement-bar">
+        Now onboarding beta testers. <a href="#book-demo">Book a demo &rarr;</a>
+    </div>
+
+    <div class="site-header">
+        <nav class="landing-nav">
+            <a class="landing-brand" href="index.html">
+                <svg class="landing-brand-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5"/>
+                </svg>
+                Abstractly
+            </a>
+            <div class="landing-nav-links">
+                <a href="#how-it-works">How It Works</a>
+                <a href="#why-multifamily">Built For Multifamily</a>
+                <a href="#trust">Trust</a>
+                <a href="pricing.html">Pricing</a>
+                <a href="#faq">FAQ</a>
+                <a href="#book-demo">Book a Demo</a>
+                <a href="/app/login.html" class="nav-client-login">Client Login</a>
+            </div>
+        </nav>
+    </div>
 
     <main id="mainContent">
 
     <!-- ===================== Hero ===================== -->
-    <header class="hero">
-        <div class="hero-inner reveal">
-            <span class="eyebrow">Built for multifamily syndicators</span>
-            <h1>Catch rent roll errors<br><span class="accent">before they cost you at closing.</span></h1>
-            <p class="hero-subhead">
-                Abstractly reads the actual leases behind a multifamily rent
-                roll and checks them against it unit by unit — tenant, rent,
-                escalations, lease dates — before your deal closes, not after.
-                You get back every place the rent roll and the leases
-                disagree, each one with its dollar impact and traced to the
-                page and quote in the lease it came from.
-            </p>
+    <header class="hero" id="hero">
+        <div class="hero-bg" aria-hidden="true">
+            <div class="hero-bands" id="heroBands"></div>
+            <canvas class="hero-canvas" id="heroCanvas"></canvas>
+            <div class="hero-glow"></div>
+        </div>
 
-            <div class="hero-cta-wrap">
-                <a href="#book-demo" class="btn-primary hero-cta">Book a Demo</a>
-                <a class="hero-sample-link" href="#sample">See a sample discrepancy report &darr;</a>
+        <div class="hero-inner hero-inner-split reveal">
+            <div class="hero-copy">
+                <span class="eyebrow">Built for multifamily syndicators</span>
+                <h1>Check the rent roll<br><span class="accent">before you close.</span></h1>
+                <p class="hero-subhead">
+                    Abstractly reads the actual leases behind a rent roll and
+                    checks them against it unit by unit — tenant, rent,
+                    dates, escalations — before your deal closes, not after.
+                </p>
+                <div class="hero-cta-wrap">
+                    <a href="#book-demo" class="btn-primary hero-cta">Book a Demo</a>
+                    <a href="#problem" class="hero-cta hero-cta-secondary">See a sample report</a>
+                </div>
+            </div>
+
+            <div class="hero-visual">
+                <div class="deal-card">
+                    <span class="deal-card-tag">Sample Report — Maple Ridge Apartments, fictional demo deal</span>
+
+                    <div class="deal-card-ticker">
+                        <span class="deal-card-number" id="dealCardNumber" data-target="42780">$0</span>
+                        <span class="deal-card-ticker-label">Sample Report ·<br>Annual Income<br>Overstated</span>
+                    </div>
+
+                    <ul class="deal-card-rows">
+                        <li class="deal-card-row">
+                            <span class="deal-card-row-unit">H104</span>
+                            <span class="deal-card-row-desc">Lease expired, still shown occupied</span>
+                            <span class="deal-card-row-impact">$20,640/yr</span>
+                        </li>
+                        <li class="deal-card-row">
+                            <span class="deal-card-row-unit">C203</span>
+                            <span class="deal-card-row-desc">Lease expired, still shown occupied</span>
+                            <span class="deal-card-row-impact">$15,480/yr</span>
+                        </li>
+                        <li class="deal-card-row">
+                            <span class="deal-card-row-unit">G204</span>
+                            <span class="deal-card-row-desc">Rent roll overstates lease rent</span>
+                            <span class="deal-card-row-impact">$3,120/yr</span>
+                        </li>
+                        <li class="deal-card-row">
+                            <span class="deal-card-row-unit">D203</span>
+                            <span class="deal-card-row-desc">Rent roll overstates lease rent</span>
+                            <span class="deal-card-row-impact">$1,440/yr</span>
+                        </li>
+                    </ul>
+                    <p class="deal-card-more">+ 2 more discrepancies</p>
+                    <p class="deal-card-timestamp">Rent roll as of 08.31.2026</p>
+                </div>
             </div>
         </div>
     </header>
 
-    <!-- ===================== How It Works ===================== -->
-    <section class="how-it-works" id="how-it-works">
-        <div class="section-heading reveal">
-            <span class="eyebrow">How It Works</span>
-            <h2>Two Files In. Every Mismatch Out.</h2>
-        </div>
-        <div class="steps-grid">
-            <div class="step-card reveal">
-                <div class="step-number">1</div>
-                <h3>Upload your leases and rent roll</h3>
-                <p>A Yardi, AppFolio, RealPage, MRI, or Buildium export, a broker's hand-built Excel, a PDF, even a scanned one. No reformatting, no fixed column layout.</p>
-            </div>
-            <div class="step-card reveal">
-                <div class="step-number">2</div>
-                <h3>See every mismatch, with dollar impact</h3>
-                <p>Every lease term — tenant, rent, escalation, expiration — is extracted with the exact page and quote it came from, matched unit by unit against the rent roll, and flagged with what the gap actually costs.</p>
-            </div>
-            <div class="step-card reveal">
-                <div class="step-number">3</div>
-                <h3>Export a report for your lender or LP</h3>
-                <p>Every finding traces back to the lease text, so whoever's underwriting the deal confirms it in seconds instead of re-reading the file — and it's ready to hand off, not just to eyeball.</p>
-            </div>
-        </div>
-    </section>
-
-    <!-- ===================== Why multifamily is different ===================== -->
-    <section class="differentiator" id="why-multifamily">
-        <div class="section-heading reveal">
-            <span class="eyebrow">Why Multifamily Is Different</span>
-            <h2>Built For Hundreds Of Units, Not A Handful Of Tenants</h2>
-            <p>Most lease-review tools were built for commercial CRE — a handful of long, heavily negotiated leases per building. Multifamily is a different problem entirely.</p>
-        </div>
-        <div class="differentiator-grid">
-            <div class="differentiator-card reveal">
-                <h3>Volume, not negotiation</h3>
-                <p>A mid-size portfolio can mean hundreds of similar residential leases, not a dozen heavily negotiated commercial ones. Checking that by hand doesn't scale — and a tool built to review 15 anchor tenants a year wasn't built for 300 units.</p>
-            </div>
-            <div class="differentiator-card reveal">
-                <h3>Constant turnover</h3>
-                <p>Unit leases renew and turn over year-round across a portfolio, not on a handful of scheduled dates. The rent roll drifts from the actual leases continuously — not occasionally — which is exactly why it needs checking before every acquisition, not just once a year.</p>
-            </div>
-            <div class="differentiator-card reveal">
-                <h3>Built for the closing table, not asset management</h3>
-                <p>This isn't a tool for an owner managing a handful of tenants over years. It's for the diligence window before you sign — checking what the seller's rent roll claims against what the leases actually say, while you can still walk or reprice.</p>
-            </div>
-        </div>
-    </section>
-
-    <!-- ===================== What the report catches ===================== -->
-    <section class="catches" id="catches">
-        <div class="section-heading reveal">
-            <span class="eyebrow">The Report</span>
-            <h2>What It Catches</h2>
-            <p>Every finding is a specific disagreement between the rent roll and a signed lease for the same unit — not a statistical outlier, not a guess. Each one links back to the page and quote in the lease.</p>
-        </div>
-        <div class="catches-grid">
-            <div class="catch-card reveal">
-                <h3>Rent that doesn't match the lease</h3>
-                <p>The rent roll shows one base rent; the lease says another. Flagged with the monthly dollar gap, so a $1,550/mo difference sorts above a rounding artifact.</p>
-            </div>
-            <div class="catch-card reveal">
-                <h3>A tenant who was replaced</h3>
-                <p>The name on the rent roll isn't the entity on the signed lease — an assignment or a new lease the management system never caught up to.</p>
-            </div>
-            <div class="catch-card reveal">
-                <h3>A stale expiration date</h3>
-                <p>The rent roll still shows the pre-renewal expiration while the executed lease was extended — the single most common form of stale property-management data.</p>
-            </div>
-            <div class="catch-card reveal">
-                <h3>Escalations and dates that don't add up</h3>
-                <p>Rent-step math that doesn't reconcile, conflicting start/end dates, missing clauses — the details that change an underwriting model but hide in the document.</p>
-            </div>
-        </div>
-    </section>
-
-    <!-- ===================== Sample report ===================== -->
-    <!-- The findings below are REAL output from the reconciliation engine
+    <!-- ===================== Problem section (real sample report) ===================== -->
+    <!-- The report below is REAL output from the reconciliation engine
          (backend/app/portfolio.py compute_rent_roll_reconciliation +
          discrepancies.py) run against one test lease and one disagreeing
-         rent-roll row. Regenerate with tools if the message format or
-         severity logic changes. Swap this static block for the live
-         POST /public/reconcile endpoint once the backend confirms it. -->
-    <section class="sample" id="sample">
+         rent-roll row -- unlike the hero's Maple Ridge card above (an
+         explicitly labeled illustrative example), this one is genuine
+         engine output. Regenerate with tools if the message format or
+         severity logic changes. -->
+    <section class="problem" id="problem">
         <div class="section-heading reveal">
-            <span class="eyebrow">Sample Report</span>
-            <h2>Here's One, Start To Finish</h2>
-            <p>Generated from a test lease and a rent roll built to disagree with it. This is the real report format — the same severity, dollar-impact, and source-citation the product produces. Not live data.</p>
+            <span class="eyebrow">The Problem</span>
+            <h2>Rent Rolls Drift From The Leases That Back Them</h2>
+            <p>Not a hypothetical — here's real output from the reconciliation engine, run against a real test lease and a rent roll built to disagree with it. Same severity, dollar-impact, and source-citation format the product produces on your own documents.</p>
         </div>
 
         <div class="sample-report reveal">
@@ -207,122 +178,108 @@
         </div>
     </section>
 
-    <!-- ===================== Proof stat ===================== -->
-    <!-- STAT PENDING: replace the placeholder below with the confirmed
-         number from the backend reconciliation benchmark
-         (backend/tools/reconciliation_benchmark/). Do NOT invent a
-         number — leave the placeholder visible until the real figure
-         and sentence are provided. -->
-    <section class="stat-band reveal" id="stat">
-        <div class="stat-band-inner">
-            <span class="stat-pending">[ STAT PENDING — backend benchmark ]</span>
-            <p class="stat-caption">A measured count of discrepancies caught across a test set of leases and units — published here once the benchmark run is complete and the number is verified.</p>
-        </div>
-    </section>
-
-    <!-- ===================== Platform (Standardization / Validation / Analysis) ===================== -->
-    <section class="platform" id="platform">
+    <!-- ===================== How It Works ===================== -->
+    <section class="how-it-works" id="how-it-works">
         <div class="section-heading reveal">
-            <span class="eyebrow">Platform</span>
-            <h2>Built For The Team That Checks The Rent Roll By Hand</h2>
-            <p>Three things a rent roll needs before it's actually usable — standardized structure, real validation, and analysis you can underwrite from. Items marked "Coming soon" are on our roadmap, not live yet.</p>
+            <span class="eyebrow">How It Works</span>
+            <h2>Two Files In. Every Mismatch Out.</h2>
         </div>
-        <div class="platform-groups">
-            <div class="platform-group reveal">
-                <h3>Standardization</h3>
-                <ul class="platform-feature-list">
-                    <li>
-                        <span class="feature-check">✓</span>
-                        <span>Pulls tenant, rent, dates, escalations, and renewal terms out of lease PDFs — including scanned copies, using text recognition (OCR)</span>
-                    </li>
-                    <li>
-                        <span class="feature-check">✓</span>
-                        <span>Automatically splits a PDF containing multiple leases into separate, accurate records</span>
-                    </li>
-                    <li>
-                        <span class="feature-check">✓</span>
-                        <span>Import a broker-built Excel or CSV rent roll — no fixed column format required, we match your headers automatically, skip vacant/total rows, and give every value the same page/row-level citation a PDF-extracted field gets</span>
-                    </li>
-                    <li>
-                        <span class="feature-check">✓</span>
-                        <span>Direct import from Yardi, AppFolio, RealPage, MRI, and Buildium rent roll exports — auto-detects each report's real header row past any title/date block, uses the tenant's actual rent (never a "Market Rent" column or a per-square-foot rate), and correctly handles portfolio-wide exports spanning multiple properties in one file. Validated against realistic synthetic sample exports built to match each platform's real report structure; not yet run against a real customer file from any of them</span>
-                    </li>
-                </ul>
+        <div class="steps-grid">
+            <div class="step-card reveal">
+                <div class="step-number">1</div>
+                <h3>Upload your leases and rent roll</h3>
+                <p>A Yardi, AppFolio, RealPage, MRI, or Buildium export, a broker's hand-built Excel, a PDF, even a scanned one. No reformatting, no fixed column layout.</p>
             </div>
-            <div class="platform-group platform-group-featured reveal">
-                <span class="platform-group-badge">The Wedge</span>
-                <h3>Validation</h3>
-                <ul class="platform-feature-list">
-                    <li>
-                        <span class="feature-check">✓</span>
-                        <span>Every value links back to the exact page and quote it came from — click any citation to check it yourself, nothing is a black-box guess</span>
-                    </li>
-                    <li>
-                        <span class="feature-check">✓</span>
-                        <span>Automatically flags anything unusual: below-market rent, missing clauses, odd notice periods, escalation math that doesn't add up, conflicting dates</span>
-                    </li>
-                    <li>
-                        <span class="feature-check">✓</span>
-                        <span>Cross-checks the rent roll against your T12 (trailing 12-month operating statement) — compares the rent roll's own annualized rent against the T12's actual collected income (never a "Gross Potential Rent" line, which would make a perfectly healthy property look short by definition) for the same property, flagging a real gap. Validated against a realistic synthetic sample statement; not yet run against a real customer T12</span>
-                    </li>
-                    <li>
-                        <span class="feature-check">✓</span>
-                        <span>Cross-checks an imported rent roll against the actual lease documents on file for the same units, flagging tenant, rent, and expiration-date disagreements — catches stale property-management data a renewal never made it back into</span>
-                    </li>
-                </ul>
+            <div class="step-card reveal">
+                <div class="step-number">2</div>
+                <h3>See every mismatch, with dollar impact</h3>
+                <p>Every lease term — tenant, rent, escalation, expiration — is extracted with the exact page and quote it came from, matched unit by unit against the rent roll, and flagged with what the gap actually costs.</p>
             </div>
-            <div class="platform-group reveal">
-                <h3>Analysis</h3>
-                <ul class="platform-feature-list">
-                    <li>
-                        <span class="feature-check">✓</span>
-                        <span>Portfolio totals — units, square footage, total rent, and average rent per square foot</span>
-                    </li>
-                    <li>
-                        <span class="feature-check">✓</span>
-                        <span>Tracks lease expirations and renewal deadlines in 30/60/90-day windows — kept separate, since they're not the same date</span>
-                    </li>
-                    <li>
-                        <span class="feature-check">✓</span>
-                        <span>Loss-to-lease analysis — the upside per unit against the best rent already proven elsewhere in the same building. An internal comp, not external market data (we don't have a market-rent feed yet) — a property with only one unit on file has no comp and is excluded rather than guessed at</span>
-                    </li>
-                </ul>
+            <div class="step-card reveal">
+                <div class="step-number">3</div>
+                <h3>Export a report for your lender or LP</h3>
+                <p>Every finding traces back to the lease text, so whoever's underwriting the deal confirms it in seconds instead of re-reading the file — and it's ready to hand off, not just to eyeball.</p>
             </div>
         </div>
     </section>
 
-    <!-- ===================== Trust & Security ===================== -->
+    <!-- ===================== Built for multifamily ===================== -->
+    <section class="differentiator" id="why-multifamily">
+        <div class="section-heading reveal">
+            <span class="eyebrow">Built For Multifamily</span>
+            <h2>Built For Hundreds Of Units, Not A Handful Of Tenants</h2>
+            <p>Most lease-review tools were built for commercial CRE — a handful of long, heavily negotiated leases per building. Multifamily is a different problem entirely.</p>
+        </div>
+        <div class="differentiator-grid">
+            <div class="differentiator-card reveal">
+                <h3>Volume, not negotiation</h3>
+                <p>A mid-size portfolio can mean hundreds of similar residential leases, not a dozen heavily negotiated commercial ones. A tool built to review 15 anchor tenants a year wasn't built for 300 units.</p>
+            </div>
+            <div class="differentiator-card reveal">
+                <h3>Constant turnover</h3>
+                <p>Unit leases renew and turn over year-round across a portfolio, not on a handful of scheduled dates. The rent roll drifts from the actual leases continuously — which is exactly why it needs checking before every acquisition.</p>
+            </div>
+            <div class="differentiator-card reveal">
+                <h3>Built for the closing table</h3>
+                <p>This isn't a tool for an owner managing a handful of tenants over years. It's for the diligence window before you sign — checking what the seller's rent roll claims against what the leases actually say, while you can still walk or reprice.</p>
+            </div>
+        </div>
+        <div class="capability-strip reveal">
+            <span class="capability-chip">OCR extraction</span>
+            <span class="capability-chip">Yardi / AppFolio / RealPage / MRI / Buildium import</span>
+            <span class="capability-chip">T-12 cross-check</span>
+            <span class="capability-chip">Citation-linked validation</span>
+        </div>
+    </section>
+
+    <!-- ===================== Three trust pillars ===================== -->
     <section class="trust" id="trust">
         <div class="section-heading reveal">
             <span class="eyebrow">Trust &amp; Security</span>
             <h2>What's Actually True Today</h2>
-            <p>We'd rather tell you exactly where things stand than make a claim we can't back up.</p>
         </div>
         <div class="trust-grid">
             <div class="trust-item reveal">
-                <span class="feature-check">✓</span>
-                <span>Every upload is validated before processing — file type and size are checked, and a corrupted, password-protected, or unreadable file fails with a clear message instead of silently producing fabricated data.</span>
+                <span class="trust-item-icon" aria-hidden="true">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"/></svg>
+                </span>
+                <h3>Isolated per team</h3>
+                <!-- Wording confirmed by the product owner: each team's
+                     documents and results are only visible to that
+                     team's members. -->
+                <p>Each team's documents and results are only visible to that team's members.</p>
             </div>
             <div class="trust-item reveal">
-                <span class="feature-check">✓</span>
-                <span>Every extracted value carries a source citation — the exact page and quote it came from — so nothing you see is presented as fact without a way to verify it against the original document.</span>
+                <span class="trust-item-icon" aria-hidden="true">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg>
+                </span>
+                <h3>Every finding cites its source</h3>
+                <p>Every finding links back to the exact page and quote in the lease it came from — nothing is presented as fact without a way to verify it yourself.</p>
             </div>
             <div class="trust-item reveal">
-                <span class="feature-check">✓</span>
-                <span>Access is by request only and personally reviewed — this isn't a self-serve signup anyone can create an account on.</span>
+                <span class="trust-item-icon" aria-hidden="true">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/></svg>
+                </span>
+                <h3>Never used to train AI</h3>
+                <!-- TODO: verify with the team before launch. -->
+                <p>Your documents are never used to train AI models.</p>
             </div>
-            <div class="trust-item reveal">
-                <span class="feature-check">✓</span>
-                <span>No credentials or secrets are ever stored in our codebase — they're kept in environment configuration only, never committed to source control.</span>
-            </div>
-            <div class="trust-item reveal">
-                <span class="feature-check">✓</span>
-                <span>You can delete any uploaded document and its extracted data from your account at any time.</span>
-            </div>
-            <div class="trust-item reveal">
-                <span class="feature-todo">TODO</span>
-                <span>Formal compliance certification (e.g., SOC 2) — we don't have one yet, and we won't claim one until it's real. <!-- TODO: replace once obtained --></span>
-            </div>
+        </div>
+    </section>
+
+    <!-- ===================== Pricing preview ===================== -->
+    <section class="pricing-preview" id="pricing-preview">
+        <div class="section-heading reveal">
+            <span class="eyebrow">Pricing</span>
+            <h2>Priced Per Property, Not Per Document</h2>
+            <p>Three tiers, monthly or annual contracts. Every plan starts with a real walkthrough, not a self-serve checkout.</p>
+        </div>
+        <!-- Rendered by landing.js from PRICING_CONFIG (pricing-config.js)
+             -- same source of truth as pricing.html, so this teaser can
+             never drift out of sync with the real numbers. -->
+        <div class="pricing-preview-grid reveal" id="pricingPreviewGrid"></div>
+        <div class="pricing-preview-cta-wrap reveal">
+            <a href="pricing.html" class="btn-primary">Compare All Plans &rarr;</a>
         </div>
     </section>
 
@@ -339,15 +296,15 @@
             </details>
             <details class="faq-item reveal">
                 <summary>How accurate is the extraction?</summary>
-                <p>We're not going to hand you a made-up accuracy percentage — anyone can print a number, and it means nothing without knowing what it was measured against. What we do instead: every extracted value shows a confidence level and links back to the exact page and quote it came from, so you (or your analyst) can verify any figure in seconds rather than trusting a black box. In our own internal testing, a genuine 40-page lease document processed in 0.06 seconds — extraction speed isn't the bottleneck; verifiability is the point.</p>
+                <p>We're not going to hand you a made-up accuracy percentage — anyone can print a number, and it means nothing without knowing what it was measured against. What we do instead: every extracted value shows a confidence level and links back to the exact page and quote it came from, so you (or your analyst) can verify any figure in seconds rather than trusting a black box.</p>
             </details>
             <details class="faq-item reveal">
                 <summary>What file formats and property management systems do you support?</summary>
-                <p>Today: PDF lease documents, including scanned/image-only PDFs (via OCR), including files that bundle multiple leases into one document, plus hand-built broker Excel/CSV rent rolls and direct import from Yardi, AppFolio, RealPage, MRI, and Buildium exports — see the Platform section above for the full accuracy caveats on each.</p>
+                <p>Today: PDF lease documents, including scanned/image-only PDFs (via OCR), including files that bundle multiple leases into one document, plus hand-built broker Excel/CSV rent rolls and direct import from Yardi, AppFolio, RealPage, MRI, and Buildium exports.</p>
             </details>
             <details class="faq-item reveal">
                 <summary>How is this different from an analyst just eyeballing the rent roll for outliers?</summary>
-                <p>Outlier flagging against portfolio averages is table stakes, and we do that too. The actual difference is validating against source documents, not just internal statistics — every value we surface traces back to the original lease itself, and cross-checking a rent roll against both the T12 and the underlying lease documents (not just against itself) is the real differentiator, not a nice-to-have layered on top.</p>
+                <p>Outlier flagging against portfolio averages is table stakes, and we do that too. The actual difference is validating against source documents, not just internal statistics — every value we surface traces back to the original lease itself, and cross-checking a rent roll against both the T12 and the underlying lease documents is the real differentiator, not a nice-to-have layered on top.</p>
             </details>
             <details class="faq-item reveal">
                 <summary>Does this replace my analyst?</summary>
@@ -356,66 +313,56 @@
         </div>
     </section>
 
-    <!-- ===================== Dark statement section ===================== -->
-    <section class="statement">
+    <!-- ===================== Final CTA + Book a Demo ===================== -->
+    <section class="statement book-demo" id="book-demo">
         <div class="statement-inner reveal">
-            <span class="eyebrow">The Standard For Serious Underwriting</span>
-            <h2>Every number you underwrite from should be one you can trace back to the source.</h2>
-            <a href="#book-demo" class="btn-primary statement-cta">Book a Demo</a>
-        </div>
-    </section>
-
-    <!-- ===================== Book a Demo ===================== -->
-    <section class="book-demo" id="book-demo">
-        <div class="section-heading reveal">
             <span class="eyebrow">Book a Demo</span>
-            <h2>See It On Your Own Rent Roll</h2>
-            <p>Tell us a bit about your portfolio and we'll set up a walkthrough. We work with a limited number of firms at a time, so every request gets a real look, not a place in a queue.</p>
-        </div>
+            <h2>See it on your own rent roll.</h2>
 
-        <div class="demo-form-wrap reveal" id="demoFormWrap">
-            <form class="demo-form" id="demoForm" novalidate>
-                <div class="demo-form-row">
-                    <div class="demo-form-field">
-                        <label for="demoName">Name</label>
-                        <input type="text" id="demoName" name="name" autocomplete="name" maxlength="200" required>
+            <div class="demo-form-wrap" id="demoFormWrap">
+                <form class="demo-form" id="demoForm" novalidate>
+                    <div class="demo-form-row">
+                        <div class="demo-form-field">
+                            <label for="demoName">Name</label>
+                            <input type="text" id="demoName" name="name" autocomplete="name" maxlength="200" required>
+                        </div>
+                        <div class="demo-form-field">
+                            <label for="demoWorkEmail">Work Email</label>
+                            <input type="email" id="demoWorkEmail" name="work_email" autocomplete="email" required>
+                        </div>
                     </div>
-                    <div class="demo-form-field">
-                        <label for="demoWorkEmail">Work Email</label>
-                        <input type="email" id="demoWorkEmail" name="work_email" autocomplete="email" required>
+                    <div class="demo-form-row">
+                        <div class="demo-form-field">
+                            <label for="demoCompany">Company</label>
+                            <input type="text" id="demoCompany" name="company" autocomplete="organization" maxlength="200" required>
+                        </div>
+                        <div class="demo-form-field">
+                            <label for="demoUnits">Number of Units in Portfolio</label>
+                            <input type="number" id="demoUnits" name="units" min="1" max="1000000" step="1" inputmode="numeric" required>
+                        </div>
                     </div>
-                </div>
-                <div class="demo-form-row">
-                    <div class="demo-form-field">
-                        <label for="demoCompany">Company</label>
-                        <input type="text" id="demoCompany" name="company" autocomplete="organization" maxlength="200" required>
+                    <div class="demo-form-field demo-form-field-full">
+                        <label for="demoMessage">Message <span class="demo-form-optional">(optional)</span></label>
+                        <textarea id="demoMessage" name="message" rows="3" maxlength="2000"></textarea>
                     </div>
-                    <div class="demo-form-field">
-                        <label for="demoUnits">Number of Units in Portfolio</label>
-                        <input type="number" id="demoUnits" name="units" min="1" max="1000000" step="1" inputmode="numeric" required>
-                    </div>
-                </div>
-                <div class="demo-form-field demo-form-field-full">
-                    <label for="demoMessage">Message <span class="demo-form-optional">(optional)</span></label>
-                    <textarea id="demoMessage" name="message" rows="3" maxlength="2000"></textarea>
-                </div>
 
-                <!-- Honeypot: invisible to a real visitor (aria-hidden,
-                     off-screen, unreachable by Tab), left for a bot that
-                     fills in every field it can find. See landing.js and
-                     backend/app/api.py's POST /demo-request. -->
-                <div class="demo-form-honeypot" aria-hidden="true">
-                    <label for="demoWebsite">Website</label>
-                    <input type="text" id="demoWebsite" name="website" tabindex="-1" autocomplete="off">
+                    <!-- Honeypot: invisible to a real visitor (aria-hidden,
+                         off-screen, unreachable by Tab), left for a bot that
+                         fills in every field it can find. See landing.js and
+                         backend/app/api.py's POST /demo-request. -->
+                    <div class="demo-form-honeypot" aria-hidden="true">
+                        <label for="demoWebsite">Website</label>
+                        <input type="text" id="demoWebsite" name="website" tabindex="-1" autocomplete="off">
+                    </div>
+
+                    <button type="submit" class="btn-primary demo-form-submit" id="demoSubmitBtn">Book a Demo</button>
+                    <p class="demo-form-error" id="demoFormError"></p>
+                </form>
+
+                <div class="demo-form-confirm" id="demoFormConfirm">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    <span>Thanks — we've received your request and will be in touch to schedule a time.</span>
                 </div>
-
-                <button type="submit" class="btn-primary demo-form-submit" id="demoSubmitBtn">Book a Demo</button>
-                <p class="demo-form-error" id="demoFormError"></p>
-            </form>
-
-            <div class="demo-form-confirm" id="demoFormConfirm">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                <span>Thanks — we've received your request and will be in touch to schedule a time.</span>
             </div>
         </div>
     </section>
@@ -424,19 +371,26 @@
     </main>
 
     <footer class="landing-footer">
-        <div class="footer-top">
-            <div class="footer-brand">
-                <svg width="20" height="20" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5"/></svg>
-                Abstractly
+        <div class="footer-inner">
+            <div class="footer-top">
+                <div class="footer-brand">
+                    <svg width="20" height="20" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5"/></svg>
+                    Abstractly
+                </div>
+                <div class="footer-links">
+                    <a href="pricing.html">Pricing</a>
+                    <a href="#book-demo">Book a Demo</a>
+                </div>
             </div>
+            <p class="footer-contact"><a href="mailto:timmypisano24@gmail.com">timmypisano24@gmail.com</a> &nbsp;&middot;&nbsp; 631-697-8711</p>
+            <p class="footer-copy">&copy; 2026 Abstractly. All rights reserved.</p>
         </div>
-        <p class="footer-contact"><a href="mailto:timmypisano24@gmail.com">timmypisano24@gmail.com</a> &nbsp;&middot;&nbsp; 631-697-8711</p>
-        <p class="footer-copy">&copy; 2026 Abstractly. All rights reserved.</p>
     </footer>
 
     <script src="vendor/lenis.min.js"></script>
     <script src="background-fx.js"></script>
     <script src="config.js"></script>
+    <script src="pricing-config.js"></script>
     <script src="landing.js"></script>
 </body>
 </html>

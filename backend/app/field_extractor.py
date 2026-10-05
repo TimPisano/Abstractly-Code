@@ -34,6 +34,7 @@ import re
 from datetime import date as _date
 from typing import Optional, Dict, Any, List, Tuple
 
+from . import concessions as _concessions
 from .normalize import parse_currency, parse_date, parse_square_footage
 
 logger = logging.getLogger(__name__)
@@ -194,8 +195,8 @@ class FieldExtractor:
              "confidence": "high"/"medium"/"low" or None}
         """
         result = {
-            "tenant": self._extract_defined_party(pages, ("Tenant", "Lessee", "Renter"), self._party_label_patterns("tenant", "lessee", "renter")),
-            "landlord": self._extract_defined_party(pages, ("Landlord", "Lessor"), self._party_label_patterns("landlord", "lessor")),
+            "tenant": self._extract_defined_party(pages, ("Tenant", "Lessee", "Renter", "Resident"), self._party_label_patterns("tenant", "lessee", "renter")),
+            "landlord": self._extract_defined_party(pages, ("Landlord", "Lessor", "Owner"), self._party_label_patterns("landlord", "lessor")),
             "rent_amount": self._extract_rent(pages),
             "lease_start_date": self._extract_start_date(pages),
             "lease_end_date": self._extract_end_date(pages),
@@ -210,11 +211,19 @@ class FieldExtractor:
             "insurance_requirements": self._extract_insurance_requirements(pages),
             "default_cure_period": self._extract_default_cure_period(pages),
             "square_footage": self._extract_square_footage(pages),
+            # Multifamily concessions (free months, move-in specials,
+            # recurring discounts) -- structured schedule plus summary,
+            # see concessions.py. Feeds the Deal Mismatch Report's
+            # concession checks and effective-rent comparison.
+            "concessions": _concessions.build_field_entry(_concessions.parse_concessions(pages)),
         }
 
         self._apply_confidence_validation(result, pages)
 
-        not_found = [name for name, entry in result.items() if entry.get("value") is None]
+        # A lease with no concession is the normal case, not a parsing
+        # gap -- left out of the not-found log so it doesn't drown out
+        # the fields whose absence actually means something.
+        not_found = [name for name, entry in result.items() if entry.get("value") is None and name != "concessions"]
         if not_found:
             # This engine has no notion of document sections (recitals,
             # signature block, exhibits, ...) -- it only knows it searched
@@ -726,10 +735,10 @@ class FieldExtractor:
         {"landlords": [...]}, or both.
         """
         tenants = self._find_all_party_values(
-            pages, ("Tenant", "Lessee", "Renter"), self._party_label_patterns("tenant", "lessee", "renter")
+            pages, ("Tenant", "Lessee", "Renter", "Resident"), self._party_label_patterns("tenant", "lessee", "renter")
         )
         landlords = self._find_all_party_values(
-            pages, ("Landlord", "Lessor"), self._party_label_patterns("landlord", "lessor")
+            pages, ("Landlord", "Lessor", "Owner"), self._party_label_patterns("landlord", "lessor")
         )
 
         result: Dict[str, Any] = {}
@@ -780,10 +789,10 @@ class FieldExtractor:
             return []
 
         tenant_occurrences = self._find_all_party_occurrences(
-            pages, ("Tenant", "Lessee", "Renter"), self._party_label_patterns("tenant", "lessee", "renter")
+            pages, ("Tenant", "Lessee", "Renter", "Resident"), self._party_label_patterns("tenant", "lessee", "renter")
         )
         landlord_occurrences = self._find_all_party_occurrences(
-            pages, ("Landlord", "Lessor"), self._party_label_patterns("landlord", "lessor")
+            pages, ("Landlord", "Lessor", "Owner"), self._party_label_patterns("landlord", "lessor")
         )
         tenant_pages = {page for _value, page in self._dedupe_party_occurrences(tenant_occurrences)}
         landlord_pages = {page for _value, page in self._dedupe_party_occurrences(landlord_occurrences)}

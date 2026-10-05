@@ -31,7 +31,7 @@
         // etc.) used by several of the view modules below -- loaded
         // right after app.js, before any view that calls into them.
         'api.js', 'app.js', 'verify-popover.js', 'comments.js', 'discrepancy-modal.js', 'export-modal.js',
-        'upload-view.js', 'dashboard-view.js', 'actionitems-view.js', 'alerts-view.js', 'discrepancies-view.js', 'team-notes-view.js',
+        'upload-view.js', 'dashboard-view.js', 'actionitems-view.js', 'alerts-view.js', 'discrepancies-view.js', 'deal-mismatch-view.js', 'team-notes-view.js',
         'detail-view.js', 'timeline-view.js', 'rentroll-view.js', 'comparison-view.js',
         'qa-view.js', 'report-view.js', 'trends-view.js', 'team-view.js', 'tasks-view.js', 'messaging.js',
         'task-detail-modal.js',

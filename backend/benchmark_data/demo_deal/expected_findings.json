@@ -1,0 +1,224 @@
+{
+  "property": "Maple Ridge Apartments",
+  "property_address": "4500 Maple Ridge Trail, Dallas, TX 75248",
+  "rent_roll_as_of": "2026-08-31",
+  "total_units": 120,
+  "total_documented_units": 16,
+  "findings": [
+    {
+      "discrepancy_type": "rent_mismatch",
+      "unit_id": "B104",
+      "rent_roll_value": "$1,360.00",
+      "lease_value": "$1,285.00",
+      "monthly_dollar_impact": 75.0,
+      "annual_dollar_impact": 900.0,
+      "income_direction": "overstate",
+      "detected_by": "Deal Mismatch Report (detect_rent_mismatch) -- live"
+    },
+    {
+      "discrepancy_type": "rent_mismatch",
+      "unit_id": "D203",
+      "rent_roll_value": "$1,420.00",
+      "lease_value": "$1,300.00",
+      "monthly_dollar_impact": 120.0,
+      "annual_dollar_impact": 1440.0,
+      "income_direction": "overstate",
+      "detected_by": "Deal Mismatch Report (detect_rent_mismatch) -- live"
+    },
+    {
+      "discrepancy_type": "rent_mismatch",
+      "unit_id": "G204",
+      "rent_roll_value": "$1,955.00",
+      "lease_value": "$1,695.00",
+      "monthly_dollar_impact": 260.0,
+      "annual_dollar_impact": 3120.0,
+      "income_direction": "overstate",
+      "detected_by": "Deal Mismatch Report (detect_rent_mismatch) -- live"
+    },
+    {
+      "discrepancy_type": "rent_mismatch",
+      "unit_id": "J303",
+      "rent_roll_value": "$2,075.00",
+      "lease_value": "$1,975.00",
+      "monthly_dollar_impact": 100.0,
+      "annual_dollar_impact": 1200.0,
+      "income_direction": "overstate",
+      "detected_by": "Deal Mismatch Report (detect_rent_mismatch) -- live"
+    },
+    {
+      "discrepancy_type": "expired_but_occupied",
+      "unit_id": "C203",
+      "rent_roll_value": "Occupied (Chester Tigerstrom)",
+      "lease_value": "Expired February 28, 2026",
+      "monthly_dollar_impact": 1290.0,
+      "annual_dollar_impact": 15480.0,
+      "income_direction": "overstate",
+      "detected_by": "Deal Mismatch Report (detect_expired_but_occupied) -- live"
+    },
+    {
+      "discrepancy_type": "expired_but_occupied",
+      "unit_id": "H104",
+      "rent_roll_value": "Occupied (Ellery Fairweather)",
+      "lease_value": "Expired May 31, 2026",
+      "monthly_dollar_impact": 1720.0,
+      "annual_dollar_impact": 20640.0,
+      "income_direction": "overstate",
+      "detected_by": "Deal Mismatch Report (detect_expired_but_occupied) -- live"
+    },
+    {
+      "discrepancy_type": "concession_missing",
+      "unit_id": "A104",
+      "rent_roll_value": "$1,075.00 (no concession shown)",
+      "lease_value": "One (1) month of Base Rent (the first full calendar month, October 2025) is abated as a move-in incentive.",
+      "monthly_dollar_impact": 89.58,
+      "annual_dollar_impact": 1075.0,
+      "income_direction": "overstate",
+      "detected_by": "Deal Mismatch Report (detect_concession_missing) -- live"
+    },
+    {
+      "discrepancy_type": "concession_missing",
+      "unit_id": "E301",
+      "rent_roll_value": "$1,290.00 (no concession shown)",
+      "lease_value": "Base Rent is reduced by $100.00 per month for the first six (6) months of the Lease Term (April 2026 through September 2026) as a renewal incentive.",
+      "monthly_dollar_impact": 50.0,
+      "annual_dollar_impact": 600.0,
+      "income_direction": "overstate",
+      "detected_by": "Deal Mismatch Report (detect_concession_missing) -- live"
+    },
+    {
+      "discrepancy_type": "concession_missing",
+      "unit_id": "I204",
+      "rent_roll_value": "$1,720.00 (no concession shown)",
+      "lease_value": "Base Rent is reduced by $75.00 per month for the full twelve (12) month Lease Term as a retention incentive.",
+      "monthly_dollar_impact": 75.0,
+      "annual_dollar_impact": 900.0,
+      "income_direction": "overstate",
+      "detected_by": "Deal Mismatch Report (detect_concession_missing) -- live"
+    },
+    {
+      "discrepancy_type": "unit_no_lease",
+      "unit_id": "F203",
+      "rent_roll_value": "Marcus Boone",
+      "lease_value": null,
+      "monthly_dollar_impact": 1710.0,
+      "annual_dollar_impact": 20520.0,
+      "income_direction": null,
+      "detected_by": "Deal Mismatch Report (detect_unit_no_lease) -- live"
+    }
+  ],
+  "total_planted_annual_income_overstatement": 45355.0,
+  "t12_summary": {
+    "net_rental_income_billed_annual": 2044072.64,
+    "bad_debt_annual": 122562.0,
+    "bad_debt_pct_of_billed_rent": 6.0,
+    "total_rent_collected_annual": 1910310.64,
+    "noi_annual": 1229888.08
+  },
+  "lease_manifest": [
+    {
+      "unit_id": "B104",
+      "file": "leases/B104_magnolia_fennimore.pdf",
+      "tenant": "Magnolia Fennimore",
+      "issue": "rent_mismatch",
+      "lease_rent": 1285.0
+    },
+    {
+      "unit_id": "D203",
+      "file": "leases/D203_omar_ostrander.pdf",
+      "tenant": "Omar Ostrander",
+      "issue": "rent_mismatch",
+      "lease_rent": 1300.0
+    },
+    {
+      "unit_id": "G204",
+      "file": "leases/G204_junia_levine.pdf",
+      "tenant": "Junia Levine",
+      "issue": "rent_mismatch",
+      "lease_rent": 1695.0
+    },
+    {
+      "unit_id": "J303",
+      "file": "leases/J303_silas_vasilenko.pdf",
+      "tenant": "Silas Vasilenko",
+      "issue": "rent_mismatch",
+      "lease_rent": 1975.0
+    },
+    {
+      "unit_id": "C203",
+      "file": "leases/C203_chester_tigerstrom.pdf",
+      "tenant": "Chester Tigerstrom",
+      "issue": "expired_but_occupied",
+      "lease_rent": 1290.0
+    },
+    {
+      "unit_id": "H104",
+      "file": "leases/H104_ellery_fairweather.pdf",
+      "tenant": "Ellery Fairweather",
+      "issue": "expired_but_occupied",
+      "lease_rent": 1720.0
+    },
+    {
+      "unit_id": "A104",
+      "file": "leases/A104_perpetua_zabrinsky.pdf",
+      "tenant": "Perpetua Zabrinsky",
+      "issue": "concession_missing",
+      "lease_rent": 1075.0
+    },
+    {
+      "unit_id": "E301",
+      "file": "leases/E301_fiona_rourke.pdf",
+      "tenant": "Fiona Rourke",
+      "issue": "concession_missing",
+      "lease_rent": 1290.0
+    },
+    {
+      "unit_id": "I204",
+      "file": "leases/I204_miriam_petrosyan.pdf",
+      "tenant": "Miriam Petrosyan",
+      "issue": "concession_missing",
+      "lease_rent": 1720.0
+    },
+    {
+      "unit_id": "A102",
+      "file": "leases/A102_jordan_boone.pdf",
+      "tenant": "Jordan Boone",
+      "issue": "clean",
+      "lease_rent": 1075.0
+    },
+    {
+      "unit_id": "B303",
+      "file": "leases/B303_delphine_ordway.pdf",
+      "tenant": "Delphine Ordway",
+      "issue": "clean",
+      "lease_rent": 1310.0
+    },
+    {
+      "unit_id": "D104",
+      "file": "leases/D104_juniper_foss.pdf",
+      "tenant": "Juniper Foss",
+      "issue": "clean",
+      "lease_rent": 1285.0
+    },
+    {
+      "unit_id": "G303",
+      "file": "leases/G303_sonny_bostwick.pdf",
+      "tenant": "Sonny Bostwick",
+      "issue": "clean",
+      "lease_rent": 1725.0
+    },
+    {
+      "unit_id": "H204",
+      "file": "leases/H204_camille_vasilenko.pdf",
+      "tenant": "Camille Vasilenko",
+      "issue": "clean",
+      "lease_rent": 1710.0
+    },
+    {
+      "unit_id": "J102",
+      "file": "leases/J102_camille_pellikaan.pdf",
+      "tenant": "Camille Pellikaan",
+      "issue": "clean",
+      "lease_rent": 1990.0
+    }
+  ]
+}

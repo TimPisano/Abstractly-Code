@@ -33,6 +33,13 @@ def _fresh_temp_db():
     tmp.close()
     database.configure(tmp.name)
     database.init_db()
+    # Matches the fabricated sessions' user_id=1 (analyst) and user_id=2
+    # (viewer) with real rows -- usage_events.user_id/team_id are
+    # FK-constrained, so a session pointing at a nonexistent user_id
+    # fails on any upload-route call. Created in this order so
+    # autoincrement assigns id=1 then id=2, matching the sessions below.
+    database.create_user("test-analyst@example.com", "Test Analyst", "x", role="analyst")
+    database.create_user("viewer@example.com", "Viewer", "x", role="viewer")
     return tmp.name
 
 
@@ -41,6 +48,7 @@ def _authed_client():
     with client.session_transaction() as sess:
         sess["user_id"] = 1
         sess["email"] = "test-analyst@example.com"
+        sess["team_id"] = 1  # the 'Legacy' team, always id 1 in a fresh test DB
         sess["name"] = "Test Analyst"
         sess["role"] = "analyst"
     return client
@@ -188,10 +196,19 @@ def _v2_bytes():
 
 
 def _upload(client, content, filename="lease.pdf"):
+    # This file uploads/resubmits many times across its own test
+    # functions using the same fabricated user -- reset the per-user
+    # extraction rate limit before each call so upload volume in THIS
+    # test file never trips a limit meant for real usage, regardless
+    # of execution order.
+    from app import usage_limits
+    usage_limits._reset_extraction_rate_limit_for_tests()
     return client.post("/leases", data={"file": (io.BytesIO(content), filename)}, content_type="multipart/form-data")
 
 
 def _resubmit(client, lease_id, content, filename="lease_corrected.pdf"):
+    from app import usage_limits
+    usage_limits._reset_extraction_rate_limit_for_tests()
     return client.post(f"/leases/{lease_id}/resubmit", data={"file": (io.BytesIO(content), filename)}, content_type="multipart/form-data")
 
 
