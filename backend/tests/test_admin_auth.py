@@ -58,6 +58,11 @@ def _create_admin():
     """Creates the one admin user this file's route tests log in as. Assumes init_db() has already run against a fresh temp db with no ADMIN_EMAIL/ADMIN_PASSWORD_HASH seed (so this is the only user)."""
     result = database.create_user(TEST_EMAIL, "Test Admin", TEST_HASH, role="admin")
     assert result["status"] == "created", result
+    # Owner, not just admin: the waitlist routes this file exercises are
+    # platform-wide and owner-only (a team admin gets a 404).
+    conn = database.get_connection()
+    conn.execute("UPDATE users SET is_owner = 1 WHERE id = ?", (result["id"],))
+    conn.commit(); conn.close()
     return result["id"]
 
 
@@ -268,7 +273,9 @@ def test_non_admin_role_gets_403_not_401_on_admin_only_route():
 
         client = app.test_client()
         client.post("/auth/login", json={"email": "analyst@example.com", "password": "whatever password"})
-        resp = client.get("/waitlist")
+        # /team/members, not /waitlist: the waitlist is owner-only now,
+        # and owner-only routes deliberately 404 rather than 403.
+        resp = client.get("/team/members")
         assert resp.status_code == 403, resp.get_json()
     finally:
         os.unlink(db_path)

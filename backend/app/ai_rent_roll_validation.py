@@ -262,7 +262,7 @@ def find_unit_pairs(leases: List[Dict[str, Any]]) -> List[Tuple[Dict[str, Any], 
     return pairs
 
 
-def sync_validation_result(result: Dict[str, Any]) -> List[Dict[str, Any]]:
+def sync_validation_result(result: Dict[str, Any], team_id: int) -> List[Dict[str, Any]]:
     """
     Persist a validate_rent_roll_against_lease result's discrepancies to
     the discrepancies table (type "rent_roll_ai_validation"), one row
@@ -292,7 +292,8 @@ def sync_validation_result(result: Dict[str, Any]) -> List[Dict[str, Any]]:
             details={**d, "address": result.get("address"), "assessment": result.get("assessment")},
             lease_id=rr_id,
             related_lease_id=doc_id,
+            team_id=team_id,
         )
-        _annotate(d, discrepancy_id)
+        _annotate(d, discrepancy_id, team_id)
         out.append(d)
     return out

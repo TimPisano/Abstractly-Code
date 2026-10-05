@@ -24,6 +24,9 @@ from app import tasks as tasks_module
 from app.assignments import compute_today_view
 
 
+from _session_users import sync_session_user
+
+
 def _fresh_temp_db():
     tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
     tmp.close()
@@ -36,9 +39,11 @@ def _client_as(role, email, name, user_id):
     client = app.test_client()
     with client.session_transaction() as sess:
         sess["user_id"] = user_id
+        sess["team_id"] = 1
         sess["email"] = email
         sess["name"] = name
         sess["role"] = role
+        sync_session_user(sess)
     return client
 
 
@@ -59,6 +64,7 @@ def _make_discrepancy(lease_id=None):
         "rent_mismatch", f"rent_mismatch:{lease_id or 'x'}", "financial",
         "Rent roll rent doesn't match lease abstraction", {"lease_amount": 5000, "rent_roll_amount": 5200},
         lease_id=lease_id, severity="high",
+    team_id=1,
     )
 
 
@@ -67,6 +73,7 @@ def _make_alert(lease_id=None):
         "lease_expiring", f"lease_expiring:{lease_id or 'x'}", "high",
         "Lease expiring within 90 days", "Tenant lease ends soon with no renewal option exercised",
         {"days_remaining": 45}, lease_id=lease_id,
+    team_id=1,
     )
 
 
@@ -78,8 +85,8 @@ def test_create_and_get_task():
     db_path = _fresh_temp_db()
     try:
         admin, analyst, _ = _real_users()
-        task_id = database.create_task("Follow up with tenant", admin, description="Call about renewal", due_date="2026-09-01", assigned_to_user_id=analyst)
-        task = database.get_task(task_id)
+        task_id = database.create_task("Follow up with tenant", admin, description="Call about renewal", due_date="2026-09-01", assigned_to_user_id=analyst, team_id=1)
+        task = database.get_task(task_id, team_id=1)
         assert task["title"] == "Follow up with tenant"
         assert task["status"] == "open"
         assert task["assigned_to_user_id"] == analyst
@@ -94,7 +101,7 @@ def test_update_task_status_sets_and_clears_completed_at():
     db_path = _fresh_temp_db()
     try:
         admin, analyst, _ = _real_users()
-        task_id = database.create_task("Task", admin, assigned_to_user_id=analyst)
+        task_id = database.create_task("Task", admin, assigned_to_user_id=analyst, team_id=1)
         updated = database.update_task_status(task_id, "done")
         assert updated["status"] == "done"
         assert updated["completed_at"] is not None
@@ -111,7 +118,7 @@ def test_update_task_fields_can_clear_due_date():
     db_path = _fresh_temp_db()
     try:
         admin, _, _ = _real_users()
-        task_id = database.create_task("Task", admin, due_date="2026-09-01")
+        task_id = database.create_task("Task", admin, due_date="2026-09-01", team_id=1)
         updated = database.update_task_fields(task_id, title="Renamed")
         assert updated["title"] == "Renamed"
         assert updated["due_date"] == "2026-09-01", "omitting due_date must leave it unchanged"
@@ -127,17 +134,17 @@ def test_list_tasks_filters():
     db_path = _fresh_temp_db()
     try:
         admin, analyst, viewer = _real_users()
-        t1 = database.create_task("A", admin, assigned_to_user_id=analyst, due_date="2026-09-01")
-        t2 = database.create_task("B", admin, assigned_to_user_id=viewer, due_date="2026-09-10")
+        t1 = database.create_task("A", admin, assigned_to_user_id=analyst, due_date="2026-09-01", team_id=1)
+        t2 = database.create_task("B", admin, assigned_to_user_id=viewer, due_date="2026-09-10", team_id=1)
         database.update_task_status(t2, "done")
 
-        by_assignee = database.list_tasks(assigned_to_user_id=analyst)
+        by_assignee = database.list_tasks(assigned_to_user_id=analyst, team_id=1)
         assert [t["id"] for t in by_assignee] == [t1]
 
-        open_only = database.list_tasks(status="open")
+        open_only = database.list_tasks(status="open", team_id=1)
         assert [t["id"] for t in open_only] == [t1]
 
-        due_before = database.list_tasks(due_before="2026-09-05")
+        due_before = database.list_tasks(due_before="2026-09-05", team_id=1)
         assert [t["id"] for t in due_before] == [t1]
     finally:
         os.unlink(db_path)
@@ -149,11 +156,11 @@ def test_get_tasks_due_today_or_overdue():
     try:
         admin, analyst, _ = _real_users()
         today = date(2026, 8, 24)
-        overdue = database.create_task("Overdue", admin, assigned_to_user_id=analyst, due_date="2026-08-20")
-        due_today = database.create_task("Due today", admin, assigned_to_user_id=analyst, due_date="2026-08-24")
-        future = database.create_task("Future", admin, assigned_to_user_id=analyst, due_date="2026-09-01")
-        no_due_date = database.create_task("No due date", admin, assigned_to_user_id=analyst)
-        done_overdue = database.create_task("Done but overdue", admin, assigned_to_user_id=analyst, due_date="2026-08-10")
+        overdue = database.create_task("Overdue", admin, assigned_to_user_id=analyst, due_date="2026-08-20", team_id=1)
+        due_today = database.create_task("Due today", admin, assigned_to_user_id=analyst, due_date="2026-08-24", team_id=1)
+        future = database.create_task("Future", admin, assigned_to_user_id=analyst, due_date="2026-09-01", team_id=1)
+        no_due_date = database.create_task("No due date", admin, assigned_to_user_id=analyst, team_id=1)
+        done_overdue = database.create_task("Done but overdue", admin, assigned_to_user_id=analyst, due_date="2026-08-10", team_id=1)
         database.update_task_status(done_overdue, "done")
 
         results = database.get_tasks_due_today_or_overdue(analyst, today.isoformat())
@@ -172,8 +179,8 @@ def test_task_detail_enrichment():
     try:
         admin, analyst, _ = _real_users()
         disc_id = _make_discrepancy()
-        task_id = database.create_task("Fix it", admin, assigned_to_user_id=analyst, discrepancy_id=disc_id)
-        detail = tasks_module.task_detail(database.get_task(task_id))
+        task_id = database.create_task("Fix it", admin, assigned_to_user_id=analyst, discrepancy_id=disc_id, team_id=1)
+        detail = tasks_module.task_detail(database.get_task(task_id, team_id=1))
         assert detail["assigned_to"]["name"] == "Analyst User"
         assert detail["created_by"]["name"] == "Admin User"
         assert detail["discrepancy"]["id"] == disc_id
@@ -187,7 +194,7 @@ def test_create_task_from_discrepancy_carries_context():
     try:
         admin, analyst, _ = _real_users()
         disc_id = _make_discrepancy()
-        detail = tasks_module.create_task_from_discrepancy(disc_id, admin, assigned_to_user_id=analyst, due_date="2026-09-01")
+        detail = tasks_module.create_task_from_discrepancy(disc_id, admin, team_id=1, assigned_to_user_id=analyst, due_date="2026-09-01")
         assert "Rent roll rent doesn't match" in detail["title"]
         assert detail["discrepancy_id"] == disc_id
         assert detail["source_type"] == "discrepancy"
@@ -195,7 +202,7 @@ def test_create_task_from_discrepancy_carries_context():
         assert detail["due_date"] == "2026-09-01"
 
         try:
-            tasks_module.create_task_from_discrepancy(999999, admin)
+            tasks_module.create_task_from_discrepancy(999999, admin, team_id=1)
             assert False, "should have raised on a nonexistent discrepancy"
         except ValueError:
             pass
@@ -209,7 +216,7 @@ def test_create_task_from_alert_carries_context():
     try:
         admin, analyst, _ = _real_users()
         alert_id = _make_alert()
-        detail = tasks_module.create_task_from_alert(alert_id, admin, assigned_to_user_id=analyst)
+        detail = tasks_module.create_task_from_alert(alert_id, admin, team_id=1, assigned_to_user_id=analyst)
         assert "Lease expiring within 90 days" in detail["title"]
         assert detail["source_type"] == "alert"
         assert detail["assigned_to"]["id"] == analyst
@@ -376,10 +383,10 @@ def test_today_view_includes_due_and_overdue_tasks():
     try:
         admin, analyst, _ = _real_users()
         today = date(2026, 8, 24)
-        overdue = database.create_task("Overdue", admin, assigned_to_user_id=analyst, due_date="2026-08-20")
-        future = database.create_task("Future", admin, assigned_to_user_id=analyst, due_date="2026-09-01")
+        overdue = database.create_task("Overdue", admin, assigned_to_user_id=analyst, due_date="2026-08-20", team_id=1)
+        future = database.create_task("Future", admin, assigned_to_user_id=analyst, due_date="2026-09-01", team_id=1)
 
-        view = compute_today_view(analyst, reference_date=today)
+        view = compute_today_view(analyst, team_id=1, reference_date=today)
         ids = {t["id"] for t in view["tasks_due_today_or_overdue"]}
         assert overdue in ids and future not in ids
         assert view["summary"]["tasks_due_today_or_overdue_count"] == 1
@@ -396,18 +403,18 @@ def test_today_view_new_since_last_login_uses_previous_not_current_login():
 
         # First-ever login: previous_login_at is still NULL, so there's no baseline yet.
         database.update_user_last_login(analyst)
-        view = compute_today_view(analyst)
+        view = compute_today_view(analyst, team_id=1)
         assert view["new_since_last_login"]["since"] is None
         assert view["new_since_last_login"]["discrepancies"] == []
 
         # Something happens while the user is away...
         disc_id = _make_discrepancy()
         _make_alert()
-        database.add_comment("Admin User", "Heads up on this one", discrepancy_id=disc_id)
+        database.add_comment("Admin User", "Heads up on this one", discrepancy_id=disc_id, team_id=1)
 
         # ...then the user logs in again (second login) -- previous_login_at now holds the FIRST login's timestamp.
         database.update_user_last_login(analyst)
-        view = compute_today_view(analyst)
+        view = compute_today_view(analyst, team_id=1)
         assert view["new_since_last_login"]["since"] is not None
         assert len(view["new_since_last_login"]["discrepancies"]) == 1
         assert len(view["new_since_last_login"]["alerts"]) == 1
@@ -421,10 +428,10 @@ def test_today_view_includes_unread_messages():
     db_path = _fresh_temp_db()
     try:
         admin, analyst, _ = _real_users()
-        thread_id = database.create_thread("direct", [admin, analyst], admin)
-        database.insert_message(thread_id, admin, "Hey, can you look at this?")
+        thread_id = database.create_thread("direct", [admin, analyst], admin, team_id=1)
+        database.insert_message(thread_id, admin, "Hey, can you look at this?", team_id=1)
 
-        view = compute_today_view(analyst)
+        view = compute_today_view(analyst, team_id=1)
         assert view["unread_messages"]["total_unread"] == 1
         assert len(view["unread_messages"]["threads"]) == 1
         assert view["summary"]["unread_message_count"] == 1

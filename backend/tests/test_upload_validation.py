@@ -16,6 +16,9 @@ from app import database
 from app.portfolio import FIELD_NAMES
 
 
+from _session_users import sync_session_user
+
+
 def _fresh_temp_db():
     tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
     tmp.close()
@@ -23,7 +26,7 @@ def _fresh_temp_db():
     database.init_db()
     # a real base lease so /leases/<id>/amendments reaches file validation
     # instead of 404-ing on a missing lease
-    lid = database.insert_lease("base.pdf", {n: {"value": None, "source": None, "confidence": None} for n in FIELD_NAMES})
+    lid = database.insert_lease("base.pdf", {n: {"value": None, "source": None, "confidence": None} for n in FIELD_NAMES}, team_id=1)
     return tmp.name, lid
 
 
@@ -31,6 +34,7 @@ def _analyst():
     c = app.test_client()
     with c.session_transaction() as s:
         s.update({"user_id": 1, "email": "a@x.com", "name": "A", "role": "analyst", "team_id": 1})
+        sync_session_user(s)
     return c
 
 

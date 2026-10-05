@@ -16,6 +16,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 from app.api import app
 from app import database
+from _session_users import sync_session_user
 from app.portfolio import FIELD_NAMES
 from app.discrepancies import (
     sync_lease_risk_flags, sync_rent_roll_reconciliation, sync_t12_reconciliation,
@@ -46,9 +47,11 @@ def _authed_client():
     client = app.test_client()
     with client.session_transaction() as sess:
         sess["user_id"] = 1
+        sess["team_id"] = 1
         sess["email"] = "test-analyst@example.com"
         sess["name"] = "Test Analyst"
         sess["role"] = "analyst"
+        sync_session_user(sess)
     return client
 
 
@@ -70,12 +73,13 @@ def _fields(**overrides):
 def test_upsert_creates_open_discrepancy_on_first_seen():
     db_path = _fresh_temp_db()
     try:
-        lease_id = database.insert_lease("base.pdf", _fields())
+        lease_id = database.insert_lease("base.pdf", _fields(), team_id=1)
         disc_id = database.upsert_discrepancy(
             discrepancy_type="lease_risk_flag", natural_key="k1", category="missing_clause",
             message="No insurance clause", details={"x": 1}, lease_id=lease_id, field="insurance_requirements", severity="medium",
+        team_id=1,
         )
-        disc = database.get_discrepancy(disc_id)
+        disc = database.get_discrepancy(disc_id, team_id=1)
         assert disc["status"] == "open"
         assert disc["first_detected_at"] == disc["last_seen_at"]
     finally:
@@ -89,16 +93,18 @@ def test_upsert_same_natural_key_updates_snapshot_but_not_status():
         disc_id = database.upsert_discrepancy(
             discrepancy_type="lease_risk_flag", natural_key="k1", category="below_market_rent",
             message="20% below", details={"pct": 20}, lease_id=1, field="rent_amount", severity="medium",
+        team_id=1,
         )
         database.resolve_discrepancy(disc_id, "lease_document", "confirmed accurate", "Jane Analyst")
-        assert database.get_discrepancy(disc_id)["status"] == "resolved"
+        assert database.get_discrepancy(disc_id, team_id=1)["status"] == "resolved"
 
         disc_id_2 = database.upsert_discrepancy(
             discrepancy_type="lease_risk_flag", natural_key="k1", category="below_market_rent",
             message="22% below (recomputed)", details={"pct": 22}, lease_id=1, field="rent_amount", severity="medium",
+        team_id=1,
         )
         assert disc_id_2 == disc_id, "same natural_key must resolve to the same row"
-        disc = database.get_discrepancy(disc_id)
+        disc = database.get_discrepancy(disc_id, team_id=1)
         assert disc["status"] == "resolved", "recomputing must NOT silently un-resolve"
         assert disc["message"] == "22% below (recomputed)", "snapshot must still refresh"
         assert disc["details"]["pct"] == 22
@@ -113,13 +119,14 @@ def test_resolve_then_reopen_full_permanent_history():
         disc_id = database.upsert_discrepancy(
             discrepancy_type="rent_roll_reconciliation", natural_key="k2", category="rent_roll_reconciliation",
             message="tenant mismatch", details={}, lease_id=1, related_lease_id=2, field="tenant",
+        team_id=1,
         )
         database.resolve_discrepancy(disc_id, "rent_roll", "rent roll is current, lease PDF is stale", "Jane Analyst", "jane@firm.com")
-        assert database.get_discrepancy(disc_id)["status"] == "resolved"
+        assert database.get_discrepancy(disc_id, team_id=1)["status"] == "resolved"
 
         reopen_result = database.reopen_discrepancy(disc_id, "actually need to double check this", "Bob Reviewer")
         assert reopen_result is not None
-        assert database.get_discrepancy(disc_id)["status"] == "open"
+        assert database.get_discrepancy(disc_id, team_id=1)["status"] == "open"
 
         database.resolve_discrepancy(disc_id, "lease_document", "lease PDF was right after all", "Bob Reviewer")
 
@@ -150,22 +157,25 @@ def test_list_discrepancies_filters():
         id1 = database.upsert_discrepancy(
             discrepancy_type="lease_risk_flag", natural_key="a", category="missing_clause",
             message="m1", details={}, lease_id=1,
+        team_id=1,
         )
         id2 = database.upsert_discrepancy(
             discrepancy_type="cross_lease_mismatch", natural_key="b", category="cross_lease_mismatch",
             message="m2", details={}, lease_id=1, related_lease_id=2,
+        team_id=1,
         )
         database.upsert_discrepancy(
             discrepancy_type="rent_roll_reconciliation", natural_key="c", category="rent_roll_reconciliation",
             message="m3", details={}, lease_id=3,
+        team_id=1,
         )
         database.resolve_discrepancy(id1, "x", "note", "someone")
 
-        assert len(database.list_discrepancies()) == 3
-        assert {d["id"] for d in database.list_discrepancies(status="open")} == {id2, database.list_discrepancies(discrepancy_type="rent_roll_reconciliation")[0]["id"]}
-        assert len(database.list_discrepancies(status="resolved")) == 1
-        assert len(database.list_discrepancies(lease_id=1)) == 2, "lease_id must match either lease_id or related_lease_id"
-        assert len(database.list_discrepancies(discrepancy_type="cross_lease_mismatch")) == 1
+        assert len(database.list_discrepancies(team_id=1)) == 3
+        assert {d["id"] for d in database.list_discrepancies(status="open", team_id=1)} == {id2, database.list_discrepancies(discrepancy_type="rent_roll_reconciliation", team_id=1)[0]["id"]}
+        assert len(database.list_discrepancies(status="resolved", team_id=1)) == 1
+        assert len(database.list_discrepancies(lease_id=1, team_id=1)) == 2, "lease_id must match either lease_id or related_lease_id"
+        assert len(database.list_discrepancies(discrepancy_type="cross_lease_mismatch", team_id=1)) == 1
     finally:
         os.unlink(db_path)
     print("✓ test_list_discrepancies_filters: PASS")
@@ -182,11 +192,11 @@ def test_sync_lease_risk_flags_annotates_and_persists():
             {"severity": "medium", "category": "missing_clause", "field": "insurance_requirements", "message": "No insurance clause"},
             {"severity": "high", "category": "below_market_rent", "field": "rent_amount", "message": "22% below"},
         ]
-        result = sync_lease_risk_flags(5, flags)
+        result = sync_lease_risk_flags(5, flags, team_id=1)
         assert all(f["resolution_status"] == "open" for f in result)
         assert all(f["resolution"] is None for f in result)
         assert all(f["discrepancy_id"] is not None for f in result)
-        assert len(database.list_discrepancies(lease_id=5)) == 2
+        assert len(database.list_discrepancies(lease_id=5, team_id=1)) == 2
     finally:
         os.unlink(db_path)
     print("✓ test_sync_lease_risk_flags_annotates_and_persists: PASS")
@@ -200,9 +210,9 @@ def test_sync_lease_risk_flags_same_category_field_gets_distinct_natural_keys():
             {"severity": "high", "category": "date_inconsistency", "field": "lease_end_date", "message": "end before start"},
             {"severity": "high", "category": "date_inconsistency", "field": "lease_end_date", "message": "multiple end dates found"},
         ]
-        result = sync_lease_risk_flags(7, flags)
+        result = sync_lease_risk_flags(7, flags, team_id=1)
         assert result[0]["discrepancy_id"] != result[1]["discrepancy_id"]
-        assert len(database.list_discrepancies(lease_id=7)) == 2
+        assert len(database.list_discrepancies(lease_id=7, team_id=1)) == 2
     finally:
         os.unlink(db_path)
     print("✓ test_sync_lease_risk_flags_same_category_field_gets_distinct_natural_keys: PASS")
@@ -215,15 +225,15 @@ def test_sync_cross_lease_mismatch_dedupes_across_both_leases_perspectives():
         flag_from_a = {"severity": "high", "category": "cross_lease_mismatch", "field": "rent_amount", "message": "A vs B", "other_lease_id": 20}
         flag_from_b = {"severity": "high", "category": "cross_lease_mismatch", "field": "rent_amount", "message": "B vs A", "other_lease_id": 10}
 
-        result_a = sync_lease_risk_flags(10, [flag_from_a])
-        result_b = sync_lease_risk_flags(20, [flag_from_b])
+        result_a = sync_lease_risk_flags(10, [flag_from_a], team_id=1)
+        result_b = sync_lease_risk_flags(20, [flag_from_b], team_id=1)
 
         assert result_a[0]["discrepancy_id"] == result_b[0]["discrepancy_id"]
-        assert len(database.list_discrepancies(discrepancy_type="cross_lease_mismatch")) == 1
+        assert len(database.list_discrepancies(discrepancy_type="cross_lease_mismatch", team_id=1)) == 1
 
         # resolving from lease A's perspective must show as resolved from lease B's perspective too
         database.resolve_discrepancy(result_a[0]["discrepancy_id"], "lease_document_a", "confirmed A is right", "Reviewer")
-        re_synced_b = sync_lease_risk_flags(20, [dict(flag_from_b)])
+        re_synced_b = sync_lease_risk_flags(20, [dict(flag_from_b)], team_id=1)
         assert re_synced_b[0]["resolution_status"] == "resolved"
         assert re_synced_b[0]["resolution"]["correct_source"] == "lease_document_a"
     finally:
@@ -260,9 +270,9 @@ def test_sync_rent_roll_reconciliation():
         mismatches = [
             {"rent_roll_lease_id": 1, "lease_document_id": 2, "address": "123 Main St", "field": "tenant", "rent_roll_value": "Acme", "lease_document_value": "Acme Inc"},
         ]
-        result = sync_rent_roll_reconciliation(mismatches)
+        result = sync_rent_roll_reconciliation(mismatches, team_id=1)
         assert result[0]["resolution_status"] == "open"
-        disc = database.list_discrepancies(discrepancy_type="rent_roll_reconciliation")
+        disc = database.list_discrepancies(discrepancy_type="rent_roll_reconciliation", team_id=1)
         assert len(disc) == 1
         assert disc[0]["lease_id"] == 1
         assert disc[0]["related_lease_id"] == 2
@@ -275,19 +285,19 @@ def test_sync_t12_reconciliation_only_persists_when_flagged_or_already_tracked()
     db_path = _fresh_temp_db()
     try:
         unflagged = {"property_address": "500 Elm St", "flagged": False, "rent_roll_annual_rent": 100000, "t12_annual_rental_income": 101000}
-        result = sync_t12_reconciliation(dict(unflagged))
+        result = sync_t12_reconciliation(dict(unflagged), team_id=1)
         assert "discrepancy_id" not in result, "an unflagged result with no history must not create a discrepancy"
-        assert database.list_discrepancies(discrepancy_type="t12_reconciliation") == []
+        assert database.list_discrepancies(discrepancy_type="t12_reconciliation", team_id=1) == []
 
         flagged = {"property_address": "500 Elm St", "flagged": True, "rent_roll_annual_rent": 100000, "t12_annual_rental_income": 130000}
-        result = sync_t12_reconciliation(dict(flagged))
+        result = sync_t12_reconciliation(dict(flagged), team_id=1)
         assert result["resolution_status"] == "open"
-        assert len(database.list_discrepancies(discrepancy_type="t12_reconciliation")) == 1
+        assert len(database.list_discrepancies(discrepancy_type="t12_reconciliation", team_id=1)) == 1
 
         # Now that a discrepancy exists for this property, even an unflagged recheck should still surface its (still-open) status
-        result = sync_t12_reconciliation(dict(unflagged))
+        result = sync_t12_reconciliation(dict(unflagged), team_id=1)
         assert result["resolution_status"] == "open"
-        assert len(database.list_discrepancies(discrepancy_type="t12_reconciliation")) == 1, "must update the SAME row, not create a second one"
+        assert len(database.list_discrepancies(discrepancy_type="t12_reconciliation", team_id=1)) == 1, "must update the SAME row, not create a second one"
     finally:
         os.unlink(db_path)
     print("✓ test_sync_t12_reconciliation_only_persists_when_flagged_or_already_tracked: PASS")
@@ -301,7 +311,7 @@ def test_lease_risks_route_flags_carry_resolution_status():
     db_path = _fresh_temp_db()
     try:
         client = _authed_client()
-        lease_id = database.insert_lease("base.pdf", _fields())  # missing everything -> missing_clause flags
+        lease_id = database.insert_lease("base.pdf", _fields(), team_id=1)  # missing everything -> missing_clause flags
         resp = client.get(f"/leases/{lease_id}/risks")
         assert resp.status_code == 200
         flags = resp.get_json()
@@ -316,7 +326,7 @@ def test_resolve_route_happy_path_and_persists():
     db_path = _fresh_temp_db()
     try:
         client = _authed_client()
-        lease_id = database.insert_lease("base.pdf", _fields())
+        lease_id = database.insert_lease("base.pdf", _fields(), team_id=1)
         flags = client.get(f"/leases/{lease_id}/risks").get_json()
         disc_id = flags[0]["discrepancy_id"]
 
@@ -347,6 +357,7 @@ def test_resolve_route_missing_fields_returns_400():
         client = _authed_client()
         disc_id = database.upsert_discrepancy(
             discrepancy_type="lease_risk_flag", natural_key="k", category="missing_clause", message="m", details={}, lease_id=1,
+        team_id=1,
         )
         resp = client.post(f"/discrepancies/{disc_id}/resolve", json={"note": "only a note"})
         assert resp.status_code == 400
@@ -373,6 +384,7 @@ def test_reopen_route_requires_currently_resolved():
         client = _authed_client()
         disc_id = database.upsert_discrepancy(
             discrepancy_type="lease_risk_flag", natural_key="k", category="missing_clause", message="m", details={}, lease_id=1,
+        team_id=1,
         )
         resp = client.post(f"/discrepancies/{disc_id}/reopen", json={"note": "n"})
         assert resp.status_code == 400, "cannot reopen an already-open discrepancy"
@@ -390,7 +402,7 @@ def test_list_discrepancies_route_filters():
     db_path = _fresh_temp_db()
     try:
         client = _authed_client()
-        lease_id = database.insert_lease("base.pdf", _fields())
+        lease_id = database.insert_lease("base.pdf", _fields(), team_id=1)
         client.get(f"/leases/{lease_id}/risks")  # populates discrepancies
 
         resp = client.get("/discrepancies")
@@ -430,8 +442,8 @@ def test_discrepancy_summary_route():
             "by_type": {}, "new_since_last_view": 0,
         }
 
-        id1 = database.upsert_discrepancy(discrepancy_type="lease_risk_flag", natural_key="a", category="missing_clause", message="m", details={}, lease_id=1, severity="high")
-        database.upsert_discrepancy(discrepancy_type="rent_roll_reconciliation", natural_key="b", category="rent_roll_reconciliation", message="m", details={}, lease_id=1, severity="medium")
+        id1 = database.upsert_discrepancy(discrepancy_type="lease_risk_flag", natural_key="a", category="missing_clause", message="m", details={}, lease_id=1, severity="high", team_id=1)
+        database.upsert_discrepancy(discrepancy_type="rent_roll_reconciliation", natural_key="b", category="rent_roll_reconciliation", message="m", details={}, lease_id=1, severity="medium", team_id=1)
         database.resolve_discrepancy(id1, "lease_document", "note", "Jane")
 
         resp = client.get("/discrepancies/summary")
@@ -458,8 +470,8 @@ def test_bulk_resolve_route():
     db_path = _fresh_temp_db()
     try:
         client = _authed_client()
-        id1 = database.upsert_discrepancy(discrepancy_type="lease_risk_flag", natural_key="bulk-a", category="missing_clause", message="m1", details={}, lease_id=1)
-        id2 = database.upsert_discrepancy(discrepancy_type="lease_risk_flag", natural_key="bulk-b", category="missing_clause", message="m2", details={}, lease_id=1)
+        id1 = database.upsert_discrepancy(discrepancy_type="lease_risk_flag", natural_key="bulk-a", category="missing_clause", message="m1", details={}, lease_id=1, team_id=1)
+        id2 = database.upsert_discrepancy(discrepancy_type="lease_risk_flag", natural_key="bulk-b", category="missing_clause", message="m2", details={}, lease_id=1, team_id=1)
 
         resp = client.post("/discrepancies/bulk-resolve", json={"ids": [id1, id2, 999999], "correct_source": "lease_document", "note": "batch cleanup"})
         assert resp.status_code == 200, resp.get_json()
@@ -467,8 +479,8 @@ def test_bulk_resolve_route():
         assert set(data["resolved"]) == {id1, id2}
         assert data["not_found"] == [999999]
 
-        assert database.get_discrepancy(id1)["status"] == "resolved"
-        assert database.get_discrepancy(id2)["status"] == "resolved"
+        assert database.get_discrepancy(id1, team_id=1)["status"] == "resolved"
+        assert database.get_discrepancy(id2, team_id=1)["status"] == "resolved"
 
         resp = client.post("/discrepancies/bulk-resolve", json={"ids": [], "correct_source": "x", "note": "n"})
         assert resp.status_code == 400
@@ -483,7 +495,7 @@ def test_export_discrepancies_csv_route():
     db_path = _fresh_temp_db()
     try:
         client = _authed_client()
-        database.upsert_discrepancy(discrepancy_type="lease_risk_flag", natural_key="csv-a", category="missing_clause", message="Missing exclusivity clause", details={}, lease_id=1, severity="high")
+        database.upsert_discrepancy(discrepancy_type="lease_risk_flag", natural_key="csv-a", category="missing_clause", message="Missing exclusivity clause", details={}, lease_id=1, severity="high", team_id=1)
 
         resp = client.get("/discrepancies/export.csv")
         assert resp.status_code == 200

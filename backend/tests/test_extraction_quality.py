@@ -16,6 +16,9 @@ from app import extraction_quality as eq
 from app.portfolio import FIELD_NAMES
 
 
+from _session_users import sync_session_user
+
+
 def _fresh_temp_db():
     tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
     tmp.close()
@@ -110,7 +113,8 @@ def test_quality_trend_shows_round_progression_and_production_daily():
 def _client(role="analyst", is_owner=False):
     c = app.test_client()
     with c.session_transaction() as s:
-        s.update({"user_id": 1, "email": "a@example.com", "name": "A", "role": role, "is_owner": is_owner})
+        s.update({"user_id": 1, "email": "a@example.com", "name": "A", "role": role, "is_owner": is_owner, "team_id": 1})
+        sync_session_user(s)
     return c
 
 

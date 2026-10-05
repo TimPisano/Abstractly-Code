@@ -250,11 +250,11 @@ def test_activity_log_records_and_orders_recent_first():
         database.configure(tmp.name)
         database.init_db()
 
-        lease_id = database.insert_lease("test.pdf", {"tenant": _field("Acme Co")})
-        database.insert_activity("lease_uploaded", "Uploaded test.pdf", lease_id=lease_id)
-        database.insert_activity("comparison_run", "Compared 2 leases")
+        lease_id = database.insert_lease("test.pdf", {"tenant": _field("Acme Co")}, team_id=1)
+        database.insert_activity("lease_uploaded", "Uploaded test.pdf", lease_id=lease_id, team_id=1)
+        database.insert_activity("comparison_run", "Compared 2 leases", team_id=1)
 
-        recent = database.get_recent_activity(10)
+        recent = database.get_recent_activity(team_id=1, limit=10)
         assert len(recent) == 2
         assert recent[0]["action_type"] == "comparison_run", "most recent first"
         assert recent[1]["lease_id"] == lease_id
@@ -278,12 +278,12 @@ def test_activity_log_survives_lease_deletion():
         database.configure(tmp.name)
         database.init_db()
 
-        lease_id = database.insert_lease("doomed.pdf", {"tenant": _field("Acme Co")})
-        database.insert_activity("lease_uploaded", "Uploaded doomed.pdf", lease_id=lease_id)
+        lease_id = database.insert_lease("doomed.pdf", {"tenant": _field("Acme Co")}, team_id=1)
+        database.insert_activity("lease_uploaded", "Uploaded doomed.pdf", lease_id=lease_id, team_id=1)
 
-        database.delete_lease(lease_id)  # must not raise
+        database.delete_lease(lease_id, team_id=1)  # must not raise
 
-        recent = database.get_recent_activity(10)
+        recent = database.get_recent_activity(team_id=1, limit=10)
         assert len(recent) == 1
         assert recent[0]["description"] == "Uploaded doomed.pdf"
         assert recent[0]["lease_id"] is None, "lease_id must be nulled, not left dangling"
@@ -304,10 +304,10 @@ def test_activity_log_limit_is_clamped():
         database.init_db()
 
         for i in range(5):
-            database.insert_activity("lease_uploaded", f"Uploaded lease{i}.pdf")
+            database.insert_activity("lease_uploaded", f"Uploaded lease{i}.pdf", team_id=1)
 
-        assert len(database.get_recent_activity(0)) >= 1, "limit below 1 must be clamped up, not return nothing"
-        assert len(database.get_recent_activity(100000)) == 5, "asking for more than exist just returns what's there"
+        assert len(database.get_recent_activity(team_id=1, limit=0)) >= 1, "limit below 1 must be clamped up, not return nothing"
+        assert len(database.get_recent_activity(team_id=1, limit=100000)) == 5, "asking for more than exist just returns what's there"
 
         print("✓ test_activity_log_limit_is_clamped: PASS")
     finally:

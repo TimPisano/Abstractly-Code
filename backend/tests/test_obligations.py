@@ -19,6 +19,7 @@ from datetime import date
 
 from app.api import app
 from app import database, obligations
+from _session_users import sync_session_user
 from app.portfolio import FIELD_NAMES
 
 
@@ -34,9 +35,11 @@ def _authed_client():
     client = app.test_client()
     with client.session_transaction() as sess:
         sess["user_id"] = 1
+        sess["team_id"] = 1
         sess["email"] = "test@example.com"
         sess["name"] = "Test User"
         sess["role"] = "analyst"
+        sync_session_user(sess)
     return client
 
 
@@ -221,7 +224,7 @@ def test_obligations_route_requires_auth_and_returns_computed_list():
             lease_start_date="January 1, 2023",
             lease_end_date="December 31, 2027",
             renewal_options="1 option(s) of 5 year(s) each; 180 days notice",
-        ))
+        ), team_id=1)
         client = _authed_client()
         resp = client.get("/portfolio/obligations")
         assert resp.status_code == 200

@@ -42,13 +42,14 @@ def task_detail(task: Dict[str, Any]) -> Dict[str, Any]:
     reviewer opening a task can see exactly what was changed under it
     without a separate request.
     """
+    team_id = task["team_id"]
     result = dict(task)
     assignee = database.get_user(task["assigned_to_user_id"]) if task["assigned_to_user_id"] else None
     creator = database.get_user(task["created_by_user_id"])
     result["assigned_to"] = {"id": assignee["id"], "name": assignee["name"], "email": assignee["email"]} if assignee else None
     result["created_by"] = {"id": creator["id"], "name": creator["name"], "email": creator["email"]} if creator else None
     if task.get("lease_id"):
-        lease = database.get_effective_lease(task["lease_id"])
+        lease = database.get_effective_lease(task["lease_id"], team_id)
         # A task's own lease_id is never repointed by a later
         # resubmission (repoint_lease_references only follows
         # discrepancies/tags/comments/assignments, deliberately NOT
@@ -61,15 +62,15 @@ def task_detail(task: Dict[str, Any]) -> Dict[str, Any]:
         # in-task view always reflects live data, same as every other
         # "current lease" reader in this app.
         if lease and lease.get("status") == "superseded":
-            chain = database.get_lease_version_chain(task["lease_id"])
+            chain = database.get_lease_version_chain(task["lease_id"], team_id)
             current = next((v for v in chain if v.get("status") != "superseded"), None)
             if current and current["id"] != task["lease_id"]:
-                lease = database.get_effective_lease(current["id"])
+                lease = database.get_effective_lease(current["id"], team_id)
                 result["lease_redirected_from_id"] = task["lease_id"]
         result["lease"] = lease
-        result["field_edits"] = database.get_lease_field_edits(task_id=task["id"])
+        result["field_edits"] = database.get_lease_field_edits(team_id, task_id=task["id"])
     if task.get("discrepancy_id"):
-        result["discrepancy"] = database.get_discrepancy(task["discrepancy_id"])
+        result["discrepancy"] = database.get_discrepancy(task["discrepancy_id"], team_id=team_id)
     # Team discussion on this task -- separate from field_edits (a
     # data-correction audit trail) and always present regardless of
     # whether the task is lease-linked, since a comment like "checked
@@ -78,9 +79,9 @@ def task_detail(task: Dict[str, Any]) -> Dict[str, Any]:
     return result
 
 
-def create_task_from_discrepancy(discrepancy_id: int, created_by_user_id: int, assigned_to_user_id: Optional[int] = None, due_date: Optional[str] = None) -> Dict[str, Any]:
+def create_task_from_discrepancy(discrepancy_id: int, created_by_user_id: int, team_id: int, assigned_to_user_id: Optional[int] = None, due_date: Optional[str] = None) -> Dict[str, Any]:
     """Carries over the discrepancy's own message/category/severity into the task's title/description, and links lease_id straight through, so the assignee doesn't have to re-open the discrepancy just to know what the task is about."""
-    disc = database.get_discrepancy(discrepancy_id)
+    disc = database.get_discrepancy(discrepancy_id, team_id=team_id)
     if disc is None:
         raise ValueError("Discrepancy not found")
     title = f"Resolve discrepancy: {disc['message']}"
@@ -93,6 +94,7 @@ def create_task_from_discrepancy(discrepancy_id: int, created_by_user_id: int, a
     task_id = database.create_task(
         title=title,
         created_by_user_id=created_by_user_id,
+        team_id=team_id,
         description=description,
         due_date=due_date,
         assigned_to_user_id=assigned_to_user_id,
@@ -101,11 +103,11 @@ def create_task_from_discrepancy(discrepancy_id: int, created_by_user_id: int, a
         source_type="discrepancy",
         source_natural_key=disc["natural_key"],
     )
-    return task_detail(database.get_task(task_id))
+    return task_detail(database.get_task(task_id, team_id=team_id))
 
 
-def create_task_from_alert(alert_id: int, created_by_user_id: int, assigned_to_user_id: Optional[int] = None, due_date: Optional[str] = None) -> Dict[str, Any]:
-    alert = database.get_alert(alert_id)
+def create_task_from_alert(alert_id: int, created_by_user_id: int, team_id: int, assigned_to_user_id: Optional[int] = None, due_date: Optional[str] = None) -> Dict[str, Any]:
+    alert = database.get_alert(alert_id, team_id=team_id)
     if alert is None:
         raise ValueError("Alert not found")
     title = f"Follow up: {alert['title']}"
@@ -113,6 +115,7 @@ def create_task_from_alert(alert_id: int, created_by_user_id: int, assigned_to_u
     task_id = database.create_task(
         title=title,
         created_by_user_id=created_by_user_id,
+        team_id=team_id,
         description=description,
         due_date=due_date,
         assigned_to_user_id=assigned_to_user_id,
@@ -120,4 +123,4 @@ def create_task_from_alert(alert_id: int, created_by_user_id: int, assigned_to_u
         source_type="alert",
         source_natural_key=alert["natural_key"],
     )
-    return task_detail(database.get_task(task_id))
+    return task_detail(database.get_task(task_id, team_id=team_id))

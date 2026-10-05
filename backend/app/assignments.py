@@ -52,7 +52,7 @@ def assignment_detail(assignment: Dict[str, Any]) -> Dict[str, Any]:
     return result
 
 
-def compute_today_view(user_id: int, reference_date: Optional[date] = None) -> Dict[str, Any]:
+def compute_today_view(user_id: int, team_id: int, reference_date: Optional[date] = None) -> Dict[str, Any]:
     """
     Everything relevant to one user's work "today": their open
     (not-yet-resolved) assignments, their tasks due today or overdue,
@@ -87,24 +87,24 @@ def compute_today_view(user_id: int, reference_date: Optional[date] = None) -> D
     today_iso = reference_date.isoformat()
 
     open_assignments = [
-        a for a in database.list_assignments(assigned_to_user_id=user_id) if a["status"] != "resolved"
+        a for a in database.list_assignments(team_id=team_id, assigned_to_user_id=user_id) if a["status"] != "resolved"
     ]
 
     assigned_leases, assigned_discrepancies, assigned_properties = [], [], []
     for assignment in open_assignments:
         detail = assignment_detail(assignment)
         if assignment["target_type"] == "lease":
-            lease = database.get_effective_lease(assignment["lease_id"]) if assignment["lease_id"] else None
+            lease = database.get_effective_lease(assignment["lease_id"], team_id) if assignment["lease_id"] else None
             detail["lease"] = lease
             assigned_leases.append(detail)
         elif assignment["target_type"] == "discrepancy":
-            disc = database.get_discrepancy(assignment["discrepancy_id"]) if assignment["discrepancy_id"] else None
+            disc = database.get_discrepancy(assignment["discrepancy_id"], team_id=team_id) if assignment["discrepancy_id"] else None
             detail["discrepancy"] = disc
             assigned_discrepancies.append(detail)
         else:
             assigned_properties.append(detail)
 
-    active_alerts = database.list_alerts(status="active")
+    active_alerts = database.list_alerts(status="active", team_id=team_id)
     severity_order = {"high": 0, "medium": 1, "low": 2}
     active_alerts.sort(key=lambda a: severity_order.get(a["severity"], 3))
 
@@ -115,9 +115,9 @@ def compute_today_view(user_id: int, reference_date: Optional[date] = None) -> D
     user = database.get_user(user_id) or {}
     since = user.get("previous_login_at")
     if since:
-        new_discrepancies = [d for d in database.list_discrepancies() if d["first_detected_at"] > since]
-        new_alerts = [a for a in database.list_alerts() if a["first_detected_at"] > since]
-        new_comments = [c for c in database.get_recent_comments(limit=100) if c["created_at"] > since]
+        new_discrepancies = [d for d in database.list_discrepancies(team_id=team_id) if d["first_detected_at"] > since]
+        new_alerts = [a for a in database.list_alerts(team_id=team_id) if a["first_detected_at"] > since]
+        new_comments = [c for c in database.get_recent_comments(team_id=team_id, limit=100) if c["created_at"] > since]
     else:
         new_discrepancies, new_alerts, new_comments = [], [], []
 

@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Set Up Your Account — Abstractly</title>
+    <meta name="robots" content="noindex">
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <link rel="icon" href="/favicon.ico" sizes="32x32">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <link rel="preload" href="../fonts/inter-latin-var.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="../design-system.css">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+    <main class="access-gate" id="accessGate">
+        <div class="access-gate-card">
+            <div class="brand">
+                <svg class="brand-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5" />
+                </svg>
+                <span>Abstractly</span>
+            </div>
+
+            <h1>Set your password</h1>
+            <p class="access-gate-subtitle">Your workspace is ready. Choose a password to finish setting up your login — at least 8 characters. Nobody at Abstractly will see it.</p>
+            <form id="setupForm">
+                <input type="password" id="setupPassword" class="text-input" placeholder="New password" required autocomplete="new-password" minlength="8" aria-label="New password">
+                <input type="password" id="setupPasswordConfirm" class="text-input" placeholder="Confirm new password" required autocomplete="new-password" minlength="8" aria-label="Confirm new password">
+                <button type="submit" class="btn-primary" id="setupSubmitBtn">Set password and continue</button>
+            </form>
+            <p class="access-gate-message" id="setupMessage"></p>
+            <!-- Shown by team-setup.js only when the token is
+                 missing/expired/already used -- a dead link is a dead
+                 end; whoever created this team needs to send a fresh one. -->
+            <p class="access-gate-link" id="setupDeadLinkNote" hidden>Ask whoever set up your team to invite you again.</p>
+        </div>
+    </main><script src="../config.js"></script>
+    <script src="team-setup.js"></script>
+</body>
+</html>

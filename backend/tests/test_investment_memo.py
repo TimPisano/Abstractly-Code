@@ -19,6 +19,7 @@ from openpyxl import load_workbook
 
 from app.api import app
 from app import database
+from _session_users import sync_session_user
 from app.portfolio import FIELD_NAMES, compute_rent_roll_reconciliation
 from app.discrepancies import sync_rent_roll_reconciliation
 from app.investment_memo import build_investment_memo_data, generate_investment_memo_pdf, generate_investment_memo_excel
@@ -45,9 +46,11 @@ def _authed_client():
     client = app.test_client()
     with client.session_transaction() as sess:
         sess["user_id"] = 1
+        sess["team_id"] = 1
         sess["email"] = "test-analyst@example.com"
         sess["name"] = "Test Analyst"
         sess["role"] = "analyst"
+        sync_session_user(sess)
     return client
 
 
@@ -63,7 +66,7 @@ def _fields(**overrides):
 
 
 def _insert(filename="lease.pdf", **overrides):
-    return database.insert_lease(filename, _fields(**overrides), display_name=overrides.get("tenant") or filename)
+    return database.insert_lease(filename, _fields(**overrides), display_name=overrides.get("tenant") or filename, team_id=1)
 
 
 def _pdf_text(pdf_bytes):
@@ -78,7 +81,7 @@ def _pdf_text(pdf_bytes):
 def test_empty_portfolio_returns_honest_zero_state():
     db_path = _fresh_temp_db()
     try:
-        data = build_investment_memo_data()
+        data = build_investment_memo_data(team_id=1)
         assert data["scope"] == "portfolio"
         assert data["lease_count"] == 0
         assert data["leases"] == []
@@ -96,7 +99,7 @@ def test_property_scope_filters_by_building_ignoring_suite():
         _insert(tenant="Beta", rent_amount="$5,000.00", property_address="100 Elm St, Suite 300, Springfield, IL")
         _insert(tenant="Gamma", rent_amount="$6,000.00", property_address="999 Oak Ave, Springfield, IL")
 
-        data = build_investment_memo_data(property_address="100 Elm St, Springfield, IL")
+        data = build_investment_memo_data(team_id=1, property_address="100 Elm St, Springfield, IL")
         assert data["scope"] == "property"
         assert data["lease_count"] == 2
         assert {l["extracted_fields"]["tenant"]["value"] for l in data["leases"]} == {"Acme", "Beta"}
@@ -112,7 +115,7 @@ def test_dedupes_rent_roll_duplicate_of_a_pdf_lease_for_financial_totals():
         _insert("lease.pdf", tenant="Acme", rent_amount="$6,250.00", property_address="1 Main St, Suite 100", square_footage="1,000 sq ft", lease_end_date="March 31, 2030")
         _insert("rentroll.csv", tenant="Acme", rent_amount="$6,000.00", property_address="1 Main St, Suite 100", lease_end_date="March 31, 2030")
 
-        data = build_investment_memo_data(property_address="1 Main St")
+        data = build_investment_memo_data(team_id=1, property_address="1 Main St")
         assert data["record_count"] == 2, "both records must be visible"
         assert data["lease_count"] == 1, "but only ONE counts toward financial totals"
         assert data["portfolio_metrics"]["total_monthly_rent"] == 6250.0, "the PDF lease, not the rent-roll snapshot, must win"
@@ -127,7 +130,7 @@ def test_dedupe_prefers_pdf_lease_regardless_of_upload_order():
     try:
         _insert("rentroll.csv", tenant="Acme", rent_amount="$6,000.00", property_address="1 Main St")
         _insert("lease.pdf", tenant="Acme", rent_amount="$6,250.00", property_address="1 Main St")  # uploaded AFTER the rent roll row
-        data = build_investment_memo_data(property_address="1 Main St")
+        data = build_investment_memo_data(team_id=1, property_address="1 Main St")
         assert data["portfolio_metrics"]["total_monthly_rent"] == 6250.0, "PDF lease must win even if uploaded later"
     finally:
         os.unlink(db_path)
@@ -139,7 +142,7 @@ def test_dedupe_keeps_most_recent_when_both_are_the_same_source_type():
     try:
         _insert("rentroll_q1.csv", tenant="Acme", rent_amount="$5,000.00", property_address="1 Main St")
         _insert("rentroll_q2.csv", tenant="Acme", rent_amount="$5,500.00", property_address="1 Main St")
-        data = build_investment_memo_data(property_address="1 Main St")
+        data = build_investment_memo_data(team_id=1, property_address="1 Main St")
         assert data["portfolio_metrics"]["total_monthly_rent"] == 5500.0, "the more recent rent-roll snapshot must win when there's no PDF lease at all"
     finally:
         os.unlink(db_path)
@@ -153,18 +156,18 @@ def test_discrepancies_and_resolutions_scoped_to_property():
         _insert("rentroll.csv", tenant="Acme", rent_amount="$6,000.00", property_address="1 Main St, Suite 100", lease_end_date="March 31, 2030")
         _insert("other.pdf", tenant="Other Co", rent_amount="$3,000.00", property_address="999 Elsewhere Ave")  # unrelated property
 
-        leases = database.get_all_effective_leases()
+        leases = database.get_all_effective_leases(team_id=1)
         recon = compute_rent_roll_reconciliation(leases)
-        mismatches = sync_rent_roll_reconciliation(recon["mismatches"])
+        mismatches = sync_rent_roll_reconciliation(recon["mismatches"], team_id=1)
         assert mismatches, "fixture must produce a real mismatch"
         disc_id = mismatches[0]["discrepancy_id"]
         database.resolve_discrepancy(disc_id, "lease_document", "Confirmed via signed PDF.", "Jane Analyst")
 
-        data = build_investment_memo_data(property_address="1 Main St")
+        data = build_investment_memo_data(team_id=1, property_address="1 Main St")
         assert data["discrepancy_summary"] == {"total": 1, "open": 0, "resolved": 1}
         assert data["discrepancies"][0]["resolutions"][0]["resolved_by"] == "Jane Analyst"
 
-        portfolio_data = build_investment_memo_data()
+        portfolio_data = build_investment_memo_data(team_id=1)
         assert portfolio_data["discrepancy_summary"]["total"] == 1, "still exactly 1 -- the unrelated property has no discrepancies of its own"
     finally:
         os.unlink(db_path)
@@ -175,7 +178,7 @@ def test_portfolio_wide_memo_excludes_discrepancies_for_deleted_leases():
     """
     Regression test for a real, confirmed bug: a portfolio-wide memo
     used to include EVERY discrepancy row ever recorded
-    (database.list_discrepancies() with no filtering at all), including
+    (database.list_discrepancies(team_id=1) with no filtering at all), including
     ones whose lease had since been deleted and is no longer part of
     the portfolio. Found live: after stress-testing with thousands of
     leases that were later deleted, a 3-lease portfolio's memo reported
@@ -193,24 +196,26 @@ def test_portfolio_wide_memo_excludes_discrepancies_for_deleted_leases():
             discrepancy_type="lease_risk_flag", natural_key="lease_risk:current:missing_clause:cam_charges:0",
             category="missing_clause", message="No CAM charges clause found in this lease",
             details={}, lease_id=current_id,
+        team_id=1,
         )
         database.upsert_discrepancy(
             discrepancy_type="lease_risk_flag", natural_key="lease_risk:doomed:missing_clause:cam_charges:0",
             category="missing_clause", message="No CAM charges clause found in this lease",
             details={}, lease_id=doomed_id,
+        team_id=1,
         )
 
         # Before deletion: both discrepancies are legitimately relevant.
-        data = build_investment_memo_data()
+        data = build_investment_memo_data(team_id=1)
         assert data["discrepancy_summary"]["total"] == 2, "both leases still exist -- both discrepancies should count"
 
-        database.delete_lease(doomed_id)
+        database.delete_lease(doomed_id, team_id=1)
 
         # After deletion: the orphaned discrepancy must disappear from
         # a portfolio-wide memo, even though the row itself is still
         # in the database (discrepancies are deliberately permanent
         # records -- see database.py's un-FK'd lease_id).
-        data = build_investment_memo_data()
+        data = build_investment_memo_data(team_id=1)
         assert data["discrepancy_summary"]["total"] == 1, f"expected only the current lease's discrepancy, got {data['discrepancy_summary']}"
         assert data["discrepancies"][0]["lease_id"] == current_id
         assert data["lease_count"] == 1, "the deleted lease itself must also be gone from the memo's lease list"
@@ -229,14 +234,16 @@ def test_portfolio_wide_memo_excludes_tenant_concentration_for_a_tenant_no_longe
             discrepancy_type="tenant_concentration", natural_key="tenant_concentration:stale co",
             category="tenant_concentration", message="Stale Co accounts for a large share of portfolio rent",
             details={"tenant": "Stale Co"},
+        team_id=1,
         )
         database.upsert_discrepancy(
             discrepancy_type="tenant_concentration", natural_key="tenant_concentration:current co",
             category="tenant_concentration", message="Current Co accounts for a large share of portfolio rent",
             details={"tenant": "Current Co"},
+        team_id=1,
         )
 
-        data = build_investment_memo_data()
+        data = build_investment_memo_data(team_id=1)
         assert data["discrepancy_summary"]["total"] == 1, f"expected only the Current Co discrepancy, got {data['discrepancy_summary']}"
         assert data["discrepancies"][0]["details"]["tenant"] == "Current Co"
     finally:
@@ -249,7 +256,7 @@ def test_t12_fresh_upload_takes_precedence_over_persisted():
     try:
         _insert("lease.pdf", tenant="Acme", rent_amount="$5,000.00", property_address="1 Main St")
         t12_parsed = {"annual_rental_income": 55000.0, "source": {"page": None, "quote": "Total Rental Income"}}
-        data = build_investment_memo_data(property_address="1 Main St", t12_parsed=t12_parsed)
+        data = build_investment_memo_data(team_id=1, property_address="1 Main St", t12_parsed=t12_parsed)
         assert data["t12_cross_check"]["available"] is True
         assert data["t12_cross_check"]["basis"] == "fresh_upload"
         assert data["t12_cross_check"]["rent_roll_annual_rent"] == 60000.0
@@ -268,9 +275,9 @@ def test_t12_falls_back_to_persisted_discrepancy_when_no_fresh_upload():
             "rent_roll_annual_rent": 240000.0, "t12_annual_rental_income": 150000.0, "difference": 90000.0,
             "difference_pct": 37.5, "direction": "rent_roll_higher",
         }
-        sync_t12_reconciliation(stale_result)
+        sync_t12_reconciliation(stale_result, team_id=1)
 
-        data = build_investment_memo_data(property_address="1 Main St")
+        data = build_investment_memo_data(team_id=1, property_address="1 Main St")
         assert data["t12_cross_check"]["available"] is True
         assert data["t12_cross_check"]["basis"] == "persisted"
         assert data["t12_cross_check"]["t12_annual_rental_income"] == 150000.0
@@ -282,7 +289,7 @@ def test_t12_falls_back_to_persisted_discrepancy_when_no_fresh_upload():
 def test_t12_unavailable_for_portfolio_scope():
     db_path = _fresh_temp_db()
     try:
-        data = build_investment_memo_data()  # no property_address
+        data = build_investment_memo_data(team_id=1)  # no property_address
         assert data["t12_cross_check"]["available"] is False
         assert "single property" in data["t12_cross_check"]["reason"]
     finally:
@@ -298,7 +305,7 @@ def test_pdf_renders_real_content_for_a_populated_property():
     db_path = _fresh_temp_db()
     try:
         _insert("lease.pdf", tenant="Acme Roasters", rent_amount="$6,250.00", property_address="1 Main St", lease_end_date="March 31, 2030", square_footage="2,000 sq ft")
-        data = build_investment_memo_data(property_address="1 Main St")
+        data = build_investment_memo_data(team_id=1, property_address="1 Main St")
         pdf_bytes = generate_investment_memo_pdf(data)
         assert len(pdf_bytes) > 1000
         text = _pdf_text(pdf_bytes)
@@ -315,7 +322,7 @@ def test_pdf_renders_real_content_for_a_populated_property():
 def test_pdf_renders_for_empty_portfolio_without_crashing():
     db_path = _fresh_temp_db()
     try:
-        data = build_investment_memo_data()
+        data = build_investment_memo_data(team_id=1)
         pdf_bytes = generate_investment_memo_pdf(data)
         assert len(pdf_bytes) > 500
         text = _pdf_text(pdf_bytes)
@@ -331,7 +338,7 @@ def test_excel_has_all_five_sheets_with_correct_dedup():
         _insert("lease.pdf", tenant="Acme", rent_amount="$6,250.00", property_address="1 Main St", square_footage="1,000 sq ft", lease_end_date="March 31, 2030")
         _insert("rentroll.csv", tenant="Acme", rent_amount="$6,000.00", property_address="1 Main St", lease_end_date="March 31, 2030")
 
-        data = build_investment_memo_data(property_address="1 Main St")
+        data = build_investment_memo_data(team_id=1, property_address="1 Main St")
         excel_bytes = generate_investment_memo_excel(data)
         workbook = load_workbook(io.BytesIO(excel_bytes))
 

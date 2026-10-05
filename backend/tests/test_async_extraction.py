@@ -28,6 +28,9 @@ from app import jobs
 from app.portfolio import FIELD_NAMES
 
 
+from _session_users import sync_session_user
+
+
 def _fresh_temp_db():
     tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
     tmp.close()
@@ -44,6 +47,7 @@ def _analyst_client():
     c = app.test_client()
     with c.session_transaction() as s:
         s.update({"user_id": 1, "email": "a@example.com", "name": "A", "role": "analyst", "team_id": 1})
+        sync_session_user(s)
     return c
 
 
@@ -101,7 +105,7 @@ def test_ai_upload_returns_202_and_leases_start_in_processing_state():
         assert body["leases"][0]["looks_like_lease"] is True, "don't pre-flag a still-processing lease as non-lease"
 
         lease_id = body["leases"][0]["id"]
-        assert database.get_lease(lease_id)["processing_status"] == "processing"
+        assert database.get_lease(lease_id, team_id=1)["processing_status"] == "processing"
     finally:
         os.unlink(db)
     print("✓ test_ai_upload_returns_202_and_leases_start_in_processing_state: PASS")
@@ -122,7 +126,7 @@ def test_background_thread_fills_in_fields_and_links_telemetry():
         assert resp.status_code == 202
         lease_id = resp.get_json()["leases"][0]["id"]
 
-        lease = database.get_lease(lease_id)
+        lease = database.get_lease(lease_id, team_id=1)
         assert lease["processing_status"] == "complete"
         assert lease["processing_error"] is None
         assert lease["extracted_fields"]["tenant"]["value"] == "Acme Corp"
@@ -151,11 +155,11 @@ def test_background_ai_failure_marks_lease_failed_and_keeps_the_row():
         assert resp.status_code == 202
         lease_id = resp.get_json()["leases"][0]["id"]
 
-        lease = database.get_lease(lease_id)
+        lease = database.get_lease(lease_id, team_id=1)
         assert lease["processing_status"] == "failed"
         assert "credit balance" in lease["processing_error"]
         # the row is kept (so the user sees WHY), not silently dropped
-        assert database.get_lease(lease_id) is not None
+        assert database.get_lease(lease_id, team_id=1) is not None
 
         runs = database.list_ai_extraction_runs()
         assert len(runs) == 1 and runs[0]["status"] == "error"
@@ -185,7 +189,7 @@ def test_multi_lease_document_processes_every_split_lease():
 
         assert resp.status_code == 202
         assert resp.get_json()["split_count"] == 2
-        leases = database.get_all_effective_leases()
+        leases = database.get_all_effective_leases(team_id=1)
         assert len(leases) == 2
         assert all(l["processing_status"] == "complete" for l in leases)
     finally:
@@ -196,11 +200,11 @@ def test_multi_lease_document_processes_every_split_lease():
 def test_fail_orphaned_processing_leases_recovers_stuck_rows():
     db = _fresh_temp_db()
     try:
-        lid = database.insert_lease("stuck.pdf", _fields(), processing_status="processing")
-        assert database.get_lease(lid)["processing_status"] == "processing"
+        lid = database.insert_lease("stuck.pdf", _fields(), processing_status="processing", team_id=1)
+        assert database.get_lease(lid, team_id=1)["processing_status"] == "processing"
         n = database.fail_orphaned_processing_leases()
         assert n == 1
-        lease = database.get_lease(lid)
+        lease = database.get_lease(lid, team_id=1)
         assert lease["processing_status"] == "failed"
         assert "restart" in lease["processing_error"]
         assert database.fail_orphaned_processing_leases() == 0, "idempotent -- nothing left to reset"
@@ -236,8 +240,8 @@ def test_resubmit_degrades_cleanly_on_ai_failure_and_leaves_the_old_lease_intact
     prev = os.environ.get("LEASE_ASYNC_EXTRACTION")
     os.environ["LEASE_ASYNC_EXTRACTION"] = "false"
     try:
-        original = database.insert_lease("lease.pdf", _fields(tenant="Original Tenant", rent_amount="$5,000.00"))
-        assert database.get_lease(original)["status"] == "active"
+        original = database.insert_lease("lease.pdf", _fields(tenant="Original Tenant", rent_amount="$5,000.00"), team_id=1)
+        assert database.get_lease(original, team_id=1)["status"] == "active"
 
         with mock.patch.object(ai_extraction, "resolve_engine", return_value="ai"), \
              mock.patch.object(ai_extraction, "extract_lease_fields",
@@ -249,7 +253,7 @@ def test_resubmit_degrades_cleanly_on_ai_failure_and_leaves_the_old_lease_intact
             )
         assert resp.status_code == 502
         assert "credit balance" in resp.get_json()["error"]
-        after = database.get_lease(original)
+        after = database.get_lease(original, team_id=1)
         assert after["status"] == "active", "the old lease must not be superseded by a failed resubmit"
         assert after["extracted_fields"]["tenant"]["value"] == "Original Tenant"
     finally:

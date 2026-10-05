@@ -599,11 +599,174 @@ const Analytics = {
     },
 };
 
+/* ===================== Teams panel ===================== */
+
+const Teams = {
+    teams: [],
+
+    async load() {
+        const content = document.getElementById('teamsContent');
+        content.innerHTML = '<p class="loading-inline" role="status"><span class="spinner-small"></span> Loading teams…</p>';
+        try {
+            this.teams = await ownerFetch('/owner/teams');
+            this.render();
+        } catch (err) {
+            content.innerHTML = `<p class="error-text">Failed to load teams: ${escapeHtml(err.message)}</p>`;
+        }
+    },
+
+    render() {
+        const content = document.getElementById('teamsContent');
+        if (this.teams.length === 0) {
+            content.innerHTML = '<p class="owner-empty">No teams yet — create the first one above.</p>';
+            return;
+        }
+        content.innerHTML = `
+            <table class="owner-table">
+                <thead>
+                    <tr><th>Team</th><th>Status</th><th>Users</th><th>Leases</th><th>Last activity</th></tr>
+                </thead>
+                <tbody>
+                    ${this.teams.map(t => `
+                        <tr>
+                            <td><span class="owner-row-link" data-id="${t.id}">${escapeHtml(t.name)}</span></td>
+                            <td><span class="owner-status-pill owner-status-${escapeHtml(t.status)}">${escapeHtml(t.status)}</span></td>
+                            <td>${t.user_count}</td>
+                            <td>${t.lease_count}</td>
+                            <td>${t.last_activity_at ? escapeHtml(formatDate(t.last_activity_at)) : '—'}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        `;
+        content.querySelectorAll('.owner-row-link').forEach(el => {
+            el.addEventListener('click', () => this.openDetail(parseInt(el.dataset.id, 10)));
+        });
+    },
+
+    async openDetail(id) {
+        const overlay = document.getElementById('teamModalOverlay');
+        const body = document.getElementById('teamModalContent');
+        overlay.style.display = 'flex';
+        body.innerHTML = '<p class="loading-inline" role="status"><span class="spinner-small"></span> Loading…</p>';
+        try {
+            const team = await ownerFetch(`/owner/teams/${id}`);
+            this.renderDetail(team);
+        } catch (err) {
+            body.innerHTML = `<p class="error-text">${escapeHtml(err.message)}</p>`;
+        }
+    },
+
+    renderDetail(t) {
+        const body = document.getElementById('teamModalContent');
+        body.innerHTML = `
+            <h2>${escapeHtml(t.name)}</h2>
+            <p>Status: <span class="owner-status-pill owner-status-${escapeHtml(t.status)}">${escapeHtml(t.status)}</span> &middot; Created ${escapeHtml(formatDate(t.created_at))}</p>
+            <h3 style="margin-top:1.5rem;">Members</h3>
+            <div style="overflow-x:auto;">
+                <table class="owner-table">
+                    <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th></tr></thead>
+                    <tbody>
+                        ${t.members.map(m => `
+                            <tr>
+                                <td>${escapeHtml(m.name)}</td>
+                                <td>${escapeHtml(m.email)}</td>
+                                <td>${escapeHtml(m.role)}</td>
+                                <td><span class="owner-status-pill owner-status-${escapeHtml(m.status)}">${escapeHtml(m.status)}</span></td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+            <div class="owner-modal-actions">
+                ${t.status === 'active'
+                    ? `<button class="btn-danger" id="deactivateTeamBtn">Deactivate Team</button>`
+                    : `<button class="btn-secondary" id="reactivateTeamBtn">Reactivate Team</button>`}
+            </div>
+        `;
+        const deactivateBtn = document.getElementById('deactivateTeamBtn');
+        if (deactivateBtn) {
+            deactivateBtn.addEventListener('click', async () => {
+                if (!(await confirmDialog({
+                    title: 'Deactivate this team?',
+                    message: `Every member of ${t.name} will be unable to log in until you reactivate the team, even if their own account is still active.`,
+                    confirmText: 'Deactivate',
+                    danger: true,
+                }))) return;
+                try {
+                    await ownerFetch(`/owner/teams/${t.id}/deactivate`, { method: 'POST' });
+                    showToast(`${t.name} deactivated.`);
+                    this.closeModal();
+                    this.load();
+                } catch (err) {
+                    showToast(err.message, 'error');
+                }
+            });
+        }
+        const reactivateBtn = document.getElementById('reactivateTeamBtn');
+        if (reactivateBtn) {
+            reactivateBtn.addEventListener('click', async () => {
+                try {
+                    await ownerFetch(`/owner/teams/${t.id}/reactivate`, { method: 'POST' });
+                    showToast(`${t.name} reactivated.`);
+                    this.closeModal();
+                    this.load();
+                } catch (err) {
+                    showToast(err.message, 'error');
+                }
+            });
+        }
+    },
+
+    closeModal() {
+        document.getElementById('teamModalOverlay').style.display = 'none';
+    },
+
+    openCreateModal() {
+        document.getElementById('createTeamForm').reset();
+        document.getElementById('createTeamResult').innerHTML = '';
+        document.getElementById('createTeamModalOverlay').style.display = 'flex';
+    },
+
+    closeCreateModal() {
+        document.getElementById('createTeamModalOverlay').style.display = 'none';
+    },
+
+    async submitCreate(e) {
+        e.preventDefault();
+        const resultEl = document.getElementById('createTeamResult');
+        const firm_name = document.getElementById('newFirmName').value.trim();
+        const admin_name = document.getElementById('newAdminName').value.trim();
+        const admin_email = document.getElementById('newAdminEmail').value.trim();
+        resultEl.innerHTML = '';
+        try {
+            const result = await ownerFetch('/owner/teams', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ firm_name, admin_name, admin_email }),
+            });
+            if (result.emailed) {
+                resultEl.innerHTML = `<p class="owner-callout" style="margin-top:1rem;">Team created. A setup link was emailed to ${escapeHtml(admin_email)}.</p>`;
+            } else {
+                resultEl.innerHTML = `
+                    <p class="owner-callout" style="margin-top:1rem;">Team created. Email sending isn't configured (or failed) — copy this one-time setup link and send it to ${escapeHtml(admin_email)} yourself. It expires in 7 days and can only be used once.</p>
+                    <div class="owner-entry-row"><input type="text" class="text-input" readonly value="${escapeHtml(result.setup_url)}" id="setupUrlField" onclick="this.select()"></div>
+                `;
+            }
+            showToast(`Team "${firm_name}" created.`);
+            this.load();
+        } catch (err) {
+            resultEl.innerHTML = `<p class="error-text">${escapeHtml(err.message)}</p>`;
+        }
+    },
+};
+
 /* ===================== Tabs ===================== */
 
 function switchTab(tab) {
     document.querySelectorAll('.owner-tab').forEach(el => el.classList.toggle('active', el.dataset.tab === tab));
     document.querySelectorAll('.owner-panel').forEach(el => el.classList.toggle('active', el.id === `panel-${tab}`));
+    if (tab === 'teams') Teams.load();
     if (tab === 'accounts') Accounts.load();
     if (tab === 'finance') Finance.load();
     if (tab === 'quality') ExtractionQuality.load();
@@ -648,6 +811,17 @@ async function initOwnerConsole() {
     document.getElementById('accountModalClose').addEventListener('click', () => Accounts.closeModal());
     document.getElementById('accountModalOverlay').addEventListener('click', (e) => {
         if (e.target.id === 'accountModalOverlay') Accounts.closeModal();
+    });
+
+    document.getElementById('createTeamBtn').addEventListener('click', () => Teams.openCreateModal());
+    document.getElementById('createTeamModalClose').addEventListener('click', () => Teams.closeCreateModal());
+    document.getElementById('createTeamModalOverlay').addEventListener('click', (e) => {
+        if (e.target.id === 'createTeamModalOverlay') Teams.closeCreateModal();
+    });
+    document.getElementById('createTeamForm').addEventListener('submit', (e) => Teams.submitCreate(e));
+    document.getElementById('teamModalClose').addEventListener('click', () => Teams.closeModal());
+    document.getElementById('teamModalOverlay').addEventListener('click', (e) => {
+        if (e.target.id === 'teamModalOverlay') Teams.closeModal();
     });
 
     document.getElementById('revenueForm').addEventListener('submit', async (e) => {
@@ -701,7 +875,7 @@ async function initOwnerConsole() {
         window.location.href = 'login.html';
     });
 
-    Accounts.load();
+    Teams.load();
 }
 
 initOwnerConsole();

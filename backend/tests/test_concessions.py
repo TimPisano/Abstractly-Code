@@ -469,7 +469,7 @@ def test_upload_route_ai_engine_end_to_end_concession_reaches_report():
                          content_type="multipart/form-data")
         assert resp.status_code == 201, resp.get_json()
 
-        data = dm.build_deal_mismatch_report_data(today=date(2026, 3, 15))
+        data = dm.build_deal_mismatch_report_data(team_id=1, today=date(2026, 3, 15))
         rows = [r for r in data["discrepancies"] if r["discrepancy_type"] == "concession_missing"]
         assert len(rows) == 1, data["discrepancies"]
         assert rows[0]["annual_dollar_impact"] == 600.0 and rows[0]["monthly_dollar_impact"] == 50.0
@@ -663,12 +663,12 @@ def test_report_totals_net_concession_rows_and_summary():
     try:
         u1 = "9 Oak Ct, Suite 1"
         u2 = "9 Oak Ct, Suite 2"
-        database.insert_lease("rr.csv", _fields(property_address=u1, tenant="A One", rent_amount="$1,720.00"), display_name="A")
-        database.insert_lease("a.pdf", _fields(I204_TEXT, property_address=u1, tenant="A One", rent_amount="$1,720.00", **TERM_12), display_name="A")
-        database.insert_lease("rr.csv", _fields(property_address=u2, tenant="B Two", rent_amount="$1,190.00"), display_name="B")
+        database.insert_lease("rr.csv", _fields(property_address=u1, tenant="A One", rent_amount="$1,720.00"), display_name="A", team_id=1)
+        database.insert_lease("a.pdf", _fields(I204_TEXT, property_address=u1, tenant="A One", rent_amount="$1,720.00", **TERM_12), display_name="A", team_id=1)
+        database.insert_lease("rr.csv", _fields(property_address=u2, tenant="B Two", rent_amount="$1,190.00"), display_name="B", team_id=1)
         database.insert_lease("b.pdf", _fields(E301_TEXT, property_address=u2, tenant="B Two", rent_amount="$1,290.00",
-                                               lease_start_date="April 1, 2026", lease_end_date="March 31, 2027"), display_name="B")
-        data = dm.build_deal_mismatch_report_data(today=AS_OF)
+                                               lease_start_date="April 1, 2026", lease_end_date="March 31, 2027"), display_name="B", team_id=1)
+        data = dm.build_deal_mismatch_report_data(team_id=1, today=AS_OF)
         assert _types(data["discrepancies"]) == ["concession_expiring", "concession_missing"], data["discrepancies"]
         assert data["annual_income_overstatement"] == 900.0 - 600.0
         assert data["concession_summary"] == {"leases_with_concessions": 2, "annualized_concession_value": 1500.0}

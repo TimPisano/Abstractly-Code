@@ -63,6 +63,7 @@ def _renewal_deadline_entry(entry: Dict[str, Any], reference_date: date) -> Dict
 def compute_action_items(
     user_id: int,
     leases: List[Dict[str, Any]],
+    team_id: int,
     reference_date: Optional[date] = None,
 ) -> List[Dict[str, Any]]:
     """
@@ -88,7 +89,7 @@ def compute_action_items(
 
     overdue_or_due_today = database.get_tasks_due_today_or_overdue(user_id, today_iso)
     due_later = [
-        t for t in database.list_tasks(assigned_to_user_id=user_id, due_after=tomorrow_iso)
+        t for t in database.list_tasks(team_id=team_id, assigned_to_user_id=user_id, due_after=tomorrow_iso)
         if t["status"] not in ("done", "dismissed")
     ]
     task_items = [_task_entry(t) for t in overdue_or_due_today + due_later]
