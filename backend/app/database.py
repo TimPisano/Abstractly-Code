@@ -107,6 +107,11 @@ def _migrate_schema(conn: sqlite3.Connection) -> None:
         # user-facing reason when status is 'failed'.
         "processing_status": "TEXT NOT NULL DEFAULT 'complete'",
         "processing_error": "TEXT",
+        # 'rent_roll' for a row created by the rent-roll importer,
+        # 'document' for an uploaded lease document; NULL on rows from
+        # before this column existed (portfolio._is_rent_roll_import then
+        # falls back to the old by-extension rule). See that function.
+        "source_kind": "TEXT",
     }
     for column, sql_type in new_columns.items():
         if column not in existing_columns:
@@ -1082,6 +1087,7 @@ def insert_lease(
     status: str = "active",
     supersedes_lease_id: Optional[int] = None,
     version_number: int = 1,
+    source_kind: Optional[str] = None,
     processing_status: str = "complete",
     processing_error: Optional[str] = None,
 ) -> int:
@@ -1121,8 +1127,8 @@ def insert_lease(
     try:
         cur = conn.execute(
             "INSERT INTO leases (filename, uploaded_at, extracted_fields, document_type, base_lease_id, "
-            "date_candidates, display_name, source_page_start, source_page_end, status, supersedes_lease_id, version_number, processing_status, processing_error, team_id) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "date_candidates, display_name, source_page_start, source_page_end, status, supersedes_lease_id, version_number, processing_status, processing_error, team_id, source_kind) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 filename,
                 datetime.now(timezone.utc).isoformat(),
@@ -1139,6 +1145,7 @@ def insert_lease(
                 processing_status,
                 processing_error,
                 team_id,
+                source_kind,
             ),
         )
         conn.commit()

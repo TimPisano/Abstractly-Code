@@ -38,6 +38,35 @@ def _doc(**f):
     return {"id": next(_ids), "filename": "lease.pdf", "extracted_fields": _fields(**f)}
 
 
+def _client_with_fresh_db(team_id=1):
+    """Fresh temp DB + an analyst session on a real team (real routes, real scoping)."""
+    import tempfile
+    from app.api import app
+    from app import database, usage_limits
+    from _session_users import sync_session_user
+    tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+    tmp.close()
+    database.configure(tmp.name)
+    database.init_db()
+    usage_limits._reset_extraction_rate_limit_for_tests()
+    client = app.test_client()
+    with client.session_transaction() as s:
+        s["user_id"] = 7
+        s["team_id"] = team_id
+        s["email"] = "gauntlet-test@abstractly.test"
+        s["name"] = "Gauntlet Test"
+        s["role"] = "analyst"
+        sync_session_user(s)
+    return client, tmp.name
+
+
+def _post(client, url, filename, data, form=None):
+    import io
+    payload = dict(form or {})
+    payload["file"] = (io.BytesIO(data), filename)
+    return client.post(url, data=payload, content_type="multipart/form-data")
+
+
 def _types(rows):
     return sorted(r["discrepancy_type"] for r in rows)
 
@@ -144,6 +173,33 @@ def test_csv_rent_roll_decoding_cp1252_utf16_and_binary():
     except RentRollImportError as e:
         assert "text" in str(e).lower(), str(e)
     print("✓ test_csv_rent_roll_decoding_cp1252_utf16_and_binary: PASS")
+
+
+# ---------------------------------------------------------------- rent-roll rows vs lease documents
+def test_rent_roll_rows_are_rent_roll_rows_whatever_the_file_format():
+    """
+    Whether a record is a rent-roll row or a lease document was decided by
+    the file EXTENSION (only .csv/.xlsx counted as rent rolls). A rent roll
+    imported from .tsv/.txt/.xls/.docx/.pdf was therefore treated as a pile
+    of LEASES by the Deal Mismatch Report: every unit came back as
+    lease_no_unit and nothing was compared. The importer now marks its rows.
+    """
+    from app.portfolio import _is_rent_roll_import
+    client, db = _client_with_fresh_db()
+    try:
+        tsv = "Unit\tTenant\tRent\n101\tAvery Ashgrove\t1200\n102\tJordan Bellweather\t1300\n".encode()
+        r = _post(client, "/leases/import-rent-roll", "rent_roll.tsv", tsv, {"property_address": "9 Elm St, Austin, TX 78701"})
+        assert r.status_code == 201, r.get_json()
+        r = client.post("/portfolio/deal-mismatch-report", data={"property_address": "9 Elm St, Austin, TX 78701"},
+                        content_type="multipart/form-data")
+        types = sorted(row["discrepancy_type"] for row in r.get_json()["discrepancies"])
+        assert types == ["unit_no_lease", "unit_no_lease"], types
+    finally:
+        os.unlink(db)
+    assert _is_rent_roll_import({"filename": "rent_roll.pdf", "source_kind": "rent_roll"})
+    assert not _is_rent_roll_import({"filename": "lease_abstract.xlsx", "source_kind": "document"})
+    assert _is_rent_roll_import({"filename": "legacy_rent_roll.csv"})  # rows from before the marker existed
+    print("✓ test_rent_roll_rows_are_rent_roll_rows_whatever_the_file_format: PASS")
 
 
 if __name__ == "__main__":

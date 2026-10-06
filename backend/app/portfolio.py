@@ -1467,6 +1467,18 @@ _RENT_ROLL_IMPORT_EXTENSIONS = {"csv", "xlsx"}
 
 
 def _is_rent_roll_import(lease: Dict[str, Any]) -> bool:
+    """
+    A record created by the rent-roll importer (vs. an uploaded lease
+    document). Rows carry an explicit `source_kind` marker; before it
+    existed this was guessed from the file extension (.csv/.xlsx), which
+    misfiled every rent roll imported from .tsv/.txt/.xls/.docx/.pdf/an
+    image as a pile of LEASES -- the Deal Mismatch Report then compared
+    nothing (overnight gauntlet, 2026-10-05). The extension rule remains
+    only for unmarked legacy rows.
+    """
+    kind = lease.get("source_kind")
+    if kind:
+        return kind == "rent_roll"
     filename = (lease.get("filename") or "").lower()
     return "." in filename and filename.rsplit(".", 1)[1] in _RENT_ROLL_IMPORT_EXTENSIONS
 

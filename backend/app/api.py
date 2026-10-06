@@ -932,6 +932,7 @@ def _persist_split_leases(filename, split_leases):
             source_page_end=lease_data["source_page_end"],
             processing_status="processing" if lease_data.get("pending") else lease_data.get("processing_status", "complete"),
             processing_error=lease_data.get("processing_error"),
+            source_kind="document",
         team_id=current_team_id(),
         )
         if lease_data.get("ai_run_id"):
@@ -1234,6 +1235,7 @@ def resubmit_lease(lease_id):
         status="active",
         supersedes_lease_id=lease_id,
         version_number=new_version_number,
+        source_kind="document",
     team_id=current_team_id(),
     )
 
@@ -1438,6 +1440,7 @@ def import_rent_roll():
             lease_data["extracted_fields"],
             document_type="lease",
             display_name=lease_data["display_name"],
+            source_kind="rent_roll",
         team_id=current_team_id(),
         )
         lease = database.get_effective_lease(lease_id, team_id=current_team_id())
