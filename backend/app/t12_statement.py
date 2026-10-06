@@ -225,32 +225,28 @@ def parse_csv_t12_statement(file_bytes: bytes, filename: str) -> Dict[str, Any]:
 
 
 def parse_xlsx_t12_statement(file_bytes: bytes, filename: str) -> Dict[str, Any]:
-    """Parses an .xlsx T12 statement. Raises T12ImportError for empty or unreadable file."""
-    from openpyxl import load_workbook
-    try:
-        workbook = load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
-    except Exception as exc:
-        raise T12ImportError(f"Couldn't read this file as an Excel workbook: {exc}")
-
-    sheet = workbook.active
-    numbered_rows = [
-        (i, list(row)) for i, row in enumerate(sheet.iter_rows(values_only=True), start=1)
-        if any(cell is not None and str(cell).strip() for cell in row)
-    ]
-
-    if not numbered_rows:
-        raise T12ImportError("This Excel file is empty -- nothing to import.")
-
-    row_contents = [row for _, row in numbered_rows]
-    header_idx = _find_t12_header_row(row_contents)
-    headers = row_contents[header_idx]
-    data_entries = numbered_rows[header_idx + 1:]
-    data_rows = [row for _, row in data_entries]
-    data_row_numbers = [n for n, _ in data_entries]
-    return parse_t12_statement_rows(
-        list(headers), data_rows, filename,
-        header_row_offset=header_idx, row_numbers=data_row_numbers,
-    )
+    """
+    Parses an .xlsx/.xls T12 statement from the first worksheet that has a
+    T-12 header row and at least one recognized line item (a "Summary"
+    tab first no longer hides the detail sheet; .xls is read with xlrd).
+    Raises T12ImportError for an empty, unreadable or encrypted file.
+    """
+    from app.t12_import import _t12_sheet_candidates
+    candidates = _t12_sheet_candidates(file_bytes)
+    if not candidates:
+        raise T12ImportError(
+            "Couldn't find any month columns in this file's header row -- "
+            "expected either a \"Total\"/\"Annual\" column, or at least some month columns "
+            "(Jan through Dec), on any sheet of this workbook."
+        )
+    first = None
+    for headers, data_rows, header_idx, row_numbers in candidates:
+        parsed = parse_t12_statement_rows(headers, data_rows, filename, header_row_offset=header_idx, row_numbers=row_numbers)
+        if first is None:
+            first = parsed
+        if any(v is not None for v in parsed.values()):
+            return parsed
+    return first
 
 
 def parse_pdf_t12_statement(file_bytes: bytes, filename: str) -> Dict[str, Any]:

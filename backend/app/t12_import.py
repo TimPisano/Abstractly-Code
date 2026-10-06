@@ -344,29 +344,108 @@ def parse_csv_t12(file_bytes: bytes, filename: str) -> Dict[str, Any]:
     )
 
 
-def parse_xlsx_t12(file_bytes: bytes, filename: str) -> Dict[str, Any]:
-    """Reads an .xlsx T12's bytes and parses it via parse_t12_rows. Uses the first (active) worksheet. Raises T12ImportError for a genuinely empty or unreadable file."""
+_OLE_MAGIC = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
+
+
+def is_password_protected_office_file(file_bytes: bytes) -> bool:
+    """An encrypted .xlsx/.docx is an OLE container holding an 'EncryptedPackage' stream."""
+    return file_bytes[:8] == _OLE_MAGIC and "EncryptedPackage".encode("utf-16-le") in file_bytes
+
+
+PASSWORD_PROTECTED_MESSAGE = (
+    "This file is password-protected, so it can't be read. Open it in Excel, remove the "
+    "password (File > Info > Protect Workbook > Encrypt with Password, clear it), save, and upload again."
+)
+
+
+def load_workbook_sheets(file_bytes: bytes) -> List[List[tuple]]:
+    """
+    Every worksheet of an .xlsx/.xlsm or legacy .xls, as lists of
+    (1-indexed row number, row values) with blank rows dropped -- in
+    workbook order. T-12 exports routinely put a "Summary" tab first, so
+    callers try each sheet rather than trusting the active one; a legacy
+    .xls (OLE container) is read with xlrd, which openpyxl can't open.
+    Raises T12ImportError for an encrypted or unreadable file.
+    """
+    if is_password_protected_office_file(file_bytes):
+        raise T12ImportError(PASSWORD_PROTECTED_MESSAGE)
+    sheets: List[List[tuple]] = []
+    if file_bytes[:8] == _OLE_MAGIC:
+        import xlrd
+        try:
+            book = xlrd.open_workbook(file_contents=file_bytes)
+        except Exception as exc:
+            if "encrypt" in str(exc).lower():
+                raise T12ImportError(PASSWORD_PROTECTED_MESSAGE)
+            raise T12ImportError(f"Couldn't read this file as an Excel (.xls) workbook: {exc}")
+        for sheet in book.sheets():
+            rows = []
+            for r in range(sheet.nrows):
+                values = []
+                for cell in sheet.row(r):
+                    if cell.ctype == xlrd.XL_CELL_DATE:
+                        try:
+                            values.append(xlrd.xldate.xldate_as_datetime(cell.value, book.datemode))
+                        except Exception:
+                            values.append(cell.value)
+                    elif cell.ctype in (xlrd.XL_CELL_EMPTY, xlrd.XL_CELL_BLANK):
+                        values.append(None)
+                    else:
+                        values.append(cell.value)
+                if any(v is not None and str(v).strip() for v in values):
+                    rows.append((r + 1, values))
+            sheets.append(rows)
+        return sheets
     try:
         workbook = load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
     except Exception as exc:
-        raise T12ImportError(f"Couldn't read this file as an Excel workbook: {exc}")
+        raise T12ImportError(
+            "Couldn't read this file as an Excel workbook -- it may be damaged, or not really an "
+            f"Excel file. ({exc})"
+        )
+    for name in workbook.sheetnames:
+        sheets.append([
+            (i, list(row)) for i, row in enumerate(workbook[name].iter_rows(values_only=True), start=1)
+            if any(cell is not None and str(cell).strip() for cell in row)
+        ])
+    return sheets
 
-    sheet = workbook.active
-    numbered_rows = [
-        (i, list(row)) for i, row in enumerate(sheet.iter_rows(values_only=True), start=1)
-        if any(cell is not None and str(cell).strip() for cell in row)
-    ]
 
-    if not numbered_rows:
+def _t12_sheet_candidates(file_bytes: bytes):
+    """(headers, data_rows, header_idx, data_row_numbers) for each sheet with a T-12 header row, in workbook order."""
+    sheets = load_workbook_sheets(file_bytes)
+    if not any(sheets):
         raise T12ImportError("This Excel file is empty -- nothing to import.")
+    found = []
+    for numbered_rows in sheets:
+        if not numbered_rows:
+            continue
+        row_contents = [row for _, row in numbered_rows]
+        header_idx = _find_t12_header_row(row_contents)
+        mapping = _match_t12_columns(row_contents[header_idx])
+        if "total" not in mapping and len(mapping["months"]) < 2:
+            continue
+        data_entries = numbered_rows[header_idx + 1:]
+        found.append((list(row_contents[header_idx]), [r for _, r in data_entries], header_idx, [n for n, _ in data_entries]))
+    return found
 
-    row_contents = [row for _, row in numbered_rows]
-    header_idx = _find_t12_header_row(row_contents)
-    headers = row_contents[header_idx]
-    data_entries = numbered_rows[header_idx + 1:]
-    data_rows = [row for _, row in data_entries]
-    data_row_numbers = [n for n, _ in data_entries]
-    return parse_t12_rows(
-        list(headers), data_rows, filename,
-        header_row_offset=header_idx, row_numbers=data_row_numbers,
+
+def parse_xlsx_t12(file_bytes: bytes, filename: str) -> Dict[str, Any]:
+    """
+    Reads an .xlsx/.xls T12's bytes and parses it via parse_t12_rows,
+    using the first worksheet that has a usable header row AND a rental
+    income line (not just the active sheet -- see load_workbook_sheets).
+    Raises T12ImportError for an empty, unreadable or encrypted file.
+    """
+    candidates = _t12_sheet_candidates(file_bytes)
+    last_error = None
+    for headers, data_rows, header_idx, row_numbers in candidates:
+        try:
+            return parse_t12_rows(headers, data_rows, filename, header_row_offset=header_idx, row_numbers=row_numbers)
+        except T12ImportError as exc:
+            last_error = exc
+    if last_error:
+        raise last_error
+    raise T12ImportError(
+        "Couldn't find a T-12 header row (month columns or a Total/Annual column) on any sheet of this workbook."
     )

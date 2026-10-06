@@ -382,6 +382,46 @@ def test_t12_bad_debt_trend_uses_the_statements_own_month_order():
     print("✓ test_t12_bad_debt_trend_uses_the_statements_own_month_order: PASS")
 
 
+_GAUNTLET_FIX = os.path.join(os.path.dirname(__file__), "..", "tools", "gauntlet", "fixtures")
+
+
+def test_t12_workbooks_any_sheet_legacy_xls_and_password():
+    """
+    T-12 workbooks: only the ACTIVE sheet was read (a "Summary" tab first
+    -> "Couldn't find any month columns"); .xls went to openpyxl ("File is
+    not a zip file"); a password-protected file got the same cryptic zip
+    error instead of being told it's encrypted.
+    """
+    from io import BytesIO
+    from openpyxl import Workbook
+    from app.t12_statement import parse_xlsx_t12_statement
+    from app.t12_import import parse_xlsx_t12, T12ImportError
+    wb = Workbook()
+    wb.active.title = "Summary"
+    wb.active.append(["NOI", 123456])
+    ws = wb.create_sheet("T12 Detail")
+    ws.append(["Account"] + _T12_MONTHS + ["Total"])
+    ws.append(["Gross Potential Rent"] + [1000.0] * 12 + [12000.0])
+    ws.append(["Net Rental Income"] + [900.0] * 12 + [10800.0])
+    buf = BytesIO()
+    wb.save(buf)
+    assert parse_xlsx_t12_statement(buf.getvalue(), "t12.xlsx")["rental_income_collected"]["annual"] == 10800.0
+    assert parse_xlsx_t12(buf.getvalue(), "t12.xlsx")["annual_rental_income"] == 10800.0
+    with open(os.path.join(_GAUNTLET_FIX, "t12", "p04__xls__clean.xls"), "rb") as f:
+        xls = f.read()
+    got = parse_xlsx_t12_statement(xls, "t12.xls")
+    assert got["gross_potential_rent"] and got["gross_potential_rent"]["annual"] > 0, got
+    with open(os.path.join(_GAUNTLET_FIX, "t12", "bad__password.xlsx"), "rb") as f:
+        locked = f.read()
+    for fn in (parse_xlsx_t12_statement, parse_xlsx_t12):
+        try:
+            fn(locked, "t12.xlsx")
+            raise AssertionError("encrypted workbook parsed")
+        except T12ImportError as e:
+            assert "password" in str(e).lower(), str(e)
+    print("✓ test_t12_workbooks_any_sheet_legacy_xls_and_password: PASS")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):
