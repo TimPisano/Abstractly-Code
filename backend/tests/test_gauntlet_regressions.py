@@ -574,6 +574,33 @@ def test_tenant_name_column_preferred_over_resident_code():
     print("✓ test_tenant_name_column_preferred_over_resident_code: PASS")
 
 
+def test_two_row_rent_roll_header_yardi_style():
+    """
+    Yardi splits each column header over two rows ("Actual" / "Rent",
+    "Lease" / "Expiration"). Neither row alone has a tenant AND rent
+    column, so the file was rejected outright.
+    """
+    from io import BytesIO
+    from openpyxl import Workbook
+    from app.rent_roll_import import parse_rent_roll_file
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["Maple Test Apartments"])
+    ws.append(["Rent Roll"])
+    ws.append(["Unit", "Unit", "Resident", "Name", "Market", "Actual", "Move In", "Lease"])
+    ws.append([None, "Type", None, None, "Rent", "Rent", None, "Expiration"])
+    ws.append(["101", "1x1", "t0001234", "Lee, Ann", 1200, 1150, None, "03/31/2027"])
+    ws.append(["102", "2x2", "VACANT", "VACANT", 1500, 0, None, None])
+    buf = BytesIO()
+    wb.save(buf)
+    got = parse_rent_roll_file(buf.getvalue(), "rr.xlsx", "9 Elm St")
+    assert len(got["leases"]) == 1, got["skipped_rows"]
+    f = got["leases"][0]["extracted_fields"]
+    assert (f["tenant"]["value"], f["rent_amount"]["value"], f["lease_end_date"]["value"]) == ("Lee, Ann", "$1,150.00", "03/31/2027"), f
+    assert got["unit_summary"]["9 Elm St"]["vacant_units"] == ["102"]
+    print("✓ test_two_row_rent_roll_header_yardi_style: PASS")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):

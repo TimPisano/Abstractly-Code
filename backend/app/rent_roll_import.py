@@ -441,6 +441,44 @@ def _find_header_row(all_rows: List[List[Any]]) -> int:
     return 0
 
 
+def _find_header(all_rows: List[List[Any]]):
+    """
+    (header cells, header row index, index of the first data row).
+
+    A single header row is found exactly as _find_header_row always did.
+    If none qualifies, a TWO-ROW header is tried: Yardi and other canned
+    reports split each title over two rows ("Actual" / "Rent", "Lease" /
+    "Expiration"), so neither row alone has a tenant AND a rent column.
+    Each column's two parts are joined ("Actual Rent") and matched again.
+    """
+    idx = _find_header_row(all_rows)
+    if "tenant" in _match_columns(all_rows[idx]) and "rent_amount" in _match_columns(all_rows[idx]):
+        return list(all_rows[idx]), idx, idx + 1
+    window = all_rows[:_HEADER_SCAN_WINDOW]
+
+    def filled(row):
+        return sum(1 for x in row if x is not None and str(x).strip())
+
+    best = None  # (mapped field count, -i, combined, i)
+    for i in range(len(window) - 1):
+        top, bottom = list(window[i]), list(window[i + 1])
+        if filled(top) < 2 or filled(bottom) < 2:
+            continue  # a title line ("Rent Roll") is never half of a header
+        width = max(len(top), len(bottom))
+        top += [None] * (width - len(top))
+        bottom += [None] * (width - len(bottom))
+        combined = [" ".join(str(x).strip() for x in (a, b) if x is not None and str(x).strip()) or None
+                    for a, b in zip(top, bottom)]
+        mapping = _match_columns(combined)
+        if "tenant" in mapping and "rent_amount" in mapping:
+            candidate = (len(mapping), -i, combined, i)
+            if best is None or candidate[:2] > best[:2]:
+                best = candidate
+    if best:
+        return best[2], best[3], best[3] + 2
+    return list(all_rows[idx]), idx, idx + 1
+
+
 def _cell_to_str(value: Any) -> Optional[str]:
     """
     Normalizes a raw cell value to a string suitable for normalize.py's
@@ -817,9 +855,8 @@ def _parse_from_numbered_rows(
         raise RentRollImportError(empty_message)
 
     row_contents = [row for _, row in numbered_rows]
-    header_idx = _find_header_row(row_contents)
-    headers = row_contents[header_idx]
-    data_entries = numbered_rows[header_idx + 1:]
+    headers, header_idx, data_start = _find_header(row_contents)
+    data_entries = numbered_rows[data_start:]
     data_rows = [row for _, row in data_entries]
     data_row_numbers = [n for n, _ in data_entries]
     return parse_rent_roll_rows(
@@ -919,12 +956,11 @@ def parse_xlsx_rent_roll(file_bytes: bytes, filename: str, base_property_address
         any_sheet_had_rows = True
 
         row_contents = [row for _, row in numbered_rows]
-        header_idx = _find_header_row(row_contents)
-        headers = row_contents[header_idx]
+        headers, header_idx, data_start = _find_header(row_contents)
         if "tenant" not in _match_columns(headers) or "rent_amount" not in _match_columns(headers):
             continue  # this sheet has no usable header row -- try the next one
 
-        data_entries = numbered_rows[header_idx + 1:]
+        data_entries = numbered_rows[data_start:]
         data_rows = [row for _, row in data_entries]
         data_row_numbers = [n for n, _ in data_entries]
         return parse_rent_roll_rows(
