@@ -1336,6 +1336,24 @@ def test_huge_rent_roll_image_is_refused_and_tesseract_calls_have_timeouts():
     print("✓ test_huge_rent_roll_image_is_refused_and_tesseract_calls_have_timeouts: PASS")
 
 
+def test_review_unit_keys_never_merge_different_units():
+    """
+    Reviewer FIX FIRST #1/#2: "Unit 5, 100 Oak St" and "Unit 6, 100 Oak St"
+    both lost the unit (a leading unit segment was dropped as a "property
+    name"); "Bldg 1, Apt 12" and "Apt 112" collapsed to the same key.
+    """
+    assert _normalize_address("Unit 5, 100 Oak St, Austin") != _normalize_address("Unit 6, 100 Oak St, Austin")
+    assert _normalize_address("Unit 5, 100 Oak St, Austin") == _normalize_address("100 Oak St, Austin, Suite 5")
+    assert _normalize_address("100 Oak St, Building 1, Apt 12") != _normalize_address("100 Oak St, Apt 112")
+    assert _normalize_address("100 Oak St, Building 1, Apt 12") == _normalize_address("100 Oak St, Suite 1-12")
+    # Still equal: letter buildings with or without a dash, leading zeros, the garden-community form.
+    assert _normalize_address("9 Elm St, Suite A101") == _normalize_address("9 Elm St, Suite A-101")
+    assert _normalize_address("9 Elm St, Suite A-101") == _normalize_address("9 Elm St, Building A, Apartment 101")
+    assert _normalize_address("9 Elm St, Suite 0101") == _normalize_address("9 Elm St, Apt 101")
+    assert _normalize_building_address("Unit 5, 100 Oak St, Austin") == _normalize_building_address("100 Oak St, Austin")
+    print("✓ test_review_unit_keys_never_merge_different_units: PASS")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):

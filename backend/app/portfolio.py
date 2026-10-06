@@ -288,19 +288,23 @@ def _normalize_address(address: Optional[str]) -> Optional[str]:
     """
     if not address:
         return None
-    address = _drop_property_name_prefix(address)
+    # Pull the unit out FIRST: "Unit 5, 100 Oak St" must keep unit 5 before
+    # any leading property-name segment is dropped (review finding).
     match = _UNIT_IN_ADDRESS_RE.search(address)
     if not match:
-        return _canonical_street_words(_normalize_for_matching(address))
+        return _canonical_street_words(_normalize_for_matching(_drop_property_name_prefix(address)))
     building = address[:match.start()] + " " + address[match.end():]
     unit = _canonical_unit_id(match.group(1))
     # Garden communities: "Building A, Apartment 101" is the rent roll's
     # "A-101" -- the building letter/number is part of the unit id, not of
-    # the street address.
+    # the street address. Kept as "building|unit" so "Bldg 1, Apt 12" never
+    # equals "Apt 112".
     bldg = _BUILDING_IN_ADDRESS_RE.search(building)
     if bldg:
         building = building[:bldg.start()] + " " + building[bldg.end():]
-        unit = _canonical_unit_id(bldg.group(1) + unit)
+        if "|" not in unit:
+            unit = f"{_canonical_unit_id(bldg.group(1))}|{unit}"
+    building = _drop_property_name_prefix(building.strip(" ,"))
     building_key = _canonical_street_words(_normalize_for_matching(building)) or ""
     return f"{building_key} #{unit}"
 
@@ -348,7 +352,16 @@ _BUILDING_IN_ADDRESS_RE = re.compile(r",?\s*\b(?:building|bldg)\b\.?\s*(?:no\.?\
 
 
 def _canonical_unit_id(raw: str) -> str:
-    unit = raw.upper().replace("-", "")
+    """
+    "0101" -> "101"; "A-101" / "A101" -> "A|101" (building letter + unit);
+    "1-204" -> "1|204". A plain number stays one token, so "112" never
+    equals building 1 / unit 12 ("1|12").
+    """
+    unit = raw.upper().strip()
+    m = re.fullmatch(r"([A-Z]{1,2})-?(\d+[A-Z]?)", unit) or re.fullmatch(r"(\d+)-(\d+[A-Z]?)", unit)
+    if m:
+        return f"{m.group(1).lstrip('0') or '0'}|{m.group(2).lstrip('0') or '0'}"
+    unit = unit.replace("-", "")
     if unit.isdigit():
         unit = unit.lstrip("0") or "0"
     return unit
@@ -379,8 +392,9 @@ def _normalize_building_address(address: Optional[str]) -> Optional[str]:
     """
     if not address:
         return None
-    stripped = _SUITE_DESIGNATOR_RE.sub("", _drop_property_name_prefix(address))
-    stripped = _BUILDING_IN_ADDRESS_RE.sub("", stripped)  # "Building A" of a garden community is the same property
+    stripped = _SUITE_DESIGNATOR_RE.sub("", address)
+    stripped = _BUILDING_IN_ADDRESS_RE.sub("", stripped)
+    stripped = _drop_property_name_prefix(stripped.strip(" ,"))  # "Building A" of a garden community is the same property
     return _canonical_street_words(_normalize_for_matching(stripped))
 
 
