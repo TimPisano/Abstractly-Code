@@ -296,6 +296,26 @@ def test_t12_month_headers_with_years_and_numeric_months():
     print("✓ test_t12_month_headers_with_years_and_numeric_months: PASS")
 
 
+def test_t12_blank_row_is_not_a_zero_total():
+    """
+    With no Total column, the annual figure is the sum of the 12 months --
+    and a blank section-header row summed to $0.00. The T-12 cross-check
+    route (t12_import) then took "Rental Income" (the header) as $0 of
+    collections instead of reading "Net Rental Income" below it.
+    """
+    import csv, io
+    from app.t12_import import parse_csv_t12, _row_annual_total, _match_t12_columns
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["Account"] + _T12_MONTHS)
+    w.writerow(["Rental Income"] + [""] * 12)
+    w.writerow(["Net Rental Income"] + ["900.00"] * 12)
+    assert parse_csv_t12(buf.getvalue().encode(), "t12.csv")["annual_rental_income"] == 10800.0
+    mapping = _match_t12_columns(["Account"] + _T12_MONTHS)
+    assert _row_annual_total(["Rental Income"] + [""] * 12, mapping) is None
+    print("✓ test_t12_blank_row_is_not_a_zero_total: PASS")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):

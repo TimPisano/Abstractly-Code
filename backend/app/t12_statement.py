@@ -90,12 +90,14 @@ def _row_annual_total(row: List[Any], column_mapping: Dict[str, Any]) -> Optiona
     if len(months) < 12:
         return None
     total = 0.0
+    found = False
     for idx in months.values():
         if idx < len(row):
             value = _parse_t12_currency(row[idx])
             if value is not None:
                 total += value
-    return total
+                found = True
+    return total if found else None  # an all-blank row has no total, not a $0 one
 
 
 def _row_has_any_amount(row: List[Any], column_mapping: Dict[str, Any]) -> bool:
