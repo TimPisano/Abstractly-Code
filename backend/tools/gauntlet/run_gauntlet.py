@@ -110,7 +110,7 @@ def post_file(client, url, field, rel, form=None, name=None):
     return client.post(url, data=data, content_type="multipart/form-data")
 
 
-_UNIT_RE = re.compile(r"(?:suite|ste\.?|unit|apt\.?|apartment|#)\s*(?:no\.?\s*)?([A-Za-z0-9][\w-]*)", re.I)
+_UNIT_RE = re.compile(r"(?:\b(?:suite|ste|unit|apt|apartment)\b\.?|#)\s*(?:no\.?\s*)?([A-Za-z0-9][\w-]*)", re.I)
 
 
 _BLDG_RE = re.compile(r"\b(?:building|bldg)\.?\s*([A-Za-z0-9]+)\b", re.I)
@@ -462,6 +462,34 @@ def run_bad_t12_case(m, props, bad, canonical_rr):
     return out
 
 
+def run_reimport_case(m, props, ri):
+    """Stale rent roll, then the updated one: the report must equal the updated file alone (AUDIT.md §6.11)."""
+    prop = props[ri["property"]]
+    env = Env()
+    out = {"problems": [], "metrics": {}}
+    try:
+        c = env.client(team_id=1)
+        lf, lscores = upload_leases(c, prop)
+        out["problems"] += lf
+        for rel, name in ((ri["first"], f"{prop['id']}_v1.csv"), (ri["second"], f"{prop['id']}_v2.csv")):
+            r = post_file(c, "/leases/import-rent-roll", "file", rel, {"property_address": prop["typed_address"]}, name=name)
+            if r.status_code != 201:
+                out["problems"].append(f"import {rel} -> {r.status_code}")
+                return out
+        p, _ = grade_rent_roll_parse(c, {"expected_rent_roll": ri["expected_rent_roll"]}, f"{prop['id']}_v2.csv")
+        out["problems"] += [f"[parse] {x}" for x in p]
+        stale = [l for l in get_all_leases(c) if l.get("filename") == f"{prop['id']}_v1.csv"]
+        if stale:
+            out["problems"].append(f"[reimport] {len(stale)} stale v1 rows still active after importing v2")
+        r = c.post("/portfolio/deal-mismatch-report", data={"property_address": prop["typed_address"]}, content_type="multipart/form-data")
+        fp, fm = grade_findings(r.get_json()["discrepancies"], ri["expected_findings"])
+        out["problems"] += [_tag_extraction(f"[report] {x}", lscores) for x in fp]
+        out["metrics"]["findings"] = fm
+    finally:
+        env.close()
+    return out
+
+
 def run_isolation_case(m, props, canonical_rr):
     """Team 2 loads a whole deal; team 1 must see none of it."""
     prop = props["p00"]
@@ -538,6 +566,9 @@ def main():
         for pid, t in firsts.items():
             cases.append(("deal", f"deal:{pid}", "full_deal", (lambda t=t, pid=pid: run_t12_case(
                 m, props, t, canonical[pid], with_leases=True, rr_expected_findings=canonical[pid]["expected_findings"]))))
+    if "reimport" not in skip:
+        cases += [("reimport", f"reimport:{ri['property']}", "reimport_updated_rent_roll",
+                   (lambda ri=ri: run_reimport_case(m, props, ri))) for ri in m.get("reimports", [])]
     if "iso" not in skip:
         cases.append(("iso", "isolation:p00", "team_isolation", lambda: run_isolation_case(m, props, canonical["p00"])))
     if args.only:

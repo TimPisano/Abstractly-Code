@@ -20568,6 +20568,410 @@
      "rr_tenant": "Mateo Everhart"
     }
    ]
+  },
+  {
+   "id": "p18",
+   "name": "Fox Run Apartments",
+   "typed_address": "400 Fox Run Dr, Lexington, KY 40509",
+   "base_address": "400 Fox Run Dr, Lexington, KY 40509",
+   "leases": [
+    {
+     "file": "leases/p18/101_original.pdf",
+     "unit": "101",
+     "tenant": "Hollis Sorensen",
+     "rent": 1350.0,
+     "start": "2025-01-01",
+     "end": "2025-12-31",
+     "address": "Fox Run Apartments, 400 Fox Run Dr, Apt 101, Lexington, KY 40509",
+     "concession": null,
+     "history": true
+    },
+    {
+     "file": "leases/p18/101.pdf",
+     "unit": "101",
+     "tenant": "Hollis Sorensen",
+     "rent": 1500.0,
+     "start": "2026-01-01",
+     "end": "2026-12-31",
+     "address": "Fox Run Apartments, 400 Fox Run Dr, Apt 101, Lexington, KY 40509",
+     "concession": null
+    },
+    {
+     "file": "leases/p18/102_original.pdf",
+     "unit": "102",
+     "tenant": "Bastian Nakamura",
+     "rent": 1300.0,
+     "start": "2025-01-01",
+     "end": "2025-12-31",
+     "address": "Fox Run Apartments, 400 Fox Run Dr, Apt 102, Lexington, KY 40509",
+     "concession": null,
+     "history": true
+    },
+    {
+     "file": "leases/p18/102.pdf",
+     "unit": "102",
+     "tenant": "Bastian Nakamura",
+     "rent": 1450.0,
+     "start": "2026-01-01",
+     "end": "2026-12-31",
+     "address": "Fox Run Apartments, 400 Fox Run Dr, Apt 102, Lexington, KY 40509",
+     "concession": null
+    },
+    {
+     "file": "leases/p18/103_original.pdf",
+     "unit": "103",
+     "tenant": "Desmond Everhart",
+     "rent": 950.0,
+     "start": "2025-01-01",
+     "end": "2025-12-31",
+     "address": "Fox Run Apartments, 400 Fox Run Dr, Apt 103, Lexington, KY 40509",
+     "concession": null,
+     "history": true
+    },
+    {
+     "file": "leases/p18/103.pdf",
+     "unit": "103",
+     "tenant": "Desmond Everhart",
+     "rent": 1100.0,
+     "start": "2026-01-01",
+     "end": "2026-12-31",
+     "address": "Fox Run Apartments, 400 Fox Run Dr, Apt 103, Lexington, KY 40509",
+     "concession": null
+    },
+    {
+     "file": "leases/p18/201.pdf",
+     "unit": "201",
+     "tenant": "Jordan Kowalczyk",
+     "rent": 1900.0,
+     "start": "2025-07-01",
+     "end": "2026-06-30",
+     "address": "Fox Run Apartments, 400 Fox Run Dr, Apt 201, Lexington, KY 40509",
+     "concession": null
+    },
+    {
+     "file": "leases/p18/202.pdf",
+     "unit": "202",
+     "tenant": "Avery Dunmore",
+     "rent": 1850.0,
+     "start": "2025-06-01",
+     "end": "2027-05-31",
+     "address": "Fox Run Apartments, 400 Fox Run Dr, Apt 202, Lexington, KY 40509",
+     "concession": null
+    },
+    {
+     "file": "leases/p18/203.pdf",
+     "unit": "203",
+     "tenant": "Hannah Yarborough",
+     "rent": 1475.0,
+     "start": "2025-06-01",
+     "end": "2027-05-31",
+     "address": "Fox Run Apartments, 400 Fox Run Dr, Apt 203, Lexington, KY 40509",
+     "concession": null
+    },
+    {
+     "file": "leases/p18/204.pdf",
+     "unit": "204",
+     "tenant": "Avery Castellano",
+     "rent": 1200.0,
+     "start": "2026-04-01",
+     "end": "2027-03-31",
+     "address": "Fox Run Apartments, 400 Fox Run Dr, Apt 204, Lexington, KY 40509",
+     "concession": null
+    },
+    {
+     "file": "leases/p18/301.pdf",
+     "unit": "301",
+     "tenant": "Avery Everhart",
+     "rent": 1825.0,
+     "start": "2026-02-01",
+     "end": "2027-01-31",
+     "address": "Fox Run Apartments, 400 Fox Run Dr, Apt 301, Lexington, KY 40509",
+     "concession": {
+      "kind": "pct_first_month",
+      "percent": 50.0,
+      "months": 1
+     }
+    },
+    {
+     "file": "leases/p18/302.pdf",
+     "unit": "302",
+     "tenant": "Jordan Sorensen",
+     "rent": 1475.0,
+     "start": "2026-02-01",
+     "end": "2027-01-31",
+     "address": "Fox Run Apartments, 400 Fox Run Dr, Apt 302, Lexington, KY 40509",
+     "concession": null
+    }
+   ],
+   "units": [
+    {
+     "uid": "101",
+     "beds": 2,
+     "baths": 2,
+     "sqft": 980,
+     "market_rent": 1550.0,
+     "status": "occupied",
+     "tenant": "Hollis Sorensen",
+     "lease_rent": 1500.0,
+     "rr_rent": 1500.0,
+     "start": "2026-01-01",
+     "end": "2026-12-31",
+     "rr_start": "2026-01-01",
+     "rr_end": "2026-12-31",
+     "has_lease": true,
+     "on_rent_roll": true,
+     "concession": null,
+     "rr_concession": 0.0,
+     "rr_rent_shows_net": false,
+     "s8": null,
+     "issue": null,
+     "trap": "renewal_chain",
+     "rr_tenant": "Hollis Sorensen",
+     "prior_lease": {
+      "rent": 1350.0,
+      "start": "2025-01-01",
+      "end": "2025-12-31"
+     }
+    },
+    {
+     "uid": "102",
+     "beds": 2,
+     "baths": 2,
+     "sqft": 1010,
+     "market_rent": 1500.0,
+     "status": "occupied",
+     "tenant": "Bastian Nakamura",
+     "lease_rent": 1450.0,
+     "rr_rent": 1450.0,
+     "start": "2026-01-01",
+     "end": "2026-12-31",
+     "rr_start": "2026-01-01",
+     "rr_end": "2026-12-31",
+     "has_lease": true,
+     "on_rent_roll": true,
+     "concession": null,
+     "rr_concession": 0.0,
+     "rr_rent_shows_net": false,
+     "s8": null,
+     "issue": null,
+     "trap": "renewal_chain",
+     "rr_tenant": "Bastian Nakamura",
+     "prior_lease": {
+      "rent": 1300.0,
+      "start": "2025-01-01",
+      "end": "2025-12-31"
+     }
+    },
+    {
+     "uid": "103",
+     "beds": 1,
+     "baths": 1,
+     "sqft": 720,
+     "market_rent": 1150.0,
+     "status": "occupied",
+     "tenant": "Desmond Everhart",
+     "lease_rent": 1100.0,
+     "rr_rent": 1100.0,
+     "start": "2026-01-01",
+     "end": "2026-12-31",
+     "rr_start": "2026-01-01",
+     "rr_end": "2026-12-31",
+     "has_lease": true,
+     "on_rent_roll": true,
+     "concession": null,
+     "rr_concession": 0.0,
+     "rr_rent_shows_net": false,
+     "s8": null,
+     "issue": null,
+     "trap": "renewal_chain",
+     "rr_tenant": "Desmond Everhart",
+     "prior_lease": {
+      "rent": 950.0,
+      "start": "2025-01-01",
+      "end": "2025-12-31"
+     }
+    },
+    {
+     "uid": "104",
+     "beds": 3,
+     "baths": 2,
+     "sqft": 1255,
+     "market_rent": 1900.0,
+     "status": "vacant",
+     "tenant": null,
+     "lease_rent": null,
+     "rr_rent": null,
+     "start": null,
+     "end": null,
+     "rr_start": null,
+     "rr_end": null,
+     "has_lease": false,
+     "on_rent_roll": true,
+     "concession": null,
+     "rr_concession": 0.0,
+     "rr_rent_shows_net": false,
+     "s8": null,
+     "issue": null,
+     "trap": null,
+     "rr_tenant": null
+    },
+    {
+     "uid": "201",
+     "beds": 3,
+     "baths": 2,
+     "sqft": 1240,
+     "market_rent": 1900.0,
+     "status": "occupied",
+     "tenant": "Jordan Kowalczyk",
+     "lease_rent": 1900.0,
+     "rr_rent": 1900.0,
+     "start": "2025-07-01",
+     "end": "2026-06-30",
+     "rr_start": "2025-07-01",
+     "rr_end": "2026-06-30",
+     "has_lease": true,
+     "on_rent_roll": true,
+     "concession": null,
+     "rr_concession": 0.0,
+     "rr_rent_shows_net": false,
+     "s8": null,
+     "issue": "expired_but_occupied",
+     "trap": null,
+     "rr_tenant": "Jordan Kowalczyk"
+    },
+    {
+     "uid": "202",
+     "beds": 3,
+     "baths": 2,
+     "sqft": 1255,
+     "market_rent": 1875.0,
+     "status": "occupied",
+     "tenant": "Avery Dunmore",
+     "lease_rent": 1850.0,
+     "rr_rent": 1895.0,
+     "start": "2025-06-01",
+     "end": "2027-05-31",
+     "rr_start": "2025-06-01",
+     "rr_end": "2027-05-31",
+     "has_lease": true,
+     "on_rent_roll": true,
+     "concession": null,
+     "rr_concession": 0.0,
+     "rr_rent_shows_net": false,
+     "s8": null,
+     "issue": null,
+     "trap": "step_up",
+     "rr_tenant": "Avery Dunmore",
+     "step_up": {
+      "year1": 1850.0,
+      "year2": 1895.0
+     }
+    },
+    {
+     "uid": "203",
+     "beds": 2,
+     "baths": 2,
+     "sqft": 980,
+     "market_rent": 1500.0,
+     "status": "occupied",
+     "tenant": "Hannah Yarborough",
+     "lease_rent": 1475.0,
+     "rr_rent": 1520.0,
+     "start": "2025-06-01",
+     "end": "2027-05-31",
+     "rr_start": "2025-06-01",
+     "rr_end": "2027-05-31",
+     "has_lease": true,
+     "on_rent_roll": true,
+     "concession": null,
+     "rr_concession": 0.0,
+     "rr_rent_shows_net": false,
+     "s8": null,
+     "issue": null,
+     "trap": "step_up",
+     "rr_tenant": "Hannah Yarborough",
+     "step_up": {
+      "year1": 1475.0,
+      "year2": 1520.0
+     }
+    },
+    {
+     "uid": "204",
+     "beds": 1,
+     "baths": 1,
+     "sqft": 690,
+     "market_rent": 1250.0,
+     "status": "occupied",
+     "tenant": "Avery Castellano",
+     "lease_rent": 1200.0,
+     "rr_rent": 1425.0,
+     "start": "2026-04-01",
+     "end": "2027-03-31",
+     "rr_start": "2026-04-01",
+     "rr_end": "2027-03-31",
+     "has_lease": true,
+     "on_rent_roll": true,
+     "concession": null,
+     "rr_concession": 0.0,
+     "rr_rent_shows_net": false,
+     "s8": null,
+     "issue": "rent_mismatch_over",
+     "trap": null,
+     "rr_tenant": "Avery Castellano"
+    },
+    {
+     "uid": "301",
+     "beds": 3,
+     "baths": 2,
+     "sqft": 1240,
+     "market_rent": 1850.0,
+     "status": "occupied",
+     "tenant": "Avery Everhart",
+     "lease_rent": 1825.0,
+     "rr_rent": 1825.0,
+     "start": "2026-02-01",
+     "end": "2027-01-31",
+     "rr_start": "2026-02-01",
+     "rr_end": "2027-01-31",
+     "has_lease": true,
+     "on_rent_roll": true,
+     "concession": {
+      "kind": "pct_first_month",
+      "percent": 50.0,
+      "months": 1
+     },
+     "rr_concession": 0.0,
+     "rr_rent_shows_net": false,
+     "s8": null,
+     "issue": "concession_missing",
+     "trap": null,
+     "rr_tenant": "Avery Everhart"
+    },
+    {
+     "uid": "302",
+     "beds": 2,
+     "baths": 2,
+     "sqft": 980,
+     "market_rent": 1500.0,
+     "status": "occupied",
+     "tenant": "Jordan Sorensen",
+     "lease_rent": 1475.0,
+     "rr_rent": 1475.0,
+     "start": "2026-02-01",
+     "end": "2027-01-31",
+     "rr_start": "2026-02-01",
+     "rr_end": "2027-01-31",
+     "has_lease": true,
+     "on_rent_roll": true,
+     "concession": null,
+     "rr_concession": 0.0,
+     "rr_rent_shows_net": false,
+     "s8": null,
+     "issue": null,
+     "trap": null,
+     "rr_tenant": "Jordan Sorensen"
+    }
+   ]
   }
  ],
  "rent_rolls": [
@@ -41775,6 +42179,386 @@
      "direction": "overstate"
     }
    ]
+  },
+  {
+   "file": "rent_rolls/p18__clean_csv.csv",
+   "property": "p18",
+   "format": "clean_csv",
+   "ext": "csv",
+   "note": "Clean simple CSV (baseline)",
+   "canonical": true,
+   "carries": [
+    "end",
+    "start"
+   ],
+   "expected_rent_roll": {
+    "occupied": {
+     "101": {
+      "tenant": "Hollis Sorensen",
+      "rent": 1500.0,
+      "start": "2026-01-01",
+      "end": "2026-12-31"
+     },
+     "102": {
+      "tenant": "Bastian Nakamura",
+      "rent": 1450.0,
+      "start": "2026-01-01",
+      "end": "2026-12-31"
+     },
+     "103": {
+      "tenant": "Desmond Everhart",
+      "rent": 1100.0,
+      "start": "2026-01-01",
+      "end": "2026-12-31"
+     },
+     "201": {
+      "tenant": "Jordan Kowalczyk",
+      "rent": 1900.0,
+      "start": "2025-07-01",
+      "end": "2026-06-30"
+     },
+     "202": {
+      "tenant": "Avery Dunmore",
+      "rent": 1895.0,
+      "start": "2025-06-01",
+      "end": "2027-05-31"
+     },
+     "203": {
+      "tenant": "Hannah Yarborough",
+      "rent": 1520.0,
+      "start": "2025-06-01",
+      "end": "2027-05-31"
+     },
+     "204": {
+      "tenant": "Avery Castellano",
+      "rent": 1425.0,
+      "start": "2026-04-01",
+      "end": "2027-03-31"
+     },
+     "301": {
+      "tenant": "Avery Everhart",
+      "rent": 1825.0,
+      "start": "2026-02-01",
+      "end": "2027-01-31"
+     },
+     "302": {
+      "tenant": "Jordan Sorensen",
+      "rent": 1475.0,
+      "start": "2026-02-01",
+      "end": "2027-01-31"
+     }
+    },
+    "vacant": [
+     "104"
+    ],
+    "down": [],
+    "total_units": 10
+   },
+   "expected_findings": [
+    {
+     "unit": "201",
+     "type": "expired_but_occupied",
+     "annual": 22800.0,
+     "direction": "overstate"
+    },
+    {
+     "unit": "204",
+     "type": "rent_mismatch",
+     "annual": 2700.0,
+     "direction": "overstate"
+    },
+    {
+     "unit": "301",
+     "type": "concession_missing",
+     "annual": 912.5,
+     "direction": "overstate"
+    }
+   ]
+  },
+  {
+   "file": "rent_rolls/p18__appfolio_csv.csv",
+   "property": "p18",
+   "format": "appfolio_csv",
+   "ext": "csv",
+   "note": "AppFolio CSV: title block, VACANT/Down rows, Total row",
+   "canonical": false,
+   "carries": [
+    "end",
+    "start"
+   ],
+   "expected_rent_roll": {
+    "occupied": {
+     "101": {
+      "tenant": "Hollis Sorensen",
+      "rent": 1500.0,
+      "start": "2026-01-01",
+      "end": "2026-12-31"
+     },
+     "102": {
+      "tenant": "Bastian Nakamura",
+      "rent": 1450.0,
+      "start": "2026-01-01",
+      "end": "2026-12-31"
+     },
+     "103": {
+      "tenant": "Desmond Everhart",
+      "rent": 1100.0,
+      "start": "2026-01-01",
+      "end": "2026-12-31"
+     },
+     "201": {
+      "tenant": "Jordan Kowalczyk",
+      "rent": 1900.0,
+      "start": "2025-07-01",
+      "end": "2026-06-30"
+     },
+     "202": {
+      "tenant": "Avery Dunmore",
+      "rent": 1895.0,
+      "start": "2025-06-01",
+      "end": "2027-05-31"
+     },
+     "203": {
+      "tenant": "Hannah Yarborough",
+      "rent": 1520.0,
+      "start": "2025-06-01",
+      "end": "2027-05-31"
+     },
+     "204": {
+      "tenant": "Avery Castellano",
+      "rent": 1425.0,
+      "start": "2026-04-01",
+      "end": "2027-03-31"
+     },
+     "301": {
+      "tenant": "Avery Everhart",
+      "rent": 1825.0,
+      "start": "2026-02-01",
+      "end": "2027-01-31"
+     },
+     "302": {
+      "tenant": "Jordan Sorensen",
+      "rent": 1475.0,
+      "start": "2026-02-01",
+      "end": "2027-01-31"
+     }
+    },
+    "vacant": [
+     "104"
+    ],
+    "down": [],
+    "total_units": 10
+   },
+   "expected_findings": [
+    {
+     "unit": "201",
+     "type": "expired_but_occupied",
+     "annual": 22800.0,
+     "direction": "overstate"
+    },
+    {
+     "unit": "204",
+     "type": "rent_mismatch",
+     "annual": 2700.0,
+     "direction": "overstate"
+    },
+    {
+     "unit": "301",
+     "type": "concession_missing",
+     "annual": 912.5,
+     "direction": "overstate"
+    }
+   ]
+  },
+  {
+   "file": "rent_rolls/p18__yardi_xlsx.xlsx",
+   "property": "p18",
+   "format": "yardi_xlsx",
+   "ext": "xlsx",
+   "note": "Yardi xlsx: merged title, two-row header, 'Last, First' names (name order must not be a tenant mismatch)",
+   "canonical": false,
+   "carries": [
+    "end"
+   ],
+   "expected_rent_roll": {
+    "occupied": {
+     "101": {
+      "tenant": "Hollis Sorensen",
+      "rent": 1500.0,
+      "end": "2026-12-31"
+     },
+     "102": {
+      "tenant": "Bastian Nakamura",
+      "rent": 1450.0,
+      "end": "2026-12-31"
+     },
+     "103": {
+      "tenant": "Desmond Everhart",
+      "rent": 1100.0,
+      "end": "2026-12-31"
+     },
+     "201": {
+      "tenant": "Jordan Kowalczyk",
+      "rent": 1900.0,
+      "end": "2026-06-30"
+     },
+     "202": {
+      "tenant": "Avery Dunmore",
+      "rent": 1895.0,
+      "end": "2027-05-31"
+     },
+     "203": {
+      "tenant": "Hannah Yarborough",
+      "rent": 1520.0,
+      "end": "2027-05-31"
+     },
+     "204": {
+      "tenant": "Avery Castellano",
+      "rent": 1425.0,
+      "end": "2027-03-31"
+     },
+     "301": {
+      "tenant": "Avery Everhart",
+      "rent": 1825.0,
+      "end": "2027-01-31"
+     },
+     "302": {
+      "tenant": "Jordan Sorensen",
+      "rent": 1475.0,
+      "end": "2027-01-31"
+     }
+    },
+    "vacant": [
+     "104"
+    ],
+    "down": [],
+    "total_units": 10
+   },
+   "expected_findings": [
+    {
+     "unit": "201",
+     "type": "expired_but_occupied",
+     "annual": 22800.0,
+     "direction": "overstate"
+    },
+    {
+     "unit": "204",
+     "type": "rent_mismatch",
+     "annual": 2700.0,
+     "direction": "overstate"
+    },
+    {
+     "unit": "301",
+     "type": "concession_missing",
+     "annual": 912.5,
+     "direction": "overstate"
+    }
+   ]
+  },
+  {
+   "file": "rent_rolls/p18__entrata_csv.csv",
+   "property": "p18",
+   "format": "entrata_csv",
+   "ext": "csv",
+   "note": "Entrata CSV: mixed date formats per row, concession as (75.00), Totals row",
+   "canonical": false,
+   "carries": [
+    "concession",
+    "end",
+    "start"
+   ],
+   "expected_rent_roll": {
+    "occupied": {
+     "101": {
+      "tenant": "Hollis Sorensen",
+      "rent": 1500.0,
+      "start": "2026-01-01",
+      "end": "2026-12-31",
+      "concession": 0.0
+     },
+     "102": {
+      "tenant": "Bastian Nakamura",
+      "rent": 1450.0,
+      "start": "2026-01-01",
+      "end": "2026-12-31",
+      "concession": 0.0
+     },
+     "103": {
+      "tenant": "Desmond Everhart",
+      "rent": 1100.0,
+      "start": "2026-01-01",
+      "end": "2026-12-31",
+      "concession": 0.0
+     },
+     "201": {
+      "tenant": "Jordan Kowalczyk",
+      "rent": 1900.0,
+      "start": "2025-07-01",
+      "end": "2026-06-30",
+      "concession": 0.0
+     },
+     "202": {
+      "tenant": "Avery Dunmore",
+      "rent": 1895.0,
+      "start": "2025-06-01",
+      "end": "2027-05-31",
+      "concession": 0.0
+     },
+     "203": {
+      "tenant": "Hannah Yarborough",
+      "rent": 1520.0,
+      "start": "2025-06-01",
+      "end": "2027-05-31",
+      "concession": 0.0
+     },
+     "204": {
+      "tenant": "Avery Castellano",
+      "rent": 1425.0,
+      "start": "2026-04-01",
+      "end": "2027-03-31",
+      "concession": 0.0
+     },
+     "301": {
+      "tenant": "Avery Everhart",
+      "rent": 1825.0,
+      "start": "2026-02-01",
+      "end": "2027-01-31",
+      "concession": 0.0
+     },
+     "302": {
+      "tenant": "Jordan Sorensen",
+      "rent": 1475.0,
+      "start": "2026-02-01",
+      "end": "2027-01-31",
+      "concession": 0.0
+     }
+    },
+    "vacant": [
+     "104"
+    ],
+    "down": [],
+    "total_units": 10
+   },
+   "expected_findings": [
+    {
+     "unit": "201",
+     "type": "expired_but_occupied",
+     "annual": 22800.0,
+     "direction": "overstate"
+    },
+    {
+     "unit": "204",
+     "type": "rent_mismatch",
+     "annual": 2700.0,
+     "direction": "overstate"
+    },
+    {
+     "unit": "301",
+     "type": "concession_missing",
+     "annual": 912.5,
+     "direction": "overstate"
+    }
+   ]
   }
  ],
  "t12s": [
@@ -42605,6 +43389,56 @@
     }
    ],
    "rent_roll_annual": 152400.0
+  },
+  {
+   "file": "t12/p18__xlsx_monyear__gap.xlsx",
+   "property": "p18",
+   "format": "xlsx_monyear",
+   "scenario": "gap",
+   "ext": "xlsx",
+   "note": "xlsx, 'Oct 2025' month headers, section header rows, accounting negatives",
+   "expected_parse": {
+    "gross_potential_rent": 191700.0,
+    "vacancy_loss": 19170.0,
+    "concessions": 912.48,
+    "bad_debt": 1797.58,
+    "rental_income_collected": 145435.65,
+    "other_income": 7603.18
+   },
+   "expected_t12_rows": [
+    {
+     "type": "t12_income_gap",
+     "annual": 23644.35
+    },
+    {
+     "type": "t12_concession_gap",
+     "annual": null
+    }
+   ],
+   "rent_roll_annual": 169080.0
+  },
+  {
+   "file": "t12/p18__csv_mm_yyyy_nototal__clean.csv",
+   "property": "p18",
+   "format": "csv_mm_yyyy_nototal",
+   "scenario": "clean",
+   "ext": "csv",
+   "note": "CSV, '10/2025' headers, no Total column (annual = sum of months), -1,234.56 negatives",
+   "expected_parse": {
+    "gross_potential_rent": 191700.0,
+    "vacancy_loss": 19170.0,
+    "concessions": 912.48,
+    "bad_debt": 1764.73,
+    "rental_income_collected": 167679.86,
+    "other_income": 7408.5
+   },
+   "expected_t12_rows": [
+    {
+     "type": "t12_concession_gap",
+     "annual": null
+    }
+   ],
+   "rent_roll_annual": 169080.0
   }
  ],
  "bad_rent_rolls": [
@@ -42767,6 +43601,96 @@
    ],
    "note": "password-protected T-12",
    "property": "p00"
+  }
+ ],
+ "reimports": [
+  {
+   "property": "p18",
+   "first": "rent_rolls/p18__stale_v1.csv",
+   "second": "rent_rolls/p18__clean_csv.csv",
+   "expected_rent_roll": {
+    "occupied": {
+     "101": {
+      "tenant": "Hollis Sorensen",
+      "rent": 1500.0,
+      "start": "2026-01-01",
+      "end": "2026-12-31"
+     },
+     "102": {
+      "tenant": "Bastian Nakamura",
+      "rent": 1450.0,
+      "start": "2026-01-01",
+      "end": "2026-12-31"
+     },
+     "103": {
+      "tenant": "Desmond Everhart",
+      "rent": 1100.0,
+      "start": "2026-01-01",
+      "end": "2026-12-31"
+     },
+     "201": {
+      "tenant": "Jordan Kowalczyk",
+      "rent": 1900.0,
+      "start": "2025-07-01",
+      "end": "2026-06-30"
+     },
+     "202": {
+      "tenant": "Avery Dunmore",
+      "rent": 1895.0,
+      "start": "2025-06-01",
+      "end": "2027-05-31"
+     },
+     "203": {
+      "tenant": "Hannah Yarborough",
+      "rent": 1520.0,
+      "start": "2025-06-01",
+      "end": "2027-05-31"
+     },
+     "204": {
+      "tenant": "Avery Castellano",
+      "rent": 1425.0,
+      "start": "2026-04-01",
+      "end": "2027-03-31"
+     },
+     "301": {
+      "tenant": "Avery Everhart",
+      "rent": 1825.0,
+      "start": "2026-02-01",
+      "end": "2027-01-31"
+     },
+     "302": {
+      "tenant": "Jordan Sorensen",
+      "rent": 1475.0,
+      "start": "2026-02-01",
+      "end": "2027-01-31"
+     }
+    },
+    "vacant": [
+     "104"
+    ],
+    "down": [],
+    "total_units": 10
+   },
+   "expected_findings": [
+    {
+     "unit": "201",
+     "type": "expired_but_occupied",
+     "annual": 22800.0,
+     "direction": "overstate"
+    },
+    {
+     "unit": "204",
+     "type": "rent_mismatch",
+     "annual": 2700.0,
+     "direction": "overstate"
+    },
+    {
+     "unit": "301",
+     "type": "concession_missing",
+     "annual": 912.5,
+     "direction": "overstate"
+    }
+   ]
   }
  ]
 }

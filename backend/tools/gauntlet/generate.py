@@ -169,6 +169,8 @@ def lease_address(prop, u):
         return f"{prop['street']}, Apt {u['uid']}, {prop['city']}, {prop['state']} {prop['zip']}"
     if st == "unit_inline":
         return f"{prop['street']}, Unit {u['uid']}, {prop['city']}, {prop['state']} {prop['zip']}"
+    if st == "name_prefix":
+        return f"{prop['name']}, {prop['street']}, Apt {u['uid']}, {prop['city']}, {prop['state']} {prop['zip']}"
     if st == "bldg_apt":
         bldg, num = u["uid"].split("-", 1)
         return f"{prop['street']}, Building {bldg}, Apartment {num}, {prop['city']}, {prop['state']} {prop['zip']}"
@@ -178,6 +180,8 @@ def lease_address(prop, u):
 def concession_text(u):
     c = u["concession"]
     s = d(u["start"])
+    if c["kind"] == "pct_first_month":
+        return f"First month {c['percent']:.0f}% off."
     if c["kind"] == "free_month":
         return (f"One (1) month of Base Rent (the first full calendar month, {LONG_MONTHS[s.month - 1]} "
                 f"{s.year}) is abated as a move-in incentive.")
@@ -209,6 +213,8 @@ def lease_paragraphs(prop, u):
         f"3. RENT. Resident shall pay Owner Base Rent of {money(u['lease_rent'])} per month, due in advance "
         "on or before the 1st day of each month.",
     ]
+    if u.get("step_up"):
+        paras += ["", f"3C. RENT SCHEDULE. Year 1: {money(u['step_up']['year1'])}; Year 2: {money(u['step_up']['year2'])} per month."]
     if u["s8"]:
         paras += ["", "3B. HOUSING ASSISTANCE. This tenancy is assisted under the Housing Choice Voucher "
                   f"program. Of the monthly amount in Section 3, the Public Housing Agency pays "
@@ -288,6 +294,15 @@ def render_paragraph_pdf(paragraphs, footer):
 def write_leases(prop):
     out = []
     for u in truth.lease_units(prop):
+        if u.get("prior_lease"):
+            # The expired original term, also in the folder.
+            pl = u["prior_lease"]
+            old = dict(u, lease_rent=pl["rent"], start=pl["start"], end=pl["end"], concession=None, step_up=None)
+            pdf = render_paragraph_pdf(lease_paragraphs(prop, old), f"{prop['name']} -- Unit {u['uid']} (original term) -- FICTIONAL TEST DATA")
+            rel = f"leases/{prop['id']}/{u['uid']}_original.pdf"
+            write(os.path.join(FIX, rel), pdf)
+            out.append({"file": rel, "unit": u["uid"], "tenant": u["tenant"], "rent": pl["rent"], "start": pl["start"],
+                        "end": pl["end"], "address": lease_address(prop, u), "concession": None, "history": True})
         pdf = render_paragraph_pdf(lease_paragraphs(prop, u), f"{prop['name']} -- Unit {u['uid']} -- FICTIONAL TEST DATA")
         rel = f"leases/{prop['id']}/{u['uid']}.pdf"
         write(os.path.join(FIX, rel), pdf)
@@ -830,6 +845,8 @@ RR_PLAN = [
     ["appfolio_csv", "entrata_csv", "appfolio_xlsx", "yardi_charges_xlsx"],
     ["appfolio_csv"],
     ["semicolon_csv", "deep_header_xlsx", "merged_two_row_xlsx", "serial_dates_csv"],
+    # cycle 4 (audit golden cases)
+    ["appfolio_csv", "yardi_xlsx", "entrata_csv"],
 ]
 
 
@@ -1116,6 +1133,7 @@ T12_PLAN = [
     [("xlsx_actual_budget_tworow", "occ"), ("csv_prior_year", "clean")],
     [("xlsx_monyear", "gap"), ("csv_label_variants", "occ")],
     [("csv_actual_budget_inline", "baddebt"), ("csv_prior_year", "gap")],
+    [("xlsx_monyear", "gap"), ("csv_mm_yyyy_nototal", "clean")],
 ]
 
 
@@ -1290,6 +1308,24 @@ def main():
             manifest["t12s"].append({"file": rel, "property": prop["id"], "format": fmt, "scenario": scenario, "ext": ext,
                                      "note": note, "expected_parse": parsed, "expected_t12_rows": rows,
                                      "rent_roll_annual": rr_annual})
+    # Re-import (AUDIT.md §6.11): the seller's stale rent roll first, then the
+    # updated one. Correct result == the updated file alone.
+    manifest["reimports"] = []
+    for prop in props:
+        if prop["lease_address_style"] != "name_prefix":
+            continue
+        stale = []
+        for r in _simple_rows(prop):
+            if r[0] != "Unit" and r[2]:
+                r = list(r)
+                r[2] = money(float(r[2].replace("$", "").replace(",", "")) - 25.0)
+            stale.append(r)
+        rel = f"rent_rolls/{prop['id']}__stale_v1.csv"
+        write(os.path.join(FIX, rel), csv_bytes(stale))
+        canon = next(r for r in manifest["rent_rolls"] if r["property"] == prop["id"] and r["canonical"])
+        manifest["reimports"].append({"property": prop["id"], "first": rel, "second": canon["file"],
+                                      "expected_rent_roll": canon["expected_rent_roll"],
+                                      "expected_findings": canon["expected_findings"]})
     for name, data, kw, note in bad_rent_rolls(props):
         rel = f"rent_rolls/bad__{name}"
         write(os.path.join(FIX, rel), data)

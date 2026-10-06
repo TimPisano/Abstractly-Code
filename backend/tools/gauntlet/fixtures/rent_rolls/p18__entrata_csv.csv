@@ -1,0 +1,16 @@
+Fox Run Apartments
+Rent Roll
+Report Date: 2026-10-05
+Bldg-Unit,Floor Plan,Resident,Status,Lease Start,Lease End,Market Rent,Scheduled Rent,Concession,Balance
+101,2x2,Hollis Sorensen,Current,01/01/2026,12/31/2026,"1,550.00","1,500.00",0.00,0.00
+102,2x2,Bastian Nakamura,Current,2026-01-01,2026-12-31,"1,500.00","1,450.00",0.00,0.00
+103,1x1,Desmond Everhart,Current,1/1/26,12/31/26,"1,150.00","1,100.00",0.00,0.00
+104,3x2,,Vacant,,,"1,900.00",,,
+201,3x2,Jordan Kowalczyk,Current,07/01/2025,06/30/2026,"1,900.00","1,900.00",0.00,0.00
+202,3x2,Avery Dunmore,Current,2025-06-01,2027-05-31,"1,875.00","1,895.00",0.00,0.00
+203,2x2,Hannah Yarborough,Current,6/1/25,5/31/27,"1,500.00","1,520.00",0.00,0.00
+204,1x1,Avery Castellano,Current,01-Apr-2026,31-Mar-2027,"1,250.00","1,425.00",0.00,0.00
+301,3x2,Avery Everhart,Current,02/01/2026,01/31/2027,"1,850.00","1,825.00",0.00,0.00
+302,2x2,Jordan Sorensen,Current,2026-02-01,2027-01-31,"1,500.00","1,475.00",0.00,0.00
+
+Totals:,,,,,,,"14,090.00",,

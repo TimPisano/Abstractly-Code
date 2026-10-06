@@ -48,6 +48,8 @@ PROPERTIES = [
     ("Brookstone Village", "880 Brookstone Pkwy", "Kansas City", "MO", "64151", "Parkway"),
     ("Highland Crossing", "2500 Highland Ave", "Birmingham", "AL", "35205", "Avenue"),
     ("Cobalt Flats", "19 Cobalt St", "Boise", "ID", "83702", "Street"),
+    # Cycle 4 (AUDIT.md §6.11 golden cases): renewal chains, step-ups, first-month % off, name-prefixed addresses.
+    ("Fox Run Apartments", "400 Fox Run Dr", "Lexington", "KY", "40509", "Drive"),
 ]
 
 # Unit-id styles: function(building_idx, floor, n) -> canonical id
@@ -244,6 +246,28 @@ def build_property(idx, cfg):
         u = next(x for x in units if x["status"] == "occupied" and x["issue"] is None and x["trap"] is None)
         u["future_resident"] = {"tenant": person(), "rent": u["rr_rent"] + 50.0, "start": "2026-11-01", "end": "2027-10-31"}
         u["trap"] = "future_resident"
+    def clean_unit():
+        return next(x for x in units if x["status"] == "occupied" and x["issue"] is None and x["trap"] is None and x["has_lease"])
+
+    for _ in range(cfg.get("renewals", 0)):
+        # The folder holds the expired original AND the current renewal;
+        # the rent roll correctly shows the renewal. Must not be flagged.
+        u = clean_unit()
+        u["prior_lease"] = {"rent": u["lease_rent"] - 150.0, "start": "2025-01-01", "end": "2025-12-31"}
+        u.update(start="2026-01-01", end="2026-12-31", rr_start="2026-01-01", rr_end="2026-12-31")
+        u["trap"] = "renewal_chain"
+    for _ in range(cfg.get("step_ups", 0)):
+        # 2-year lease, scheduled step in year 2 (in effect on AS_OF); rent roll shows the stepped-up rent.
+        u = clean_unit()
+        base = u["lease_rent"]
+        u["step_up"] = {"year1": base, "year2": base + 45.0}
+        u.update(start="2025-06-01", end="2027-05-31", rr_start="2025-06-01", rr_end="2027-05-31", rr_rent=base + 45.0)
+        u["trap"] = "step_up"
+    for _ in range(cfg.get("pct_first_month", 0)):
+        # "First month 50% off", rent roll shows gross rent and no concession -> concession_missing for ONE month.
+        u = clean_unit()
+        u["concession"] = {"kind": "pct_first_month", "percent": 50.0, "months": 1}
+        u["issue"] = "concession_missing"
     keep = cfg.get("lease_only_for")
     if keep is not None:
         # Big file: only the issue units plus `keep` clean units have lease PDFs.
@@ -274,6 +298,8 @@ def concession_value(u):
     tm = term_months(date.fromisoformat(u["start"]), date.fromisoformat(u["end"]))
     if c["kind"] == "free_month":
         return u["lease_rent"] * c["months"], tm
+    if c["kind"] == "pct_first_month":
+        return u["lease_rent"] * c["percent"] / 100.0, tm
     return c["amount"] * c["months"], tm
 
 
@@ -300,7 +326,8 @@ def expected_findings(prop, carries):
             out.append({"unit": uid, "type": "expired_but_occupied", "annual": round(u["rr_rent"] * 12, 2), "direction": "overstate"})
             continue
         if u["issue"] in ("rent_mismatch_over", "rent_mismatch_under"):
-            diff = u["rr_rent"] - u["lease_rent"]
+            in_effect = u["step_up"]["year2"] if u.get("step_up") else u["lease_rent"]
+            diff = u["rr_rent"] - in_effect
             out.append({"unit": uid, "type": "rent_mismatch", "annual": round(abs(diff) * 12, 2),
                         "direction": "overstate" if diff > 0 else "understate"})
         if u["issue"] == "concession_missing" or (u["trap"] == "reflected_concession" and "concession" not in carries):
@@ -368,6 +395,12 @@ CONFIGS += [
     dict(n_units=600, unit_style="four", issues=["rent_mismatch_over", "rent_mismatch_under", "expired_but_occupied", "lease_no_unit"],
          vacant=30, down=6, lease_only_for=30),
     dict(n_units=10, unit_style="plain", issues=["rent_mismatch_over", "dates_mismatch", "unit_no_lease"], vacant=1, down=1),
+]
+
+
+CONFIGS += [
+    dict(n_units=10, unit_style="plain", issues=["rent_mismatch_over", "expired_but_occupied"], vacant=1,
+         renewals=3, step_ups=2, pct_first_month=1, lease_address_style="name_prefix"),
 ]
 
 
