@@ -85,7 +85,9 @@ from .concessions import (
 )
 from .database import get_all_effective_leases
 from .discrepancies import _severity_for_monthly_impact
-from .normalize import parse_currency, parse_date
+import re
+
+from .normalize import parse_currency, parse_date, parse_escalation_schedule, parse_percent
 from .portfolio import (
     _is_rent_roll_import,
     _normalize_address,
@@ -213,6 +215,35 @@ def _rr_concession_monthly(rr_lease: Dict[str, Any]) -> Optional[float]:
     return abs(amount) if amount is not None else None
 
 
+def _rent_in_effect(doc_lease: Dict[str, Any], base_rent: float, today: date):
+    """
+    (monthly rent in effect on `today`, escalation_unpriced) for a lease
+    document. Reads the extracted rent_escalation: a year table ("Year 1:
+    $1,500.00; Year 2: $1,545.00") or a percentage ("3% annually"),
+    counted in lease years from lease_start_date. No escalation -> the
+    base rent. An escalation that's stated but can't be priced (no start
+    date, unrecognized wording) -> the base rent, with escalation_unpriced
+    True so the caller doesn't present a step-up as an overstatement.
+    """
+    text = field_value(doc_lease, "rent_escalation")
+    if not text:
+        return base_rent, False
+    start = parse_date(field_value(doc_lease, "lease_start_date"))
+    if start is None:
+        return base_rent, True
+    if today < start:
+        return base_rent, False  # not started yet: still the first-year rent
+    lease_year = (today.year - start.year) - ((today.month, today.day) < (start.month, start.day)) + 1
+    schedule = parse_escalation_schedule(text)
+    if schedule:
+        in_effect = [amount for year, amount in schedule if year <= lease_year]
+        return (in_effect[-1] if in_effect else base_rent), False
+    pct = parse_percent(text)
+    if pct is not None and re.search(r"annual|anniversar|each year|per year|yearly", text, re.I):
+        return round(base_rent * (1 + pct / 100.0) ** (lease_year - 1), 2), False
+    return base_rent, True
+
+
 def detect_rent_mismatch(leases: List[Dict[str, Any]], today: Optional[date] = None) -> List[Dict[str, Any]]:
     """
     Rent roll rent vs. the lease's rent, effective-rent aware: when the
@@ -234,10 +265,15 @@ def detect_rent_mismatch(leases: List[Dict[str, Any]], today: Optional[date] = N
         for rr_lease in group["rent_roll"]:
             for doc_lease in group["lease_document"]:
                 rr_rent = parse_currency(field_value(rr_lease, "rent_amount"))
-                doc_rent = parse_currency(field_value(doc_lease, "rent_amount"))
-                if rr_rent is None or doc_rent is None or rr_rent == doc_rent:
+                base_rent = parse_currency(field_value(doc_lease, "rent_amount"))
+                if rr_rent is None or base_rent is None:
                     continue
-                if _same_amount(rr_rent, doc_rent):
+                # Compare against the rent IN EFFECT on the as-of date: a
+                # scheduled step-up ("Year 2: $1,545") makes a correct rent
+                # roll differ from the year-1 rent (AUDIT.md §6.11).
+                in_effect, escalation_unpriced = _rent_in_effect(doc_lease, base_rent, today)
+                doc_rent = in_effect
+                if rr_rent == doc_rent or _same_amount(rr_rent, doc_rent):
                     continue
                 effective = effective_rent_for_lease(doc_lease, today)
                 if effective and rent_reflects_concession(
@@ -247,13 +283,15 @@ def detect_rent_mismatch(leases: List[Dict[str, Any]], today: Optional[date] = N
                 diff_abs = abs(rr_rent - doc_rent)
 
                 monthly_impact = diff_abs
-                rows.append({
+                row = {
                     "discrepancy_type": "rent_mismatch",
                     "unit": _display_unit(rr_lease, doc_lease),
                     "field": "rent_amount",
                     "rent_roll_value": field_value(rr_lease, "rent_amount"),
-                    "lease_value": field_value(doc_lease, "rent_amount"),
-                    "source": _field_source(doc_lease, "rent_amount"),
+                    "lease_value": field_value(doc_lease, "rent_amount") if doc_rent == base_rent
+                    else f"${doc_rent:,.2f} (scheduled step-up from {field_value(doc_lease, 'rent_amount')})",
+                    "source": _field_source(doc_lease, "rent_amount") if doc_rent == base_rent
+                    else (_field_source(doc_lease, "rent_escalation") or _field_source(doc_lease, "rent_amount")),
                     "severity": _severity_for_monthly_impact(monthly_impact),
                     "monthly_dollar_impact": round(monthly_impact, 2),
                     "annual_dollar_impact": round(monthly_impact * 12, 2),
@@ -261,7 +299,16 @@ def detect_rent_mismatch(leases: List[Dict[str, Any]], today: Optional[date] = N
                     "rent_roll_lease_id": rr_lease.get("id"),
                     "lease_document_id": doc_lease.get("id"),
                     "effective_rent": _effective_rent_summary(effective),
-                })
+                }
+                if escalation_unpriced and rr_rent > doc_rent:
+                    # The lease states an increase we couldn't price: the
+                    # rent roll may simply show the stepped-up rent. Flag
+                    # it, but don't count it as an overstatement.
+                    row.update(monthly_dollar_impact=None, annual_dollar_impact=None, income_direction=None,
+                               severity="medium",
+                               note="The lease states a rent escalation that couldn't be priced -- the rent roll "
+                                    "may reflect a scheduled increase. Check the escalation clause.")
+                rows.append(row)
     return rows
 
 

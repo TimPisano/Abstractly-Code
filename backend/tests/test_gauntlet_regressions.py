@@ -942,6 +942,37 @@ def test_reimporting_an_updated_rent_roll_replaces_the_old_one():
     print("✓ test_reimporting_an_updated_rent_roll_replaces_the_old_one: PASS")
 
 
+def test_scheduled_rent_step_up_is_the_rent_in_effect():
+    """
+    AUDIT.md §6.11 (HIGH): a 2-year lease steps from $1,500 to $1,545 in
+    year 2; in year 2 the rent roll correctly shows $1,545 and was flagged
+    as a $540/yr overstatement (compared to the year-1 rent only).
+    """
+    addr = "100 Oak St, Austin, TX 78701, Suite 101"
+    lease_addr = "100 Oak St, Apt 101, Austin, TX 78701"
+    in_year_2 = date(2026, 12, 1)
+
+    def run(rr_rent, escalation, today=in_year_2):
+        rr = _rr(tenant="Ann Lee", rent_amount=rr_rent, property_address=addr)
+        doc = _doc(tenant="Ann Lee", rent_amount="$1,500.00", property_address=lease_addr, rent_escalation=escalation,
+                   lease_start_date="November 1, 2025", lease_end_date="October 31, 2027")
+        return dm.detect_rent_mismatch([rr, doc], today)
+
+    assert run("$1,545.00", "Year 1: $1,500.00; Year 2: $1,545.00") == []
+    assert run("$1,545.00", "3% annually") == []
+    # Still year 1 on the as-of date: $1,545 IS an overstatement of the rent in effect.
+    rows = run("$1,545.00", "Year 1: $1,500.00; Year 2: $1,545.00", today=date(2026, 6, 1))
+    assert [(r["annual_dollar_impact"], r["income_direction"]) for r in rows] == [(540.0, "overstate")], rows
+    # A real gap in year 2 is priced against the stepped-up rent, not the year-1 rent.
+    rows = run("$1,645.00", "Year 1: $1,500.00; Year 2: $1,545.00")
+    assert [r["annual_dollar_impact"] for r in rows] == [1200.0], rows
+    # Escalation stated but not priceable: flagged, not priced as an overstatement.
+    rows = run("$1,545.00", "rent increases per the attached schedule")
+    assert len(rows) == 1 and rows[0]["annual_dollar_impact"] is None and rows[0]["income_direction"] is None, rows
+    assert "scheduled increase" in rows[0].get("note", ""), rows
+    print("✓ test_scheduled_rent_step_up_is_the_rent_in_effect: PASS")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):
