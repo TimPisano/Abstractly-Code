@@ -1,12 +1,12 @@
 <!-- SUMMARY -->
-**Cycle 7: 173 of 188 cases pass (92%). It was 22 of 132 (17%) at the start.** The gauntlet now runs 92 messy rent rolls (plus a two-property portfolio file), 49 T-12s and 214 lease documents (including duplicate copies and rent amendments) through the full local pipeline, graded against a manifest of correct answers.
+**Cycle 8: 175 of 190 cases pass (92%). It was 22 of 132 (17%) at the start.** The gauntlet now runs 94 messy rent rolls (plus a two-property portfolio file), 49 T-12s and 214 lease documents (including duplicate copies and rent amendments) through the full local pipeline, graded against a manifest of correct answers.
 
-- **Planted mismatches caught: 1,971 of 1,971, every one with the right dollar amount.**
+- **Planted mismatches caught: 1,979 of 1,979, every one with the right dollar amount.**
 - **False alarms: 19, down from 337.** All are lease-extraction misreads of accented names (owned by `feature/lease-intelligence`) or character-level OCR misreads on scanned rent rolls.
 - **Scanned rent rolls now import.** Columns are rebuilt from the data rows, sideways and tilted pages are turned upright, and impossible OCR rents are blanked with a warning. Remaining scan failures are character misreads (a lost space, "4201" for 1201) that grid logic can't fix. The heavily degraded sideways fixture still fails with a clear 400.
-- **No crashes and no hangs.**
-- **Fixes:** 59, each its own commit with a regression test. All 83 test files pass.
-- **Reviews:** the `security-auditor` said MERGE (no cross-team leak). Its three follow-ups are fixed: image-size cap, tesseract timeouts, insert-before-supersede. The `reviewer` said FIX FIRST with four items, all fixed (`b888ef9`, `c0b4403`, `99920ec`, `4e5d765`). A re-review is pending.
+- **No crashes and no hangs.** At scale, a 3,000-unit rent roll imports in 5.5 s, reports in 0.4 s and exports to PDF in 3.4 s (on a laptop).
+- **Fixes:** 61, each its own commit with a regression test. All 83 test files pass.
+- **Reviews:** the `security-auditor` said MERGE (no cross-team leak). Its three follow-ups are fixed: image-size cap, tesseract timeouts, insert-before-supersede. The `reviewer` said FIX FIRST with four items, all fixed (`b888ef9`, `c0b4403`, `99920ec`, `4e5d765`). The re-review said **MERGE**. Its one non-blocking follow-up (only the latest version of a lease excuses a rent) is fixed in `51130e6`.
 
 **AUDIT.md top priority: "the Deal Mismatch Report gets dollar figures wrong on ordinary lease files" (§6.11, §6.1).** It is reproduced with golden fixtures (property `p18` + a re-import case) and fixed at the root:
 
