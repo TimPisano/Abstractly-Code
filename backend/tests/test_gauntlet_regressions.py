@@ -997,6 +997,25 @@ def test_first_month_percent_off_is_one_month_not_the_whole_term():
     print("✓ test_first_month_percent_off_is_one_month_not_the_whole_term: PASS")
 
 
+def test_property_name_prefix_does_not_break_the_address_key():
+    """
+    AUDIT.md §6.11: a lease (or typed address) that leads with the property
+    name -- "Maple Ridge Apartments, 100 Oak St, Unit 101, Austin, TX" --
+    never matched "100 Oak St, Austin, TX, Suite 101": a real rent gap
+    turned into two unpriced unit_no_lease / lease_no_unit rows.
+    """
+    a = "100 Oak St, Austin, TX 78701, Suite 101"
+    for b in ("Maple Ridge Apartments, 100 Oak St, Unit 101, Austin, TX 78701",
+              "The Maple Ridge, 100 Oak Street, Apt 101, Austin, TX 78701"):
+        assert _normalize_address(a) == _normalize_address(b), (b, _normalize_address(a), _normalize_address(b))
+        assert _normalize_building_address(a) == _normalize_building_address(b), b
+    # A name with no street number anywhere is left alone (nothing to anchor on).
+    assert _normalize_building_address("Maple Ridge Apartments") == "maple ridge apartments"
+    # Two different street numbers still differ.
+    assert _normalize_building_address("Maple Ridge, 100 Oak St") != _normalize_building_address("Maple Ridge, 102 Oak St")
+    print("✓ test_property_name_prefix_does_not_break_the_address_key: PASS")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):

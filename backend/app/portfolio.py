@@ -288,6 +288,7 @@ def _normalize_address(address: Optional[str]) -> Optional[str]:
     """
     if not address:
         return None
+    address = _drop_property_name_prefix(address)
     match = _UNIT_IN_ADDRESS_RE.search(address)
     if not match:
         return _canonical_street_words(_normalize_for_matching(address))
@@ -313,6 +314,21 @@ _STREET_WORD_CANON = {
     "north": "n", "south": "s", "east": "e", "west": "w",
     "northeast": "ne", "northwest": "nw", "southeast": "se", "southwest": "sw",
 }
+
+
+def _drop_property_name_prefix(address: str) -> str:
+    """
+    "Maple Ridge Apartments, 100 Oak St, ..." -> "100 Oak St, ...": drop
+    leading comma-separated segments before the first one that starts with
+    a street number. Leases and typed addresses routinely lead with the
+    property name; the rent-roll side usually doesn't (AUDIT.md §6.11).
+    An address with no numbered segment is returned unchanged.
+    """
+    parts = address.split(",")
+    for i, part in enumerate(parts):
+        if re.match(r"\s*\d", part):
+            return ",".join(parts[i:]) if i else address
+    return address
 
 
 def _canonical_street_words(normalized: Optional[str]) -> Optional[str]:
@@ -363,7 +379,7 @@ def _normalize_building_address(address: Optional[str]) -> Optional[str]:
     """
     if not address:
         return None
-    stripped = _SUITE_DESIGNATOR_RE.sub("", address)
+    stripped = _SUITE_DESIGNATOR_RE.sub("", _drop_property_name_prefix(address))
     stripped = _BUILDING_IN_ADDRESS_RE.sub("", stripped)  # "Building A" of a garden community is the same property
     return _canonical_street_words(_normalize_for_matching(stripped))
 
