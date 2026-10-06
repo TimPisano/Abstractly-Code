@@ -545,6 +545,21 @@ def test_grand_total_row_is_not_a_tenant():
     print("✓ test_grand_total_row_is_not_a_tenant: PASS")
 
 
+def test_misspelled_rent_roll_headers_still_map():
+    """
+    Hand-built broker sheets misspell headers ("Lease Strat", "Lease
+    Expiraton", "Tennant"). Those columns silently went unmapped -- no
+    lease dates at all, so expiry/date checks never ran. One typo per long
+    word is tolerated; "Lease Status" must still never become a date.
+    """
+    from app.rent_roll_import import _match_columns
+    m = _match_columns(["Unit No", "Tennant", "Montly Rent", "Lease Strat", "Lease Expiraton"])
+    assert (m.get("tenant"), m.get("rent_amount"), m.get("lease_start_date"), m.get("lease_end_date")) == (1, 2, 3, 4), m
+    m = _match_columns(["Unit", "Tenant", "Rent", "Lease Status", "Lease Stage"])
+    assert "lease_start_date" not in m and "lease_end_date" not in m, m
+    print("✓ test_misspelled_rent_roll_headers_still_map: PASS")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):

@@ -336,7 +336,57 @@ def _match_columns(headers: List[Any]) -> Dict[str, int]:
         mapping[field_name] = i
         used_columns.add(i)
 
+    # Pass 3: one typo per long word ("Lease Strat", "Lease Expiraton",
+    # "Tennant") for whatever is still unmapped. Same word count, every
+    # word equal or (5+ letters) one edit/transposition away -- strict
+    # enough that "Lease Status" never becomes a lease date.
+    fuzzy = []
+    for field_name, aliases in _COLUMN_ALIASES.items():
+        if field_name in mapping:
+            continue
+        for alias in aliases:
+            alias_words = _normalize_header(alias).split()
+            for i, h in enumerate(normalized):
+                if i in used_columns or not h:
+                    continue
+                if field_name == "rent_amount" and (_is_market_rent_header(h) or _is_concession_header(h) or _is_rate_not_amount_header(h) or _is_annual_not_monthly_header(h)):
+                    continue
+                if field_name == "property" and _is_non_address_property_header(h):
+                    continue
+                if field_name == "concessions" and _is_concession_non_amount_header(h):
+                    continue
+                header_words = h.split()
+                if len(header_words) == len(alias_words) and header_words != alias_words and all(
+                    hw == aw or (len(aw) >= 5 and len(hw) >= 5 and _one_typo_apart(hw, aw))
+                    for hw, aw in zip(header_words, alias_words)
+                ):
+                    fuzzy.append((len(alias), field_name, i))
+    fuzzy.sort(key=lambda c: c[0], reverse=True)
+    for _, field_name, i in fuzzy:
+        if field_name in mapping or i in used_columns:
+            continue
+        mapping[field_name] = i
+        used_columns.add(i)
+
     return mapping
+
+
+def _one_typo_apart(a: str, b: str) -> bool:
+    """Damerau-Levenshtein distance <= 1: one insert, delete, substitute, or adjacent swap."""
+    if a == b:
+        return True
+    if abs(len(a) - len(b)) > 1:
+        return False
+    if len(a) == len(b):
+        diffs = [k for k in range(len(a)) if a[k] != b[k]]
+        if len(diffs) == 1:
+            return True
+        return len(diffs) == 2 and diffs[1] == diffs[0] + 1 and a[diffs[0]] == b[diffs[1]] and a[diffs[1]] == b[diffs[0]]
+    short, long_ = (a, b) if len(a) < len(b) else (b, a)
+    for k in range(len(long_)):
+        if long_[:k] + long_[k + 1:] == short:
+            return True
+    return False
 
 
 _HEADER_SCAN_WINDOW = 20  # generous bound for decorative title/date rows before the real header
