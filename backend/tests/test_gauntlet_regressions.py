@@ -830,6 +830,38 @@ def test_t12_negative_amounts_keep_their_sign():
     print("✓ test_t12_negative_amounts_keep_their_sign: PASS")
 
 
+def test_t12_actual_vs_budget_columns_read_actuals():
+    """
+    Budget-comparison T-12s pair "Oct 2025 Actual" with "Oct 2025 Budget".
+    No month column was recognized at all (rejected); budget, variance and
+    prior-year columns must never be read as the month or the total.
+    """
+    import csv, io
+    from app.t12_import import _match_t12_columns, parse_csv_t12
+    from app.t12_statement import parse_csv_t12_statement
+    months = ["Oct 2025", "Nov 2025", "Dec 2025"] + [f"{m} 2026" for m in _T12_MONTHS[:9]]
+    hdr = ["Account"]
+    for m in months:
+        hdr += [f"{m} Actual", f"{m} Budget", f"{m} Var %"]
+    hdr += ["Total Budget", "Total Actual"]
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(hdr)
+    row = ["Net Rental Income"]
+    for _ in months:
+        row += ["900.00", "1000.00", "-10%"]
+    row += ["12000.00", "10800.00"]
+    w.writerow(row)
+    data = buf.getvalue().encode()
+    mapping = _match_t12_columns(hdr)
+    assert len(mapping["months"]) == 12 and all(hdr[i].endswith("Actual") for i in mapping["months"].values()), mapping
+    assert hdr[mapping["total"]] == "Total Actual", mapping
+    assert parse_csv_t12_statement(data, "t12.csv")["rental_income_collected"]["annual"] == 10800.0
+    assert parse_csv_t12(data, "t12.csv")["annual_rental_income"] == 10800.0
+    assert _match_t12_columns(["Account", "Oct 2025 Budget", "Nov 2025 Budget", "Budget Total"]) == {"months": {}}
+    print("✓ test_t12_actual_vs_budget_columns_read_actuals: PASS")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):

@@ -115,6 +115,16 @@ def _match_t12_columns(headers: List[Any]) -> Dict[str, Any]:
 
     mapping: Dict[str, Any] = {"months": {}}
     for i, h in enumerate(normalized):
+        # Budget-comparison statements pair each month's Actual with its
+        # Budget / Variance / Prior Year: only ACTUAL columns are data
+        # (overnight gauntlet, 2026-10-05). "Oct 2025 Actual" -> "Oct 2025".
+        words = h.split()
+        raw = str(headers[i]) if headers[i] is not None else ""
+        if set(words) & _NON_ACTUAL_COLUMN_WORDS or "%" in raw:
+            continue
+        if set(words) & _ACTUAL_WORDS:
+            h = " ".join(w for w in words if w not in _ACTUAL_WORDS)
+            raw = re.sub(r"\b(?:actuals?|act)\b\.?", " ", raw, flags=re.I).strip(" -/")
         if h in total_norms and "total" not in mapping:
             mapping["total"] = i
             continue
@@ -124,11 +134,15 @@ def _match_t12_columns(headers: List[Any]) -> Dict[str, Any]:
                 month = candidate
                 break
         if month is None:
-            month = _month_of_header(headers[i])
+            month = _month_of_header(headers[i] if isinstance(headers[i], (datetime, date)) else raw)
         if month is not None and month not in mapping["months"]:
             mapping["months"][month] = i
     return mapping
 
+
+_ACTUAL_WORDS = {"actual", "actuals", "act"}
+_NON_ACTUAL_COLUMN_WORDS = {"budget", "budgeted", "bud", "variance", "var", "prior", "py", "forecast", "fcst", "plan",
+                            "proforma", "ly", "change", "chg"}
 
 _MONTH_PREFIX = {name[:3]: month for month, names in _MONTH_COLUMN_ALIASES.items() for name in names}
 _MONTH_WORD_YEAR_RE = re.compile(r"^([a-z]{3,9})\.?(?:[\s\-/'’]*(\d{4}|\d{2}))?$")
