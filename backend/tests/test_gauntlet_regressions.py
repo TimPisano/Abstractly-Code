@@ -973,6 +973,30 @@ def test_scheduled_rent_step_up_is_the_rent_in_effect():
     print("✓ test_scheduled_rent_step_up_is_the_rent_in_effect: PASS")
 
 
+# ---------------------------------------------------------------- concessions (AUDIT.md §6.11 / §6.16)
+def test_first_month_percent_off_is_one_month_not_the_whole_term():
+    """
+    "First month 50% off" was parsed as a 50% discount for EVERY month of
+    the lease (duration assumed), pricing a $600 concession on a $1,200
+    rent as $7,200 -- a 12x overstatement of the concession.
+    """
+    from app.concessions import parse_concession_text, effective_rent_for_lease
+    for text in ("First month 50% off.", "Resident receives 50% off the first month's rent.",
+                 "50% off first month rent as a move-in special."):
+        items = parse_concession_text(text)
+        assert len(items) == 1 and items[0]["months"] == 1 and not items[0]["full_term"], (text, items)
+    lease = _doc(tenant="Ann Lee", rent_amount="$1,200.00", property_address="1 A St, Apt 1",
+                 lease_start_date="January 1, 2026", lease_end_date="December 31, 2026")
+    from app.concessions import build_field_entry
+    lease["extracted_fields"]["concessions"] = build_field_entry(parse_concession_text("First month 50% off."))
+    eff = effective_rent_for_lease(lease, TODAY)
+    assert eff["total_concession_value"] == 600.0 and eff["annualized_concession_value"] == 600.0, eff
+    # Unchanged: an explicit multi-month or full-term percentage.
+    assert parse_concession_text("10% off rent for the first three months.")[0]["months"] == 3.0
+    assert parse_concession_text("5% off monthly rent for the full lease term.")[0]["full_term"] is True
+    print("✓ test_first_month_percent_off_is_one_month_not_the_whole_term: PASS")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):

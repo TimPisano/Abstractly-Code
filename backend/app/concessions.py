@@ -409,6 +409,10 @@ def _dates_in(segment: str) -> Tuple[Optional[str], Optional[str]]:
     return None, None
 
 
+_SINGLE_MONTH = re.compile(
+    r"\b(?P<pos>first|initial|1st|last|final)\s+(?:full\s+)?(?:calendar\s+)?month(?!s)\b", re.IGNORECASE)
+
+
 def _recurring_duration(sentence: str, after_offset: int) -> Dict[str, Any]:
     """How long a recurring discount runs -- searched after the match first (where leases put it), then the whole sentence."""
     for segment in (sentence[after_offset:], sentence):
@@ -419,6 +423,13 @@ def _recurring_duration(sentence: str, after_offset: int) -> Dict[str, Any]:
                 pos = (dm.group("pos") or dm.group("pos2") or "").lower()
                 return {"months": n, "full_term": False, "duration_assumed": False,
                         "position": "end" if pos in ("last", "final") else "start"}
+        single = _SINGLE_MONTH.search(segment)
+        if single:
+            # "first month 50% off", "50% off the first month's rent": ONE
+            # month, not every month of the lease (AUDIT.md §6.11 -- was
+            # priced as a full-term discount, 12x the real concession).
+            return {"months": 1.0, "full_term": False, "duration_assumed": False,
+                    "position": "end" if single.group("pos").lower() in ("last", "final") else "start"}
         if _DURATION_TERM.search(segment):
             return {"months": None, "full_term": True, "duration_assumed": False, "position": "start"}
     # No end stated: a "$50 off per month" with no duration applies every
