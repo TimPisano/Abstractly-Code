@@ -1171,6 +1171,29 @@ def test_dotted_european_dates():
     print("✓ test_dotted_european_dates: PASS")
 
 
+def test_t24_reads_the_latest_twelve_months():
+    """
+    A T-24 (two years side by side, Oct 2024..Sep 2026) was parsed from the
+    FIRST column of each month name -- the older year -- so every T-12
+    figure was a year stale; "Trailing 12 Total" wasn't seen as the total.
+    """
+    import csv, io
+    from app.t12_statement import parse_csv_t12_statement
+    from app.t12_import import parse_csv_t12
+    older = ["Oct 2024", "Nov 2024", "Dec 2024"] + [f"{m} 2025" for m in _T12_MONTHS[:9]]
+    latest = ["Oct 2025", "Nov 2025", "Dec 2025"] + [f"{m} 2026" for m in _T12_MONTHS[:9]]
+    for with_total in (True, False):
+        buf = io.StringIO()
+        w = csv.writer(buf)
+        w.writerow(["Account"] + older + latest + (["Trailing 12 Total"] if with_total else []))
+        w.writerow(["Net Rental Income"] + ["800.00"] * 12 + ["900.00"] * 12 + (["10800.00"] if with_total else []))
+        data = buf.getvalue().encode()
+        got = parse_csv_t12_statement(data, "t24.csv")["rental_income_collected"]
+        assert got["annual"] == 10800.0 and got["month_order"][0] == "oct", (with_total, got)
+        assert parse_csv_t12(data, "t24.csv")["annual_rental_income"] == 10800.0, with_total
+    print("✓ test_t24_reads_the_latest_twelve_months: PASS")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):

@@ -58,6 +58,7 @@ class T12ImportError(Exception):
 _TOTAL_COLUMN_ALIASES = [
     "total", "annual total", "annual", "ytd", "ytd total",
     "12 month total", "trailing 12", "t12", "ttm",
+    "trailing 12 total", "trailing 12 months", "t12 total", "ttm total", "12 months total", "twelve month total",
 ]
 
 # Twelve months' worth of header aliases, each key a canonical month id.
@@ -114,6 +115,7 @@ def _match_t12_columns(headers: List[Any]) -> Dict[str, Any]:
     month_norms = {month: {_normalize_header(a) for a in aliases} for month, aliases in _MONTH_COLUMN_ALIASES.items()}
 
     mapping: Dict[str, Any] = {"months": {}}
+    month_years: Dict[str, int] = {}
     for i, h in enumerate(normalized):
         # Budget-comparison statements pair each month's Actual with its
         # Budget / Variance / Prior Year: only ACTUAL columns are data
@@ -135,9 +137,28 @@ def _match_t12_columns(headers: List[Any]) -> Dict[str, Any]:
                 break
         if month is None:
             month = _month_of_header(headers[i] if isinstance(headers[i], (datetime, date)) else raw)
-        if month is not None and month not in mapping["months"]:
-            mapping["months"][month] = i
+        if month is not None:
+            # A T-24 (two years side by side) names every month twice: keep
+            # the LATEST year's column, not the first one seen.
+            year = _year_of_header(headers[i] if isinstance(headers[i], (datetime, date)) else raw)
+            if month not in mapping["months"] or (year is not None and year > month_years.get(month, -1)):
+                mapping["months"][month] = i
+                month_years[month] = year if year is not None else month_years.get(month, -1)
     return mapping
+
+
+def _year_of_header(raw: Any) -> Optional[int]:
+    """The year a month column belongs to ("Oct 2025", "Oct-25", "10/2025", a date cell), or None."""
+    if isinstance(raw, (datetime, date)):
+        return raw.year
+    text = str(raw or "").strip()
+    m = re.match(r"^(\d{4})\s*[/\-.]\s*\d{1,2}$", text)  # "2025-10"
+    if not m:
+        m = re.search(r"(?:^|[^\d])(\d{4}|\d{2})$", text)  # "Oct 2025", "Oct-25", "10/2025"
+        if not m:
+            return None
+    year = int(m.group(1))
+    return year + 2000 if year < 100 else year
 
 
 _ACTUAL_WORDS = {"actual", "actuals", "act"}
