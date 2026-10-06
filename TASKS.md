@@ -107,10 +107,11 @@ those by taking **main's** TASKS.md, not the branch's.
 #### feature/auth-hardening
 - Worktree: `~/dev/projects/abstractly-auth-hardening`
 - Goal: keep hardening the merged auth flows (double clicks, back button, expired/reused links, two tabs, mobile Safari, slow email, signing up twice, login during reset); fix with failing-first tests; push each round; never merge.
-- Loop step: rounds 4–5 pushed (`55cf729`, `f2cbf0e`); suite 83/83; round-4 E2E 16/16 Chromium + 15/16 WebKit (miss = app-dashboard noise), round-5 7/7 both; reviewer running; round 6 next
-- Last update: 2026-10-05 by the auth-flow session (plan approved by user: `docs/plans/feature-auth-hardening.md`)
-- Log: `AUTH_NOTES.md` on the branch (summary at top, rounds 4+)
-- Next action: next round; never merge
+- Loop step: rounds 4–6 pushed (`55cf729`, `f2cbf0e`, `5537aad`). **reviewer (rounds 4–5): MERGE**, its follow-ups done in round 6. Suite 83/83; `test_auth_flow.py` 49 tests; headless E2E now in the repo (`.claude/tools/auth-e2e/`): flows 41/41, round2 6/6, round4 16/16, round5 7/7, round6 7/7 (Chromium + WebKit).
+- Last update: 2026-10-05 by the auth-flow session (plan approved: `docs/plans/feature-auth-hardening.md`)
+- Log: `AUTH_NOTES.md` on the branch (summary at top)
+- **Needs you:** Manual Deploy of `abstractly-tester-api` and `abstractly-demo-api` in Render (they didn't redeploy after the auth-flow merge; reset on tester is broken until then); `EMAIL_USER`/`EMAIL_APP_PASSWORD` on tester-api
+- Next action: user reviews; `/merge-branch feature/auth-hardening` when ready; never merged by this session
 
 #### qa/overnight-gauntlet
 - Worktree: ~/dev/projects/abstractly-gauntlet
