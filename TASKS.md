@@ -142,9 +142,10 @@ those by taking **main's** TASKS.md, not the branch's.
 #### feature/lease-intelligence
 - Worktree: `~/dev/projects/abstractly-lease-intel`
 - Goal: make lease extraction as accurate and complete as possible for multifamily and Section 8 leases, measured against a synthetic graded corpus.
-- Loop step: 3/4 — plan being written; user's prompt is the approved scope (autonomous overnight)
-- Last update: 2026-10-05 by start-task
-- Next action: see `docs/plans/feature-lease-intelligence.md` and `LEASE_EXTRACTION_REPORT.md` on the branch
+- Loop step: 4/5 — building + cycling (user's prompt = approved scope; autonomous overnight)
+- Last update: 2026-10-05 by the lease-intelligence session — pushed `17c143b`, suite 87/87
+- State: own corpus (45 leases) 51.1% → 100%; independent held-out corpus (30 leases) 55.6% → 90.8%. New MF fields behind `LEASE_MULTIFAMILY_FIELDS` (off). AI engine prompt not yet updated; UI not yet updated.
+- Next action: remaining held-out misses (Section 8 tenant rent/HAP wording, utilities, rent-change notices), then AI prompt v3 (mocked), lease-detail UI labels, LEASE_EXTRACTION_REPORT.md, second blind held-out set, reviewer.
 
 <!-- One block per In-progress task, written by /start-task and
      /session-handoff, read by /resume-task. Keep them current. -->
