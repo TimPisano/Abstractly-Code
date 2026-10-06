@@ -1354,6 +1354,24 @@ def test_review_unit_keys_never_merge_different_units():
     print("✓ test_review_unit_keys_never_merge_different_units: PASS")
 
 
+def test_review_tenant_match_is_not_too_permissive():
+    """
+    Reviewer FIX FIRST #4: one shared roommate ("Alice Wong & Bob Lee" vs
+    "Alice Wong & Carl Diaz") or a generational suffix ("John Smith" vs
+    "John Smith Jr") counted as the same household, hiding real tenant
+    turnover. Every person on the smaller side must match someone on the
+    other side, and Jr/Sr/II/III must agree.
+    """
+    from app.portfolio import _same_tenant
+    for a, b in (("Alice Wong & Bob Lee", "Alice Wong & Carl Diaz"), ("John Smith", "John Smith Jr"),
+                 ("John Smith Sr.", "John Smith Jr."), ("John Smith III", "John Smith")):
+        assert not _same_tenant(a, b), (a, b)
+    for a, b in (("Alice Wong & Bob Lee", "Bob Lee"), ("Alice Wong & Bob Lee", "Bob Lee and Alice Wong"),
+                 ("SMITH, JOHN JR", "John Smith Jr."), ("John Q. Smith", "John Smith")):
+        assert _same_tenant(a, b), (a, b)
+    print("✓ test_review_tenant_match_is_not_too_permissive: PASS")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):

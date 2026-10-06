@@ -446,12 +446,26 @@ def _same_tenant(a: Optional[str], b: Optional[str]) -> bool:
     squash_b = re.sub(r"[^a-z]", "", _fold_accents(b or "").lower())
     if squash_a and squash_a == squash_b:
         return True
-    for pa in _resident_token_sets(a):
-        for pb in _resident_token_sets(b):
-            smaller, larger = (pa, pb) if len(pa) <= len(pb) else (pb, pa)
-            if len(smaller) >= 2 and smaller <= larger:
-                return True
-    return False
+    people_a, people_b = _resident_token_sets(a), _resident_token_sets(b)
+    if not people_a or not people_b:
+        return False
+    fewer, more = (people_a, people_b) if len(people_a) <= len(people_b) else (people_b, people_a)
+    # EVERY person on the shorter list must be on the other one (the lease
+    # may name only the primary resident); one shared roommate out of two
+    # is a household change, not a match (review finding).
+    return all(any(_same_person(p, q) for q in more) for p in fewer)
+
+
+_NAME_SUFFIXES = {"jr", "sr", "ii", "iii", "iv"}
+
+
+def _same_person(pa: frozenset, pb: frozenset) -> bool:
+    """Word order and a dropped middle initial don't matter; a generational suffix (Jr/Sr/II) does."""
+    if (pa & _NAME_SUFFIXES) != (pb & _NAME_SUFFIXES):
+        return False
+    pa, pb = pa - _NAME_SUFFIXES, pb - _NAME_SUFFIXES
+    smaller, larger = (pa, pb) if len(pa) <= len(pb) else (pb, pa)
+    return len(smaller) >= 2 and smaller <= larger
 
 
 def _lease_label(lease: Dict[str, Any]) -> str:
