@@ -117,7 +117,12 @@ def test_company_names_with_and_are_not_split():
         'This Lease is made between Acme Realty LLC and Blue Sky Roasters, Inc. ("Tenant").\n'
     ))
     assert fields["tenant"]["value"] == "Blue Sky Roasters, Inc.", fields["tenant"]
-    print("✓ Company names with 'and' handled as before: PASS")
+    fields = fe.extract_fields(_pages(
+        'This Lease is made by Dover Retail, Inc., having an address at 525 Great Road, Littleton ("Landlord") '
+        'and Acme Co. ("Tenant").'
+    ))
+    assert fields["landlord"]["value"] == "Dover Retail, Inc.", fields["landlord"]
+    print("✓ Company names with 'and' handled as before; 'having an address at' tail dropped: PASS")
 
 
 def test_two_real_leases_still_split_around_an_addendum():

@@ -647,6 +647,10 @@ class FieldExtractor:
         # leading connector left over from 'X ("Owner") and Y ("Resident")'.
         value = self._LEAD_IN_RE.sub("", value)
         value = re.sub(r"^(?:and|with)\s+", "", value, flags=re.IGNORECASE)
+        # "Dover Retail, Inc., having an address at 525 Great Road, ..." --
+        # the party's own address is not part of its name.
+        value = re.sub(r",?\s+(?:having|with)\s+(?:an?\s+|its\s+)?(?:address|offices?|principal\s+(?:office|place)).*$",
+                       "", value, flags=re.IGNORECASE)
         # "...rents 2 Verbena Row, Apartment 305 to Leopold Strand (Tenant)":
         # a name never contains these lowercase connectors, so keep what
         # follows the last one.
