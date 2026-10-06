@@ -40,7 +40,7 @@ from typing import Any, Dict, List, Optional
 
 from openpyxl import load_workbook
 
-from app.normalize import normalize_header as _normalize_header, parse_currency
+from app.normalize import normalize_decimal_comma, normalize_header as _normalize_header, parse_currency
 
 
 class T12ImportError(Exception):
@@ -208,7 +208,7 @@ def _parse_t12_currency(value: Any) -> Optional[float]:
         return float(value)
     if value is None:
         return None
-    text = str(value).strip()
+    text = normalize_decimal_comma(str(value).strip())
     if not text:
         return None
     strict = parse_currency(text)

@@ -429,3 +429,22 @@ def decode_text_upload(file_bytes: bytes) -> str:
             "roll, upload that file as it is."
         )
     return text
+
+
+_DECIMAL_COMMA_AMOUNT = re.compile(
+    r"^(?P<pre>[^\d\-]*?)(?P<neg>-\s*)?(?P<num>\d{1,3}(?:\.\d{3})+,\d{1,2}|\d+,\d{1,2})(?P<post>[^\d]*)$")
+
+
+def normalize_decimal_comma(text: str) -> str:
+    """
+    "1.250,00" / "1250,00" / "€ 1.250,50" (European-locale spreadsheets) ->
+    "1250.00" / "1250.00" / "€ 1250.50". Only the unambiguous shapes: a
+    comma followed by 1-2 final digits. US "1,250" / "1,250.00" are
+    returned unchanged. Without this "1.250,00" read as 1.25 and "1250,00"
+    as 125,000 (AUDIT.md §6.5).
+    """
+    m = _DECIMAL_COMMA_AMOUNT.match(text.strip())
+    if not m:
+        return text
+    num = m.group("num").replace(".", "").replace(",", ".")
+    return f"{m.group('pre')}{m.group('neg') or ''}{num}{m.group('post')}"

@@ -1144,6 +1144,23 @@ def test_ocr_rent_that_cannot_be_a_rent_is_unreadable_not_a_finding():
     print("✓ test_ocr_rent_that_cannot_be_a_rent_is_unreadable_not_a_finding: PASS")
 
 
+def test_comma_decimal_amounts_are_read_correctly():
+    """
+    AUDIT.md §6.5: a European-locale spreadsheet writes 1.250,00 / 1250,00.
+    The rent-roll parser read "1.250,00" as $1.25 and "1250,00" as
+    $125,000 -- every unit an absurd rent mismatch. US "1,250" / "1,250.00"
+    are unchanged.
+    """
+    from app.rent_roll_import import _parse_import_currency
+    from app.t12_import import _parse_t12_currency
+    for fn in (_parse_import_currency, _parse_t12_currency):
+        for text, want in (("1.250,00", 1250.0), ("1250,00", 1250.0), ("€ 1.250,50", 1250.5), ("-1.250,00", -1250.0),
+                           ("12.500,00", 12500.0), ("1,250", 1250.0), ("1,250.00", 1250.0), ("$1,250.00", 1250.0),
+                           ("1,25", 1.25), ("125,000", 125000.0)):
+            assert fn(text) == want, (fn.__name__, text, fn(text))
+    print("✓ test_comma_decimal_amounts_are_read_correctly: PASS")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):

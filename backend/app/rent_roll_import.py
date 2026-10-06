@@ -31,7 +31,7 @@ from typing import Any, Dict, List, Optional
 
 from openpyxl import load_workbook
 
-from app.normalize import BinaryTextUploadError, decode_text_upload, normalize_header as _normalize_header, parse_currency, parse_date, parse_square_footage
+from app.normalize import BinaryTextUploadError, decode_text_upload, normalize_decimal_comma, normalize_header as _normalize_header, parse_currency, parse_date, parse_square_footage
 from app.portfolio import FIELD_NAMES
 
 
@@ -608,6 +608,7 @@ def _parse_import_currency(value: Any) -> Optional[float]:
     text = _cell_to_str(value)
     if text is None:
         return None
+    text = normalize_decimal_comma(text)
     strict = parse_currency(text)  # handles "$1,200.00" (and "-$1,200.00"/"($1,200.00)") using the existing, already-tested parser
     if strict is not None:
         return strict
