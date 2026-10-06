@@ -519,6 +519,32 @@ def test_vacant_and_down_units_count_toward_rent_roll_occupancy():
     print("✓ test_vacant_and_down_units_count_toward_rent_roll_occupancy: PASS")
 
 
+# ---------------------------------------------------------------- rent-roll headers & rows
+def _parse_csv_text(text, base="9 Elm St"):
+    from app.rent_roll_import import parse_rent_roll_file
+    return parse_rent_roll_file(text.replace("\n", "\r\n").encode(), "rr.csv", base)
+
+
+def _units_of(parsed):
+    from app.portfolio import _normalize_address
+    return [(l["extracted_fields"]["property_address"]["value"], l["extracted_fields"]["tenant"]["value"]) for l in parsed["leases"]]
+
+
+def test_unit_column_headers_from_pms_exports():
+    """Entrata's "Bldg-Unit" (and "Bldg/Unit", "Apt #") weren't recognized, so every row lost its unit number."""
+    for header in ("Bldg-Unit", "Bldg/Unit", "Building/Unit", "Apt #", "Apartment", "Unit ID"):
+        got = _parse_csv_text(f"{header},Resident,Scheduled Rent\nA-101,Ann Lee,1000\n")
+        assert _units_of(got) == [("9 Elm St, Suite A-101", "Ann Lee")], (header, _units_of(got))
+    print("✓ test_unit_column_headers_from_pms_exports: PASS")
+
+
+def test_grand_total_row_is_not_a_tenant():
+    """A broker sheet's "Grand Total" row (in the tenant column) was imported as a tenant paying the whole building's rent."""
+    got = _parse_csv_text("Unit,Tenant,Rent\n101,Ann Lee,1000\n,Grand Total,1000\n,Grand Totals:,1000\n")
+    assert [t for _, t in _units_of(got)] == ["Ann Lee"], _units_of(got)
+    print("✓ test_grand_total_row_is_not_a_tenant: PASS")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):

@@ -266,7 +266,7 @@ def _is_non_address_property_header(normalized_header: str) -> bool:
 # roll that marks a vacant unit's tenant cell with a literal "0" (instead
 # of blank/VACANT/Vacant) should not import a fake tenant literally named
 # "0".
-_NON_TENANT_KEYWORDS = {"vacant", "vacancy", "total", "totals", "subtotal", "sub total", "n a", "na", "0"}
+_NON_TENANT_KEYWORDS = {"vacant", "vacancy", "total", "totals", "subtotal", "sub total", "grand total", "grand totals", "n a", "na", "0"}
 
 # Matches a Unit/Suite cell that already spells out its own designator
 # (e.g. "Suite 101", "Ste. 101", "Unit 5", "Apt 2", "#12"), as opposed to
