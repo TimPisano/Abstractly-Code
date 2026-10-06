@@ -87,6 +87,10 @@ _COLUMN_ALIASES: Dict[str, List[str]] = {
                        "tenant paid", "tenant pays", "tenant payment"],
     "hap": ["hap", "hap amount", "hap payment", "subsidy", "subsidy amount", "housing assistance",
             "housing assistance payment", "assistance payment", "hud portion", "pha portion"],
+    # Yardi "Rent Roll with Lease Charges": one row per charge code, the
+    # dollars in a generic Amount column. See _collapse_charge_code_rows.
+    "charge_code": ["charge code", "chg code", "charge type", "charge"],
+    "charge_amount": ["amount", "charge amount", "amt"],
     "rent_amount": [
         "contract rent", "gross rent", "total contract rent",
         "monthly base rent", "monthly rent", "base rent", "current rent", "rent/mo", "rent",
@@ -289,8 +293,57 @@ _TENANT_NAME_HEADERS = ["tenant name", "resident name", "lessee name", "tenant n
 
 
 def _has_rent_column(mapping: Dict[str, int]) -> bool:
-    """A rent column, or a Section 8 tenant-portion column the rent can be built from."""
-    return "rent_amount" in mapping or "tenant_portion" in mapping
+    """A rent column, a Section 8 tenant-portion column, or a charge-code layout the rent can be built from."""
+    return ("rent_amount" in mapping or "tenant_portion" in mapping
+            or ("charge_code" in mapping and "charge_amount" in mapping))
+
+
+_RENT_CHARGE_CODES = {"rent", "rnt", "rentres", "resrent", "base rent", "baserent", "rent charge", "rentr", "rent res",
+                      "residential rent", "apartment rent", "aptrent", "apt rent"}
+
+
+def _collapse_charge_code_rows(headers, rows, row_numbers, mapping):
+    """
+    Yardi "Rent Roll with Lease Charges" -> one row per unit: the unit's
+    first row plus two synthesized cells, its rent (the rent charge code
+    only -- trash/pet/parking and the per-unit "Total" line are not rent)
+    and its monthly concession (any conc*/concession/discount code, as a
+    positive amount). Returns (headers, rows, row_numbers, mapping).
+    """
+    code_idx, amt_idx, unit_idx = mapping["charge_code"], mapping["charge_amount"], mapping.get("unit")
+    out_rows, out_numbers = [], []
+    current = None
+
+    def flush():
+        if current is not None:
+            row, num, rent, conc, had_charges = current
+            out_rows.append(list(row) + [rent if had_charges else None, conc if had_charges else None])
+            out_numbers.append(num)
+
+    for row, num in zip(rows, row_numbers):
+        row = list(row)
+        unit = _cell_to_str(row[unit_idx]) if unit_idx is not None and unit_idx < len(row) else None
+        if unit or current is None:
+            flush()
+            current = [row, num, 0.0, 0.0, False]
+        code = (_cell_to_str(row[code_idx]) if code_idx < len(row) else None) or ""
+        amount = _parse_import_currency(row[amt_idx]) if amt_idx < len(row) else None
+        code_norm = re.sub(r"[^a-z ]", "", code.lower()).strip()
+        if amount is None or not code_norm or code_norm.startswith("total"):
+            continue
+        current[4] = True
+        if code_norm in _RENT_CHARGE_CODES:
+            current[2] += amount
+        elif code_norm.startswith("conc") or "concession" in code_norm or code_norm.startswith("disc"):
+            current[3] += abs(amount)
+    flush()
+    width = len(headers)
+    out_rows = [r[:width] + [None] * (width - len(r[:width])) + r[-2:] for r in out_rows]
+    new_headers = list(headers) + ["Rent (from charge codes)", "Concession (from charge codes)"]
+    new_mapping = {k: v for k, v in mapping.items() if k not in ("charge_code", "charge_amount")}
+    new_mapping["rent_amount"] = width
+    new_mapping["concessions"] = width + 1
+    return new_headers, out_rows, out_numbers, new_mapping
 
 
 def _match_columns(headers: List[Any]) -> Dict[str, int]:
@@ -697,6 +750,10 @@ def parse_rent_roll_rows(
     reason to fail the whole file.
     """
     column_mapping = _match_columns(headers)
+    if "rent_amount" not in column_mapping and "charge_code" in column_mapping and "charge_amount" in column_mapping:
+        if row_numbers is None:
+            row_numbers = [i + header_row_offset + 2 for i in range(len(rows))]
+        headers, rows, row_numbers, column_mapping = _collapse_charge_code_rows(headers, rows, row_numbers, column_mapping)
 
     if "tenant" not in column_mapping or not _has_rent_column(column_mapping):
         raise RentRollImportError(

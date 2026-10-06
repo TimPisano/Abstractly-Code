@@ -633,6 +633,30 @@ def test_exact_duplicate_rent_roll_row_counted_once():
     print("✓ test_exact_duplicate_rent_roll_row_counted_once: PASS")
 
 
+def test_yardi_rent_roll_with_lease_charges_layout():
+    """
+    Yardi "Rent Roll with Lease Charges": one row per charge code, unit and
+    resident only on each unit's first row, rent in a generic "Amount"
+    column. Rejected outright before. Rent = the rent charge code only
+    (not trash/pet/Total); a "conc" code is the concession.
+    """
+    text = ("Unit,Unit Type,Resident,Name,Market Rent,Charge Code,Amount,Lease Expiration\n"
+            "101,1x1,t0001,Ann Lee,1200,rent,1150.00,03/31/2027\n"
+            ",,,,,trash,15.00,\n"
+            ",,,,,conc,-75.00,\n"
+            ",,,,,Total,1090.00,\n"
+            "102,2x2,VACANT,VACANT,1500,,,\n"
+            "103,2x2,t0003,Bo Diaz,1500,rent,1475.00,01/31/2027\n"
+            ",,,,,pet,25.00,\n"
+            ",,,,,Total,1500.00,\n")
+    got = _parse_csv_text(text)
+    rows = [(l["extracted_fields"]["tenant"]["value"], l["extracted_fields"]["rent_amount"]["value"],
+             l["extracted_fields"]["concessions"]["value"]) for l in got["leases"]]
+    assert rows == [("Ann Lee", "$1,150.00", "$75.00/mo"), ("Bo Diaz", "$1,475.00", "$0.00/mo")], rows
+    assert got["unit_summary"]["9 Elm St"]["vacant_units"] == ["102"], got["unit_summary"]
+    print("✓ test_yardi_rent_roll_with_lease_charges_layout: PASS")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):
