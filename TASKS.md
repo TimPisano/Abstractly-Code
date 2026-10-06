@@ -119,9 +119,9 @@ those by taking **main's** TASKS.md, not the branch's.
 #### qa/overnight-gauntlet
 - Worktree: ~/dev/projects/abstractly-gauntlet
 - Goal: overnight reliability gauntlet — synthetic messy rent rolls/T-12s/leases graded against a manifest through the full local pipeline; fix root causes with regression tests; QA_REPORT.md per cycle.
-- Loop step: 4/5 — cycling (user's prompt = approved scope; autonomous overnight). Lease extraction is OUT of scope (owned by feature/lease-intelligence, per user 2026-10-05).
-- Last update: 2026-10-05 late evening — cycle 2 done, pushed `2cf7762`. 119/132 cases pass (22 at baseline); 257/257 planted mismatches caught; 15 false alarms, all lease-extraction; 28 Fix commits, each with a regression test; full suite 83/83.
-- Next action: cycle 3 (nastier fixtures at weak spots). Before merge the USER must confirm two decisions in QA_REPORT.md: unit-wording matching (Suite=Apt=Unit, docs/DECISIONS.md) and the new team-scoped `rent_roll_unit_summaries` table. Then reviewer + security-auditor.
+- Loop step: 4/5 — cycling (user's prompt = approved scope; autonomous overnight). Lease extraction is OUT of scope (owned by feature/lease-intelligence).
+- Last update: 2026-10-05/06 overnight — cycle 4 pushed `942fb03`. 156/169 cases pass (22/132 at baseline); 1,925/1,925 planted mismatches caught; 15 false alarms (all lease extraction); 45 Fix commits each with a regression test; suite 83/83. User-priority AUDIT.md §6.11 dollar-figure bugs (renewal chains, step-ups, first-month % off, re-import doubling, name-prefixed addresses, T-12 scope from report page) reproduced with golden fixtures and fixed.
+- Next action: resume OCR column reconstruction (stash "WIP OCR column reconstruction" in this worktree), then more cycles. Before merge the USER must confirm in QA_REPORT.md: unit-wording matching (docs/DECISIONS.md), new team-scoped `rent_roll_unit_summaries` table, re-import supersedes prior rows. Then reviewer + security-auditor.
 
 #### chore/repo-layout
 - Worktree: `~/dev/projects/abstractly-repo-layout`
