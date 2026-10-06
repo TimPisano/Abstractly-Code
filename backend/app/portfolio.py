@@ -1697,6 +1697,14 @@ def compute_t12_reconciliation(
         lease for lease in leases
         if _normalize_building_address(field_value(lease, "property_address")) == normalized_target
     ] if normalized_target else []
+    # The rent roll's claim is what's being checked: when the building has
+    # rent-roll rows, count only those. Adding the lease PDFs for the same
+    # units on top double-counted every documented unit (overnight
+    # gauntlet, 2026-10-05). Lease documents stand in only when no rent
+    # roll has been imported for the building.
+    rent_roll_rows = [lease for lease in matched_leases if _is_rent_roll_import(lease)]
+    if rent_roll_rows:
+        matched_leases = rent_roll_rows
 
     matched_rents = []
     excluded_lease_count = 0

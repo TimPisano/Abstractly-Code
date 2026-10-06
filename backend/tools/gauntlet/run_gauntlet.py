@@ -244,6 +244,20 @@ def grade_findings(rows, expected):
                       "wrong_amount": len(wrong_amt)}
 
 
+def _tag_extraction(problem, lscores):
+    """
+    Marks a report problem on a unit whose LEASE extraction was wrong (tenant/
+    rent/dates/unit misread from the PDF). Lease extraction is owned by the
+    feature/lease-intelligence session, so these are reported, not fixed here.
+    """
+    bad_units = {s["file"].rsplit("/", 1)[-1][:-4].upper() for s in lscores
+                 if not all(s[k] for k in ("tenant", "rent", "start", "end", "unit"))}
+    m = re.search(r"unit ([A-Z0-9-]+)", problem)
+    if m and m.group(1).upper() in bad_units:
+        return "[extraction-caused] " + problem
+    return problem
+
+
 def check_exports(client, form, t12_rel=None):
     problems = []
     for ext, magic in (("pdf", b"%PDF"), ("xlsx", b"PK")):
@@ -301,7 +315,7 @@ def run_rr_case(m, props, rr):
             return out
         rep = r.get_json()
         fp, fm = grade_findings(rep["discrepancies"], rr["expected_findings"])
-        out["problems"] += [f"[report] {x}" for x in fp]
+        out["problems"] += [_tag_extraction(f"[report] {x}", lscores) for x in fp]
         out["metrics"]["findings"] = fm
         out["report_ok"] = not fp
         ep = check_exports(c, form)
@@ -483,6 +497,7 @@ def timed(fn, *a, **k):
         signal.alarm(0)
     res["seconds"] = round(time.time() - t0, 2)
     res["pass"] = not res["problems"]
+    res["pass_excluding_extraction"] = all(p.startswith("[extraction-caused]") for p in res["problems"])
     return res
 
 
@@ -575,6 +590,7 @@ def summarize(results):
                 hangs += 1
     return {
         "cases": len(results), "passed": sum(1 for r in results if r["pass"]),
+        "passed_excluding_extraction": sum(1 for r in results if r["pass_excluding_extraction"]),
         "by_kind": {k: {"pass": v[0], "total": v[1]} for k, v in sorted(by_kind.items())},
         "by_format": {k: {"pass": v[0], "total": v[1]} for k, v in sorted(by.items())},
         "findings": {"expected": fexp, "caught": fcaught, "false_alarms": ffalse, "wrong_amount": famt},
@@ -585,7 +601,7 @@ def summarize(results):
 
 def print_summary(s):
     print("\n==== GAUNTLET SUMMARY ====")
-    print(f"cases passed: {s['passed']}/{s['cases']}   crashes={s['crashes']} hangs={s['hangs']}  wall={s.get('wall_seconds')}s")
+    print(f"cases passed: {s['passed']}/{s['cases']} ({s['passed_excluding_extraction']} if lease-extraction misses are excluded)   crashes={s['crashes']} hangs={s['hangs']}  wall={s.get('wall_seconds')}s")
     for k, v in s["by_kind"].items():
         print(f"  {k:8s} {v['pass']}/{v['total']}")
     print("  by format:")

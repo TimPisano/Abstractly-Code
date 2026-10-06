@@ -436,6 +436,21 @@ def test_password_protected_rent_roll_workbook_says_so():
     print("✓ test_password_protected_rent_roll_workbook_says_so: PASS")
 
 
+def test_t12_reconciliation_counts_rent_roll_rows_not_lease_pdfs_too():
+    """
+    compute_t12_reconciliation summed rent from EVERY record at the
+    building -- rent-roll rows AND the lease PDFs for the same units -- so
+    once leases were uploaded the "rent roll annual rent" doubled.
+    """
+    from app.portfolio import compute_t12_reconciliation
+    rr = [_rr(tenant=f"T{i}", rent_amount="$1,000.00", property_address=f"9 Elm St, Austin, TX 78701, Suite {i}") for i in range(1, 4)]
+    docs = [_doc(tenant=f"T{i}", rent_amount="$1,000.00", property_address=f"9 Elm St, Apt {i}, Austin, TX 78701") for i in range(1, 4)]
+    got = compute_t12_reconciliation(rr + docs, "9 Elm St, Austin, TX 78701", 36000.0)
+    assert got["rent_roll_annual_rent"] == 36000.0, got
+    assert got["matched_lease_count"] == 3, got
+    print("✓ test_t12_reconciliation_counts_rent_roll_rows_not_lease_pdfs_too: PASS")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):
