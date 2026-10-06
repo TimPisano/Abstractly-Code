@@ -102,6 +102,7 @@ those by taking **main's** TASKS.md, not the branch's.
 | `audit/production-readiness` | `~/dev/projects/abstractly-audit` | 0 | Started 2026-10-05 off `origin/main` `3f1d3aa`. **Read-only** production readiness audit (DB, security, reliability, cost, Section 8 trust) → `AUDIT.md` at the worktree root, **uncommitted by user instruction** (no code edits, commits, pushes, or Render changes). Overnight deep pass: every route + job traced, bugs added ranked by severity. |
 | `feature/auth-flow` | `~/dev/projects/abstractly-auth-flow` | — | Branched off `main` 2026-10-05. Self-serve email-link signup, polished forgot-password, "Keep me signed in", sign-out-other-sessions on reset, rate limits. Builds on main's existing `/auth/forgot-password`, `/auth/reset-password`, `password_reset_tokens`, `RateLimiter`. **Plan approved, building** — `docs/plans/feature-auth-flow.md`. |
 | `chore/repo-layout` | `~/dev/projects/abstractly-repo-layout` | — | Branched off `main` `1d203d2` 2026-10-05. Repo tidy-up: move stray root reports/plans into `docs/`, fill `.gitignore` gaps, README project-layout section. File moves + doc-comment path fixes only, no code behavior change. **Plan written, awaiting user approval** — `docs/plans/chore-repo-layout.md`. |
+| `feature/lease-intelligence` | `~/dev/projects/abstractly-lease-intel` | — | Branched off `main` `5115b50` 2026-10-05. Overnight lease-extraction accuracy push for multifamily + Section 8 (synthetic leases only: standard MF, S8 with HAP contract + tenancy addendum, concessions, pet/parking fees, utility reimbursements, renewals/amendments, scanned). Owns `field_extractor.py`, `ai_extraction.py`, extraction prompts/fields. Does **not** touch rent roll/T-12 parsing (`qa/overnight-gauntlet`) or accounts (`feature/auth-flow`). User's prompt = approved scope (autonomous overnight). Never merges/deploys. |
 
 ### Handoff blocks
 
@@ -132,6 +133,13 @@ those by taking **main's** TASKS.md, not the branch's.
 - Loop step: 3 — plan written, waiting for user approval
 - Last update: 2026-10-05 by start-task
 - Next action: user reviews `docs/plans/chore-repo-layout.md` and answers its open questions
+
+#### feature/lease-intelligence
+- Worktree: `~/dev/projects/abstractly-lease-intel`
+- Goal: make lease extraction as accurate and complete as possible for multifamily and Section 8 leases, measured against a synthetic graded corpus.
+- Loop step: 3/4 — plan being written; user's prompt is the approved scope (autonomous overnight)
+- Last update: 2026-10-05 by start-task
+- Next action: see `docs/plans/feature-lease-intelligence.md` and `LEASE_EXTRACTION_REPORT.md` on the branch
 
 <!-- One block per In-progress task, written by /start-task and
      /session-handoff, read by /resume-task. Keep them current. -->
