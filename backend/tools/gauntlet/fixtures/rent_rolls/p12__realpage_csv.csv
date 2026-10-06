@@ -1,0 +1,13 @@
+RealPage OneSite
+Aspen Hollow - Rent Roll Detail
+As of 10/05/2026
+
+Bldg/Unit,Floorplan,SQFT,Unit/Lease Status,Name,Phone Number,Move-In,Move-Out,Lease Start,Lease End,Market + Addl.,Lease Rent,Other Charges/Credits,Total Billing,Dep On Hand,Balance
+101,2BR,980,Occupied,Dante Ashgrove,555-0128,02/01/2026,,02/01/2026,01/31/2027,"$1,500.00","$1,475.00",$25.00,"$1,500.00",$500.00,$0.00
+102,2BR,1010,Occupied,Lucia Underhill,555-0188,04/01/2026,,04/01/2026,03/31/2027,"$1,525.00","$1,475.00",$25.00,"$1,500.00",$500.00,$0.00
+103,1BR,705,Occupied,Greta Dunmore,555-0169,04/01/2026,,04/01/2026,03/31/2027,"$1,225.00","$1,225.00",$25.00,"$1,250.00",$500.00,$0.00
+104,1BR,705,Vacant-Unrented,VACANT,,,,,,"$1,225.00",,,,,
+201,2BR,995,Occupied,Lorenzo Abernathy,555-0112,02/01/2026,,02/01/2026,01/31/2027,"$1,500.00","$1,360.00",$25.00,"$1,385.00",$500.00,$0.00
+203,1BR,720,Occupied,Maeve Castellano,555-0177,01/01/2026,,01/01/2026,12/31/2026,"$1,175.00","$1,150.00",($100.00),"$1,050.00",$500.00,$0.00
+204,3BR,1240,Occupied,Callum Yarborough & Dante Quintero,555-0178,02/01/2026,,02/01/2026,01/31/2027,"$1,825.00","$1,775.00",$25.00,"$1,800.00",$500.00,$0.00
+301,1BR,720,Occupied,Ines Dunmore,555-0176,01/01/2026,,01/01/2026,12/31/2026,"$1,175.00","$1,175.00",$25.00,"$1,200.00",$500.00,$0.00

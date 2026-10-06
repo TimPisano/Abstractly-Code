@@ -1,0 +1,14 @@
+Rent Roll
+"Properties: Aspen Hollow - 402 Aspen Hollow Cir Denver, CO 80219"
+As of: 10/05/2026
+
+Unit,BD/BA,Tenant,Status,Sqft,Market Rent,Rent,Deposit,Lease From,Lease To,Move-in,Move-out,Past Due
+101,2/2,Dante Ashgrove,Current,980,"$1,500.00","$1,475.00",$500.00,02/01/2026,01/31/2027,02/01/2026,,$0.00
+102,2/2,Lucia Underhill,Current,1010,"$1,525.00","$1,475.00",$500.00,04/01/2026,03/31/2027,04/01/2026,,$0.00
+103,1/1,Greta Dunmore,Current,705,"$1,225.00","$1,225.00",$500.00,04/01/2026,03/31/2027,04/01/2026,,$0.00
+104,1/1,VACANT,Vacant-Unrented,705,"$1,225.00",,,,,,,
+201,2/2,Lorenzo Abernathy,Current,995,"$1,500.00","$1,360.00",$500.00,02/01/2026,01/31/2027,02/01/2026,,$0.00
+203,1/1,Maeve Castellano,Current,720,"$1,175.00","$1,150.00",$500.00,01/01/2026,12/31/2026,01/01/2026,,$0.00
+204,3/2,Callum Yarborough & Dante Quintero,Current,1240,"$1,825.00","$1,775.00",$500.00,02/01/2026,01/31/2027,02/01/2026,,$0.00
+301,1/1,Ines Dunmore,Current,720,"$1,175.00","$1,175.00",$500.00,01/01/2026,12/31/2026,01/01/2026,,$0.00
+Total,,,,,,"$9,635.00",,,,,,

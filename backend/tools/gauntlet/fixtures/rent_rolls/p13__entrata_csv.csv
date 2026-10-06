@@ -1,0 +1,16 @@
+Tidewater
+Rent Roll
+Report Date: 2026-10-05
+Bldg-Unit,Floor Plan,Resident,Status,Lease Start,Lease End,Market Rent,Scheduled Rent,Concession,Balance
+1101,2x2,Avery Marchetti,Current,02/01/2026,01/31/2027,"1,525.00","1,475.00",0.00,0.00
+1102,1x1,Odette Kowalczyk,Current,2026-02-01,2027-01-31,"1,225.00","1,200.00",0.00,0.00
+1103,1x1,Priya Galloway,Current,4/1/26,3/31/27,"1,250.00","1,200.00",0.00,0.00
+1104,2x2,Noor Underhill,Current,01-Feb-2026,31-Jan-2027,"1,525.00","1,500.00",0.00,0.00
+1201,1x1,Malik Drummond,Current,07/01/2025,06/30/2026,"1,150.00","1,125.00",0.00,0.00
+1202,2x2,Priya Brightwater,Current,2026-05-01,2027-04-30,"1,550.00","1,600.00",0.00,0.00
+1203,2x2,Lorenzo Ashgrove,Current,3/1/26,2/28/27,"1,525.00","1,475.00",0.00,0.00
+1204,2x2,Maeve Okafor,Current,01-May-2026,30-Apr-2027,"1,575.00","1,550.00",0.00,0.00
+1301,3x2,Malik Pemberton,Current,03/01/2026,02/28/2027,"1,825.00","1,800.00",0.00,0.00
+1302,2x2,"FAIRBANKS, RAFAEL",Current,2026-01-01,2026-12-31,"1,550.00","1,500.00",0.00,0.00
+
+Totals:,,,,,,,"14,425.00",,

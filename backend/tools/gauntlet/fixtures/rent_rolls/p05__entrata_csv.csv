@@ -1,0 +1,16 @@
+Ridgeview Terrace
+Rent Roll
+Report Date: 2026-10-05
+Bldg-Unit,Floor Plan,Resident,Status,Lease Start,Lease End,Market Rent,Scheduled Rent,Concession,Balance
+101,2x2,Odette Juarez,Current,05/01/2026,04/30/2027,"1,550.00","1,525.00",0.00,0.00
+102,2x2,Marisol Calloway,Current,2026-02-01,2027-01-31,"1,575.00","1,550.00",0.00,0.00
+103,2x2,,Vacant,,,"1,525.00",,,
+104,1x1,Mateo Ingram,Current,01-Jan-2026,31-Oct-2026,"1,200.00","1,175.00",0.00,0.00
+201,1x1,Lorenzo Pemberton,Current,03/01/2026,02/28/2027,"1,150.00","1,100.00",0.00,0.00
+202,1x1,Lorenzo Rasmussen,Current,2026-04-01,2027-03-31,"1,250.00","1,225.00",(75.00),0.00
+203,1x1,Dante Pemberton,Current,3/1/26,2/28/27,"1,200.00","1,175.00",0.00,0.00
+204,2x2,Dante Drummond,Current,01-Mar-2026,28-Feb-2027,"1,550.00","1,500.00",(50.00),0.00
+301,1x1,Kenji Zeller,Current,05/01/2026,04/30/2027,"1,200.00","1,175.00",0.00,0.00
+302,2x2,Kenji Valdivia,Current,2026-02-01,2027-01-31,"1,575.00","1,525.00",0.00,0.00
+
+Totals:,,,,,,,"11,950.00",,

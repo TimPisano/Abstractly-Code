@@ -1,0 +1,14 @@
+Juniper Court
+Rent Roll
+Report Date: 2026-10-05
+Bldg-Unit,Floor Plan,Resident,Status,Lease Start,Lease End,Market Rent,Scheduled Rent,Concession,Balance
+101,1x1,,Down/Model,,,"1,175.00",,,
+102,2x2,"SORENSEN, CELESTE",Current,2026-05-01,2027-04-30,"1,525.00","1,475.00",0.00,0.00
+103,1x1,Anika Galloway,Current,1/1/26,12/31/26,"1,250.00","1,250.00",0.00,0.00
+104,2x2,,Vacant,,,"1,575.00",,,
+201,1x1,Lorenzo Nakamura,Current,05/01/2026,04/30/2027,"1,150.00","1,150.00",0.00,0.00
+202,1x1,Maeve Castellano,Current,2026-03-01,2027-02-28,"1,150.00","1,125.00",0.00,0.00
+203,3x2,"FAIRBANKS, CALLUM",Current,4/1/26,3/31/27,"1,925.00","1,925.00",0.00,0.00
+204,2x2,Lucia Ashgrove,Current,01-Feb-2026,31-Jan-2027,"1,475.00","1,355.00",0.00,0.00
+
+Totals:,,,,,,,"8,280.00",,
