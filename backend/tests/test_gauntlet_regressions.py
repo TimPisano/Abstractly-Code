@@ -746,6 +746,14 @@ def test_future_resident_rows_are_not_current_rent():
     print("✓ test_future_resident_rows_are_not_current_rent: PASS")
 
 
+def test_semicolon_delimited_csv_rent_roll():
+    """European-locale Excel saves "CSV" with semicolons; every row was one cell and the file was rejected."""
+    got = _parse_csv_text('Unit;Tenant;Rent;Lease End\n101;Ann Lee;"1,200.00";03/31/2027\n102;Bo Diaz;950;03/31/2027\n')
+    assert [(t, l["extracted_fields"]["rent_amount"]["value"]) for (_, t), l in zip(_units_of(got), got["leases"])] == \
+        [("Ann Lee", "$1,200.00"), ("Bo Diaz", "$950.00")], got["leases"]
+    print("✓ test_semicolon_delimited_csv_rent_roll: PASS")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):

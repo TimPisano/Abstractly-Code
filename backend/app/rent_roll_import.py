@@ -992,6 +992,23 @@ def _parse_from_numbered_rows(
     )
 
 
+def _sniff_delimiter(text: str, default: str = ",") -> str:
+    lines = [l for l in text.splitlines() if l.strip()][:8]
+    if not lines:
+        return default
+    best, best_score = default, 0
+    for cand in (",", ";", "\t", "|"):
+        rows = list(csv.reader(lines, delimiter=cand))
+        widths = [len(r) - 1 for r in rows]
+        multi = [w for w in widths if w > 0]
+        if len(multi) < max(1, len(widths) // 2):
+            continue
+        score = min(multi)
+        if score > best_score:
+            best, best_score = cand, score
+    return best
+
+
 def parse_csv_rent_roll(
     file_bytes: bytes, filename: str, base_property_address: Optional[str] = None,
     delimiter: Optional[str] = None,
@@ -1022,12 +1039,13 @@ def parse_csv_rent_roll(
         # shift every later row's citation off by one.
         return [(i, row) for i, row in enumerate(reader, start=1) if any(cell.strip() for cell in row)]
 
-    if delimiter is None:
-        # A .txt is usually Excel's tab-delimited "Text"/"Unicode Text"
-        # save, but can be a comma CSV under another name: go by which
-        # separator the first lines actually use.
-        head = text[:4000]
-        delimiter = "\t" if head.count("\t") > head.count(",") else ","
+    if delimiter is None or delimiter == ",":
+        # Go by the separator the file actually uses: a .txt is usually
+        # Excel's tab-delimited save, and a European-locale Excel writes
+        # "CSV" with semicolons. The winner is the separator present the
+        # most times on EVERY one of the first lines (a "1,200.00" rent
+        # inside a semicolon file mustn't make it look comma-separated).
+        delimiter = _sniff_delimiter(text, default=delimiter or ",")
     numbered_rows = _rows_for(delimiter)
     # A .tsv that came through with no tabs at all (someone renamed a
     # .csv) collapses to one column -- retry as comma before failing.
