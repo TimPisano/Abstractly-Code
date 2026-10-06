@@ -78,24 +78,31 @@ def _sample_t12_data(annual_rental_income=100000.0, annual_gpr=110000.0,
 
 
 def test_detect_t12_income_gap_flagged():
-    """Rent roll above T12 by more than materiality threshold."""
+    """Rent roll above T12 by more than materiality threshold.
+
+    rent_amount is MONTHLY rent (as everywhere else in the app); this test
+    used to pass annual figures ("95000.00") as if they were rent-roll
+    rents, which is how the monthly-vs-annual bug in detect_t12_income_gap
+    went unnoticed (overnight gauntlet, 2026-10-05). Same assertion
+    strength: an exact dollar gap.
+    """
     leases = [
-        _rent_roll_lease("123 Main St", "Tenant A", "95000.00", lease_id=1),
-        _rent_roll_lease("123 Main St", "Tenant B", "20000.00", lease_id=2),
+        _rent_roll_lease("123 Main St", "Tenant A", "8000.00", lease_id=1),
+        _rent_roll_lease("123 Main St", "Tenant B", "1750.00", lease_id=2),
     ]
     t12_data = _sample_t12_data(annual_rental_income=100000.0)
     results = detect_t12_income_gap(leases, t12_data, materiality_pct=3.0)
     assert len(results) == 1
     assert results[0]["discrepancy_type"] == "t12_income_gap"
     assert results[0]["income_direction"] == "overstate"
-    assert results[0]["annual_dollar_impact"] == 15000.0
+    assert results[0]["annual_dollar_impact"] == 17000.0  # (8,000 + 1,750) x 12 - 100,000
     print("✓ test_detect_t12_income_gap_flagged: PASS")
 
 
 def test_detect_t12_income_gap_within_tolerance():
     """Rent roll above T12 but within materiality threshold."""
     leases = [
-        _rent_roll_lease("123 Main St", "Tenant A", "103000.00", lease_id=1),
+        _rent_roll_lease("123 Main St", "Tenant A", "8583.33", lease_id=1),  # monthly; $102,999.96/yr, 3% above
     ]
     t12_data = _sample_t12_data(annual_rental_income=100000.0)
     results = detect_t12_income_gap(leases, t12_data, materiality_pct=5.0)

@@ -760,7 +760,10 @@ def detect_t12_income_gap(
 
     # For simplicity, compare against the first (and typically only) building in the scope
     first_building_key = list(building_rents.keys())[0]
-    first_building_rent = sum(building_rents[first_building_key])
+    # Rent roll rents are MONTHLY; the T-12 figure is ANNUAL. Comparing the
+    # raw monthly sum meant the check could never fire (overnight
+    # gauntlet / tester-pack bug #2).
+    first_building_rent = round(sum(building_rents[first_building_key]) * 12, 2)
 
     diff_abs = first_building_rent - t12_annual
     if diff_abs <= 0:
@@ -776,8 +779,8 @@ def detect_t12_income_gap(
         "discrepancy_type": "t12_income_gap",
         "unit": "Building (T12-based)",
         "field": "rental_income_collected",
-        "rent_roll_value": f"${first_building_rent:,.2f}",
-        "lease_value": f"${t12_annual:,.2f} (T12)",
+        "rent_roll_value": f"${first_building_rent:,.2f}/yr (rent roll x 12)",
+        "lease_value": f"${t12_annual:,.2f}/yr (T12)",
         "source": rental_income.get("source"),
         "severity": _severity_for_monthly_impact(diff_abs / 12),
         "monthly_dollar_impact": round(diff_abs / 12, 2),

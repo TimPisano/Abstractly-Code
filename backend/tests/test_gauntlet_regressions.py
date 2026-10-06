@@ -316,6 +316,27 @@ def test_t12_blank_row_is_not_a_zero_total():
     print("✓ test_t12_blank_row_is_not_a_zero_total: PASS")
 
 
+# ---------------------------------------------------------------- T-12 detectors
+def _t12_cat(annual, monthly=None):
+    return {"annual": annual, "monthly": monthly, "source": {"row": 5, "file": "t12.csv", "quote": "x"}}
+
+
+def test_t12_income_gap_compares_annual_to_annual():
+    """
+    The rent roll's MONTHLY rent total was compared to the T-12's ANNUAL
+    collections, so a rent roll overstating income by 17% was never
+    flagged (tester-pack OVERNIGHT_REPORT bug #2).
+    """
+    leases = [_rr(tenant=f"T{i}", rent_amount="$1,000.00", property_address=f"9 Elm St, Austin, TX 78701, Suite {i}") for i in range(10)]
+    t12 = {"rental_income_collected": _t12_cat(100000.0)}
+    rows = dm.detect_t12_income_gap(leases, t12, 3.0)
+    assert [r["annual_dollar_impact"] for r in rows] == [20000.0], rows
+    assert rows[0]["income_direction"] == "overstate"
+    # Collections within 3% of the rent roll: no finding.
+    assert dm.detect_t12_income_gap(leases, {"rental_income_collected": _t12_cat(118500.0)}, 3.0) == []
+    print("✓ test_t12_income_gap_compares_annual_to_annual: PASS")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):
