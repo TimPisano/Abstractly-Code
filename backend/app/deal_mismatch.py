@@ -90,6 +90,7 @@ from .portfolio import (
     _is_rent_roll_import,
     _normalize_address,
     _normalize_for_matching,
+    _same_tenant,
     _RENT_DISAGREEMENT_TOLERANCE_ABS,
     _RENT_DISAGREEMENT_TOLERANCE_PCT,
     field_value,
@@ -703,7 +704,7 @@ def detect_tenant_mismatch(leases: List[Dict[str, Any]]) -> List[Dict[str, Any]]
                 doc_tenant = field_value(doc_lease, "tenant")
                 rr_norm = _normalize_for_matching(rr_tenant)
                 doc_norm = _normalize_for_matching(doc_tenant)
-                if not rr_norm or not doc_norm or rr_norm == doc_norm:
+                if not rr_norm or not doc_norm or _same_tenant(rr_tenant, doc_tenant):
                     continue
                 rows.append({
                     "discrepancy_type": "tenant_mismatch",

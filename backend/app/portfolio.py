@@ -361,6 +361,43 @@ def _normalize_tenant_name(tenant: Optional[str]) -> Optional[str]:
     return _normalize_for_matching(tenant)
 
 
+_RESIDENT_SPLIT_RE = re.compile(r"\s*(?:&|\band\b|;|/|\+|\n)\s*", re.IGNORECASE)
+
+
+def _resident_token_sets(tenant: Optional[str]) -> List[frozenset]:
+    """One word-set per person named in a tenant cell ("A & B", "Smith, John")."""
+    if not tenant:
+        return []
+    people = []
+    for part in _RESIDENT_SPLIT_RE.split(tenant):
+        words = frozenset(w for w in re.sub(r"[^\w\s]", " ", part.lower()).split() if len(w) > 1)
+        if words:
+            people.append(words)
+    return people
+
+
+def _same_tenant(a: Optional[str], b: Optional[str]) -> bool:
+    """
+    True when two tenant cells name the same household: identical after
+    _normalize_tenant_name, OR at least one person in common, where a
+    person matches regardless of word order ("SMITH, JOHN" == "John
+    Smith") and a dropped middle initial ("John Q. Smith" == "John
+    Smith"). A rent roll routinely lists the household as "A & B" or
+    "Last, First" while the lease names "A and B" or just "A" -- none of
+    those is a different tenant (overnight gauntlet, 2026-10-05). Two
+    different people still differ: "Mateo Nakamura" vs "Malik Nakamura"
+    share only a surname, which is never enough.
+    """
+    if _normalize_tenant_name(a) == _normalize_tenant_name(b):
+        return True
+    for pa in _resident_token_sets(a):
+        for pb in _resident_token_sets(b):
+            smaller, larger = (pa, pb) if len(pa) <= len(pb) else (pb, pa)
+            if len(smaller) >= 2 and smaller <= larger:
+                return True
+    return False
+
+
 def _lease_label(lease: Dict[str, Any]) -> str:
     return lease.get("display_name") or lease.get("filename") or f"lease #{lease.get('id')}"
 
@@ -1533,7 +1570,7 @@ def compute_rent_roll_reconciliation(leases: List[Dict[str, Any]]) -> Dict[str, 
 
                 rr_tenant_norm = _normalize_for_matching(field_value(rr_lease, "tenant"))
                 doc_tenant_norm = _normalize_for_matching(field_value(doc_lease, "tenant"))
-                if rr_tenant_norm and doc_tenant_norm and rr_tenant_norm != doc_tenant_norm:
+                if rr_tenant_norm and doc_tenant_norm and not _same_tenant(field_value(rr_lease, "tenant"), field_value(doc_lease, "tenant")):
                     _add_mismatch(
                         mismatches, rr_lease, doc_lease, address, "tenant",
                         field_value(rr_lease, "tenant"), field_value(doc_lease, "tenant"),

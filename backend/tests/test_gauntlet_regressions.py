@@ -95,6 +95,32 @@ def test_typed_long_street_suffix_matches_abbreviated_lease_building():
     print("✓ test_typed_long_street_suffix_matches_abbreviated_lease_building: PASS")
 
 
+# ---------------------------------------------------------------- tenant names
+def test_tenant_name_order_and_co_residents_are_not_a_mismatch():
+    """
+    Yardi/AppFolio export "SORENSEN, CELESTE"; the lease says "Celeste
+    Sorensen". A rent roll lists "A & B" where the lease names "A and B" (or
+    only one of them). None of these is a different tenant -- before the fix
+    each was a high-severity tenant_mismatch.
+    """
+    same = [("SORENSEN, CELESTE", "Celeste Sorensen"),
+            ("Noor Bellweather & Lucia Xenakis", "Noor Bellweather and Lucia Xenakis"),
+            ("Noor Bellweather & Lucia Xenakis", "Lucia Xenakis"),
+            ("Smith, John Q.", "John Q. Smith"),
+            ("John Smith", "John Q. Smith")]
+    for rr_name, lease_name in same:
+        rr = _rr(tenant=rr_name, rent_amount="$1,000.00", property_address="1 A St, Suite 1")
+        doc = _doc(tenant=lease_name, rent_amount="$1,000.00", property_address="1 A St, Apt 1")
+        assert dm.detect_tenant_mismatch([rr, doc]) == [], (rr_name, lease_name)
+    different = [("Mateo Nakamura", "Malik Nakamura"), ("NAKAMURA, MATEO", "Mateo Ingram"),
+                 ("Avery Fairbanks", "Greta Okafor"), ("Jordan Lee & Sam Lee", "Pat Lee")]
+    for rr_name, lease_name in different:
+        rr = _rr(tenant=rr_name, rent_amount="$1,000.00", property_address="1 A St, Suite 1")
+        doc = _doc(tenant=lease_name, rent_amount="$1,000.00", property_address="1 A St, Apt 1")
+        assert _types(dm.detect_tenant_mismatch([rr, doc])) == ["tenant_mismatch"], (rr_name, lease_name)
+    print("✓ test_tenant_name_order_and_co_residents_are_not_a_mismatch: PASS")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):
