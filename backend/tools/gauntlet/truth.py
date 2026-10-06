@@ -53,6 +53,8 @@ PROPERTIES = [
     # Cycle 6: one rent-roll file covering two properties (per-row Property column), T-24s, European locale.
     ("Lakeshore Commons", "1200 Lakeshore Blvd", "Madison", "WI", "53703", "Boulevard"),
     ("Pinecrest Villas", "75 Pinecrest Ln", "Spokane", "WA", "99201", "Lane"),
+    # Cycle 7: lease-folder realities -- duplicate copies, rent amendments.
+    ("Harbor Point", "60 Harbor Point Rd", "Annapolis", "MD", "21403", "Road"),
 ]
 
 # Unit-id styles: function(building_idx, floor, n) -> canonical id
@@ -271,6 +273,22 @@ def build_property(idx, cfg):
         u = clean_unit()
         u["concession"] = {"kind": "pct_first_month", "percent": 50.0, "months": 1}
         u["issue"] = "concession_missing"
+    # Duplicate copies: the folder holds the lease twice (signed + unsigned
+    # copy, different bytes). One of them is a planted rent mismatch, so a
+    # double-counted finding would show up as a duplicate row / wrong total.
+    dup_targets = [x for x in units if x["issue"] in ("rent_mismatch_over", "rent_mismatch_under")][:1]
+    for _ in range(cfg.get("duplicate_copies", 0)):
+        u = dup_targets.pop() if dup_targets else clean_unit()
+        u["duplicate_copy"] = True
+        if u["trap"] is None:
+            u["trap"] = "duplicate_copy"
+    for _ in range(cfg.get("amendments", 0)):
+        # Mid-term rent increase by amendment (its own PDF); the rent roll
+        # shows the amended rent. Correct report: no finding.
+        u = clean_unit()
+        u["amendment"] = {"rent": u["lease_rent"] + 60.0, "effective": "2026-07-01"}
+        u["rr_rent"] = u["lease_rent"] + 60.0
+        u["trap"] = "rent_amendment"
     keep = cfg.get("lease_only_for")
     if keep is not None:
         # Big file: only the issue units plus `keep` clean units have lease PDFs.
@@ -410,6 +428,12 @@ CONFIGS += [
 CONFIGS += [
     dict(n_units=8, unit_style="plain", issues=["rent_mismatch_over", "expired_but_occupied", "unit_no_lease"], vacant=1),
     dict(n_units=8, unit_style="plain", issues=["rent_mismatch_under", "tenant_mismatch", "lease_no_unit"], vacant=1),
+]
+
+
+CONFIGS += [
+    dict(n_units=9, unit_style="plain", issues=["rent_mismatch_over", "rent_mismatch_under", "unit_no_lease"], vacant=1,
+         duplicate_copies=2, amendments=2),
 ]
 
 

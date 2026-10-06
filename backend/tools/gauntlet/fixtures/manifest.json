@@ -21506,6 +21506,356 @@
      "rr_tenant": "Noor Quintero"
     }
    ]
+  },
+  {
+   "id": "p21",
+   "name": "Harbor Point",
+   "typed_address": "60 Harbor Point Rd, Annapolis, MD 21403",
+   "base_address": "60 Harbor Point Rd, Annapolis, MD 21403",
+   "leases": [
+    {
+     "file": "leases/p21/101_signed_copy.pdf",
+     "unit": "101",
+     "tenant": "Maeve Ingram",
+     "rent": 1875.0,
+     "start": "2026-02-01",
+     "end": "2027-01-31",
+     "address": "60 Harbor Point Rd, Annapolis, MD 21403, Suite 101",
+     "concession": null,
+     "history": true
+    },
+    {
+     "file": "leases/p21/101.pdf",
+     "unit": "101",
+     "tenant": "Maeve Ingram",
+     "rent": 1875.0,
+     "start": "2026-02-01",
+     "end": "2027-01-31",
+     "address": "60 Harbor Point Rd, Annapolis, MD 21403, Suite 101",
+     "concession": null
+    },
+    {
+     "file": "leases/p21/102_amendment_1.pdf",
+     "unit": "102",
+     "tenant": "Malik Kowalczyk",
+     "rent": 1935.0,
+     "start": "2026-05-01",
+     "end": "2027-04-30",
+     "address": "60 Harbor Point Rd, Annapolis, MD 21403, Suite 102",
+     "concession": null,
+     "history": true
+    },
+    {
+     "file": "leases/p21/102.pdf",
+     "unit": "102",
+     "tenant": "Malik Kowalczyk",
+     "rent": 1875.0,
+     "start": "2026-05-01",
+     "end": "2027-04-30",
+     "address": "60 Harbor Point Rd, Annapolis, MD 21403, Suite 102",
+     "concession": null
+    },
+    {
+     "file": "leases/p21/103_amendment_1.pdf",
+     "unit": "103",
+     "tenant": "Malik Brightwater",
+     "rent": 1185.0,
+     "start": "2026-04-01",
+     "end": "2027-03-31",
+     "address": "60 Harbor Point Rd, Annapolis, MD 21403, Suite 103",
+     "concession": null,
+     "history": true
+    },
+    {
+     "file": "leases/p21/103.pdf",
+     "unit": "103",
+     "tenant": "Malik Brightwater",
+     "rent": 1125.0,
+     "start": "2026-04-01",
+     "end": "2027-03-31",
+     "address": "60 Harbor Point Rd, Annapolis, MD 21403, Suite 103",
+     "concession": null
+    },
+    {
+     "file": "leases/p21/104.pdf",
+     "unit": "104",
+     "tenant": "Theo Thibodeaux",
+     "rent": 1775.0,
+     "start": "2026-03-01",
+     "end": "2027-02-28",
+     "address": "60 Harbor Point Rd, Annapolis, MD 21403, Suite 104",
+     "concession": null
+    },
+    {
+     "file": "leases/p21/201_signed_copy.pdf",
+     "unit": "201",
+     "tenant": "Callum Lindqvist",
+     "rent": 1525.0,
+     "start": "2026-04-01",
+     "end": "2027-03-31",
+     "address": "60 Harbor Point Rd, Annapolis, MD 21403, Suite 201",
+     "concession": null,
+     "history": true
+    },
+    {
+     "file": "leases/p21/201.pdf",
+     "unit": "201",
+     "tenant": "Callum Lindqvist",
+     "rent": 1525.0,
+     "start": "2026-04-01",
+     "end": "2027-03-31",
+     "address": "60 Harbor Point Rd, Annapolis, MD 21403, Suite 201",
+     "concession": null
+    },
+    {
+     "file": "leases/p21/203.pdf",
+     "unit": "203",
+     "tenant": "Jordan Quintero",
+     "rent": 1175.0,
+     "start": "2026-05-01",
+     "end": "2027-04-30",
+     "address": "60 Harbor Point Rd, Annapolis, MD 21403, Suite 203",
+     "concession": null
+    },
+    {
+     "file": "leases/p21/204.pdf",
+     "unit": "204",
+     "tenant": "Odette Whitlock",
+     "rent": 1525.0,
+     "start": "2026-03-01",
+     "end": "2027-02-28",
+     "address": "60 Harbor Point Rd, Annapolis, MD 21403, Suite 204",
+     "concession": null
+    }
+   ],
+   "units": [
+    {
+     "uid": "101",
+     "beds": 3,
+     "baths": 2,
+     "sqft": 1240,
+     "market_rent": 1925.0,
+     "status": "occupied",
+     "tenant": "Maeve Ingram",
+     "lease_rent": 1875.0,
+     "rr_rent": 1875.0,
+     "start": "2026-02-01",
+     "end": "2027-01-31",
+     "rr_start": "2026-02-01",
+     "rr_end": "2027-01-31",
+     "has_lease": true,
+     "on_rent_roll": true,
+     "concession": null,
+     "rr_concession": 0.0,
+     "rr_rent_shows_net": false,
+     "s8": null,
+     "issue": null,
+     "trap": "duplicate_copy",
+     "rr_tenant": "Maeve Ingram",
+     "duplicate_copy": true
+    },
+    {
+     "uid": "102",
+     "beds": 3,
+     "baths": 2,
+     "sqft": 1270,
+     "market_rent": 1900.0,
+     "status": "occupied",
+     "tenant": "Malik Kowalczyk",
+     "lease_rent": 1875.0,
+     "rr_rent": 1935.0,
+     "start": "2026-05-01",
+     "end": "2027-04-30",
+     "rr_start": "2026-05-01",
+     "rr_end": "2027-04-30",
+     "has_lease": true,
+     "on_rent_roll": true,
+     "concession": null,
+     "rr_concession": 0.0,
+     "rr_rent_shows_net": false,
+     "s8": null,
+     "issue": null,
+     "trap": "rent_amendment",
+     "rr_tenant": "Malik Kowalczyk",
+     "amendment": {
+      "rent": 1935.0,
+      "effective": "2026-07-01"
+     }
+    },
+    {
+     "uid": "103",
+     "beds": 1,
+     "baths": 1,
+     "sqft": 690,
+     "market_rent": 1150.0,
+     "status": "occupied",
+     "tenant": "Malik Brightwater",
+     "lease_rent": 1125.0,
+     "rr_rent": 1185.0,
+     "start": "2026-04-01",
+     "end": "2027-03-31",
+     "rr_start": "2026-04-01",
+     "rr_end": "2027-03-31",
+     "has_lease": true,
+     "on_rent_roll": true,
+     "concession": null,
+     "rr_concession": 0.0,
+     "rr_rent_shows_net": false,
+     "s8": null,
+     "issue": null,
+     "trap": "rent_amendment",
+     "rr_tenant": "Malik Brightwater",
+     "amendment": {
+      "rent": 1185.0,
+      "effective": "2026-07-01"
+     }
+    },
+    {
+     "uid": "104",
+     "beds": 3,
+     "baths": 2,
+     "sqft": 1240,
+     "market_rent": 1825.0,
+     "status": "occupied",
+     "tenant": "Theo Thibodeaux",
+     "lease_rent": 1775.0,
+     "rr_rent": 1775.0,
+     "start": "2026-03-01",
+     "end": "2027-02-28",
+     "rr_start": "2026-03-01",
+     "rr_end": "2027-02-28",
+     "has_lease": true,
+     "on_rent_roll": true,
+     "concession": null,
+     "rr_concession": 0.0,
+     "rr_rent_shows_net": false,
+     "s8": null,
+     "issue": null,
+     "trap": null,
+     "rr_tenant": "Theo Thibodeaux"
+    },
+    {
+     "uid": "201",
+     "beds": 2,
+     "baths": 2,
+     "sqft": 980,
+     "market_rent": 1525.0,
+     "status": "occupied",
+     "tenant": "Callum Lindqvist",
+     "lease_rent": 1525.0,
+     "rr_rent": 1435.0,
+     "start": "2026-04-01",
+     "end": "2027-03-31",
+     "rr_start": "2026-04-01",
+     "rr_end": "2027-03-31",
+     "has_lease": true,
+     "on_rent_roll": true,
+     "concession": null,
+     "rr_concession": 0.0,
+     "rr_rent_shows_net": false,
+     "s8": null,
+     "issue": "rent_mismatch_under",
+     "trap": "duplicate_copy",
+     "rr_tenant": "Callum Lindqvist",
+     "duplicate_copy": true
+    },
+    {
+     "uid": "202",
+     "beds": 2,
+     "baths": 2,
+     "sqft": 980,
+     "market_rent": 1550.0,
+     "status": "occupied",
+     "tenant": "Avery Calloway",
+     "lease_rent": 1525.0,
+     "rr_rent": 1525.0,
+     "start": "2026-04-01",
+     "end": "2027-03-31",
+     "rr_start": "2026-04-01",
+     "rr_end": "2027-03-31",
+     "has_lease": false,
+     "on_rent_roll": true,
+     "concession": null,
+     "rr_concession": 0.0,
+     "rr_rent_shows_net": false,
+     "s8": null,
+     "issue": "unit_no_lease",
+     "trap": null,
+     "rr_tenant": "Avery Calloway"
+    },
+    {
+     "uid": "203",
+     "beds": 1,
+     "baths": 1,
+     "sqft": 690,
+     "market_rent": 1225.0,
+     "status": "occupied",
+     "tenant": "Jordan Quintero",
+     "lease_rent": 1175.0,
+     "rr_rent": 1325.0,
+     "start": "2026-05-01",
+     "end": "2027-04-30",
+     "rr_start": "2026-05-01",
+     "rr_end": "2027-04-30",
+     "has_lease": true,
+     "on_rent_roll": true,
+     "concession": null,
+     "rr_concession": 0.0,
+     "rr_rent_shows_net": false,
+     "s8": null,
+     "issue": "rent_mismatch_over",
+     "trap": null,
+     "rr_tenant": "Jordan Quintero"
+    },
+    {
+     "uid": "204",
+     "beds": 2,
+     "baths": 2,
+     "sqft": 980,
+     "market_rent": 1525.0,
+     "status": "occupied",
+     "tenant": "Odette Whitlock",
+     "lease_rent": 1525.0,
+     "rr_rent": 1525.0,
+     "start": "2026-03-01",
+     "end": "2027-02-28",
+     "rr_start": "2026-03-01",
+     "rr_end": "2027-02-28",
+     "has_lease": true,
+     "on_rent_roll": true,
+     "concession": null,
+     "rr_concession": 0.0,
+     "rr_rent_shows_net": false,
+     "s8": null,
+     "issue": null,
+     "trap": null,
+     "rr_tenant": "Odette Whitlock"
+    },
+    {
+     "uid": "301",
+     "beds": 2,
+     "baths": 2,
+     "sqft": 995,
+     "market_rent": 1550.0,
+     "status": "vacant",
+     "tenant": null,
+     "lease_rent": null,
+     "rr_rent": null,
+     "start": null,
+     "end": null,
+     "rr_start": null,
+     "rr_end": null,
+     "has_lease": false,
+     "on_rent_roll": true,
+     "concession": null,
+     "rr_concession": 0.0,
+     "rr_rent_shows_net": false,
+     "s8": null,
+     "issue": null,
+     "trap": null,
+     "rr_tenant": null
+    }
+   ]
   }
  ],
  "rent_rolls": [
@@ -43573,6 +43923,264 @@
      "direction": "understate"
     }
    ]
+  },
+  {
+   "file": "rent_rolls/p21__clean_csv.csv",
+   "property": "p21",
+   "format": "clean_csv",
+   "ext": "csv",
+   "note": "Clean simple CSV (baseline)",
+   "canonical": true,
+   "carries": [
+    "end",
+    "start"
+   ],
+   "expected_rent_roll": {
+    "occupied": {
+     "101": {
+      "tenant": "Maeve Ingram",
+      "rent": 1875.0,
+      "start": "2026-02-01",
+      "end": "2027-01-31"
+     },
+     "102": {
+      "tenant": "Malik Kowalczyk",
+      "rent": 1935.0,
+      "start": "2026-05-01",
+      "end": "2027-04-30"
+     },
+     "103": {
+      "tenant": "Malik Brightwater",
+      "rent": 1185.0,
+      "start": "2026-04-01",
+      "end": "2027-03-31"
+     },
+     "104": {
+      "tenant": "Theo Thibodeaux",
+      "rent": 1775.0,
+      "start": "2026-03-01",
+      "end": "2027-02-28"
+     },
+     "201": {
+      "tenant": "Callum Lindqvist",
+      "rent": 1435.0,
+      "start": "2026-04-01",
+      "end": "2027-03-31"
+     },
+     "202": {
+      "tenant": "Avery Calloway",
+      "rent": 1525.0,
+      "start": "2026-04-01",
+      "end": "2027-03-31"
+     },
+     "203": {
+      "tenant": "Jordan Quintero",
+      "rent": 1325.0,
+      "start": "2026-05-01",
+      "end": "2027-04-30"
+     },
+     "204": {
+      "tenant": "Odette Whitlock",
+      "rent": 1525.0,
+      "start": "2026-03-01",
+      "end": "2027-02-28"
+     }
+    },
+    "vacant": [
+     "301"
+    ],
+    "down": [],
+    "total_units": 9
+   },
+   "expected_findings": [
+    {
+     "unit": "201",
+     "type": "rent_mismatch",
+     "annual": 1080.0,
+     "direction": "understate"
+    },
+    {
+     "unit": "202",
+     "type": "unit_no_lease",
+     "annual": 18300.0,
+     "direction": null
+    },
+    {
+     "unit": "203",
+     "type": "rent_mismatch",
+     "annual": 1800.0,
+     "direction": "overstate"
+    }
+   ]
+  },
+  {
+   "file": "rent_rolls/p21__appfolio_csv.csv",
+   "property": "p21",
+   "format": "appfolio_csv",
+   "ext": "csv",
+   "note": "AppFolio CSV: title block, VACANT/Down rows, Total row",
+   "canonical": false,
+   "carries": [
+    "end",
+    "start"
+   ],
+   "expected_rent_roll": {
+    "occupied": {
+     "101": {
+      "tenant": "Maeve Ingram",
+      "rent": 1875.0,
+      "start": "2026-02-01",
+      "end": "2027-01-31"
+     },
+     "102": {
+      "tenant": "Malik Kowalczyk",
+      "rent": 1935.0,
+      "start": "2026-05-01",
+      "end": "2027-04-30"
+     },
+     "103": {
+      "tenant": "Malik Brightwater",
+      "rent": 1185.0,
+      "start": "2026-04-01",
+      "end": "2027-03-31"
+     },
+     "104": {
+      "tenant": "Theo Thibodeaux",
+      "rent": 1775.0,
+      "start": "2026-03-01",
+      "end": "2027-02-28"
+     },
+     "201": {
+      "tenant": "Callum Lindqvist",
+      "rent": 1435.0,
+      "start": "2026-04-01",
+      "end": "2027-03-31"
+     },
+     "202": {
+      "tenant": "Avery Calloway",
+      "rent": 1525.0,
+      "start": "2026-04-01",
+      "end": "2027-03-31"
+     },
+     "203": {
+      "tenant": "Jordan Quintero",
+      "rent": 1325.0,
+      "start": "2026-05-01",
+      "end": "2027-04-30"
+     },
+     "204": {
+      "tenant": "Odette Whitlock",
+      "rent": 1525.0,
+      "start": "2026-03-01",
+      "end": "2027-02-28"
+     }
+    },
+    "vacant": [
+     "301"
+    ],
+    "down": [],
+    "total_units": 9
+   },
+   "expected_findings": [
+    {
+     "unit": "201",
+     "type": "rent_mismatch",
+     "annual": 1080.0,
+     "direction": "understate"
+    },
+    {
+     "unit": "202",
+     "type": "unit_no_lease",
+     "annual": 18300.0,
+     "direction": null
+    },
+    {
+     "unit": "203",
+     "type": "rent_mismatch",
+     "annual": 1800.0,
+     "direction": "overstate"
+    }
+   ]
+  },
+  {
+   "file": "rent_rolls/p21__yardi_xlsx.xlsx",
+   "property": "p21",
+   "format": "yardi_xlsx",
+   "ext": "xlsx",
+   "note": "Yardi xlsx: merged title, two-row header, 'Last, First' names (name order must not be a tenant mismatch)",
+   "canonical": false,
+   "carries": [
+    "end"
+   ],
+   "expected_rent_roll": {
+    "occupied": {
+     "101": {
+      "tenant": "Maeve Ingram",
+      "rent": 1875.0,
+      "end": "2027-01-31"
+     },
+     "102": {
+      "tenant": "Malik Kowalczyk",
+      "rent": 1935.0,
+      "end": "2027-04-30"
+     },
+     "103": {
+      "tenant": "Malik Brightwater",
+      "rent": 1185.0,
+      "end": "2027-03-31"
+     },
+     "104": {
+      "tenant": "Theo Thibodeaux",
+      "rent": 1775.0,
+      "end": "2027-02-28"
+     },
+     "201": {
+      "tenant": "Callum Lindqvist",
+      "rent": 1435.0,
+      "end": "2027-03-31"
+     },
+     "202": {
+      "tenant": "Avery Calloway",
+      "rent": 1525.0,
+      "end": "2027-03-31"
+     },
+     "203": {
+      "tenant": "Jordan Quintero",
+      "rent": 1325.0,
+      "end": "2027-04-30"
+     },
+     "204": {
+      "tenant": "Odette Whitlock",
+      "rent": 1525.0,
+      "end": "2027-02-28"
+     }
+    },
+    "vacant": [
+     "301"
+    ],
+    "down": [],
+    "total_units": 9
+   },
+   "expected_findings": [
+    {
+     "unit": "201",
+     "type": "rent_mismatch",
+     "annual": 1080.0,
+     "direction": "understate"
+    },
+    {
+     "unit": "202",
+     "type": "unit_no_lease",
+     "annual": 18300.0,
+     "direction": null
+    },
+    {
+     "unit": "203",
+     "type": "rent_mismatch",
+     "annual": 1800.0,
+     "direction": "overstate"
+    }
+   ]
   }
  ],
  "t12s": [
@@ -44535,6 +45143,47 @@
    },
    "expected_t12_rows": [],
    "rent_roll_annual": 95220.0
+  },
+  {
+   "file": "t12/p21__pdf_scanned__gap.pdf",
+   "property": "p21",
+   "format": "pdf_scanned",
+   "scenario": "gap",
+   "ext": "pdf",
+   "note": "Scanned T-12 PDF (image only) -- OCR path",
+   "expected_parse": {
+    "gross_potential_rent": 170100.0,
+    "vacancy_loss": 18900.0,
+    "concessions": 0.0,
+    "bad_debt": 1762.52,
+    "rental_income_collected": 129838.11,
+    "other_income": 6793.07
+   },
+   "expected_t12_rows": [
+    {
+     "type": "t12_income_gap",
+     "annual": 21121.89
+    }
+   ],
+   "rent_roll_annual": 150960.0
+  },
+  {
+   "file": "t12/p21__pdf_text__clean.pdf",
+   "property": "p21",
+   "format": "pdf_text",
+   "scenario": "clean",
+   "ext": "pdf",
+   "note": "Digital PDF T-12 table, 'Oct-25' headers, tiny font",
+   "expected_parse": {
+    "gross_potential_rent": 170100.0,
+    "vacancy_loss": 18900.0,
+    "concessions": 0.0,
+    "bad_debt": 1638.5,
+    "rental_income_collected": 149669.87,
+    "other_income": 6748.45
+   },
+   "expected_t12_rows": [],
+   "rent_roll_annual": 150960.0
   }
  ],
  "bad_rent_rolls": [

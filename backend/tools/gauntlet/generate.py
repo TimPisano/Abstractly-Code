@@ -306,6 +306,25 @@ def write_leases(prop):
         pdf = render_paragraph_pdf(lease_paragraphs(prop, u), f"{prop['name']} -- Unit {u['uid']} -- FICTIONAL TEST DATA")
         rel = f"leases/{prop['id']}/{u['uid']}.pdf"
         write(os.path.join(FIX, rel), pdf)
+        if u.get("duplicate_copy"):
+            copy = render_paragraph_pdf(lease_paragraphs(prop, u), f"{prop['name']} -- Unit {u['uid']} -- EXECUTED COPY -- FICTIONAL TEST DATA")
+            crel = f"leases/{prop['id']}/{u['uid']}_signed_copy.pdf"
+            write(os.path.join(FIX, crel), copy)
+            out.append({"file": crel, "unit": u["uid"], "tenant": u["tenant"], "rent": u["lease_rent"], "start": u["start"],
+                        "end": u["end"], "address": lease_address(prop, u), "concession": u["concession"], "history": True})
+        if u.get("amendment"):
+            am = u["amendment"]
+            paras = [("Fictional Residential Management Co.", "title"), "", "FIRST AMENDMENT TO LEASE AGREEMENT", "",
+                     f"This First Amendment amends the Residential Apartment Lease Agreement between {prop['name']} Owner LLC "
+                     f"(\"Owner\") and {u['tenant']} (\"Resident\") for the apartment located at {lease_address(prop, u)} "
+                     f"(the \"Premises\"), with a Lease Term beginning on {long_date(u['start'])} and ending on {long_date(u['end'])}.", "",
+                     f"1. RENT. Effective {long_date(am['effective'])}, Base Rent is {money(am['rent'])} per month.", "",
+                     "2. All other terms of the Lease remain in full force and effect.", "",
+                     f"IN WITNESS WHEREOF, the parties have executed this First Amendment as of {long_date(am['effective'])}."]
+            arel = f"leases/{prop['id']}/{u['uid']}_amendment_1.pdf"
+            write(os.path.join(FIX, arel), render_paragraph_pdf(paras, f"{prop['name']} -- Unit {u['uid']} amendment -- FICTIONAL TEST DATA"))
+            out.append({"file": arel, "unit": u["uid"], "tenant": u["tenant"], "rent": am["rent"], "start": u["start"],
+                        "end": u["end"], "address": lease_address(prop, u), "concession": None, "history": True})
         out.append({"file": rel, "unit": u["uid"], "tenant": u["tenant"], "rent": u["lease_rent"],
                     "start": u["start"], "end": u["end"], "address": lease_address(prop, u),
                     "concession": u["concession"]})
@@ -862,7 +881,8 @@ RR_PLAN = [
     ["appfolio_csv", "yardi_xlsx", "entrata_csv"],
     # cycle 6
     ["eu_csv", "realpage_csv"],
-    ["eu_csv", "appfolio_xlsx"],
+    ["eu_csv", "appfolio_xlsx"],    # cycle 7
+    ["appfolio_csv", "yardi_xlsx"],
 ]
 
 
@@ -1166,6 +1186,7 @@ T12_PLAN = [
     [("xlsx_monyear", "gap"), ("csv_mm_yyyy_nototal", "clean")],
     [("csv_t24", "gap"), ("csv_t24", "clean")],
     [("csv_t24", "occ"), ("xlsx_monyear", "clean")],
+    [("pdf_scanned", "gap"), ("pdf_text", "clean")],
 ]
 
 
@@ -1193,6 +1214,8 @@ def render_t12(prop, fmt, lines):
         return "csv", t12_csv_actual_budget_inline(prop, lines), "Budget comparison: 'Oct 2025 Actual' / 'Oct 2025 Budget' column pairs -- must read actuals"
     if fmt == "xlsx_actual_budget_tworow":
         return "xlsx", t12_xlsx_actual_budget_tworow(prop, lines), "Month merged over Actual / Budget sub-columns (two-row header) -- must read actuals"
+    if fmt == "pdf_scanned":
+        return "pdf", _scan(t12_pdf(prop, lines)), "Scanned T-12 PDF (image only) -- OCR path"
     if fmt == "csv_t24":
         return "csv", t12_csv_t24(prop, lines), "T-24: Oct 2024..Sep 2026 side by side -- must read the LATEST 12 months"
     if fmt == "csv_prior_year":

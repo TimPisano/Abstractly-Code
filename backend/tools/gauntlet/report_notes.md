@@ -1,11 +1,12 @@
 <!-- SUMMARY -->
-**Cycle 6: 169 of 182 cases pass (93%). It was 22 of 132 (17%) at the start.** The gauntlet now runs 90 messy rent rolls (plus a two-property portfolio file), 47 T-12s and 203 leases through the full local pipeline, graded against a manifest of correct answers.
+**Cycle 7: 173 of 188 cases pass (92%). It was 22 of 132 (17%) at the start.** The gauntlet now runs 92 messy rent rolls (plus a two-property portfolio file), 49 T-12s and 214 lease documents (including duplicate copies and rent amendments) through the full local pipeline, graded against a manifest of correct answers.
 
-- **Planted mismatches caught: 1,962 of 1,962, every one with the right dollar amount.**
+- **Planted mismatches caught: 1,971 of 1,971, every one with the right dollar amount.**
 - **False alarms: 19, down from 337.** All are lease-extraction misreads of accented names (owned by `feature/lease-intelligence`) or character-level OCR misreads on scanned rent rolls.
 - **Scanned rent rolls now import.** Columns are rebuilt from the data rows, sideways and tilted pages are turned upright, and impossible OCR rents are blanked with a warning. Remaining scan failures are character misreads (a lost space, "4201" for 1201) that grid logic can't fix. The heavily degraded sideways fixture still fails with a clear 400.
 - **No crashes and no hangs.**
-- **Fixes:** 54, each its own commit with a regression test. All 83 test files pass.
+- **Fixes:** 64, each its own commit with a regression test. All 83 test files pass.
+- **Reviews:** the `security-auditor` said MERGE (no cross-team leak). Its three follow-ups are fixed: image-size cap, tesseract timeouts, insert-before-supersede. The `reviewer` said FIX FIRST with four items, all fixed (`b888ef9`, `c0b4403`, `99920ec`, `4e5d765`). A re-review is pending.
 
 **AUDIT.md top priority: "the Deal Mismatch Report gets dollar figures wrong on ordinary lease files" (§6.11, §6.1).** It is reproduced with golden fixtures (property `p18` + a re-import case) and fixed at the root:
 
@@ -16,6 +17,9 @@
 | "First month 50% off" | Priced as a full-term discount: **$10,950 instead of $912.50** (12×) | A singular "first/last month" means one month |
 | Re-import of an updated rent roll | Every unit doubled (9 stale rows stayed active) | A new import for a building supersedes that building's previous rows (kept, not deleted; team-scoped) |
 | "Unit"/"Apt"/"#", "St"/"Street", "Building A, Apt 101", leading property name | Real gaps became unpriced "no lease"/"no unit" pairs | One canonical unit/building key |
+| Same lease uploaded twice (signed + unsigned copy) | A real gap was counted twice in dollars | Identical copies collapse to one |
+| Rent amendment uploaded as its own document | The correct amended rent was flagged against the original | Same tenant + same term = versions of one lease; matching any version is fine |
+| Scanned T-12 (§6.13) | OCR numbers trusted as-is; one test scan read $10.81 of annual rent | Real OCR table rebuild; a line is trusted only if its months add up to its total, otherwise a clear error |
 | T-12 from the report page | Always 400 (no property address sent) | Scoped to the rent roll's building when there is exactly one; otherwise a clear error naming the buildings |
 | T-12 income gap / occupancy / bad-debt months | Never fired / false alarm / wrong months | Fixed in cycles 1–2 (see the fixes table) |
 
@@ -46,10 +50,11 @@ Still open from the audit's §6.11 list, all owned by lease extraction: everyday
   - headers below row 20;
   - "Grand Total" rows and duplicate rows.
 
-All of these are fixed and covered by tests. **Two decisions are yours, before merge:**
+All of these are fixed and covered by tests. **Three decisions are yours, before merge:**
 
 - **Unit-wording matching (Suite = Apt = Unit, Building A + Apt 101 = A-101).** This reverses a stance a previous QA pass wrote into a test docstring. The reasoning is in `docs/DECISIONS.md`.
 - **A new table, `rent_roll_unit_summaries`.** It is team-scoped and stores the vacant/down unit counts.
+- **Re-import replaces an earlier rent-roll file only when it covers the same units.** See `docs/DECISIONS.md`; the upload screen doesn't show "replaced N rows" yet.
 <!-- OPEN -->
 1. **Lease extraction misreads (not mine to fix; owned by `feature/lease-intelligence`).** These cause 10 of the 13 remaining failures.
    - For tenants with accented names, the regex extractor returns the *owner entity* ("Bluebonnet Commons Owner LLC", "Copper Canyon Owner LLC") or only the surname ("Delacroix" for "François Delacroix"). The result is a high-severity false tenant_mismatch on that unit.
