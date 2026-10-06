@@ -275,14 +275,32 @@ _NON_TENANT_KEYWORDS = {"vacant", "vacancy", "total", "totals", "subtotal", "sub
 _UNIT_DESIGNATOR_RE = re.compile(r"^\s*(?:suite|ste\.?|unit|apt\.?|#)\s*[\w-]+", re.IGNORECASE)
 
 
+_TENANT_NAME_HEADERS = ["tenant name", "resident name", "lessee name", "tenant names", "resident names", "name"]
+
+
 def _match_columns(headers: List[Any]) -> Dict[str, int]:
     """Maps canonical field name -> column index for whichever headers could be confidently matched. See module docstring."""
     normalized = [_normalize_header(h) for h in headers]
     mapping: Dict[str, int] = {}
     used_columns = set()
 
+    # Pass 0: a column that is literally the tenant's NAME wins the tenant
+    # field over a bare "Resident"/"Tenant" column. RealPage heads it just
+    # "Name"; Yardi has "Resident" (an id like t0012345) next to "Name".
+    # "Name" counts only as the whole header -- never "Property Name".
+    for wanted in _TENANT_NAME_HEADERS:
+        if "tenant" in mapping:
+            break
+        for i, h in enumerate(normalized):
+            if h == wanted:
+                mapping["tenant"] = i
+                used_columns.add(i)
+                break
+
     # Pass 1: exact match (most confident) -- "Rent" header equals the "rent" alias exactly.
     for field_name, aliases in _COLUMN_ALIASES.items():
+        if field_name in mapping:
+            continue
         alias_norms = {_normalize_header(a) for a in aliases}
         for i, h in enumerate(normalized):
             if i in used_columns:

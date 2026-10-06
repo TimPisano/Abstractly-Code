@@ -560,6 +560,20 @@ def test_misspelled_rent_roll_headers_still_map():
     print("✓ test_misspelled_rent_roll_headers_still_map: PASS")
 
 
+def test_tenant_name_column_preferred_over_resident_code():
+    """
+    RealPage's tenant column is headed just "Name" (no "Tenant"): the whole
+    file was rejected. Yardi has "Resident" (an id like t0012345) AND
+    "Name": the id must not become the tenant.
+    """
+    from app.rent_roll_import import _match_columns
+    assert _match_columns(["Bldg/Unit", "Floorplan", "Name", "Lease Rent"]).get("tenant") == 2
+    assert _match_columns(["Unit", "Resident", "Name", "Actual Rent"]).get("tenant") == 2
+    assert _match_columns(["Unit", "Tenant", "Property Name", "Rent"]).get("tenant") == 1
+    assert _match_columns(["Unit", "Floor Plan Name", "Rent"]).get("tenant") is None
+    print("✓ test_tenant_name_column_preferred_over_resident_code: PASS")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):
