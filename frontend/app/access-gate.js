@@ -217,6 +217,32 @@
         });
     }
 
+    // Back button after signing out (or after this login expired / was
+    // revoked elsewhere): browsers restore the whole page from the
+    // back/forward cache WITHOUT re-running this file, which would put
+    // the last person's dashboard back on screen on a shared computer.
+    // So a restored page hides itself and re-checks the session first.
+    window.addEventListener('pageshow', async (event) => {
+        if (!event.persisted) return;
+        shellEl.style.display = 'none';
+        const token = storedToken();
+        if (!token) {
+            window.location.replace('login.html');
+            return;
+        }
+        try {
+            const { data } = await fetchJson(`${API_BASE_URL}/auth/session`, {
+                credentials: 'include', headers: { 'Authorization': `Bearer ${token}` },
+            });
+            if (data.authenticated) {
+                shellEl.style.display = '';
+                return;
+            }
+        } catch (e) { /* unreachable: fail closed */ }
+        forgetTokenHere();
+        window.location.replace('login.html?expired=1');
+    });
+
     // access-gate.js runs before api.js even loads (it's the thing that
     // decides whether api.js gets loaded at all), so it can't share
     // apiRequest()'s network-failure handling and needs its own copy of

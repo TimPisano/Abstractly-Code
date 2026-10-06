@@ -545,7 +545,7 @@ def send_password_changed_email(to_email: str, name: str, forgot_url: str) -> bo
     Security notice after a password reset: if it wasn't them, they
     find out now instead of the next time they can't sign in. Every
     other session was signed out as part of the reset (see
-    database.bump_session_version), so it says so.
+    database.update_user_password), so it says so.
     """
     first = _greeting_name(name)
     subject = "Your Abstractly password was changed"

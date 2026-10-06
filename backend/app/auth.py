@@ -73,6 +73,18 @@ def issue_token(user: dict, remember: bool = False) -> str:
     })
 
 
+def token_remembers():
+    """True/False: the request's bearer token was issued with/without "Keep me signed in". None: no valid bearer token on this request."""
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return None
+    try:
+        data = _token_serializer().loads(auth_header[7:].strip(), max_age=REMEMBER_MAX_AGE_SECONDS)
+    except (BadSignature, SignatureExpired):
+        return None
+    return bool(data.get("rm")) if isinstance(data, dict) else None
+
+
 def _user_from_bearer_token():
     auth_header = request.headers.get("Authorization", "")
     if not auth_header.startswith("Bearer "):
@@ -188,16 +200,21 @@ def current_user():
         # permanent session on every request, so this is what actually
         # ends a login. Sessions made before it existed have none and
         # are bounded by Flask's own permanent_session_lifetime.
+        # Exception: a PERMANENT cookie with no `exp` was issued before
+        # this deploy, as a 12-hour login -- and the cookie lifetime is now
+        # 30 days, refreshed on every request, so it would otherwise
+        # quietly become a sliding 30-day login. Those sign in once more.
         exp = session.get("exp")
-        if exp is None or time.time() < exp:
-            claimed = {"id": session["user_id"], "sv": int(session.get("sv") or 0)}
-    user = _live_user(claimed["id"], claimed.get("sv", 0)) if claimed else None
+        legacy_permanent = exp is None and session.permanent
+        if not legacy_permanent and (exp is None or time.time() < exp):
+            claimed = {"id": session["user_id"], "sv": int(session.get("sv") or 0), "email": session.get("email")}
+    user = _live_user(claimed["id"], claimed.get("sv", 0), claimed.get("email")) if claimed else None
     if has_request_context():
         g._abstractly_user = user
     return user
 
 
-def _live_user(user_id, session_version=0):
+def _live_user(user_id, session_version=0, claimed_email=None):
     """
     The user's CURRENT row as the current_user() dict, or None if the
     account no longer exists, isn't active, or its team is deactivated
@@ -206,9 +223,18 @@ def _live_user(user_id, session_version=0):
     Also None if the credential's session_version is stale: the user
     reset their password since it was issued (see
     database._migrate_users_add_session_version).
+
+    And None if the credential names a different email than the row:
+    user ids are reused when a database is recreated (every restart on
+    a deployment with no persistent disk), so a 30-day token for user
+    #5 would otherwise sign its holder in as whoever is user #5 in the
+    NEW database -- someone else entirely. Credentials carry the email
+    they were issued for; a mismatch means "not this person".
     """
     row = database.get_user(user_id)
     if not row or row.get("status") != "active":
+        return None
+    if claimed_email and (row.get("email") or "").lower() != str(claimed_email).strip().lower():
         return None
     if int(row.get("session_version") or 0) != int(session_version or 0):
         return None

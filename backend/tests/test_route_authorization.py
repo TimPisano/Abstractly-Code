@@ -32,6 +32,9 @@ _PUBLIC_MUTATING = {
     # identity, same category as /auth/reset-password. Each has its own
     # rate limit; see api.py's "Self-serve signup" section.
     "/auth/signup", "/auth/complete-signup", "/auth/resend-link",
+    # Read-only link check; a POST only so the token stays in the body
+    # and out of access logs (a GET query string is logged).
+    "/auth/link-status",
     "/waitlist", "/waitlist/check",
     # Fired by anonymous visitors on the public marketing site itself
     # (frontend/landing.js) -- same "public by design" category as

@@ -42,8 +42,8 @@ Ignored per CLAUDE.md. Signup creates rows in the existing `teams` + `users`.
 
 1. **`signup_requests` table** (new, `database.py`): `token_hash` PK,
    `email`, `name`, `company`, `created_at`, `used_at`. Creating a request
-   deletes any unused request for the same email, so a newer link kills the
-   older one. Consume is atomic (`UPDATE … WHERE used_at IS NULL`), like the
+   revokes (keeps, marked unusable) any unused request for the same email, so a
+   newer link kills the older one and the page can say so. Consume is atomic (`UPDATE … WHERE used_at IS NULL`), like the
    existing reset tokens.
 2. **`POST /auth/signup`** `{name, email, company}`. Public. Validates, then
    is rate-limited per IP and per email *before* any lookup, the same pattern
@@ -57,7 +57,7 @@ Ignored per CLAUDE.md. Signup creates rows in the existing `teams` + `users`.
    - All mail goes out on a background thread
      (`_send_email_off_request_path`), so response time can't leak whether an
      account exists either.
-3. **`GET /auth/link-status?kind=signup|reset&token=…`** returns
+3. **`POST /auth/link-status` `{kind, token}`** (POST so the token stays out of access logs) returns
    `valid | expired | used | invalid`. Pages call this on load, so an
    expired or used link shows the friendly page *before* the user types a
    password. Tampered and unknown tokens return `invalid` and show the same

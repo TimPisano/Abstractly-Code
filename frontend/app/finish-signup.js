@@ -2,7 +2,7 @@
  * "Choose a password" -- reached only from the signup email's link.
  *
  * On load: the token is taken out of the address bar (Auth.takeLinkToken)
- * and checked with GET /auth/link-status, so an expired, used, replaced
+ * and checked with POST /auth/link-status, so an expired, used, replaced
  * or broken link shows a friendly explanation (with a one-click "Send me
  * a new link") BEFORE anyone types a password.
  *
@@ -38,10 +38,12 @@
     (async function check() {
         if (!token) return dead('invalid');
         try {
-            const { ok, status, data } = await Auth.request(
-                `/auth/link-status?kind=signup&token=${encodeURIComponent(token)}`,
-                { onSlow: () => Auth.setStatus(document.getElementById('loadingSlow'), 'The server may be waking up. This can take up to a minute.') },
-            );
+            const { ok, status, data } = await Auth.request('/auth/link-status', {
+                // POST, not a query string: the token must never reach server logs.
+                method: 'POST',
+                body: { kind: 'signup', token },
+                onSlow: () => Auth.setStatus(document.getElementById('loadingSlow'), 'The server may be waking up. This can take up to a minute.'),
+            });
             if (status === 404) return dead('invalid');
             if (!ok) throw new Error(data.error || 'Something went wrong. Please refresh the page.');
             if (data.status !== 'valid') return dead(data.status);

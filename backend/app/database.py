@@ -263,6 +263,13 @@ def _migrate_password_reset_tokens_add_revoked_at(conn: sqlite3.Connection) -> N
     existing_columns = {row["name"] for row in conn.execute("PRAGMA table_info(password_reset_tokens)").fetchall()}
     if "revoked_at" not in existing_columns:
         conn.execute("ALTER TABLE password_reset_tokens ADD COLUMN revoked_at TEXT")
+    # `purpose`: 'reset' (forgot password, 1 hour) or 'setup' (owner-
+    # created team's first login, 7 days). Each route accepts only its
+    # own kind -- before this, a 1-hour forgot-password link could be
+    # redeemed through /auth/team-setup under the 7-day limit. NULL =
+    # a row from before this column, accepted by either (old behavior).
+    if "purpose" not in existing_columns:
+        conn.execute("ALTER TABLE password_reset_tokens ADD COLUMN purpose TEXT")
 
 
 def _migrate_users_add_session_version(conn: sqlite3.Connection) -> None:
@@ -2472,10 +2479,20 @@ def update_user_status(user_id: int, status: str) -> bool:
 
 
 def update_user_password(user_id: int, password_hash: str) -> bool:
-    """Sets the password and kills every still-live reset link for the user -- whoever changed it (themselves, an admin, the owner, a reset), an older reset email must not be able to undo it."""
+    """
+    Sets the password, kills every still-live reset link for the user,
+    and signs the user out everywhere (session_version + 1) -- whoever
+    changed it (themselves, an admin, the owner, a reset). An older reset
+    email must not be able to undo it, and a stolen 30-day token must not
+    survive it. A caller who should stay signed in (the person changing
+    their own password) starts a fresh session afterwards.
+    """
     conn = get_connection()
     try:
-        cur = conn.execute("UPDATE users SET password_hash = ? WHERE id = ?", (password_hash, user_id))
+        cur = conn.execute(
+            "UPDATE users SET password_hash = ?, session_version = session_version + 1 WHERE id = ?",
+            (password_hash, user_id),
+        )
         conn.execute(
             "UPDATE password_reset_tokens SET revoked_at = ? WHERE user_id = ? AND used_at IS NULL AND revoked_at IS NULL",
             (_utcnow_iso(), user_id),
@@ -2612,7 +2629,7 @@ def _link_status(row, max_age_seconds: int) -> str:
     return "valid"
 
 
-def create_password_reset_token(user_id: int, token_hash: str) -> None:
+def create_password_reset_token(user_id: int, token_hash: str, purpose: str = "reset") -> None:
     """
     Stores a single-use password reset token, keyed by the SHA-256
     hash of the random token (the raw token itself only ever exists in
@@ -2635,28 +2652,15 @@ def create_password_reset_token(user_id: int, token_hash: str) -> None:
             (now, user_id),
         )
         conn.execute(
-            "INSERT INTO password_reset_tokens (token_hash, user_id, created_at) VALUES (?, ?, ?)",
-            (token_hash, user_id, now),
+            "INSERT INTO password_reset_tokens (token_hash, user_id, created_at, purpose) VALUES (?, ?, ?, ?)",
+            (token_hash, user_id, now, purpose),
         )
         conn.commit()
     finally:
         conn.close()
 
 
-def revoke_password_reset_tokens(user_id: int) -> None:
-    """Kills every still-live reset link for this user -- called after any password change, so a reset email sitting in an inbox can't undo a password the person just chose."""
-    conn = get_connection()
-    try:
-        conn.execute(
-            "UPDATE password_reset_tokens SET revoked_at = ? WHERE user_id = ? AND used_at IS NULL AND revoked_at IS NULL",
-            (_utcnow_iso(), user_id),
-        )
-        conn.commit()
-    finally:
-        conn.close()
-
-
-def get_password_reset_token_status(token_hash: str, max_age_seconds: int = 3600):
+def get_password_reset_token_status(token_hash: str, max_age_seconds: int = 3600, purpose: str = "reset"):
     """
     Read-only: ('valid'|'used'|'superseded'|'expired'|'invalid', user_id
     or None). Never consumes the token. Lets the reset page show the
@@ -2666,8 +2670,9 @@ def get_password_reset_token_status(token_hash: str, max_age_seconds: int = 3600
     conn = get_connection()
     try:
         row = conn.execute(
-            "SELECT user_id, created_at, used_at, revoked_at FROM password_reset_tokens WHERE token_hash = ?",
-            (token_hash,),
+            "SELECT user_id, created_at, used_at, revoked_at FROM password_reset_tokens "
+            "WHERE token_hash = ? AND (purpose = ? OR purpose IS NULL)",
+            (token_hash, purpose),
         ).fetchone()
         if row is None:
             return "invalid", None
@@ -2676,7 +2681,7 @@ def get_password_reset_token_status(token_hash: str, max_age_seconds: int = 3600
         conn.close()
 
 
-def consume_password_reset_token(token_hash: str, max_age_seconds: int = 3600) -> Optional[int]:
+def consume_password_reset_token(token_hash: str, max_age_seconds: int = 3600, purpose: str = "reset") -> Optional[int]:
     """
     Looks up a reset token by its hash and, if it's valid (exists,
     never used, not revoked, not older than max_age_seconds), marks it
@@ -2692,8 +2697,9 @@ def consume_password_reset_token(token_hash: str, max_age_seconds: int = 3600) -
     conn = get_connection()
     try:
         row = conn.execute(
-            "SELECT user_id, created_at, used_at, revoked_at FROM password_reset_tokens WHERE token_hash = ?",
-            (token_hash,),
+            "SELECT user_id, created_at, used_at, revoked_at FROM password_reset_tokens "
+            "WHERE token_hash = ? AND (purpose = ? OR purpose IS NULL)",
+            (token_hash, purpose),
         ).fetchone()
         if row is None or _link_status(row, max_age_seconds) != "valid":
             return None
@@ -2739,6 +2745,20 @@ def get_signup_request(token_hash: str, max_age_seconds: int):
         if row is None:
             return "invalid", None
         return _link_status(row, max_age_seconds), dict(row)
+    finally:
+        conn.close()
+
+
+def get_open_signup_request(email: str) -> Optional[Dict[str, Any]]:
+    """The newest not-yet-used, not-replaced signup request for this email (expired or not), or None. Lets "Forgot password?" help someone who signed up but never finished."""
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT * FROM signup_requests WHERE email = ? AND used_at IS NULL AND revoked_at IS NULL "
+            "ORDER BY created_at DESC LIMIT 1",
+            ((email or "").strip().lower(),),
+        ).fetchone()
+        return dict(row) if row else None
     finally:
         conn.close()
 
@@ -2813,18 +2833,6 @@ def complete_signup(token_hash: str, max_age_seconds: int, password_hash: str) -
         # users.email UNIQUE lost a race with another account creation.
         conn.rollback()
         return {"status": "exists"}
-    finally:
-        conn.close()
-
-
-def bump_session_version(user_id: int) -> int:
-    """Signs this user out everywhere (see _migrate_users_add_session_version). Returns the new version, which the caller's own fresh login must carry."""
-    conn = get_connection()
-    try:
-        conn.execute("UPDATE users SET session_version = session_version + 1 WHERE id = ?", (user_id,))
-        conn.commit()
-        row = conn.execute("SELECT session_version FROM users WHERE id = ?", (user_id,)).fetchone()
-        return row["session_version"] if row else 0
     finally:
         conn.close()
 

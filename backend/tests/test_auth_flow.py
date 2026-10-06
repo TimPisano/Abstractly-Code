@@ -86,8 +86,12 @@ def _complete(client, token, password=GOOD_PASSWORD, remember=False):
     return client.post("/auth/complete-signup", json={"token": token, "password": password, "remember": remember})
 
 
+def _link_status(client, kind, token):
+    return client.post("/auth/link-status", json={"kind": kind, "token": token}).get_json()
+
+
 def _status(client, kind, token):
-    return client.get(f"/auth/link-status?kind={kind}&token={token}").get_json()["status"]
+    return _link_status(client, kind, token)["status"]
 
 
 def _age_row(table, token, seconds):
@@ -180,19 +184,19 @@ def test_link_status_only_describes_a_live_link():
     with _Env() as client:
         _signup(client)
         token = _link_token(_outbox[-1])
-        data = client.get(f"/auth/link-status?kind=signup&token={token}").get_json()
+        data = _link_status(client, "signup", token)
         assert data == {"status": "valid", "email": SIGNUP_EMAIL, "first_name": "Jordan", "company": "Maple Ridge Capital"}
         _signup(client)
-        dead = client.get(f"/auth/link-status?kind=signup&token={token}").get_json()
+        dead = _link_status(client, "signup", token)
         assert dead == {"status": "superseded"}, "a dead link must not reveal whose it was"
 
         _make_user()
         client.post("/auth/forgot-password", json={"email": "casey@harbor.test"})
         reset = _link_token(_outbox[-1])
-        assert client.get(f"/auth/link-status?kind=reset&token={reset}").get_json() == {
+        assert _link_status(client, "reset", reset) == {
             "status": "valid", "email": "casey@harbor.test", "first_name": "Casey"}
         _age_row("password_reset_tokens", reset, 4000)
-        assert client.get(f"/auth/link-status?kind=reset&token={reset}").get_json() == {"status": "expired"}
+        assert _link_status(client, "reset", reset) == {"status": "expired"}
     print("✓ test_link_status_only_describes_a_live_link: PASS")
 
 
@@ -272,7 +276,7 @@ def test_tampered_unknown_and_cross_kind_tokens_are_invalid():
             assert r.status_code == 400 and r.get_json()["link_status"] == "invalid"
         # Junk that isn't even a token shape.
         for junk in ("<script>", "a" * 500, "a b"):
-            assert client.get("/auth/link-status", query_string={"kind": "signup", "token": junk}).get_json()["status"] == "invalid"
+            assert _status(client, "signup", junk) == "invalid"
         r = client.post("/auth/complete-signup", json={"token": ["list"], "password": GOOD_PASSWORD})
         assert r.status_code == 400
         # A signup token is not a reset token, and vice versa.
@@ -392,7 +396,7 @@ def test_signup_flag_off_hides_every_signup_route():
             assert client.get("/auth/options").get_json() == {"signup_enabled": False}
             assert _signup(client).status_code == 404
             assert _complete(client, "x" * 43).status_code == 404
-            assert client.get("/auth/link-status?kind=signup&token=abc").status_code == 404
+            assert client.post("/auth/link-status", json={"kind": "signup", "token": "abc"}).status_code == 404
             assert client.post("/auth/resend-link", json={"kind": "signup", "token": "abc"}).status_code == 404
             assert _outbox == []
         assert client.get("/auth/options").get_json() == {"signup_enabled": True}
@@ -594,6 +598,128 @@ def test_overlong_passwords_are_400_not_500():
     print("✓ test_overlong_passwords_are_400_not_500: PASS")
 
 
+def test_forgot_password_before_finishing_signup_resends_the_setup_link():
+    """Signed up, never clicked the link, later tries "Forgot password?": they need the setup link, not silence."""
+    with _Env() as client:
+        _signup(client)
+        old = _link_token(_outbox[-1])
+        unknown = _forgot(client, "nobody@harbor.test", ip="10.0.1.1").get_json()
+        pending = _forgot(client, SIGNUP_EMAIL, ip="10.0.1.2").get_json()
+        assert pending == unknown, "response must not reveal a pending signup"
+        mail = _outbox[-1]
+        assert mail["to"] == SIGNUP_EMAIL and mail["subject"] == "Finish setting up your Abstractly account"
+        new = _link_token(mail)
+        assert new != old and _status(client, "signup", old) == "superseded"
+        assert _complete(client, new).status_code == 201
+        # Flag off: nothing about signup leaks through forgot-password.
+        with mock.patch.dict(os.environ, {"SELF_SERVE_SIGNUP_ENABLED": ""}):
+            _signup_raw = database.create_signup_request("late@harbor.test", "Late Person", "Late Co", "f" * 64)
+            n = len(_outbox)
+            _forgot(client, "late@harbor.test", ip="10.0.1.3")
+            assert len(_outbox) == n
+            assert _signup_raw is None
+    print("✓ test_forgot_password_before_finishing_signup_resends_the_setup_link: PASS")
+
+
+def test_stale_credential_from_a_wiped_database_is_rejected():
+    """Regression: user ids restart when a database is recreated (no persistent disk), so an old token for user #1 must not sign its holder in as the NEW user #1."""
+    with _Env() as client:
+        first_db = database._db_path
+        uid_a = _make_user("alice@first.test", "Alice First")
+        login = _login(client, "alice@first.test").get_json()
+        token = login["token"]
+        assert client.get("/auth/session", headers=_bearer(token)).get_json()["authenticated"]
+
+        second_db = _fresh_temp_db()
+        try:
+            uid_b = _make_user("bob@second.test", "Bob Second")
+            assert uid_b == uid_a, "test setup: the new database should reuse the id"
+            stale_token = app.test_client().get("/auth/session", headers=_bearer(token)).get_json()
+            assert not stale_token["authenticated"], f"old token signed in as {stale_token.get('email')}"
+            stale_cookie = client.get("/auth/session").get_json()
+            assert not stale_cookie["authenticated"], f"old cookie signed in as {stale_cookie.get('email')}"
+        finally:
+            os.unlink(second_db)
+            database.configure(first_db)
+    print("✓ test_stale_credential_from_a_wiped_database_is_rejected: PASS")
+
+
+def test_wrong_http_method_is_405_not_500():
+    """Regression: the catch-all Exception handler turned Flask's own 405 into a 500 on every route."""
+    with _Env() as client:
+        for method, path in (("get", "/auth/login"), ("get", "/auth/signup"), ("delete", "/auth/session")):
+            r = getattr(client, method)(path)
+            assert r.status_code == 405, (method, path, r.status_code)
+    print("✓ test_wrong_http_method_is_405_not_500: PASS")
+
+
+def test_link_tokens_never_travel_in_a_url_to_the_api():
+    """Regression (security audit): link-status was a GET with ?token=, which the access log records."""
+    with _Env() as client:
+        _signup(client)
+        token = _link_token(_outbox[-1])
+        assert client.get(f"/auth/link-status?kind=signup&token={token}").status_code == 405
+        for path in ("signup.js", "finish-signup.js", "reset-password.js", "forgot-password.js", "login.js", "auth-common.js"):
+            with open(os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "app", path)) as f:
+                js = f.read()
+            assert "token=${" not in js and "?token=" not in js, f"{path} puts a token in an API URL"
+    print("✓ test_link_tokens_never_travel_in_a_url_to_the_api: PASS")
+
+
+def test_reset_and_setup_tokens_are_not_interchangeable():
+    """Regression (security audit): a 1-hour forgot-password token was redeemable at /auth/team-setup under its 7-day limit."""
+    with _Env() as client:
+        _make_user()
+        _forgot(client)
+        reset_token = _link_token(_outbox[-1])
+        _age_row("password_reset_tokens", reset_token, 2 * 3600)  # expired as a reset link
+        r = client.post("/auth/team-setup", json={"token": reset_token, "new_password": OTHER_PASSWORD})
+        assert r.status_code == 400, r.get_json()
+        assert _login(app.test_client()).status_code == 200, "password changed through the wrong door"
+
+        # And the other way: an owner's setup link isn't a reset link.
+        uid = _make_user("setup@harbor.test", "Setup Person")
+        raw = "s" * 43
+        database.create_password_reset_token(uid, hashlib.sha256(raw.encode()).hexdigest(), purpose="setup")
+        assert _status(client, "reset", raw) == "invalid"
+        assert client.post("/auth/reset-password", json={"token": raw, "new_password": OTHER_PASSWORD}).status_code == 400
+        assert client.post("/auth/team-setup", json={"token": raw, "new_password": OTHER_PASSWORD}).status_code == 200
+    print("✓ test_reset_and_setup_tokens_are_not_interchangeable: PASS")
+
+
+def test_change_password_signs_out_other_sessions_but_keeps_the_caller():
+    """Regression (security audit): only the emailed reset revoked sessions; a stolen 30-day token survived a password change."""
+    with _Env() as client:
+        _make_user()
+        stolen = _login(app.test_client(), remember=True).get_json()["token"]
+        mine = _login(client, remember=True).get_json()["token"]
+        r = client.post("/auth/change-password", headers=_bearer(mine),
+                        json={"current_password": GOOD_PASSWORD, "new_password": OTHER_PASSWORD})
+        assert r.status_code == 200, r.get_json()
+        fresh = r.get_json()["token"]
+        assert r.get_json()["remember"] is True, "keep-me-signed-in choice should carry over"
+        assert not app.test_client().get("/auth/session", headers=_bearer(stolen)).get_json()["authenticated"]
+        assert not app.test_client().get("/auth/session", headers=_bearer(mine)).get_json()["authenticated"]
+        assert app.test_client().get("/auth/session", headers=_bearer(fresh)).get_json()["authenticated"]
+        assert client.get("/auth/session").get_json()["authenticated"], "cookie caller should stay signed in"
+        # Same rules as signup/reset now.
+        r = client.post("/auth/change-password", headers=_bearer(fresh),
+                        json={"current_password": OTHER_PASSWORD, "new_password": "password123"})
+        assert r.status_code == 400 and "too common" in r.get_json()["error"]
+    print("✓ test_change_password_signs_out_other_sessions_but_keeps_the_caller: PASS")
+
+
+def test_plus_and_dot_aliases_share_one_email_budget():
+    """Regression (security audit): +tags multiplied the per-email cap for mailbombing one inbox."""
+    with _Env() as client:
+        codes = [_signup(client, email=e, ip=f"10.8.0.{i}").status_code for i, e in enumerate(
+            ["pat@gmail.com", "pat+1@gmail.com", "p.a.t@gmail.com", "PAT+x@googlemail.com"])]
+        assert codes == [200, 200, 200, 429], codes
+        assert api_module._email_rate_key("Pat+tag@Example.com") == "email:pat@example.com"
+        assert api_module._email_rate_key("p.a.t@example.com") == "email:p.a.t@example.com", "dots only matter at gmail"
+    print("✓ test_plus_and_dot_aliases_share_one_email_budget: PASS")
+
+
 # ---------------------------------------------------------------- keep me signed in
 
 def _set_cookie(resp):
@@ -643,6 +769,23 @@ def test_server_side_session_expiry():
             sess["exp"] = int(__import__("time").time()) - 1
         assert not client.get("/auth/session").get_json()["authenticated"]
     print("✓ test_server_side_session_expiry: PASS")
+
+
+def test_pre_deploy_permanent_cookie_without_exp_must_sign_in_again():
+    """Regression (review): cookie lifetime went 12h -> 30d, so an old 12-hour cookie (permanent, no exp) would slide for 30 days."""
+    with _Env() as client:
+        uid = _make_user()
+        with client.session_transaction() as sess:
+            sess.permanent = True
+            sess["user_id"] = uid
+        assert not client.get("/auth/session").get_json()["authenticated"]
+        # A plain (non-permanent) session without exp -- how test fixtures
+        # across the suite sign in -- still works.
+        with client.session_transaction() as sess:
+            sess.permanent = False
+            sess["user_id"] = uid
+        assert client.get("/auth/session").get_json()["authenticated"]
+    print("✓ test_pre_deploy_permanent_cookie_without_exp_must_sign_in_again: PASS")
 
 
 def test_logout_ends_the_cookie_session():
@@ -702,7 +845,8 @@ print(c.get("/__ip", headers={"X-Forwarded-For": "6.6.6.6, 203.0.113.7"}, enviro
 '''
     backend = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
     for env_extra, expected in (({"RENDER": "true"}, "203.0.113.7"), ({"RENDER": ""}, "10.9.9.9"),
-                                ({"RENDER": "true", "TRUSTED_PROXY_HOPS": "0"}, "10.9.9.9")):
+                                ({"RENDER": "true", "TRUSTED_PROXY_HOPS": "0"}, "10.9.9.9"),
+                                ({"RENDER": "true", "TRUSTED_PROXY_HOPS": "two"}, "10.9.9.9")):
         env = {**os.environ, "TRUSTED_PROXY_HOPS": "", **env_extra}
         if not env["TRUSTED_PROXY_HOPS"]:
             env.pop("TRUSTED_PROXY_HOPS")

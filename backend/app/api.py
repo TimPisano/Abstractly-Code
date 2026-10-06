@@ -20,6 +20,7 @@ Three layers of endpoints:
 
 from flask import Flask, request, jsonify, Response, session, redirect
 from werkzeug.datastructures import FileStorage
+from werkzeug.exceptions import HTTPException
 from flask_cors import CORS
 from dotenv import load_dotenv
 from datetime import date, datetime, timedelta, timezone
@@ -126,10 +127,13 @@ app = Flask(__name__)
 # adds entries to the LEFT). Render sets RENDER=true on every service,
 # so this turns on there by itself; TRUSTED_PROXY_HOPS overrides it
 # (0 = trust no forwarding headers, the default anywhere else).
-_trusted_proxy_hops = int(os.environ.get(
+_trusted_proxy_hops_raw = os.environ.get(
     "TRUSTED_PROXY_HOPS",
     "1" if os.environ.get("RENDER", "").strip().lower() == "true" else "0",
-) or 0)
+).strip()
+_trusted_proxy_hops = int(_trusted_proxy_hops_raw) if _trusted_proxy_hops_raw.isdigit() else 0
+if _trusted_proxy_hops_raw and not _trusted_proxy_hops_raw.isdigit():
+    logging.getLogger(__name__).error("TRUSTED_PROXY_HOPS=%r is not a whole number; trusting no proxy headers.", _trusted_proxy_hops_raw)
 if _trusted_proxy_hops > 0:
     from werkzeug.middleware.proxy_fix import ProxyFix
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=_trusted_proxy_hops)
@@ -340,6 +344,13 @@ def handle_unexpected_error(e):
     # database error) — without this, such an exception propagates past
     # our own try/except blocks and, in debug mode, straight into the
     # interactive debugger.
+    #
+    # Real HTTP errors (405 Method Not Allowed, 401, ...) also land here,
+    # because a handler for Exception catches HTTPException subclasses
+    # too -- they used to come back as a 500 with a logged "traceback".
+    # They keep their own status code instead.
+    if isinstance(e, HTTPException):
+        return jsonify({"error": e.name}), e.code
     logger.exception("Unhandled exception")
     return jsonify({"error": "Internal server error"}), 500
 
@@ -2000,6 +2011,13 @@ def _reset_login_rate_limit_for_tests():
     _login_email_rate_limiter.reset()
 
 
+def _caller_remembers() -> bool:
+    """Whether the current login was made with "Keep me signed in" -- a bearer token's `rm` flag, else the cookie session's permanence."""
+    from app.auth import token_remembers
+    from_token = token_remembers()
+    return from_token if from_token is not None else bool(session.permanent)
+
+
 def _wants_remember(body) -> bool:
     """The "Keep me signed in" checkbox. Anything but a real true is False -- the safe default for a shared computer."""
     return body.get("remember") is True
@@ -2065,7 +2083,7 @@ def auth_login():
     if email:
         # Count the email key even for a nonexistent account -- otherwise
         # a 429-vs-401 difference would leak which emails are registered.
-        limited = _login_email_rate_limiter.check([f"email:{email.lower()}"]) or limited
+        limited = _login_email_rate_limiter.check([_email_rate_key(email)]) or limited
     if limited:
         return jsonify({"error": "Too many sign-in attempts. Please wait a few minutes and try again."}), 429
 
@@ -2099,18 +2117,21 @@ def auth_change_password():
     body = request.get_json(silent=True) or {}
     current_password = body.get("current_password") or ""
     new_password = body.get("new_password") or ""
-    if not new_password or len(new_password) < 8:
-        return jsonify({"error": "New password must be at least 8 characters"}), 400
-    if password_rules.too_long_for_bcrypt(new_password):
-        return jsonify({"error": "That password is too long. Use 72 characters or fewer."}), 400
-
     user = current_user()
     full_user = database.get_user(user["id"])
+    problem = password_rules.first_problem_message(new_password, full_user["email"], full_user.get("name") or "")
+    if problem:
+        return jsonify({"error": problem}), 400
     if not verify_password(full_user["email"], current_password):
         return jsonify({"error": "Current password is incorrect"}), 401
 
+    # Signs out every OTHER session (session_version bump, see
+    # update_user_password) -- a stolen token must not survive a
+    # password change. This caller gets fresh credentials so they stay
+    # signed in, with the same "keep me signed in" choice as before.
+    remember = _caller_remembers()
     database.update_user_password(user["id"], hash_password(new_password))
-    return jsonify({"status": "password_updated"}), 200
+    return jsonify({"status": "password_updated", **_start_session(database.get_user(user["id"]), remember)}), 200
 
 
 # ---- "Forgot password?" — self-service reset over email --------------
@@ -2299,7 +2320,7 @@ def auth_forgot_password():
     # exists to hide.
     rate_limit_keys = [f"ip:{request.remote_addr or 'unknown'}"]
     if email and _EMAIL_RE.match(email):
-        rate_limit_keys.append(f"email:{email.lower()}")
+        rate_limit_keys.append(_email_rate_key(email))
     if _forgot_password_rate_limited(rate_limit_keys):
         return jsonify({"error": "Too many reset requests. Please wait a bit and try again."}), 429
 
@@ -2309,6 +2330,13 @@ def auth_forgot_password():
     user = database.get_user_by_email(email)
     if user and user["status"] == "active":
         _issue_reset_link(user, surface)
+    elif not user and _signup_enabled():
+        # Signed up but never clicked the setup link, so there's no
+        # password to reset yet -- what they actually need is the setup
+        # link again. Same generic response either way.
+        pending = database.get_open_signup_request(email)
+        if pending:
+            _send_signup_link(pending["email"], pending["name"], pending["company"])
 
     return generic, 200
 
@@ -2348,7 +2376,7 @@ def auth_reset_password():
     Public by necessity: the emailed token is the proof of identity.
     Body: {"token": str, "new_password": str, "remember": bool}.
     Consumes the token (single-use, 1 hour), sets the new password,
-    signs the user out EVERYWHERE else (database.bump_session_version
+    signs the user out EVERYWHERE else (database.update_user_password bumps session_version
     -- whoever had the old password loses their session too), and logs
     this browser in. Returns the same body as /auth/login.
     """
@@ -2378,9 +2406,9 @@ def auth_reset_password():
         status, _ = database.get_password_reset_token_status(_token_hash(token), _PASSWORD_RESET_TOKEN_TTL_SECONDS)
         return _dead_link_response(status, "reset")
 
+    # Also revokes other reset links and bumps session_version, which
+    # signs out every existing session (see update_user_password).
     database.update_user_password(user_id, hash_password(new_password))
-    database.revoke_password_reset_tokens(user_id)
-    database.bump_session_version(user_id)
 
     user = database.get_user(user_id)
     _send_email_off_request_path(
@@ -2413,15 +2441,20 @@ def auth_team_setup():
     token = (body.get("token") or "").strip() if isinstance(body.get("token"), str) else ""
     new_password = body.get("new_password") if isinstance(body.get("new_password"), str) else ""
 
-    if not new_password or len(new_password) < 8:
-        return jsonify({"error": "New password must be at least 8 characters"}), 400
-    if password_rules.too_long_for_bcrypt(new_password):
-        return jsonify({"error": "That password is too long. Use 72 characters or fewer."}), 400
     if not token:
         return jsonify({"error": "This setup link is invalid or has expired. Ask your admin for a new one."}), 400
-
     token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
-    user_id = database.consume_password_reset_token(token_hash, _TEAM_SETUP_TOKEN_TTL_SECONDS)
+    status, setup_user_id = database.get_password_reset_token_status(token_hash, _TEAM_SETUP_TOKEN_TTL_SECONDS, purpose="setup")
+    setup_user = database.get_user(setup_user_id) if status == "valid" else None
+    problem = password_rules.first_problem_message(
+        new_password, (setup_user or {}).get("email", ""), (setup_user or {}).get("name", ""),
+    )
+    if problem:
+        return jsonify({"error": problem}), 400
+
+    # purpose="setup": a 1-hour forgot-password link must not be
+    # redeemable here under the 7-day setup limit.
+    user_id = database.consume_password_reset_token(token_hash, _TEAM_SETUP_TOKEN_TTL_SECONDS, purpose="setup")
     if user_id is None:
         return jsonify({"error": "This setup link is invalid or has expired. Ask your admin for a new one."}), 400
 
@@ -2435,8 +2468,8 @@ def auth_team_setup():
 #        "check your inbox" 200. Emails a 72-hour "finish setting up"
 #        link -- or, if the email already has an account, a "you already
 #        have an account" note instead. No account exists yet.
-#   GET  /auth/link-status     ?kind=signup|reset&token=  -> is this link
-#        still usable? (read-only; never consumes it)
+#   POST /auth/link-status     {kind, token} -> is this link still usable?
+#        (read-only; never consumes it; POST so the token stays out of logs)
 #   POST /auth/complete-signup {token, password, remember} -> creates the
 #        team + its first admin, logs them in.
 #   POST /auth/resend-link     {kind, token} -> a fresh link for an
@@ -2464,6 +2497,22 @@ _resend_link_rate_limiter = RateLimiter(max_hits=5, window_seconds=3600)    # pe
 
 _MAX_NAME_LENGTH = 100
 _MAX_COMPANY_LENGTH = 120
+
+
+def _email_rate_key(email: str) -> str:
+    """
+    The per-email rate-limit key: "jo+1@gmail.com", "jo+2@gmail.com" and
+    "j.o@gmail.com" all land in the same inbox, so they share one
+    budget -- otherwise +tags multiply a mailbomb past the per-email cap.
+    Only the KEY is normalized; mail still goes to the address as typed.
+    """
+    email = (email or "").strip().lower()
+    local, _, domain = email.partition("@")
+    local = local.split("+", 1)[0]
+    if domain in ("gmail.com", "googlemail.com"):
+        local = local.replace(".", "")
+        domain = "gmail.com"
+    return f"email:{local}@{domain}"
 
 
 def _signup_enabled() -> bool:
@@ -2515,7 +2564,7 @@ def auth_signup():
     # /auth/forgot-password).
     limited = _signup_ip_rate_limiter.check([f"ip:{request.remote_addr or 'unknown'}"])
     if email and _EMAIL_RE.match(email):
-        limited = _signup_email_rate_limiter.check([f"email:{email}"]) or limited
+        limited = _signup_email_rate_limiter.check([_email_rate_key(email)]) or limited
     if limited:
         return jsonify({"error": "Too many signup attempts. Please wait a bit and try again."}), 429
 
@@ -2545,10 +2594,10 @@ def auth_signup():
     return jsonify({"message": _SIGNUP_MESSAGE}), 200
 
 
-@app.route('/auth/link-status', methods=['GET'])
+@app.route('/auth/link-status', methods=['POST'])
 def auth_link_status():
     """
-    Public by necessity. ?kind=signup|reset&token=... ->
+    Public by necessity. POST {"kind": "signup"|"reset", "token"} ->
     {"status": "valid"|"expired"|"used"|"superseded"|"invalid"}. Read-
     only. Only for a still-VALID link it also returns the email (plus,
     for signup, the first name and company typed), so the page can greet
@@ -2559,8 +2608,13 @@ def auth_link_status():
     """
     if _link_status_rate_limiter.check([f"ip:{request.remote_addr or 'unknown'}"]):
         return jsonify({"error": "Too many requests. Please wait a few minutes and try again."}), 429
-    kind = request.args.get("kind")
-    token = _clean_token(request.args.get("token"))
+    # POST with the token in the body, never a GET query string: request
+    # lines (path + query) go to the access log (gunicorn
+    # --access-logfile -), and a live link in a log is a working
+    # account-takeover for anyone who can read the logs.
+    body = request.get_json(silent=True) or {}
+    kind = body.get("kind")
+    token = _clean_token(body.get("token"))
     if kind not in ("signup", "reset"):
         return jsonify({"error": "kind must be signup or reset"}), 400
     if kind == "signup" and not _signup_enabled():
@@ -2614,7 +2668,7 @@ def auth_resend_link():
         status, row = database.get_signup_request(_token_hash(token), _SIGNUP_TOKEN_TTL_SECONDS)
         if row is None:
             return generic, 200
-        if _resend_link_rate_limiter.check([f"email:{row['email']}"]):
+        if _resend_link_rate_limiter.check([_email_rate_key(row["email"])]):
             return jsonify({"error": "Too many requests. Please wait a bit and try again."}), 429
         existing = database.get_user_by_email(row["email"])
         if existing:
@@ -2631,7 +2685,7 @@ def auth_resend_link():
     status, user_id = database.get_password_reset_token_status(_token_hash(token), _PASSWORD_RESET_TOKEN_TTL_SECONDS)
     user = database.get_user(user_id) if user_id else None
     if user and user["status"] == "active":
-        if _resend_link_rate_limiter.check([f"email:{user['email']}"]):
+        if _resend_link_rate_limiter.check([_email_rate_key(user["email"])]):
             return jsonify({"error": "Too many requests. Please wait a bit and try again."}), 429
         _issue_reset_link(user)
     return generic, 200
@@ -5717,7 +5771,7 @@ def owner_create_team():
 
     raw_token = secrets.token_urlsafe(32)
     token_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
-    database.create_password_reset_token(admin_user["id"], token_hash)
+    database.create_password_reset_token(admin_user["id"], token_hash, purpose="setup")
     base = _reset_link_base()
     setup_url = f"{base}/app/team-setup.html?token={raw_token}"
 

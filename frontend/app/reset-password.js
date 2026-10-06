@@ -2,7 +2,7 @@
  * "Choose a new password" -- reached only from a reset email's link.
  *
  * Same shape as finish-signup.js: the token leaves the address bar, is
- * checked with GET /auth/link-status so a dead link gets a friendly
+ * checked with POST /auth/link-status so a dead link gets a friendly
  * screen up front, and POST /auth/reset-password both sets the password
  * and logs this browser in. The reset signs out every other session
  * (server side, see database.bump_session_version), so the page says so.
@@ -38,10 +38,12 @@
     (async function check() {
         if (!token) return dead('invalid');
         try {
-            const { ok, data } = await Auth.request(
-                `/auth/link-status?kind=reset&token=${encodeURIComponent(token)}`,
-                { onSlow: () => Auth.setStatus(document.getElementById('loadingSlow'), 'The server may be waking up. This can take up to a minute.') },
-            );
+            const { ok, data } = await Auth.request('/auth/link-status', {
+                // POST, not a query string: the token must never reach server logs.
+                method: 'POST',
+                body: { kind: 'reset', token },
+                onSlow: () => Auth.setStatus(document.getElementById('loadingSlow'), 'The server may be waking up. This can take up to a minute.'),
+            });
             if (!ok) throw new Error(data.error || 'Something went wrong. Please refresh the page.');
             if (data.status !== 'valid') return dead(data.status);
             person = { email: data.email || '', name: data.first_name || '' };
