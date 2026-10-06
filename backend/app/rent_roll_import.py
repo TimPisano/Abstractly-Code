@@ -31,7 +31,7 @@ from typing import Any, Dict, List, Optional
 
 from openpyxl import load_workbook
 
-from app.normalize import normalize_header as _normalize_header, parse_currency, parse_date, parse_square_footage
+from app.normalize import BinaryTextUploadError, decode_text_upload, normalize_header as _normalize_header, parse_currency, parse_date, parse_square_footage
 from app.portfolio import FIELD_NAMES
 
 
@@ -695,7 +695,10 @@ def parse_csv_rent_roll(
     the caller decide by extension. A .tsv whose rows still have no tab
     is retried as comma-separated before giving up.
     """
-    text = file_bytes.decode("utf-8-sig", errors="replace")  # utf-8-sig strips a leading BOM, common from Excel's own CSV export
+    try:
+        text = decode_text_upload(file_bytes)  # UTF-8/BOM, UTF-16 (Excel "Unicode Text"), or Windows-1252
+    except BinaryTextUploadError as exc:
+        raise RentRollImportError(str(exc))
 
     def _rows_for(delim):
         reader = csv.reader(io.StringIO(text), delimiter=delim)

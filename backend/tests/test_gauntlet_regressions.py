@@ -121,6 +121,31 @@ def test_tenant_name_order_and_co_residents_are_not_a_mismatch():
     print("✓ test_tenant_name_order_and_co_residents_are_not_a_mismatch: PASS")
 
 
+# ---------------------------------------------------------------- CSV decoding
+def test_csv_rent_roll_decoding_cp1252_utf16_and_binary():
+    """
+    Excel on Windows saves CSV as Windows-1252 ("José Peña" became
+    "Jos\ufffd Pe\ufffda" and then a false tenant_mismatch); Excel's
+    "Unicode Text" is UTF-16 with a BOM; and a PNG renamed .csv crashed the
+    import route with a 500 (_csv.Error: line contains NUL).
+    """
+    from app.rent_roll_import import parse_rent_roll_file, RentRollImportError
+    rows = "Unit,Tenant,Rent\r\n101,José Peña,\"$1,200.00\"\r\n102,Zoë Lefèvre,1300\r\n"
+    got = parse_rent_roll_file(rows.encode("cp1252"), "rr.csv", "1 A St")
+    assert [l["extracted_fields"]["tenant"]["value"] for l in got["leases"]] == ["José Peña", "Zoë Lefèvre"], got["leases"]
+    got = parse_rent_roll_file(rows.encode("utf-8"), "rr.csv", "1 A St")
+    assert [l["extracted_fields"]["tenant"]["value"] for l in got["leases"]] == ["José Peña", "Zoë Lefèvre"]
+    got = parse_rent_roll_file(rows.encode("utf-16"), "rr.csv", "1 A St")
+    assert len(got["leases"]) == 2 and got["leases"][0]["extracted_fields"]["tenant"]["value"] == "José Peña"
+    png = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00(\x00\x00\x00(\x08\x02\x00\x00\x00"
+    try:
+        parse_rent_roll_file(png, "rr.csv", "1 A St")
+        raise AssertionError("binary file accepted")
+    except RentRollImportError as e:
+        assert "text" in str(e).lower(), str(e)
+    print("✓ test_csv_rent_roll_decoding_cp1252_utf16_and_binary: PASS")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):
