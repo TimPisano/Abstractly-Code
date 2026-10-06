@@ -26,7 +26,7 @@ frontend/app/detail-view.js for the matching display-side handling.
 import csv
 import io
 import re
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from openpyxl import load_workbook
@@ -574,6 +574,26 @@ def _cell_to_str(value: Any) -> Optional[str]:
     return str(value)
 
 
+_EXCEL_EPOCH = date(1899, 12, 30)
+
+
+def _date_cell_to_str(value: Any) -> Optional[str]:
+    """
+    Like _cell_to_str, plus Excel serial-number dates: a CSV saved from
+    date cells formatted "General" (or a date cell read as a number)
+    carries 46113 for 2026-04-01. Only whole numbers in a plausible lease
+    range (1982-2119) in a DATE column are read this way.
+    """
+    text = _cell_to_str(value)
+    if text is None:
+        return None
+    if re.fullmatch(r"\d{5}(?:\.0+)?", text):
+        serial = int(float(text))
+        if 30000 <= serial <= 80000:
+            return (_EXCEL_EPOCH + timedelta(days=serial)).strftime("%B %d, %Y")
+    return text
+
+
 def _parse_import_currency(value: Any) -> Optional[float]:
     """
     Like normalize.parse_currency, but tolerant of a bare number with
@@ -850,8 +870,8 @@ def parse_rent_roll_rows(
         landlord_str = _cell_to_str(cell("landlord"))
         unit_str = _cell_to_str(cell("unit"))
         sqft_str = _cell_to_str(cell("square_footage"))
-        start_str = _cell_to_str(cell("lease_start_date"))
-        end_str = _cell_to_str(cell("lease_end_date"))
+        start_str = _date_cell_to_str(cell("lease_start_date"))
+        end_str = _date_cell_to_str(cell("lease_end_date"))
 
         # A row with a "tenant" cell that isn't blank/a known non-tenant
         # keyword (so it passed the check above) but has NO rent and NO

@@ -787,6 +787,21 @@ def test_two_row_header_with_merged_group_title():
     print("✓ test_two_row_header_with_merged_group_title: PASS")
 
 
+def test_excel_serial_number_dates_in_rent_roll():
+    """
+    A CSV saved from date cells formatted "General" carries Excel serial
+    numbers (46113 = 2026-04-01). They parsed to nothing, so the rent roll
+    had no lease dates.
+    """
+    from app.normalize import parse_date
+    got = _parse_csv_text("Unit,Tenant,Rent,Lease Start,Lease End\n101,Ann Lee,1000,46113,46477\n102,Bo Diaz,900,46113.0,\n")
+    f = got["leases"][0]["extracted_fields"]
+    assert parse_date(f["lease_start_date"]["value"]) == date(2026, 4, 1), f["lease_start_date"]
+    assert parse_date(f["lease_end_date"]["value"]) == date(2027, 3, 31), f["lease_end_date"]
+    assert parse_date(got["leases"][1]["extracted_fields"]["lease_start_date"]["value"]) == date(2026, 4, 1)
+    print("✓ test_excel_serial_number_dates_in_rent_roll: PASS")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):
