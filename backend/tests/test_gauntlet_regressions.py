@@ -816,6 +816,20 @@ def test_t12_label_wording_variants():
     print("✓ test_t12_label_wording_variants: PASS")
 
 
+def test_t12_negative_amounts_keep_their_sign():
+    """
+    T-12 cells without a "$" -- "-1,234.56", "(1,234.56)" -- fell through
+    to a bare-number regex that dropped the sign. A negative Net Operating
+    Income, a gain-to-lease or a reversed charge then read as positive.
+    """
+    from app.t12_import import _parse_t12_currency
+    for text, want in (("-1,234.56", -1234.56), ("(1,234.56)", -1234.56), ("- 50", -50.0), ("1,234.56", 1234.56),
+                       ("$1,234.56", 1234.56), ("($1,234.56)", -1234.56), ("-$1,234.56", -1234.56), ("1,234.56-", -1234.56)):
+        assert _parse_t12_currency(text) == want, (text, _parse_t12_currency(text))
+    assert _parse_t12_currency("n/a") is None and _parse_t12_currency("") is None
+    print("✓ test_t12_negative_amounts_keep_their_sign: PASS")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):

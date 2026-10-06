@@ -200,13 +200,18 @@ def _parse_t12_currency(value: Any) -> Optional[float]:
     strict = parse_currency(text)
     if strict is not None:
         return strict
-    match = re.search(r"[\d,]+(?:\.\d+)?", text)
+    # Bare numbers keep their sign: "-1,234.56", "(1,234.56)" (accounting
+    # negative) and a trailing "1,234.56-". The old fallback dropped it, so
+    # a negative NOI or a reversed charge read as positive.
+    match = re.search(r"(\()?\s*(-\s*)?([\d,]*\d(?:\.\d+)?)\s*(-)?\s*(\))?", text)
     if not match:
         return None
     try:
-        return float(match.group(0).replace(",", ""))
+        value = float(match.group(3).replace(",", ""))
     except ValueError:
         return None
+    negative = bool(match.group(2) or match.group(4) or (match.group(1) and match.group(5)))
+    return -value if negative else value
 
 
 def _row_annual_total(row: List[Any], column_mapping: Dict[str, Any]) -> Optional[float]:
