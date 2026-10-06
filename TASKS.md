@@ -98,9 +98,17 @@ those by taking **main's** TASKS.md, not the branch's.
 | `feature/loan-underwriting` | `~/dev/projects/abstractly-loan` | +2 / −16 | ~19 uncommitted files (`api.py`, `database.py`, tests, plan); not pushed. Feature-flagged off. Merge **after** team isolation (its plan defers all tenancy to it). Another session may be active — don't touch. |
 | `feature/deal-assistant` | `~/dev/projects/abstractly-assistant` | 0 / −7 | Worktree only, nothing built. Not started. |
 
+| `qa/overnight-gauntlet` | `~/dev/projects/abstractly-gauntlet` | — | Branched off `main` `3f1d3aa` 2026-10-05. Overnight reliability gauntlet: 60+ synthetic messy rent rolls, 30+ T-12s, matching leases with planted mismatches + manifest; full local pipeline graded each cycle; root-cause fixes with regression tests; `QA_REPORT.md` updated per cycle. User's prompt is the approved scope (autonomous, no questions). Never merges/deploys. |
 | `chore/repo-layout` | `~/dev/projects/abstractly-repo-layout` | — | Branched off `main` `1d203d2` 2026-10-05. Repo tidy-up: move stray root reports/plans into `docs/`, fill `.gitignore` gaps, README project-layout section. File moves + doc-comment path fixes only, no code behavior change. **Plan written, awaiting user approval** — `docs/plans/chore-repo-layout.md`. |
 
 ### Handoff blocks
+
+#### qa/overnight-gauntlet
+- Worktree: ~/dev/projects/abstractly-gauntlet
+- Goal: overnight reliability gauntlet — synthetic messy rent rolls/T-12s/leases graded against a manifest through the full local pipeline; fix root causes with regression tests; QA_REPORT.md per cycle.
+- Loop step: 4/5 — building + cycling (user's prompt = approved scope; autonomous overnight)
+- Last update: 2026-10-05 by start-task
+- Next action: see QA_REPORT.md on the branch for the latest cycle
 
 #### chore/repo-layout
 - Worktree: `~/dev/projects/abstractly-repo-layout`
