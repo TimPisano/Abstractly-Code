@@ -76,7 +76,11 @@ async function apiRequest(path, options = {}) {
         // only accepts a plain [a-z0-9-] word, never a URL.
         const activeView = document.querySelector('.view.active');
         const viewName = activeView ? activeView.id.replace(/^view-/, '') : '';
-        const next = !inAdmin && /^[a-z0-9-]{1,40}$/.test(viewName) && viewName !== 'dashboard' ? `&next=${viewName}` : '';
+        // Screens that only make sense with a lease or deal already picked
+        // would come back empty after a fresh page load -- those return to
+        // the dashboard instead.
+        const NEEDS_CONTEXT = ['dashboard', 'detail', 'report', 'timeline', 'comparison'];
+        const next = !inAdmin && /^[a-z0-9-]{1,40}$/.test(viewName) && !NEEDS_CONTEXT.includes(viewName) ? `&next=${viewName}` : '';
         window.location.href = inAdmin ? 'index.html?expired=1' : `login.html?expired=1${next}`;
         // Never resolves -- the redirect is already underway, and
         // nothing calling this should keep running against a session

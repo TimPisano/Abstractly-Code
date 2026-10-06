@@ -225,6 +225,9 @@
     // a different person (or no one) -> reload into the honest state. Tabs
     // holding their own sessionStorage token are unaffected -- api.js
     // prefers it.
+    // (A change during the second or so before this tab finishes booting
+    // is not caught -- CURRENT_USER isn't set yet. Accepted: the boot
+    // itself just read the token, so the window is tiny.)
     window.addEventListener('storage', async (event) => {
         if (event.key !== 'authToken' || event.storageArea !== localStorage) return;
         let ownToken = null;

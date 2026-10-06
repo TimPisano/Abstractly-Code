@@ -199,9 +199,18 @@ realestate realestate1 multifamily apartments rentroll123 qwerty123456
 
     // ---- link tokens -----------------------------------------------------
 
+    // Tokens are secrets.token_urlsafe(32): letters, digits, "-" and "_",
+    // 43 characters. Links copied out of a sentence often pick up a
+    // trailing "." or ")" (or a space from a wrapped line); keep the
+    // leading token-shaped run instead of calling the whole link broken.
+    function cleanLinkToken(raw) {
+        const match = /^[A-Za-z0-9_-]+/.exec((raw || '').trim());
+        return match && match[0].length >= 40 ? match[0] : (raw || '').trim();
+    }
+
     function takeLinkToken(storageKey) {
         const params = new URLSearchParams(window.location.search);
-        const fromUrl = params.get('token');
+        const fromUrl = params.get('token') ? cleanLinkToken(params.get('token')) : null;
         if (fromUrl) {
             if (sess) sess.setItem(storageKey, fromUrl);
             params.delete('token');

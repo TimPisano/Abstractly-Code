@@ -704,7 +704,7 @@ def test_auth_inputs_tell_phone_keyboards_what_enter_does():
     for page in ("login.html", "signup.html", "forgot-password.html", "finish-signup.html", "reset-password.html"):
         html = open(os.path.join(root, page)).read()
         for tag in re.findall(r"<input [^>]*>", html):
-            if 'type="checkbox"' in tag or " hidden" in tag:
+            if 'type="checkbox"' in tag or " hidden" in tag or 'aria-hidden="true"' in tag:
                 continue
             assert "enterkeyhint=" in tag, f"{page}: {tag[:60]}"
     print("✓ test_auth_inputs_tell_phone_keyboards_what_enter_does: PASS")
@@ -718,10 +718,22 @@ def test_return_to_screen_only_accepts_a_plain_view_name():
         assert "/^[a-z0-9-]{1,40}$/.test(" in js, f"{rel} must validate the view name"
     common = open(os.path.join(root, "auth-common.js")).read()
     assert "window.location.replace(`index.html${view}`)" in common
+    api_js = open(os.path.join(root, "api.js")).read()
+    for needs_context in ("'detail'", "'report'", "'timeline'", "'comparison'"):
+        assert needs_context in api_js[api_js.index("NEEDS_CONTEXT"):api_js.index("NEEDS_CONTEXT") + 200], needs_context
     pattern = re.compile(r"^[a-z0-9-]{1,40}$")
     for bad in ("https://evil.example", "//evil.example", "tasks#x", "../admin", "javascript:alert(1)", ""):
         assert not pattern.match(bad), bad
     print("✓ test_return_to_screen_only_accepts_a_plain_view_name: PASS")
+
+
+def test_password_pages_keep_a_username_field_password_managers_can_see():
+    """Round 6: Safari's password manager may skip a display:none field; the username for "save this password" must be present but visually hidden."""
+    root = os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "app")
+    for page in ("finish-signup.html", "reset-password.html"):
+        tag = re.search(r'<input [^>]*id="username"[^>]*>', open(os.path.join(root, page)).read()).group(0)
+        assert 'autocomplete="username"' in tag and "visually-hidden" in tag and " hidden" not in tag, (page, tag)
+    print("✓ test_password_pages_keep_a_username_field_password_managers_can_see: PASS")
 
 
 def test_link_tokens_never_travel_in_a_url_to_the_api():
