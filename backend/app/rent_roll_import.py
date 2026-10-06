@@ -710,7 +710,13 @@ def parse_csv_rent_roll(
         # shift every later row's citation off by one.
         return [(i, row) for i, row in enumerate(reader, start=1) if any(cell.strip() for cell in row)]
 
-    numbered_rows = _rows_for(delimiter or ",")
+    if delimiter is None:
+        # A .txt is usually Excel's tab-delimited "Text"/"Unicode Text"
+        # save, but can be a comma CSV under another name: go by which
+        # separator the first lines actually use.
+        head = text[:4000]
+        delimiter = "\t" if head.count("\t") > head.count(",") else ","
+    numbered_rows = _rows_for(delimiter)
     # A .tsv that came through with no tabs at all (someone renamed a
     # .csv) collapses to one column -- retry as comma before failing.
     if delimiter == "\t" and numbered_rows and max(len(r) for _, r in numbered_rows) == 1:
@@ -821,7 +827,7 @@ def parse_rent_roll_file(
     if ext in ("csv", "tsv", "txt"):
         result = parse_csv_rent_roll(
             file_bytes, filename, base_property_address,
-            delimiter="\t" if ext == "tsv" else ",",
+            delimiter={"tsv": "\t", "csv": ","}.get(ext),
         )
         result.setdefault("source_kind", "delimited")
         result.setdefault("warnings", [])

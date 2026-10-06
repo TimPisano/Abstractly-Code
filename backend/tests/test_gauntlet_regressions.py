@@ -202,6 +202,22 @@ def test_rent_roll_rows_are_rent_roll_rows_whatever_the_file_format():
     print("✓ test_rent_roll_rows_are_rent_roll_rows_whatever_the_file_format: PASS")
 
 
+def test_excel_unicode_text_txt_rent_roll_imports():
+    """Excel's "Unicode Text" save: .txt, UTF-16, TAB-delimited. The route refused .txt outright."""
+    client, db = _client_with_fresh_db()
+    try:
+        txt = "Unit\tTenant\tRent\r\n101\tAvery Ashgrove\t1,200.00\r\n102\tJosé Peña\t1,300.00\r\n".encode("utf-16")
+        r = _post(client, "/leases/import-rent-roll", "rent_roll.txt", txt, {"property_address": "9 Elm St"})
+        assert r.status_code == 201, r.get_json()
+        body = r.get_json()
+        assert body["imported_count"] == 2, body
+        names = sorted(l.get("display_name", "") for l in body["leases"])
+        assert any("José Peña" in n for n in names), names
+    finally:
+        os.unlink(db)
+    print("✓ test_excel_unicode_text_txt_rent_roll_imports: PASS")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):

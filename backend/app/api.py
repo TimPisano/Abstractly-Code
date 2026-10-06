@@ -1422,7 +1422,7 @@ def import_rent_roll():
     filename = file_storage.filename
     extension = filename.rsplit('.', 1)[1].lower() if '.' in filename else ''
     if extension not in ALL_RENT_ROLL_EXTENSIONS:
-        supported = "CSV/TSV, Excel (.xlsx/.xls), Word (.docx), PDF, or an image (.jpg/.png/.heic)"
+        supported = "CSV/TSV/TXT, Excel (.xlsx/.xls), Word (.docx), PDF, or an image (.jpg/.png/.heic)"
         return jsonify({"error": f"Invalid file type '.{extension or '?'}'. Supported rent-roll formats: {supported}."}), 400
 
     base_property_address = (request.form.get('property_address') or '').strip() or None

@@ -70,7 +70,7 @@ EXTRA_TABLE_EXTENSIONS = {
 # Every extension the rent-roll importer accepts, for the route + the
 # frontend accept="" attribute. csv/tsv/xlsx/xlsm + everything above.
 ALL_RENT_ROLL_EXTENSIONS = (
-    {"csv", "tsv", "xlsx", "xlsm"} | set(EXTRA_TABLE_EXTENSIONS)
+    {"csv", "tsv", "txt", "xlsx", "xlsm"} | set(EXTRA_TABLE_EXTENSIONS)
 )
 
 # A rasterised PDF page beyond this count is refused rather than run
