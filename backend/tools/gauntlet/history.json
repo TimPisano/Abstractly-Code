@@ -1793,5 +1793,265 @@
   "passed": 173,
   "passed_excluding_extraction": 183,
   "wall_seconds": 73.4
+ },
+ "8": {
+  "by_format": {
+   "bad_rr:bad_rent_roll": {
+    "pass": 14,
+    "total": 14
+   },
+   "bad_t12:bad_t12": {
+    "pass": 5,
+    "total": 5
+   },
+   "deal:full_deal": {
+    "pass": 19,
+    "total": 22
+   },
+   "iso:team_isolation": {
+    "pass": 1,
+    "total": 1
+   },
+   "multiprop:multi_property_file": {
+    "pass": 1,
+    "total": 1
+   },
+   "reimport:reimport_updated_rent_roll": {
+    "pass": 1,
+    "total": 1
+   },
+   "rr:appfolio_csv": {
+    "pass": 8,
+    "total": 8
+   },
+   "rr:appfolio_xlsx": {
+    "pass": 5,
+    "total": 5
+   },
+   "rr:appfolio_xlsx_dup": {
+    "pass": 2,
+    "total": 2
+   },
+   "rr:broker_csv_messy": {
+    "pass": 3,
+    "total": 3
+   },
+   "rr:broker_xlsx": {
+    "pass": 3,
+    "total": 5
+   },
+   "rr:clean_csv": {
+    "pass": 20,
+    "total": 22
+   },
+   "rr:cp1252_csv": {
+    "pass": 0,
+    "total": 2
+   },
+   "rr:deep_header_xlsx": {
+    "pass": 1,
+    "total": 1
+   },
+   "rr:docx": {
+    "pass": 2,
+    "total": 2
+   },
+   "rr:entrata_csv": {
+    "pass": 8,
+    "total": 9
+   },
+   "rr:eu_csv": {
+    "pass": 2,
+    "total": 2
+   },
+   "rr:initials_truncated_csv": {
+    "pass": 2,
+    "total": 2
+   },
+   "rr:merged_roommates_xlsx": {
+    "pass": 2,
+    "total": 2
+   },
+   "rr:merged_two_row_xlsx": {
+    "pass": 1,
+    "total": 1
+   },
+   "rr:pdf_scanned": {
+    "pass": 0,
+    "total": 2
+   },
+   "rr:pdf_scanned_rotated": {
+    "pass": 0,
+    "total": 1
+   },
+   "rr:pdf_text": {
+    "pass": 3,
+    "total": 3
+   },
+   "rr:realpage_csv": {
+    "pass": 4,
+    "total": 4
+   },
+   "rr:realpage_xlsx": {
+    "pass": 4,
+    "total": 4
+   },
+   "rr:s8_split_csv": {
+    "pass": 2,
+    "total": 2
+   },
+   "rr:s8_xlsx": {
+    "pass": 3,
+    "total": 3
+   },
+   "rr:semicolon_csv": {
+    "pass": 1,
+    "total": 1
+   },
+   "rr:serial_dates_csv": {
+    "pass": 1,
+    "total": 1
+   },
+   "rr:utf16_txt": {
+    "pass": 2,
+    "total": 2
+   },
+   "rr:xls": {
+    "pass": 2,
+    "total": 2
+   },
+   "rr:yardi_charges_xlsx": {
+    "pass": 3,
+    "total": 4
+   },
+   "rr:yardi_xlsx": {
+    "pass": 7,
+    "total": 7
+   },
+   "t12:csv_actual_budget_inline": {
+    "pass": 2,
+    "total": 2
+   },
+   "t12:csv_dollar_mondash": {
+    "pass": 4,
+    "total": 4
+   },
+   "t12:csv_label_variants": {
+    "pass": 2,
+    "total": 2
+   },
+   "t12:csv_long_year": {
+    "pass": 3,
+    "total": 3
+   },
+   "t12:csv_mm_yyyy_nototal": {
+    "pass": 4,
+    "total": 4
+   },
+   "t12:csv_prior_year": {
+    "pass": 2,
+    "total": 2
+   },
+   "t12:csv_t24": {
+    "pass": 3,
+    "total": 3
+   },
+   "t12:pdf_scanned": {
+    "pass": 0,
+    "total": 1
+   },
+   "t12:pdf_text": {
+    "pass": 4,
+    "total": 4
+   },
+   "t12:xls": {
+    "pass": 2,
+    "total": 2
+   },
+   "t12:xlsx_actual_budget_tworow": {
+    "pass": 1,
+    "total": 1
+   },
+   "t12:xlsx_extra_sheets": {
+    "pass": 3,
+    "total": 3
+   },
+   "t12:xlsx_mon": {
+    "pass": 4,
+    "total": 4
+   },
+   "t12:xlsx_monyear": {
+    "pass": 9,
+    "total": 9
+   }
+  },
+  "by_kind": {
+   "bad_rr": {
+    "pass": 14,
+    "total": 14
+   },
+   "bad_t12": {
+    "pass": 5,
+    "total": 5
+   },
+   "deal": {
+    "pass": 19,
+    "total": 22
+   },
+   "iso": {
+    "pass": 1,
+    "total": 1
+   },
+   "multiprop": {
+    "pass": 1,
+    "total": 1
+   },
+   "reimport": {
+    "pass": 1,
+    "total": 1
+   },
+   "rr": {
+    "pass": 91,
+    "total": 102
+   },
+   "t12": {
+    "pass": 43,
+    "total": 44
+   }
+  },
+  "cases": 190,
+  "crashes": 0,
+  "findings": {
+   "caught": 1979,
+   "expected": 1979,
+   "false_alarms": 19,
+   "wrong_amount": 0
+  },
+  "hangs": 0,
+  "lease_extraction_field_accuracy": {
+   "end": {
+    "ok": 927,
+    "total": 927
+   },
+   "rent": {
+    "ok": 927,
+    "total": 927
+   },
+   "start": {
+    "ok": 927,
+    "total": 927
+   },
+   "tenant": {
+    "ok": 902,
+    "total": 927
+   },
+   "unit": {
+    "ok": 927,
+    "total": 927
+   }
+  },
+  "passed": 175,
+  "passed_excluding_extraction": 185,
+  "wall_seconds": 75.2
  }
 }

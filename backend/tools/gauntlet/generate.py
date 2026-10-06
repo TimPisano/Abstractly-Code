@@ -292,6 +292,13 @@ def render_paragraph_pdf(paragraphs, footer):
 
 
 def write_leases(prop):
+    out = _write_leases_unsorted(prop)
+    # Upload in folder (filename) order, as a user dragging the folder would:
+    # "102.pdf" before "102_amendment_1.pdf".
+    return sorted(out, key=lambda L: L["file"])
+
+
+def _write_leases_unsorted(prop):
     out = []
     for u in truth.lease_units(prop):
         if u.get("prior_lease"):

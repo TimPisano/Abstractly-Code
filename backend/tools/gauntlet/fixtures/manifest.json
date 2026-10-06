@@ -5626,6 +5626,16 @@
      "concession": null
     },
     {
+     "file": "leases/p16/13103.pdf",
+     "unit": "13103",
+     "tenant": "Odette Juarez",
+     "rent": 1225.0,
+     "start": "2025-07-01",
+     "end": "2026-06-30",
+     "address": "2500 Highland Ave, Birmingham, AL 35205, Suite 13103",
+     "concession": null
+    },
+    {
      "file": "leases/p16/2101.pdf",
      "unit": "2101",
      "tenant": "Tobias Underhill",
@@ -5663,6 +5673,26 @@
      "start": "2026-02-01",
      "end": "2027-01-31",
      "address": "2500 Highland Ave, Birmingham, AL 35205, Suite 2104",
+     "concession": null
+    },
+    {
+     "file": "leases/p16/21103.pdf",
+     "unit": "21103",
+     "tenant": "Avery Okafor",
+     "rent": 1175.0,
+     "start": "2026-02-01",
+     "end": "2027-01-31",
+     "address": "2500 Highland Ave, Birmingham, AL 35205, Suite 21103",
+     "concession": null
+    },
+    {
+     "file": "leases/p16/21204.pdf",
+     "unit": "21204",
+     "tenant": "Malik Juarez",
+     "rent": 1500.0,
+     "start": "2026-05-01",
+     "end": "2027-04-30",
+     "address": "2500 Highland Ave, Birmingham, AL 35205, Suite 21204",
      "concession": null
     },
     {
@@ -5813,36 +5843,6 @@
      "start": "2026-05-01",
      "end": "2027-04-30",
      "address": "2500 Highland Ave, Birmingham, AL 35205, Suite 4301",
-     "concession": null
-    },
-    {
-     "file": "leases/p16/13103.pdf",
-     "unit": "13103",
-     "tenant": "Odette Juarez",
-     "rent": 1225.0,
-     "start": "2025-07-01",
-     "end": "2026-06-30",
-     "address": "2500 Highland Ave, Birmingham, AL 35205, Suite 13103",
-     "concession": null
-    },
-    {
-     "file": "leases/p16/21103.pdf",
-     "unit": "21103",
-     "tenant": "Avery Okafor",
-     "rent": 1175.0,
-     "start": "2026-02-01",
-     "end": "2027-01-31",
-     "address": "2500 Highland Ave, Birmingham, AL 35205, Suite 21103",
-     "concession": null
-    },
-    {
-     "file": "leases/p16/21204.pdf",
-     "unit": "21204",
-     "tenant": "Malik Juarez",
-     "rent": 1500.0,
-     "start": "2026-05-01",
-     "end": "2027-04-30",
-     "address": "2500 Highland Ave, Birmingham, AL 35205, Suite 21204",
      "concession": null
     }
    ],
@@ -20576,17 +20576,6 @@
    "base_address": "400 Fox Run Dr, Lexington, KY 40509",
    "leases": [
     {
-     "file": "leases/p18/101_original.pdf",
-     "unit": "101",
-     "tenant": "Hollis Sorensen",
-     "rent": 1350.0,
-     "start": "2025-01-01",
-     "end": "2025-12-31",
-     "address": "Fox Run Apartments, 400 Fox Run Dr, Apt 101, Lexington, KY 40509",
-     "concession": null,
-     "history": true
-    },
-    {
      "file": "leases/p18/101.pdf",
      "unit": "101",
      "tenant": "Hollis Sorensen",
@@ -20597,13 +20586,13 @@
      "concession": null
     },
     {
-     "file": "leases/p18/102_original.pdf",
-     "unit": "102",
-     "tenant": "Bastian Nakamura",
-     "rent": 1300.0,
+     "file": "leases/p18/101_original.pdf",
+     "unit": "101",
+     "tenant": "Hollis Sorensen",
+     "rent": 1350.0,
      "start": "2025-01-01",
      "end": "2025-12-31",
-     "address": "Fox Run Apartments, 400 Fox Run Dr, Apt 102, Lexington, KY 40509",
+     "address": "Fox Run Apartments, 400 Fox Run Dr, Apt 101, Lexington, KY 40509",
      "concession": null,
      "history": true
     },
@@ -20618,13 +20607,13 @@
      "concession": null
     },
     {
-     "file": "leases/p18/103_original.pdf",
-     "unit": "103",
-     "tenant": "Desmond Everhart",
-     "rent": 950.0,
+     "file": "leases/p18/102_original.pdf",
+     "unit": "102",
+     "tenant": "Bastian Nakamura",
+     "rent": 1300.0,
      "start": "2025-01-01",
      "end": "2025-12-31",
-     "address": "Fox Run Apartments, 400 Fox Run Dr, Apt 103, Lexington, KY 40509",
+     "address": "Fox Run Apartments, 400 Fox Run Dr, Apt 102, Lexington, KY 40509",
      "concession": null,
      "history": true
     },
@@ -20637,6 +20626,17 @@
      "end": "2026-12-31",
      "address": "Fox Run Apartments, 400 Fox Run Dr, Apt 103, Lexington, KY 40509",
      "concession": null
+    },
+    {
+     "file": "leases/p18/103_original.pdf",
+     "unit": "103",
+     "tenant": "Desmond Everhart",
+     "rent": 950.0,
+     "start": "2025-01-01",
+     "end": "2025-12-31",
+     "address": "Fox Run Apartments, 400 Fox Run Dr, Apt 103, Lexington, KY 40509",
+     "concession": null,
+     "history": true
     },
     {
      "file": "leases/p18/201.pdf",
@@ -21514,17 +21514,6 @@
    "base_address": "60 Harbor Point Rd, Annapolis, MD 21403",
    "leases": [
     {
-     "file": "leases/p21/101_signed_copy.pdf",
-     "unit": "101",
-     "tenant": "Maeve Ingram",
-     "rent": 1875.0,
-     "start": "2026-02-01",
-     "end": "2027-01-31",
-     "address": "60 Harbor Point Rd, Annapolis, MD 21403, Suite 101",
-     "concession": null,
-     "history": true
-    },
-    {
      "file": "leases/p21/101.pdf",
      "unit": "101",
      "tenant": "Maeve Ingram",
@@ -21535,13 +21524,13 @@
      "concession": null
     },
     {
-     "file": "leases/p21/102_amendment_1.pdf",
-     "unit": "102",
-     "tenant": "Malik Kowalczyk",
-     "rent": 1935.0,
-     "start": "2026-05-01",
-     "end": "2027-04-30",
-     "address": "60 Harbor Point Rd, Annapolis, MD 21403, Suite 102",
+     "file": "leases/p21/101_signed_copy.pdf",
+     "unit": "101",
+     "tenant": "Maeve Ingram",
+     "rent": 1875.0,
+     "start": "2026-02-01",
+     "end": "2027-01-31",
+     "address": "60 Harbor Point Rd, Annapolis, MD 21403, Suite 101",
      "concession": null,
      "history": true
     },
@@ -21556,13 +21545,13 @@
      "concession": null
     },
     {
-     "file": "leases/p21/103_amendment_1.pdf",
-     "unit": "103",
-     "tenant": "Malik Brightwater",
-     "rent": 1185.0,
-     "start": "2026-04-01",
-     "end": "2027-03-31",
-     "address": "60 Harbor Point Rd, Annapolis, MD 21403, Suite 103",
+     "file": "leases/p21/102_amendment_1.pdf",
+     "unit": "102",
+     "tenant": "Malik Kowalczyk",
+     "rent": 1935.0,
+     "start": "2026-05-01",
+     "end": "2027-04-30",
+     "address": "60 Harbor Point Rd, Annapolis, MD 21403, Suite 102",
      "concession": null,
      "history": true
     },
@@ -21577,6 +21566,17 @@
      "concession": null
     },
     {
+     "file": "leases/p21/103_amendment_1.pdf",
+     "unit": "103",
+     "tenant": "Malik Brightwater",
+     "rent": 1185.0,
+     "start": "2026-04-01",
+     "end": "2027-03-31",
+     "address": "60 Harbor Point Rd, Annapolis, MD 21403, Suite 103",
+     "concession": null,
+     "history": true
+    },
+    {
      "file": "leases/p21/104.pdf",
      "unit": "104",
      "tenant": "Theo Thibodeaux",
@@ -21584,6 +21584,16 @@
      "start": "2026-03-01",
      "end": "2027-02-28",
      "address": "60 Harbor Point Rd, Annapolis, MD 21403, Suite 104",
+     "concession": null
+    },
+    {
+     "file": "leases/p21/201.pdf",
+     "unit": "201",
+     "tenant": "Callum Lindqvist",
+     "rent": 1525.0,
+     "start": "2026-04-01",
+     "end": "2027-03-31",
+     "address": "60 Harbor Point Rd, Annapolis, MD 21403, Suite 201",
      "concession": null
     },
     {
@@ -21596,16 +21606,6 @@
      "address": "60 Harbor Point Rd, Annapolis, MD 21403, Suite 201",
      "concession": null,
      "history": true
-    },
-    {
-     "file": "leases/p21/201.pdf",
-     "unit": "201",
-     "tenant": "Callum Lindqvist",
-     "rent": 1525.0,
-     "start": "2026-04-01",
-     "end": "2027-03-31",
-     "address": "60 Harbor Point Rd, Annapolis, MD 21403, Suite 201",
-     "concession": null
     },
     {
      "file": "leases/p21/203.pdf",
