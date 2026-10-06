@@ -363,6 +363,25 @@ def test_t12_zero_concessions_is_not_a_finding():
     print("✓ test_t12_zero_concessions_is_not_a_finding: PASS")
 
 
+def test_t12_bad_debt_trend_uses_the_statements_own_month_order():
+    """
+    A trailing T-12 runs Oct 2025 .. Sep 2026. "Last 3 months" were taken
+    as Oct/Nov/Dec by calendar name -- the OLDEST months of that statement
+    -- so a real spike in Jul-Sep was missed and an old spike that had
+    since cleared was flagged as "rising".
+    """
+    from app.t12_statement import parse_csv_t12_statement
+    period = ["Oct 2025", "Nov 2025", "Dec 2025"] + [f"{m} 2026" for m in _T12_MONTHS[:9]]
+    leases = [_rr(tenant=f"T{i}", rent_amount="$1,000.00", property_address=f"9 Elm St, Suite {i}") for i in range(10)]
+    recent_spike = [-100.0] * 9 + [-900.0, -1000.0, -1100.0]
+    old_spike = [-1100.0, -1000.0, -900.0] + [-100.0] * 9
+    t12 = parse_csv_t12_statement(_t12_csv([("Bad Debt", recent_spike)], period), "t12.csv")
+    assert _types(dm.detect_t12_bad_debt_trend(leases, t12, 3.0)) == ["t12_bad_debt_trend"]
+    t12 = parse_csv_t12_statement(_t12_csv([("Bad Debt", old_spike)], period), "t12.csv")
+    assert dm.detect_t12_bad_debt_trend(leases, t12, 3.0) == []
+    print("✓ test_t12_bad_debt_trend_uses_the_statements_own_month_order: PASS")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):

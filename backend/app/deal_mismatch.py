@@ -910,7 +910,11 @@ def detect_t12_bad_debt_trend(
 
     # Compute trailing-12 average and last-3 average
     _MONTH_IDS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
-    monthly_values = [abs(monthly.get(m)) for m in _MONTH_IDS if monthly.get(m) is not None]  # magnitudes: bad debt is often printed negative
+    # Oldest -> newest in the statement's own column order: a trailing T-12
+    # (Oct..Sep) is not in calendar order, and "last 3 months" must mean
+    # the most recent three, not Oct/Nov/Dec by name.
+    order = bad_debt.get("month_order") or _MONTH_IDS
+    monthly_values = [abs(monthly.get(m)) for m in order if monthly.get(m) is not None]  # magnitudes: bad debt is often printed negative
 
     if len(monthly_values) < 12:
         return []

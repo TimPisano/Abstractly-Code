@@ -191,6 +191,10 @@ def parse_t12_statement_rows(
 
             result[category] = {
                 "monthly": monthly,
+                # The statement's own column order (oldest -> newest). A
+                # trailing T-12 runs e.g. Oct..Sep, so calendar order would
+                # put its oldest months last.
+                "month_order": [m for m, _ in sorted(column_mapping.get("months", {}).items(), key=lambda kv: kv[1])],
                 "annual": annual,
                 "source": {"row": row_num, "file": filename, "quote": label_str} if annual is not None or monthly else None,
             }
