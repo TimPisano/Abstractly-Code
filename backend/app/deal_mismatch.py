@@ -810,8 +810,10 @@ def detect_t12_occupancy_mismatch(
     if gpr is None or vl is None or gpr.get("annual") is None or vl.get("annual") is None:
         return []
 
-    gpr_annual = gpr["annual"]
-    vl_annual = vl["annual"]
+    # Loss lines are printed NEGATIVE on most T-12s ("(17,100.00)"); the
+    # math needs magnitudes, or occupancy comes out above 100%.
+    gpr_annual = abs(gpr["annual"])
+    vl_annual = abs(vl["annual"])
 
     if gpr_annual <= 0:
         return []
@@ -907,7 +909,7 @@ def detect_t12_bad_debt_trend(
 
     # Compute trailing-12 average and last-3 average
     _MONTH_IDS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
-    monthly_values = [monthly.get(m) for m in _MONTH_IDS if monthly.get(m) is not None]
+    monthly_values = [abs(monthly.get(m)) for m in _MONTH_IDS if monthly.get(m) is not None]  # magnitudes: bad debt is often printed negative
 
     if len(monthly_values) < 12:
         return []

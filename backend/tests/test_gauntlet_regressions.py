@@ -337,6 +337,23 @@ def test_t12_income_gap_compares_annual_to_annual():
     print("✓ test_t12_income_gap_compares_annual_to_annual: PASS")
 
 
+def test_t12_loss_lines_are_read_as_magnitudes():
+    """
+    T-12s print vacancy loss / bad debt as NEGATIVE lines ("(17,100.00)").
+    The occupancy check computed 1 - (-17,100 / 171,000) = 110% occupancy,
+    and the bad-debt trend compared negative averages (never "rising").
+    """
+    leases = [_rr(tenant=f"T{i}", rent_amount="$1,000.00", property_address=f"9 Elm St, Suite {i}") for i in range(10)]
+    rows = dm.detect_t12_occupancy_mismatch(leases, {"gross_potential_rent": _t12_cat(100000.0),
+                                                     "vacancy_loss": _t12_cat(-20000.0)}, 3.0)
+    assert len(rows) == 1 and rows[0]["lease_value"].startswith("80.0%"), rows
+    months = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
+    rising = dict(zip(months, [-100.0] * 9 + [-900.0, -1000.0, -1100.0]))
+    rows = dm.detect_t12_bad_debt_trend(leases, {"bad_debt": _t12_cat(sum(rising.values()), rising)}, 3.0)
+    assert [r["discrepancy_type"] for r in rows] == ["t12_bad_debt_trend"], rows
+    print("✓ test_t12_loss_lines_are_read_as_magnitudes: PASS")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):
