@@ -68,7 +68,9 @@ _MONTHS = (r"January|February|March|April|May|June|July|August|September|October
 DATE = rf"((?:{_MONTHS})\s+\d{{1,2}}(?:st|nd|rd|th)?,?\s+\d{{4}}|\d{{1,2}}/\d{{1,2}}/\d{{2,4}})"
 CUR = r"\$\s?([\d,]+(?:\.\d{2})?)"
 PER_MONTH = r"(?:per\s+month|/\s*mo(?:nth)?\.?|monthly|a\s+month|each\s+month)"
-NEAR = r"[^.$\n]{0,60}?"   # keyword ... amount, same sentence/line, no other amount between
+NEAR = r"[^.$]{0,60}?"   # keyword ... amount: same sentence (line wraps allowed), no other amount between
+DATE_NC = "(?:" + DATE[1:]
+RANGE_SEP = r"\s*(?:to|through|thru|until|[-\u2013\u2014])\s*"
 
 Entry = Dict[str, Any]
 
@@ -118,6 +120,17 @@ class _Doc:
     def __init__(self, pages: List[Dict[str, Any]]):
         self.pages = pages
         self.text, self.page_at = _join(pages)
+
+    def without_changes(self) -> "_Doc":
+        """
+        The same pages minus renewal / amendment / rent-change documents,
+        so the lease's own terms (Section 8 split, charges) aren't replaced
+        by a later notice's "New tenant rent". Those changes are reported
+        separately in lease_changes.
+        """
+        change_pages = {p["page"] for _kind, ps in _change_docs(self.pages) for p in ps}
+        kept = [p for p in self.pages if p["page"] not in change_pages]
+        return _Doc(kept) if kept and len(kept) < len(self.pages) else self
 
     def first(self, patterns: List[str], flags: int = re.IGNORECASE,
               accept: Optional[Callable[["re.Match"], bool]] = None) -> Optional["re.Match"]:
@@ -184,6 +197,8 @@ def parse_pet_charges(doc: _Doc) -> Entry:
         rf"(?:additional\s+)?monthly\s+rent\s+of\s+{CUR}\s+for\s+the\s+{_PET}",
         rf"{CUR}\s*{PER_MONTH}\s+(?:in\s+)?{_PET}\s+rent",
         rf"monthly\s+{_PET}\s+fee{NEAR}{CUR}",
+        # "an additional $50.00 is added to the monthly rent while the animals reside"
+        rf"additional\s+{CUR}\s+(?:is\s+)?(?:added\s+to\s+(?:the\s+)?monthly\s+rent|per\s+month)[^.]{{0,60}}?\b{_PET}",
     ])
     fee, m_fee = doc.amount([
         rf"one[- ]time\s+(?:non-?refundable\s+)?{_PET}\s+fee{NEAR}{CUR}",
@@ -220,12 +235,15 @@ def parse_parking_charges(doc: _Doc) -> Entry:
         rf"(?:monthly\s+)?{_PARK}\s+(?:rental\s+)?(?:fee|rent|charge){NEAR}{CUR}",
         rf"{_PARK}{NEAR}{CUR}\s*{PER_MONTH}",
         rf"{CUR}\s*{PER_MONTH}\s+for\s+(?:the\s+|a\s+|one\s+)?(?:detached\s+|assigned\s+|reserved\s+|covered\s+)?{_PARK}",
+        # "The monthly fee for the space is $60.00." (after "assigned covered space #44")
+        rf"(?:monthly\s+)?(?:fee|charge|rent)\s+for\s+the\s+(?:parking\s+|garage\s+)?(?:space|stall|garage|carport)(?:\s+is)?[:\s]+{CUR}",
     ])
     if not fee:
         return _not_found()
     space_m = doc.first([
         r"(?:assigned\s+space|space\s+(?:no\.?|number|#)|garage\s+(?:no\.?|number|#)?)[:\s]*([A-Z]{0,2}-?\d{1,4}[A-Z]?)\b",
         r"\bdetached\s+garage\s+([A-Z]{0,2}-?\d{1,4})\b",
+        r"\b(?:stall|space)\s*#?\s*([A-Z]{0,2}-?\d{1,4})\b",
     ])
     space = space_m.group(1) if space_m else None
     return {
@@ -250,7 +268,9 @@ _UTILITY_WORDS = [
 ]
 _RUBS_CUE = re.compile(
     r"\bRUBS\b|ratio\s+utility\s+billing|bill(?:ed|s)?\s+back|allocat\w+\s+(?:formula|method|based)|"
-    r"pro[- ]rata\s+(?:share|basis|portion)|based\s+on\s+(?:the\s+)?(?:number\s+of\s+occupants|square\s+footage|occupancy)",
+    r"pro[- ]rata\s+(?:share|basis|portion)|based\s+on\s+(?:the\s+)?(?:number\s+of\s+occupants|square\s+footage|occupancy)|"
+    r"ratio\s+billing|\ballocates?\b|\ballocation\b|not\s+separately\s+metered|sub-?meter(?:ed|ing|s)?\b|"
+    r"share\s+of\s+the\s+(?:community|property|building)'?s?",
     re.IGNORECASE,
 )
 _FLAT_SERVICE = (r"(?:valet\s+trash|trash(?:\s+removal)?|pest\s+control|cable(?:\s+and\s+internet)?(?:\s+package)?|"
@@ -259,9 +279,14 @@ _FLAT_SERVICE = (r"(?:valet\s+trash|trash(?:\s+removal)?|pest\s+control|cable(?:
 
 
 def _sentence_around(text: str, a: int, b: int) -> str:
-    start = max(text.rfind(". ", 0, a), text.rfind("\n", 0, a)) + 1
-    ends = [i for i in (text.find(". ", b), text.find("\n", b)) if i != -1]
-    return text[start:min(ends) if ends else len(text)]
+    # Sentence ends at ". " only -- a PDF line wrap is not a sentence
+    # break ("...the community's water, sewer, stormwater and trash
+    # expenses will be determined\nby square footage ratio billing").
+    # Capped so a table with no periods can't become one huge "sentence".
+    start = max(text.rfind(". ", max(0, a - 300), a) + 1, a - 300, 0)
+    end = text.find(". ", b)
+    end = min(end if end != -1 else len(text), b + 300)
+    return text[start:end]
 
 
 def parse_utility_charges(doc: _Doc) -> Entry:
@@ -277,6 +302,21 @@ def parse_utility_charges(doc: _Doc) -> Entry:
             rubs_utils += [u for u in found if u not in rubs_utils]
 
     flat: Dict[str, float] = {}
+    # Lists and tables of fixed services: "Flat monthly services: valet trash
+    # collection $25.00; pest control $5.00", "fixed monthly charges: pest
+    # control, $3.00", a "Monthly Charges" table row "Valet Trash\n$28.00".
+    # Counted only when "monthly"/"per month" is stated for them.
+    for m in re.finditer(
+        rf"({_FLAT_SERVICE})(?:\s+(?:collection|service|services|fee|charge))?\s*[,:\-]?\s*\n?\s*{CUR}(\s*{PER_MONTH})?",
+        doc.text, re.IGNORECASE,
+    ):
+        context = doc.text[max(0, m.start() - 200):m.start()]
+        if m.group(3) or re.search(r"\bmonthly\b|per\s+month", context, re.IGNORECASE):
+            amount = _num(m.group(2))
+            name = re.sub(r"\s+", " ", m.group(1)).strip().title()
+            if amount and name not in flat:
+                flat[name] = amount
+                matches.append(m)
     for m in re.finditer(
         rf"(?m)^\s*({_FLAT_SERVICE})(?:\s+fee)?\s*[:\-]\s*{CUR}\s*{PER_MONTH}|"
         rf"flat\s+(?:monthly\s+)?(?:fee|charge|rate)\s+of\s+{CUR}\s*(?:{PER_MONTH}\s+)?for\s+({_FLAT_SERVICE})|"
@@ -286,8 +326,9 @@ def parse_utility_charges(doc: _Doc) -> Entry:
         g = m.groups()
         name, amt = (g[0], g[1]) if g[0] else ((g[3], g[2]) if g[2] else (g[4], g[5]))
         amount = _num(amt)
-        if amount:
-            flat[re.sub(r"\s+", " ", name).strip().title()] = amount
+        name = re.sub(r"\s+", " ", name).strip().title()
+        if amount and name not in flat:
+            flat[name] = amount
             matches.append(m)
 
     if not rubs_utils and not flat:
@@ -318,7 +359,9 @@ def parse_utility_charges(doc: _Doc) -> Entry:
 
 _S8_CUE = re.compile(
     r"\bSection\s+8\b|Housing\s+Choice\s+Voucher|\bHAP\s+contract|Housing\s+Assistance\s+Payments?\s+Contract|"
-    r"Tenancy\s+Addendum|HUD-?\s?52641|\bPBRA\b|project[- ]based\s+(?:rental\s+)?assistance",
+    r"Tenancy\s+Addendum|HUD-?\s?52641|\bPBRA\b|project[- ]based\s+(?:rental\s+)?assistance|"
+    r"\bvoucher\b|Housing\s+Authority|housing\s+assistance\s+payment|Total\s+Tenant\s+Payment|"
+    r"Contract\s+Administrator|subsidized\s+program",
     re.IGNORECASE,
 )
 _PHA_RE = re.compile(
@@ -331,22 +374,41 @@ def parse_section_8(doc: _Doc, base_rent: Optional[float] = None) -> Entry:
     cue = _S8_CUE.search(doc.text)
     if not cue:
         return _not_found()
+    doc = doc.without_changes()
     pha_m = None
     pha = None
     for m in _PHA_RE.finditer(doc.text):
-        name = re.sub(r"^(?:The|with|between|and|by)\s+", "", m.group(1).strip())
+        raw = m.group(1).strip()
+        # A name may wrap ("...HAP contract with Granite\nValley Public Housing
+        # Agency"), but a whole line of its own before the wrap is a label
+        # ("Contract Administrator\nCalloway Valley Housing Authority").
+        line_start = doc.text.rfind("\n", 0, m.start()) + 1
+        if "\n" in raw and not doc.text[line_start:m.start()].strip():
+            raw = raw.split("\n", 1)[1]
+        name = re.sub(r"^(?:The|with|between|and|by)\s+", "", raw.strip())
         if name.lower() not in ("public housing agency",):
             pha, pha_m = re.sub(r"\s+", " ", name), m
             break
     contract, m_c = doc.amount([
-        rf"(?:contract\s+rent|(?:initial\s+)?rent\s+to\s+(?:the\s+)?owner|gross\s+rent\s+to\s+owner)(?:\s+(?:is|shall\s+be))?[:\s]+{CUR}",
+        rf"(?:contract\s+rent(?:\s+to\s+owner)?|(?:initial\s+)?rent\s+to\s+(?:the\s+)?owner|gross\s+rent\s+to\s+owner)(?:\s+(?:is|shall\s+be))?[:\s]+{CUR}",
+        rf"contract\s+rent{NEAR}{CUR}",
     ])
     tenant, m_t = doc.amount([
         rf"(?:tenant\s+rent|tenant'?s?\s+(?:portion|share)(?:\s+of\s+(?:the\s+)?rent)?|family\s+(?:share|portion|rent\s+to\s+owner)|"
-        rf"resident\s+(?:portion|share))(?:\s+(?:is|shall\s+be))?[:\s]+{CUR}",
+        rf"resident\s+(?:portion|share))(?:\s+to\s+owner)?(?:\s+(?:is|shall\s+be))?[:\s]+{CUR}",
+        rf"total\s+tenant\s+payment(?:\s+(?:is|of))?[:\s]+{CUR}",
+        # "...of which the PHA pays $1,050.00 and Resident pays $350.00"
+        rf"\b(?:tenant|resident|family)\s+(?:pays|will\s+pay|shall\s+pay)\s+{CUR}",
     ])
     hap, m_h = doc.amount([
-        rf"housing\s+assistance\s+payment(?!s?\s+contract)(?:\s+(?:is|shall\s+be))?{NEAR}{CUR}",
+        # "the Housing Authority pays $880.00 as the housing assistance payment
+        # and the tenant pays $300.00" -- the payer-first form goes first, or
+        # the phrase-first pattern below would reach on to the tenant's $300.
+        rf"\b(?:PHA|Housing\s+Authority|Contract\s+Administrator|agency)\s+(?:pays|will\s+pay)\s+{CUR}",
+        rf"(?:housing\s+)?assistance\s+payment\s*[:\-]?\s*\n\s*{CUR}",
+        # "The assistance payment made by the Contract Administrator on behalf
+        # of the Tenant is $853.00" -- a longer reach than NEAR.
+        rf"(?:housing\s+)?assistance\s+payment(?!s?\s+contract)(?:\s+(?:is|shall\s+be))?[^.$]{{0,90}}?{CUR}",
         rf"\b(?:HAP|PHA)\s+(?:portion|payment|amount|share)(?:\s+(?:is|shall\s+be))?[:\s]+{CUR}",
     ])
     ua, m_ua = doc.amount([rf"utility\s+allowance(?:\s+(?:is|of))?[:\s]+{CUR}"])
@@ -397,7 +459,8 @@ def parse_section_8(doc: _Doc, base_rent: Optional[float] = None) -> Entry:
 # ----------------------------------------------------------------------
 
 _CHANGE_TITLE = re.compile(
-    r"\b(?:(?P<renewal>renewal|extension)\b|(?P<amend>amendment|lease\s+modification|notice\s+of\s+rent\s+(?:change|increase)))",
+    r"\b(?:(?P<renewal>renewal|extension)\b|(?P<amend>amendment|lease\s+modification|notice\s+of\s+rent\s+(?:change|increase)|"
+    r"rent\s+(?:change|increase|adjustment)\s+notice|notice\s+of\s+(?:change|adjustment)))",
     re.IGNORECASE,
 )
 
@@ -431,33 +494,47 @@ def parse_lease_changes(pages: List[Dict[str, Any]]) -> Entry:
     for kind, doc_pages in _change_docs(pages):
         d = _Doc(doc_pages)
         eff = d.first([rf"[Ee]ffective\s+(?:as\s+of\s+)?(?:on\s+)?{DATE}", rf"term\s+beginning\s+(?:on\s+)?{DATE}",
-                       rf"commenc\w+\s+(?:on\s+)?{DATE}"])
+                       rf"commenc\w+\s+(?:on\s+)?{DATE}", rf"\bfrom\s+{DATE}(?={RANGE_SEP}{DATE_NC})"])
         rent, m_rent = d.amount([
+            # Section 8 notices: the contract rent (total), not "New tenant rent".
+            rf"contract\s+rent(?:\s+to\s+owner)?{NEAR}{CUR}",
             rf"(?:monthly\s+)?rent\s+(?:shall\s+be|will\s+be|is\s+(?:changed|increased|decreased|reduced|adjusted)\s+to|"
             rf"is|of)[:\s]*{CUR}",
             rf"new\s+(?:monthly\s+)?rent[:\s]+{CUR}",
             rf"(?:monthly\s+)?rent[:\s]+{CUR}",
-        ], accept=lambda m: not re.search(r"\b(?:pet|parking|garage|tenant\s+rent)\b",
-                                          d.text[max(0, m.start() - 25):m.start()], re.IGNORECASE))
-        end = d.first([rf"and\s+ending\s+(?:on\s+)?{DATE}", rf"expiration\s+date[^.$]{{0,40}}?(?:extended\s+to|is|shall\s+be)\s+{DATE}",
+        ], accept=lambda m: not re.search(r"\b(?:pet|parking|garage|tenant\s+rent|tenant\s+portion)\b",
+                                          d.text[max(0, m.start() - 25):m.end()], re.IGNORECASE))
+        tenant_rent, m_tr = d.amount([
+            rf"new\s+tenant\s+(?:rent|portion|share)[:\s]+{CUR}",
+            rf"your\s+(?:portion|share)\s+of\s+(?:the\s+)?rent\s+will\s+be\s+{CUR}",
+        ])
+        hap, m_hap = d.amount([
+            rf"new\s+(?:housing\s+)?assistance\s+payment[:\s]+{CUR}",
+            rf"our\s+payment\s+to\s+(?:your\s+)?(?:landlord|owner)\s+will\s+be\s+{CUR}",
+        ])
+        end = d.first([rf"{DATE_NC}{RANGE_SEP}{DATE}", rf"and\s+ending\s+(?:on\s+)?{DATE}", rf"expiration\s+date[^.$]{{0,40}}?(?:extended\s+to|is|shall\s+be)\s+{DATE}",
                        rf"(?:new\s+)?(?:lease\s+)?end(?:ing)?\s+date[:\s]+{DATE}", rf"\bthrough\s+{DATE}",
                        rf"\bends?\s+(?:on\s+)?{DATE}"])
-        if rent is None and end is None:
+        if rent is None and end is None and tenant_rent is None and hap is None:
             continue
         changes.append({
             "kind": kind,
             "effective_date": eff.group(1) if eff else None,
             "new_rent": rent,
             "new_end_date": end.group(1) if end else None,
+            "new_tenant_rent": tenant_rent,
+            "new_hap_amount": hap,
             "page": doc_pages[0]["page"],
         })
-        sources.append(d.source([eff, m_rent, end]))
+        sources.append(d.source([eff, m_rent, end, m_tr, m_hap]))
     if not changes:
         return _not_found()
     value = "; ".join(
         f"{c['kind'].capitalize()}" + (f" effective {c['effective_date']}" if c["effective_date"] else "")
         + (f": rent {_money(c['new_rent'])}" if c["new_rent"] is not None else "")
         + (f", ends {c['new_end_date']}" if c["new_end_date"] else "")
+        + (f", tenant rent {_money(c['new_tenant_rent'])}" if c["new_tenant_rent"] is not None else "")
+        + (f", HAP {_money(c['new_hap_amount'])}" if c["new_hap_amount"] is not None else "")
         for c in changes
     )
     return {

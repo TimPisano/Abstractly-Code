@@ -1172,7 +1172,7 @@ class FieldExtractor:
         not_pet = lambda text, m: not re.search(  # noqa: E731
             r"\b(?:pet|animal|key|parking|holding|application)\b", text[max(0, m.start() - 20):m.end()], re.IGNORECASE)
         result = self._search_ordered(pages, [
-            rf"\bdeposit\s*[:\-]?\s*\n?\s*{CURRENCY_REGEX}",
+            rf"\bdeposit\s*[:\-.]?\s*\n?\s*{CURRENCY_REGEX}",
             rf"deposited\s+with\s+\w+\s+the\s+sum\s+of\s+{CURRENCY_REGEX}\s+as\s+security",
         ], ["high", "high"], accept=not_pet)
         if result:
@@ -1334,7 +1334,7 @@ class FieldExtractor:
             (rf"\b(?:lease|tenancy|term)\s+(?:will\s+)?start(?:s)?\b(?:\s+on)?{GAP}{DATE_REGEX}", "high", None),
             (rf"begin\w*\b(?!\s+Date){GAP}{DATE_REGEX}", "medium", None),
             (rf"start(?:s|ing)?\b(?!\s+Date){GAP}{DATE_REGEX}", "medium", None),
-            (rf"move[- ]in\s+date[:\s]+{DATE_REGEX}", "medium",
+            (rf"move[- ]in\s+(?:date[:\s]+|on\s+){DATE_REGEX}", "medium",
              "Taken from the move-in date -- usually the lease start, but confirm."),
             # Last resort: the same commence/begin cue, but allowing up to
             # WIDE_GAP's ~150 chars (crossing one more clause) instead of
@@ -1390,7 +1390,7 @@ class FieldExtractor:
             (rf"lease\s+end[:\s]+{DATE_REGEX}", "high", None),
             # "ends at 11:59 p.m. on February 28, 2027" -- the periods in
             # "p.m." stop the period-free GAP the prose patterns use.
-            (rf"\bend(?:s|ing)?\s+at\s+\d{{1,2}}:\d{{2}}\s*[ap]\.?\s?m\.?\s+on\s+{DATE_REGEX}", "high", None),
+            (rf"\bend(?:s|ing)?\s+at\s+\d{{1,2}}:\d{{2}}\s*[ap]\.?\s?m\.?\s+on\s+(?:the\s+)?{DATE_REGEX}", "high", None),
             (rf"expiration\s+date[:\s]+{DATE_REGEX}", "high", None),
             (rf"termination\s+date[:\s]+{DATE_REGEX}", "high", None),
             (rf"term\s+ends?[:\s]+{DATE_REGEX}", "high", None),

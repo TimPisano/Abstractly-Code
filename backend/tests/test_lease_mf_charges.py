@@ -161,6 +161,106 @@ def test_lease_page_mentioning_renewal_options_is_not_a_change():
     print("✓ A lease clause about renewal isn't a renewal document: PASS")
 
 
+def test_section_8_prose_and_table_wording():
+    # Voucher lease that never says "Section 8".
+    e = mf.parse_section_8(_doc(
+        "LEASE AGREEMENT - HOUSING CHOICE VOUCHER PROGRAM\nRent. The rent is $1,400.00 of which the PHA pays "
+        "$1,050.00 and Resident pays $350.00. The PHA is Brindlemoor County Housing Authority. PHA utility allowance: $85.00."
+    ), base_rent=1400.0)
+    d = e["details"]
+    assert (d["contract_rent"], d["tenant_rent"], d["hap_amount"], d["utility_allowance"]) == (1400.0, 350.0, 1050.0, 85.0), d
+    # HUD model lease: Total Tenant Payment + Contract Administrator.
+    e = mf.parse_section_8(_doc(
+        "Contract Administrator\nCalloway Valley Housing Authority\n2. Rent. The Contract Rent for the unit is $1,265.00 per "
+        "month. Total Tenant Payment is $412.00 per month. The assistance payment made by the Contract Administrator on "
+        "behalf of the Tenant is $853.00 per month."
+    ))
+    d = e["details"]
+    assert (d["contract_rent"], d["tenant_rent"], d["hap_amount"]) == (1265.0, 412.0, 853.0), d
+    assert d["pha_name"] == "Calloway Valley Housing Authority", d
+    # Payer-first: the HAP is the authority's figure, not the tenant's that follows.
+    e = mf.parse_section_8(_doc(
+        "Rent to owner is $1,180.00 monthly. Of this amount the Halcyon Bay Housing Authority pays $880.00\n"
+        "as the housing assistance payment and the tenant pays $300.00."
+    ))
+    assert (e["details"]["hap_amount"], e["details"]["tenant_rent"]) == (880.0, 300.0), e["details"]
+    # Two-column table.
+    e = mf.parse_section_8(_doc(
+        "Tallgrass Regional Housing Authority administers the Tenant's voucher.\nContract rent to owner\n$1,500.00\n"
+        "Tenant share\n$540.00\nHousing assistance payment\n$960.00\n"
+    ))
+    d = e["details"]
+    assert (d["contract_rent"], d["tenant_rent"], d["hap_amount"]) == (1500.0, 540.0, 960.0), d
+    # A PHA name wrapped across a line break is kept whole.
+    e = mf.parse_section_8(_doc("Section 8. The owner has a HAP contract with Granite\nValley Public Housing Agency (the PHA)."))
+    assert e["details"]["pha_name"] == "Granite Valley Public Housing Agency", e["details"]
+    print("✓ Section 8 split from prose, HUD model lease and table wording: PASS")
+
+
+def test_rent_change_notice_is_a_change_not_the_lease_split():
+    pages = _pages(
+        "LEASE\nRent to owner is $1,180.00 monthly. Of this amount the Halcyon Bay Housing Authority pays $880.00 "
+        "as the housing assistance payment and the tenant pays $300.00.",
+        "HALCYON BAY HOUSING AUTHORITY\nNOTICE OF RENT CHANGE\nThe contract rent for this unit is approved at $1,235.00 "
+        "per month effective July 1, 2026. New tenant rent: $320.00. New housing assistance payment: $915.00.",
+    )
+    ch = mf.parse_lease_changes(pages)["details"]["changes"]
+    assert len(ch) == 1 and ch[0]["new_rent"] == 1235.0, ch  # contract rent, not "New tenant rent"
+    assert (ch[0]["new_tenant_rent"], ch[0]["new_hap_amount"]) == (320.0, 915.0), ch
+    s8 = mf.parse_section_8(mf._Doc(pages))["details"]
+    assert (s8["tenant_rent"], s8["hap_amount"]) == (300.0, 880.0), s8  # the lease's own split
+    # An income-only change: no new contract rent, still recorded.
+    ch = mf.parse_lease_changes(_pages(
+        "LEASE\nRent: $1,500.00",
+        "TALLGRASS REGIONAL HOUSING AUTHORITY\nRent Change Notice\nEffective June 1, 2026 your portion of rent will be "
+        "$410.00 and our payment to your landlord will be $1,090.00.",
+    ))["details"]["changes"]
+    assert (ch[0]["new_tenant_rent"], ch[0]["new_hap_amount"]) == (410.0, 1090.0), ch
+    print("✓ Rent change notices: contract rent vs tenant/HAP split, lease split kept separate: PASS")
+
+
+def test_renewal_running_from_range_sets_new_end():
+    ch = mf.parse_lease_changes(_pages(
+        "RESIDENTIAL LEASE\nRent is $1,360.00 per month.",
+        "RENEWAL OF LEASE\nThe Lease is renewed for another twelve (12) month term, running from\nJune 1, 2026 to "
+        "May 31, 2027, except that monthly rent will be\n$1,420.00.",
+    ))["details"]["changes"]
+    assert (ch[0]["effective_date"], ch[0]["new_end_date"], ch[0]["new_rent"]) == ("June 1, 2026", "May 31, 2027", 1420.0), ch
+    print("✓ Renewal 'running from X to Y': new end date and rent: PASS")
+
+
+def test_utility_wording_variants():
+    e = mf.parse_utility_charges(_doc(
+        "A. Water and sewer service to your unit is not separately metered. Owner allocates the property's water\n"
+        "and sewer bill among residents.\nB. Flat monthly services: valet trash collection $25.00; pest control $5.00; "
+        "package locker service\n$4.00. These are billed with rent."
+    ))
+    d = e["details"]
+    assert d["rubs_utilities"] == ["water", "sewer"] and d["flat_monthly_total"] == 34.0, d
+    e = mf.parse_utility_charges(_doc(
+        "Resident's share of the community's water, sewer, stormwater and trash expenses will be determined\n"
+        "by square footage ratio billing.\nResident also pays these fixed monthly charges: pest control, $3.00; valet trash, $30.00."
+    ))
+    d = e["details"]
+    assert d["rubs_utilities"] == ["water", "sewer", "trash", "stormwater"] and d["flat_monthly_total"] == 33.0, d
+    e = mf.parse_utility_charges(_doc("Monthly Charges\nBase Rent\n$1,480.00\nValet Trash\n$28.00\nPest Control\n$15.00\n"))
+    assert e["details"]["flat_monthly_total"] == 43.0, e
+    # A one-time fee with no "monthly" anywhere near it is not a monthly charge.
+    assert mf.parse_utility_charges(_doc("Move-in: trash can deposit $50.00 at signing."))["value"] is None
+    print("✓ Utility wording: not separately metered, ratio billing, fee lists and tables: PASS")
+
+
+def test_pet_and_parking_wording_variants():
+    e = mf.parse_pet_charges(_doc("an additional $50.00 is added to the monthly rent while the animals reside in the unit; "
+                                  "a one-time, non-refundable animal fee of $400.00 is due at move-in."))
+    assert (e["details"]["monthly_rent"], e["details"]["fee"]) == (50.0, 400.0), e
+    e = mf.parse_parking_charges(_doc("Resident is assigned covered space #44. The monthly fee for the space is $60.00."))
+    assert e["details"] == {"monthly_fee": 60.0, "space": "44"}, e
+    e = mf.parse_parking_charges(_doc("Tenant is granted use of garage stall G-17. Tenant shall pay a monthly garage charge\nof $125.00."))
+    assert e["details"]["monthly_fee"] == 125.0, e
+    print("✓ Pet 'added to the monthly rent' and parking 'fee for the space': PASS")
+
+
 if __name__ == "__main__":
     test_flag_off_by_default_adds_no_keys()
     test_flag_on_adds_every_key()
@@ -173,4 +273,9 @@ if __name__ == "__main__":
     test_non_section_8_lease_has_no_section_8_entry()
     test_lease_changes_and_current_terms()
     test_lease_page_mentioning_renewal_options_is_not_a_change()
+    test_section_8_prose_and_table_wording()
+    test_rent_change_notice_is_a_change_not_the_lease_split()
+    test_renewal_running_from_range_sets_new_end()
+    test_utility_wording_variants()
+    test_pet_and_parking_wording_variants()
     print("\nAll multifamily charge tests passed.")
