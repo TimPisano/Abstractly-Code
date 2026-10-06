@@ -653,6 +653,41 @@ def test_wrong_http_method_is_405_not_500():
     print("✓ test_wrong_http_method_is_405_not_500: PASS")
 
 
+def test_catch_all_handler_keeps_redirects_as_redirects():
+    """Review note: HTTPException pass-through must not turn a 3xx into JSON without a Location."""
+    from werkzeug.routing import RequestRedirect
+    with app.test_request_context("/x"):
+        resp = api_module.handle_unexpected_error(RequestRedirect("http://localhost/x/"))
+        resp = resp.get_response() if hasattr(resp, "get_response") else resp
+        assert resp.status_code == 308 and resp.headers.get("Location", "").endswith("/x/")
+
+
+def test_change_password_is_not_counted_as_a_login():
+    with _Env() as client:
+        uid = _make_user()
+        token = _login(client).get_json()["token"]
+        before = database.get_user(uid)
+        r = client.post("/auth/change-password", headers=_bearer(token),
+                        json={"current_password": GOOD_PASSWORD, "new_password": OTHER_PASSWORD})
+        assert r.status_code == 200
+        after = database.get_user(uid)
+        assert (after["last_login_at"], after["previous_login_at"]) == (before["last_login_at"], before["previous_login_at"])
+    print("✓ test_change_password_is_not_counted_as_a_login: PASS")
+
+
+def test_staff_consoles_send_a_bearer_token():
+    """Regression: admin/dashboard.html's api.js sent no credential (every call 401'd, then bounced to a missing admin/login.html), and admin/owner were cookie-only, which Safari drops cross-site."""
+    root = os.path.join(os.path.dirname(__file__), "..", "..", "frontend")
+    read = lambda rel: open(os.path.join(root, rel)).read()
+    assert "sessionStorage.setItem('authToken', data.token)" in read("admin/login.js")
+    assert "Authorization: `Bearer ${token}`" in read("admin/admin-bootstrap.js")
+    assert "sessionStorage.setItem('ownerAuthToken', data.token)" in read("owner/login.js")
+    assert "Authorization: `Bearer ${token}`" in read("owner/owner-app.js")
+    api_js = read("app/api.js")
+    assert "inAdmin ? 'index.html?expired=1'" in api_js and not os.path.exists(os.path.join(root, "admin", "login.html"))
+    print("✓ test_staff_consoles_send_a_bearer_token: PASS")
+
+
 def test_link_tokens_never_travel_in_a_url_to_the_api():
     """Regression (security audit): link-status was a GET with ?token=, which the access log records."""
     with _Env() as client:

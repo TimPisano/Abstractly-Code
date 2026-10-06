@@ -2,9 +2,9 @@
 
 ## Summary (kept current — read this first)
 
-**State:** built, tested, pushed; two hardening rounds done. Reviewer said FIX FIRST and the
-security auditor found nothing critical or high; every item either raised is fixed (round 2)
-or listed under "Known gaps". Not merged (never merge from this branch's session).
+**State:** built, tested, pushed; three hardening rounds done. **Reviewer re-review: MERGE**
+(on `4a2b10f`; its two low notes fixed in round 3). The security auditor found nothing critical
+or high; its medium items are fixed. Not merged (never merge from this branch's session).
 Plan: `docs/plans/feature-auth-flow.md`.
 
 **What a person gets**
@@ -24,13 +24,15 @@ Plan: `docs/plans/feature-auth-flow.md`.
 - **Keep me signed in** (on login, finish-setup, reset; checked by default): 30 days if
   checked, otherwise the login ends when the browser closes (12-hour cap).
 - **Sign out** in the app sidebar (there was none before). It signs out every open tab.
+- **Admin and owner consoles now work in Safari** (they were cookie-only, and the admin
+  dashboard was broken in every browser). See round 3.
 
 **Switches:** `SELF_SERVE_SIGNUP_ENABLED` (default off; on for `abstractly-tester-api` in
 `render.yaml`). With it off, the signup routes 404 and "Get started" is hidden.
 
 **Verified (by me, this session)**
 - `python backend/tests/run_all_tests.py`: **83/83 files** (after round 2). New
-  `test_auth_flow.py`: 42 tests. Every bug-fix test was checked to FAIL on the code before
+  `test_auth_flow.py`: 45 tests. Every bug-fix test was checked to FAIL on the code before
   its fix.
 - Headless E2E (`scratchpad/e2e.mjs`, 41 checks each): Chromium desktop 1440, Chromium
   tablet 768, Chromium Android (Pixel 5), WebKit iPhone 13, WebKit desktop. All **41/41**.
@@ -168,3 +170,23 @@ Checked and fine: slow email (server delaying each send by 10s) leaves the signu
 mid-use (reset elsewhere) lands on login with "Your session ended"; a rate-limited login says
 "Too many sign-in attempts"; with the server unreachable, every page says "Couldn't reach the
 server" and the button works again (no endless spinner).
+
+### Round 3 — 2026-10-05 (staff consoles, review notes)
+
+1. **The admin dashboard was broken in every browser** (pre-existing on `main`, reproduced
+   against `origin/main`'s frontend). `admin/dashboard.html` reuses the app's `api.js`, which
+   authenticates with a bearer token, but admin sign-in only set a cookie. Every call
+   returned 401, and `api.js` then sent people to `admin/login.html`, which doesn't exist (a 404).
+   Fix: admin sign-in keeps the token (per tab); `api.js` sends admin pages to `admin/index.html`.
+2. **Admin and owner consoles never worked in Safari.** They were cookie-only, and the
+   cookie is cross-site, which Safari blocks. Both now also send the bearer token; sign-out
+   clears it.
+   Checked headless: admin → dashboard and owner → Teams load in Chromium **and** WebKit
+   (before: WebKit stayed on the login page for both, Chromium admin hit the 404).
+   Test: `test_staff_consoles_send_a_bearer_token`.
+3. Review note: the catch-all error handler returns redirects (3xx) as-is, keeping `Location`.
+   Test: `test_catch_all_handler_keeps_redirects_as_redirects`.
+4. Review note: a password change no longer counts as a "login" for the daily briefing.
+   Test: `test_change_password_is_not_counted_as_a_login`.
+
+After the round: suite 83/83; E2E 41/41 (Chromium desktop, WebKit iPhone); round-2 checks 6/6.

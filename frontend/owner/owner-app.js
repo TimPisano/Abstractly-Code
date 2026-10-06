@@ -42,10 +42,18 @@ function formatDate(iso) {
     return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
+// The bearer token owner/login.js stores, sent alongside the cookie (which
+// is cross-site and dropped by Safari).
+function ownerAuthHeaders(extra = {}) {
+    let token = null;
+    try { token = sessionStorage.getItem('ownerAuthToken'); } catch (e) { /* storage blocked */ }
+    return token ? { ...extra, Authorization: `Bearer ${token}` } : { ...extra };
+}
+
 async function ownerFetch(path, options = {}) {
     let response;
     try {
-        response = await fetch(`${API_BASE_URL}${path}`, { ...options, credentials: 'include' });
+        response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers: ownerAuthHeaders(options.headers || {}), credentials: 'include' });
     } catch (networkErr) {
         throw new Error("Couldn't reach the server. Is the backend running?");
     }
@@ -778,7 +786,7 @@ function switchTab(tab) {
 async function initOwnerConsole() {
     let session;
     try {
-        session = await fetch(`${API_BASE_URL}/auth/session`, { credentials: 'include' }).then(r => r.json());
+        session = await fetch(`${API_BASE_URL}/auth/session`, { credentials: 'include', headers: ownerAuthHeaders() }).then(r => r.json());
     } catch (err) {
         session = { authenticated: false };
     }
@@ -872,6 +880,7 @@ async function initOwnerConsole() {
         } catch (err) {
             // Still navigate away regardless.
         }
+        try { sessionStorage.removeItem('ownerAuthToken'); } catch (e) { /* storage blocked */ }
         window.location.href = 'login.html';
     });
 

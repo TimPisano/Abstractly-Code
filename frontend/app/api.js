@@ -68,7 +68,10 @@ async function apiRequest(path, options = {}) {
     // nothing telling the user the actual fix is just signing in again.
     if (response.status === 401) {
         clearAuthToken();
-        window.location.href = 'login.html?expired=1';
+        // admin/dashboard.html loads this file too; its sign-in page is
+        // admin/index.html (there is no admin/login.html).
+        const inAdmin = window.location.pathname.includes('/admin/');
+        window.location.href = inAdmin ? 'index.html?expired=1' : 'login.html?expired=1';
         // Never resolves -- the redirect is already underway, and
         // nothing calling this should keep running against a session
         // that just turned out to be invalid.

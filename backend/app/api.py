@@ -349,7 +349,11 @@ def handle_unexpected_error(e):
     # because a handler for Exception catches HTTPException subclasses
     # too -- they used to come back as a 500 with a logged "traceback".
     # They keep their own status code instead.
+    # Redirects (e.g. RequestRedirect 308) are returned as-is so they keep
+    # their Location header.
     if isinstance(e, HTTPException):
+        if e.code is not None and e.code < 400:
+            return e
         return jsonify({"error": e.name}), e.code
     logger.exception("Unhandled exception")
     return jsonify({"error": "Internal server error"}), 500
@@ -2023,7 +2027,7 @@ def _wants_remember(body) -> bool:
     return body.get("remember") is True
 
 
-def _start_session(user: dict, remember: bool):
+def _start_session(user: dict, remember: bool, record_login: bool = True):
     """
     Logs `user` in on this response (session cookie for admin/ and
     owner/) and returns the JSON body every login-ish route answers
@@ -2048,7 +2052,11 @@ def _start_session(user: dict, remember: bool):
     session["team_id"] = user.get("team_id")
     session["sv"] = int(user.get("session_version") or 0)
     session["exp"] = int(time.time()) + lifetime
-    database.update_user_last_login(user["id"])
+    # Re-issuing credentials (after a password change) isn't a login --
+    # last/previous_login_at feed the daily briefing's "since you were
+    # last here".
+    if record_login:
+        database.update_user_last_login(user["id"])
     return {
         "id": user["id"], "email": user["email"], "name": user["name"], "role": user["role"],
         "is_owner": bool(user.get("is_owner")), "team_id": user.get("team_id"),
@@ -2131,7 +2139,7 @@ def auth_change_password():
     # signed in, with the same "keep me signed in" choice as before.
     remember = _caller_remembers()
     database.update_user_password(user["id"], hash_password(new_password))
-    return jsonify({"status": "password_updated", **_start_session(database.get_user(user["id"]), remember)}), 200
+    return jsonify({"status": "password_updated", **_start_session(database.get_user(user["id"]), remember, record_login=False)}), 200
 
 
 # ---- "Forgot password?" — self-service reset over email --------------
