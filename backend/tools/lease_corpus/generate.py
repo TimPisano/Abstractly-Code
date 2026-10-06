@@ -129,6 +129,7 @@ class Case:
     concession: Optional[str] = None             # concession clause text
     changes: List[Dict[str, Any]] = field(default_factory=list)  # renewal/amendment
     scanned: bool = False
+    scanned_attachments: bool = False             # typed lease, attachments are scanned images
     second_lease: Optional["Case"] = None        # a genuinely separate lease in the same file
 
     # -- derived ------------------------------------------------------
@@ -527,6 +528,23 @@ def render_scanned_pdf(pages: List[Doc], path: str, rng: random.Random) -> None:
     images[0].save(path, "PDF", resolution=200.0, save_all=True, append_images=images[1:])
 
 
+def render_mixed_pdf(pages: List[Doc], n_text: int, path: str, rng: random.Random) -> None:
+    """The lease's own pages as text, every attachment after them as a scanned image page."""
+    from pypdf import PdfReader, PdfWriter
+
+    tmp_text, tmp_scan = path + ".text.pdf", path + ".scan.pdf"
+    render_text_pdf(pages[:n_text], tmp_text)
+    render_scanned_pdf(pages[n_text:], tmp_scan, rng)
+    writer = PdfWriter()
+    for part in (tmp_text, tmp_scan):
+        for page in PdfReader(part).pages:
+            writer.add_page(page)
+    with open(path, "wb") as fh:
+        writer.write(fh)
+    os.remove(tmp_text)
+    os.remove(tmp_scan)
+
+
 # ----------------------------------------------------------------------
 # Case factory
 # ----------------------------------------------------------------------
@@ -665,6 +683,12 @@ def build_cases(seed: int) -> List[Case]:
         c = add(f.base(fam, scanned=True))
         if setup:
             setup(c)
+    # Typed lease, scanned attachments (a signed HUD addendum / HAP contract
+    # or renewal faxed back): only those pages need OCR.
+    for fam, setup in [("mixed_scan_section8", f.section8), ("mixed_scan_renewal", f.renewal),
+                       ("mixed_scan_pet", f.pet)]:
+        c = add(f.base(fam, scanned_attachments=True))
+        setup(c)
     return cases
 
 
@@ -680,11 +704,13 @@ def generate(out: str, seed: int = 7, only: Optional[str] = None) -> Dict[str, A
         pages = case_pages(c)
         if c.scanned:
             render_scanned_pdf(pages, path, rng)
+        elif c.scanned_attachments:
+            render_mixed_pdf(pages, len(lease_doc(c)), path, rng)
         else:
             render_text_pdf(pages, path)
         exp = c.expected()
         entry = {"file": fname, "case_id": c.case_id, "family": c.family, "style": c.style,
-                 "scanned": c.scanned, "expected_lease_count": 2 if c.second_lease else 1, **exp}
+                 "scanned": c.scanned or c.scanned_attachments, "expected_lease_count": 2 if c.second_lease else 1, **exp}
         if c.second_lease:
             entry["second_lease"] = c.second_lease.expected()["fields"]
         manifest["cases"].append(entry)

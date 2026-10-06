@@ -47,7 +47,38 @@ class PDFExtractor:
                 pages = self._extract_with_ocr(pdf_path)
             else:
                 logger.warning("OCR fallback requires pdf_path parameter, but none was given")
+        elif pdf_path:
+            # A mostly-typed PDF can still carry scanned pages -- a signed
+            # HUD Tenancy Addendum, HAP contract, or renewal faxed back and
+            # appended to the typed lease. Those pages used to block the
+            # whole document ("OCR needed") even though OCR was available.
+            pages = self._ocr_sparse_pages(pages, pdf_path)
 
+        return pages
+
+    # A page with less text than this gets an OCR attempt of its own
+    # (same bar document_extractor.find_low_text_pages uses to call a page
+    # unusable). Capped per document so a long scanned exhibit can't turn
+    # one upload into minutes of OCR.
+    MIN_PAGE_CHARS = 50
+    MAX_SPARSE_PAGES_TO_OCR = 30
+
+    def _ocr_sparse_pages(self, pages: List[Dict[str, Any]], pdf_path: str) -> List[Dict[str, Any]]:
+        """OCR only the near-empty pages of an otherwise-digital PDF; keep OCR text only if it's longer."""
+        sparse = [p for p in pages if len((p.get("text") or "").strip()) < self.MIN_PAGE_CHARS]
+        for page in sparse[:self.MAX_SPARSE_PAGES_TO_OCR]:
+            try:
+                images = convert_from_path(pdf_path, first_page=page["page"], last_page=page["page"])
+                if not images:
+                    continue
+                text, confidence = self._ocr_page_with_confidence(images[0])
+            except Exception:
+                logger.exception("OCR of sparse page %s failed; keeping its text layer", page["page"])
+                continue
+            if len(text.strip()) > len((page.get("text") or "").strip()):
+                page["text"] = text
+                if confidence is not None:
+                    page["ocr_confidence"] = confidence
         return pages
 
     def _extract_with_pypdf2(self, pdf_file) -> List[Dict[str, Any]]:
