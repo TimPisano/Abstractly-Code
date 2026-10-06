@@ -95,6 +95,7 @@ those by taking **main's** TASKS.md, not the branch's.
 
 | Branch | Worktree | +/− main | State |
 |---|---|---|---|
+| `fix/quick-wins` | `~/dev/projects/abstractly-quick-wins` | — | Branched off `main` 2026-10-06. (1) lease detail cards cut off on the right at 375px + sweep every page at 375px; (2) upgrade Pillow and every dependency with a known security advisory, full suite green. **Plan written, awaiting user approval** — `docs/plans/fix-quick-wins.md`. |
 | `feature/loan-underwriting` | `~/dev/projects/abstractly-loan` | +2 / −16 | ~19 uncommitted files (`api.py`, `database.py`, tests, plan); not pushed. Feature-flagged off. Merge **after** team isolation (its plan defers all tenancy to it). Another session may be active — don't touch. |
 | `feature/deal-assistant` | `~/dev/projects/abstractly-assistant` | 0 / −7 | Worktree only, nothing built. Not started. |
 
@@ -103,6 +104,13 @@ those by taking **main's** TASKS.md, not the branch's.
 | `chore/repo-layout` | `~/dev/projects/abstractly-repo-layout` | — | Branched off `main` `1d203d2` 2026-10-05. Repo tidy-up: move stray root reports/plans into `docs/`, fill `.gitignore` gaps, README project-layout section. File moves + doc-comment path fixes only, no code behavior change. **Plan written, awaiting user approval** — `docs/plans/chore-repo-layout.md`. |
 
 ### Handoff blocks
+
+#### fix/quick-wins
+- Worktree: `~/dev/projects/abstractly-quick-wins`
+- Goal: fix lease detail cards cut off at 375px (and any page with the same issue); upgrade every dependency with a known security advisory; suite green.
+- Loop step: 3 — plan written, waiting for user approval
+- Last update: 2026-10-06 by start-task
+- Next action: user reviews `docs/plans/fix-quick-wins.md`
 
 #### feature/auth-hardening
 - Worktree: `~/dev/projects/abstractly-auth-hardening`
