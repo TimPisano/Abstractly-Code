@@ -100,7 +100,7 @@ those by taking **main's** TASKS.md, not the branch's.
 
 | `qa/overnight-gauntlet` | `~/dev/projects/abstractly-gauntlet` | — | Branched off `main` `3f1d3aa` 2026-10-05. Overnight reliability gauntlet: 60+ synthetic messy rent rolls, 30+ T-12s, matching leases with planted mismatches + manifest; full local pipeline graded each cycle; root-cause fixes with regression tests; `QA_REPORT.md` updated per cycle. User's prompt is the approved scope (autonomous, no questions). Never merges/deploys. |
 | `audit/production-readiness` | `~/dev/projects/abstractly-audit` | 0 | Started 2026-10-05 off `origin/main` `3f1d3aa`. **Read-only** production readiness audit (DB, security, reliability, cost, Section 8 trust) → `AUDIT.md` at the worktree root, **uncommitted by user instruction** (no code edits, commits, pushes, or Render changes). Overnight deep pass: every route + job traced, bugs added ranked by severity. |
-| `feature/auth-flow` | `~/dev/projects/abstractly-auth-flow` | — | Branched off `main` 2026-10-05. Self-serve email-link signup, polished forgot-password, "Keep me signed in", sign-out-other-sessions on reset, rate limits. Builds on main's existing `/auth/forgot-password`, `/auth/reset-password`, `password_reset_tokens`, `RateLimiter`. **Plan written, awaiting user approval** — `docs/plans/feature-auth-flow.md` (3 open questions: cookie vs cross-site API, signup flag, Gmail recipient). |
+| `feature/auth-flow` | `~/dev/projects/abstractly-auth-flow` | — | Branched off `main` 2026-10-05. Self-serve email-link signup, polished forgot-password, "Keep me signed in", sign-out-other-sessions on reset, rate limits. Builds on main's existing `/auth/forgot-password`, `/auth/reset-password`, `password_reset_tokens`, `RateLimiter`. **Plan approved, building** — `docs/plans/feature-auth-flow.md`. |
 | `chore/repo-layout` | `~/dev/projects/abstractly-repo-layout` | — | Branched off `main` `1d203d2` 2026-10-05. Repo tidy-up: move stray root reports/plans into `docs/`, fill `.gitignore` gaps, README project-layout section. File moves + doc-comment path fixes only, no code behavior change. **Plan written, awaiting user approval** — `docs/plans/chore-repo-layout.md`. |
 
 ### Handoff blocks
@@ -122,9 +122,9 @@ those by taking **main's** TASKS.md, not the branch's.
 #### feature/auth-flow
 - Worktree: `~/dev/projects/abstractly-auth-flow`
 - Goal: the simplest, smoothest account experience: email-link signup, forgot password, keep me signed in, hardened links and rate limits.
-- Loop step: 3 — plan written, waiting for user approval
-- Last update: 2026-10-05 by start-task
-- Next action: user reviews `docs/plans/feature-auth-flow.md` and answers its 3 open questions
+- Loop step: 4 — building (plan approved 2026-10-05 with defaults: bearer-token keep-me-signed-in, `SELF_SERVE_SIGNUP_ENABLED` off by default / on for tester, real test mail to timmypisano24@gmail.com)
+- Last update: 2026-10-05 by the auth-flow session
+- Next action: build per plan, then overnight hardening rounds logged in AUTH_NOTES.md on the branch
 
 #### chore/repo-layout
 - Worktree: `~/dev/projects/abstractly-repo-layout`
