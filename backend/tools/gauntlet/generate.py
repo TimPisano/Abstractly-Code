@@ -841,6 +841,24 @@ def rr_eu_csv(prop, rng):
     return "csv", csv_bytes(rows, delimiter=";"), {"start", "end"}, "European locale: semicolons, 1.250,00 rents, dd.mm.yyyy dates"
 
 
+def _initials_and_truncation(name):
+    """'Bastian Brightwater' -> 'BRIGHTWATER, B.' every other row; long names cut to 16 chars like a fixed-width PMS column."""
+    if " & " in name or " and " in name or "," in name:
+        return name[:16]
+    first, last = name.split(" ", 1)
+    return f"{last.upper()}, {first[0]}." if len(name) % 2 else name[:16]
+
+
+def rr_initials_truncated_csv(prop, rng):
+    rows = [["Unit", "Resident", "Rent", "Lease Start", "Lease End"]]
+    for u in rr_rows_units(prop):
+        if u["status"] == "occupied":
+            rows.append([u["uid"], _initials_and_truncation(u["rr_tenant"]), money(u["rr_rent"]), fdate(u["rr_start"]), fdate(u["rr_end"])])
+        else:
+            rows.append([u["uid"], "VACANT", "", "", ""])
+    return "csv", csv_bytes(rows), {"start", "end"}, "PMS name formats: 'LAST, F.' initials and names cut at 16 chars (fixed-width column)"
+
+
 RR_WRITERS = {
     "appfolio_csv": rr_appfolio_csv, "appfolio_xlsx": rr_appfolio_xlsx, "appfolio_xlsx_dup": rr_appfolio_xlsx_dup,
     "yardi_xlsx": rr_yardi_xlsx, "yardi_charges_xlsx": rr_yardi_charges_xlsx,
@@ -852,13 +870,13 @@ RR_WRITERS = {
     "xls": rr_xls, "docx": rr_docx, "merged_roommates_xlsx": rr_merged_roommates_xlsx,
     "semicolon_csv": rr_semicolon_csv, "deep_header_xlsx": rr_deep_header_xlsx,
     "merged_two_row_xlsx": rr_merged_two_row_xlsx, "serial_dates_csv": rr_serial_dates_csv,
-    "eu_csv": rr_eu_csv,
+    "eu_csv": rr_eu_csv, "initials_truncated_csv": rr_initials_truncated_csv,
 }
 
 # Which formats each property is rendered in. Every property also gets
 # clean_csv (the canonical file the T-12 cases import).
 RR_PLAN = [
-    ["appfolio_csv", "yardi_xlsx", "broker_csv_messy", "pdf_text"],
+    ["appfolio_csv", "yardi_xlsx", "broker_csv_messy", "pdf_text", "initials_truncated_csv"],
     ["appfolio_xlsx", "realpage_xlsx", "yardi_xlsx", "entrata_csv"],
     ["s8_xlsx", "s8_split_csv", "realpage_csv", "broker_xlsx"],
     ["entrata_csv", "appfolio_xlsx_dup", "docx", "utf16_txt"],
@@ -882,7 +900,7 @@ RR_PLAN = [
     # cycle 6
     ["eu_csv", "realpage_csv"],
     ["eu_csv", "appfolio_xlsx"],    # cycle 7
-    ["appfolio_csv", "yardi_xlsx"],
+    ["appfolio_csv", "yardi_xlsx", "initials_truncated_csv"],
 ]
 
 
@@ -1345,10 +1363,14 @@ def main():
             ext, data, carries, note = res
             rel = f"rent_rolls/{prop['id']}__{fmt}.{ext}"
             write(os.path.join(FIX, rel), data)
+            exp_rr = truth.expected_rent_roll(prop, carries)
+            if fmt == "initials_truncated_csv":
+                for row in exp_rr["occupied"].values():
+                    row["tenant"] = _initials_and_truncation(row["tenant"])
             manifest["rent_rolls"].append({
                 "file": rel, "property": prop["id"], "format": fmt, "ext": ext, "note": note,
                 "canonical": fmt == "clean_csv", "carries": sorted(carries),
-                "expected_rent_roll": truth.expected_rent_roll(prop, carries),
+                "expected_rent_roll": exp_rr,
                 "expected_findings": truth.expected_findings(prop, carries),
             })
         for fmt, scenario in t12s:

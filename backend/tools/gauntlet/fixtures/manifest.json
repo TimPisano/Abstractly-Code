@@ -22385,6 +22385,113 @@
    ]
   },
   {
+   "file": "rent_rolls/p00__initials_truncated_csv.csv",
+   "property": "p00",
+   "format": "initials_truncated_csv",
+   "ext": "csv",
+   "note": "PMS name formats: 'LAST, F.' initials and names cut at 16 chars (fixed-width column)",
+   "canonical": false,
+   "carries": [
+    "end",
+    "start"
+   ],
+   "expected_rent_roll": {
+    "occupied": {
+     "101": {
+      "tenant": "FAIRBANKS, G.",
+      "rent": 1450.0,
+      "start": "2026-04-01",
+      "end": "2027-03-31"
+     },
+     "102": {
+      "tenant": "Theo Lindqvist",
+      "rent": 1900.0,
+      "start": "2026-02-01",
+      "end": "2027-01-31"
+     },
+     "103": {
+      "tenant": "BELLWEATHER, D.",
+      "rent": 1500.0,
+      "start": "2026-03-01",
+      "end": "2027-02-28"
+     },
+     "104": {
+      "tenant": "Malik Whitlock",
+      "rent": 1450.0,
+      "start": "2026-04-01",
+      "end": "2027-03-31"
+     },
+     "202": {
+      "tenant": "Mateo Ingram",
+      "rent": 1200.0,
+      "start": "2025-07-01",
+      "end": "2026-06-30"
+     },
+     "203": {
+      "tenant": "ASHGROVE, W.",
+      "rent": 1200.0,
+      "start": "2026-01-01",
+      "end": "2026-12-31"
+     },
+     "204": {
+      "tenant": "DUNMORE, L.",
+      "rent": 1575.0,
+      "start": "2026-05-01",
+      "end": "2027-04-30"
+     },
+     "301": {
+      "tenant": "PEMBERTON, D.",
+      "rent": 1500.0,
+      "start": "2026-03-01",
+      "end": "2027-02-28"
+     },
+     "302": {
+      "tenant": "THIBODEAUX, T.",
+      "rent": 1175.0,
+      "start": "2026-04-01",
+      "end": "2027-03-31"
+     }
+    },
+    "vacant": [
+     "201"
+    ],
+    "down": [],
+    "total_units": 10
+   },
+   "expected_findings": [
+    {
+     "unit": "101",
+     "type": "unit_no_lease",
+     "annual": 17400.0,
+     "direction": null
+    },
+    {
+     "unit": "102",
+     "type": "concession_missing",
+     "annual": 600.0,
+     "direction": "overstate"
+    },
+    {
+     "unit": "202",
+     "type": "expired_but_occupied",
+     "annual": 14400.0,
+     "direction": "overstate"
+    },
+    {
+     "unit": "203",
+     "type": "concession_missing",
+     "annual": 1200.0,
+     "direction": "overstate"
+    },
+    {
+     "unit": "204",
+     "type": "rent_mismatch",
+     "annual": 1200.0,
+     "direction": "overstate"
+    }
+   ]
+  },
+  {
    "file": "rent_rolls/p01__clean_csv.csv",
    "property": "p01",
    "format": "clean_csv",
@@ -44152,6 +44259,95 @@
      "204": {
       "tenant": "Odette Whitlock",
       "rent": 1525.0,
+      "end": "2027-02-28"
+     }
+    },
+    "vacant": [
+     "301"
+    ],
+    "down": [],
+    "total_units": 9
+   },
+   "expected_findings": [
+    {
+     "unit": "201",
+     "type": "rent_mismatch",
+     "annual": 1080.0,
+     "direction": "understate"
+    },
+    {
+     "unit": "202",
+     "type": "unit_no_lease",
+     "annual": 18300.0,
+     "direction": null
+    },
+    {
+     "unit": "203",
+     "type": "rent_mismatch",
+     "annual": 1800.0,
+     "direction": "overstate"
+    }
+   ]
+  },
+  {
+   "file": "rent_rolls/p21__initials_truncated_csv.csv",
+   "property": "p21",
+   "format": "initials_truncated_csv",
+   "ext": "csv",
+   "note": "PMS name formats: 'LAST, F.' initials and names cut at 16 chars (fixed-width column)",
+   "canonical": false,
+   "carries": [
+    "end",
+    "start"
+   ],
+   "expected_rent_roll": {
+    "occupied": {
+     "101": {
+      "tenant": "Maeve Ingram",
+      "rent": 1875.0,
+      "start": "2026-02-01",
+      "end": "2027-01-31"
+     },
+     "102": {
+      "tenant": "KOWALCZYK, M.",
+      "rent": 1935.0,
+      "start": "2026-05-01",
+      "end": "2027-04-30"
+     },
+     "103": {
+      "tenant": "BRIGHTWATER, M.",
+      "rent": 1185.0,
+      "start": "2026-04-01",
+      "end": "2027-03-31"
+     },
+     "104": {
+      "tenant": "THIBODEAUX, T.",
+      "rent": 1775.0,
+      "start": "2026-03-01",
+      "end": "2027-02-28"
+     },
+     "201": {
+      "tenant": "Callum Lindqvist",
+      "rent": 1435.0,
+      "start": "2026-04-01",
+      "end": "2027-03-31"
+     },
+     "202": {
+      "tenant": "Avery Calloway",
+      "rent": 1525.0,
+      "start": "2026-04-01",
+      "end": "2027-03-31"
+     },
+     "203": {
+      "tenant": "QUINTERO, J.",
+      "rent": 1325.0,
+      "start": "2026-05-01",
+      "end": "2027-04-30"
+     },
+     "204": {
+      "tenant": "WHITLOCK, O.",
+      "rent": 1525.0,
+      "start": "2026-03-01",
       "end": "2027-02-28"
      }
     },

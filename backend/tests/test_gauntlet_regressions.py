@@ -1405,6 +1405,22 @@ def test_review_split_rent_roll_files_do_not_replace_each_other():
     print("✓ test_review_split_rent_roll_files_do_not_replace_each_other: PASS")
 
 
+def test_pms_initials_and_truncated_names_match_the_lease():
+    """
+    PMS exports show "BELLWEATHER, D." or cut long names at the column
+    width ("Bastian Brightwa"); each was a high-severity tenant mismatch
+    against the lease's full name.
+    """
+    from app.portfolio import _same_tenant
+    for a, b in (("BELLWEATHER, D.", "Desmond Bellweather"), ("D. Bellweather", "Desmond Bellweather"),
+                 ("Bastian Brightwa", "Bastian Brightwater"), ("KOWALCZYK-BRIGHTW", "Kowalczyk-Brightwater")):
+        assert _same_tenant(a, b), (a, b)
+    for a, b in (("BELLWEATHER, M.", "Desmond Bellweather"), ("Bellweather", "Desmond Bellweather"),
+                 ("Ann Lee", "Ann Leeds"), ("BELLWEATHER, D. JR", "Desmond Bellweather")):
+        assert not _same_tenant(a, b), (a, b)
+    print("✓ test_pms_initials_and_truncated_names_match_the_lease: PASS")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):

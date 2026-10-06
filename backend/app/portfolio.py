@@ -420,7 +420,7 @@ def _resident_token_sets(tenant: Optional[str]) -> List[frozenset]:
     tenant = _fold_accents(tenant)
     people = []
     for part in _RESIDENT_SPLIT_RE.split(tenant):
-        words = frozenset(w for w in re.sub(r"[^\w\s]", " ", part.lower()).split() if len(w) > 1)
+        words = frozenset(re.sub(r"[^\w\s]", " ", part.lower()).split())
         if words:
             people.append(words)
     return people
@@ -446,6 +446,11 @@ def _same_tenant(a: Optional[str], b: Optional[str]) -> bool:
     squash_b = re.sub(r"[^a-z]", "", _fold_accents(b or "").lower())
     if squash_a and squash_a == squash_b:
         return True
+    # A fixed-width PMS column cuts long names ("Bastian Brightwa"): a cut
+    # of 12+ letters that's a prefix of the full name is the same name.
+    short, long_ = sorted((squash_a, squash_b), key=len)
+    if len(short) >= 12 and long_.startswith(short):
+        return True
     people_a, people_b = _resident_token_sets(a), _resident_token_sets(b)
     if not people_a or not people_b:
         return False
@@ -463,9 +468,19 @@ def _same_person(pa: frozenset, pb: frozenset) -> bool:
     """Word order and a dropped middle initial don't matter; a generational suffix (Jr/Sr/II) does."""
     if (pa & _NAME_SUFFIXES) != (pb & _NAME_SUFFIXES):
         return False
-    pa, pb = pa - _NAME_SUFFIXES, pb - _NAME_SUFFIXES
-    smaller, larger = (pa, pb) if len(pa) <= len(pb) else (pb, pa)
-    return len(smaller) >= 2 and smaller <= larger
+    full_a = {w for w in pa - _NAME_SUFFIXES if len(w) > 1}
+    full_b = {w for w in pb - _NAME_SUFFIXES if len(w) > 1}
+    init_a = {w for w in pa if len(w) == 1}
+    init_b = {w for w in pb if len(w) == 1}
+    (sf, si), (lf, _li) = sorted(((full_a, init_a), (full_b, init_b)), key=lambda t: len(t[0]))
+    if not sf <= lf:
+        return False
+    if len(sf) >= 2:
+        return True  # extra middle names/initials don't matter
+    # "BELLWEATHER, D." -- a surname plus an initial matching one of the other
+    # side's remaining given names (a surname alone is never enough).
+    rest = lf - sf
+    return len(sf) == 1 and bool(si) and all(any(w.startswith(i) for w in rest) for i in si)
 
 
 def _lease_label(lease: Dict[str, Any]) -> str:
