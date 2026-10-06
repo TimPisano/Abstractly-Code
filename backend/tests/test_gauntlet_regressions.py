@@ -1236,6 +1236,32 @@ def test_rent_amendment_on_file_is_not_a_rent_mismatch():
     print("✓ test_rent_amendment_on_file_is_not_a_rent_mismatch: PASS")
 
 
+def test_ocr_t12_lines_that_dont_add_up_are_not_trusted():
+    """
+    AUDIT.md §6.13: OCR'd T-12 numbers were trusted like typed ones. On a
+    noisy scan, "Net Rental Income" came back as $10.81 for the year, which
+    would drive a huge false income-gap finding. An OCR'd line is now kept
+    only when its 12 months add up to its Total (within 1%); a scan where
+    nothing survives is a clear error, not a wrong report.
+    """
+    from app.t12_statement import parse_t12_statement_rows
+    from app.t12_import import T12ImportError
+    hdr = ["Account"] + _T12_MONTHS + ["Total"]
+    good = ["Gross Potential Rent"] + ["1,000.00"] * 12 + ["12,000.00"]
+    bad = ["Net Rental Income"] + ["900.00"] * 11 + ["9.00"] + ["10.81"]
+    got = parse_t12_statement_rows(hdr, [good, bad], "scan.pdf", ocr=True)
+    assert got["gross_potential_rent"]["annual"] == 12000.0
+    assert got["rental_income_collected"] is None, got["rental_income_collected"]
+    # Typed (non-OCR) files are unchanged.
+    assert parse_t12_statement_rows(hdr, [good, bad], "t12.csv")["rental_income_collected"]["annual"] == 10.81
+    try:
+        parse_t12_statement_rows(hdr, [bad], "scan.pdf", ocr=True)
+        raise AssertionError("garbage OCR T-12 accepted")
+    except T12ImportError as e:
+        assert "scan" in str(e).lower() or "ocr" in str(e).lower(), str(e)
+    print("✓ test_ocr_t12_lines_that_dont_add_up_are_not_trusted: PASS")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):
