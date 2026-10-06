@@ -537,6 +537,11 @@ def _find_header(all_rows: List[List[Any]]):
         width = max(len(top), len(bottom))
         top += [None] * (width - len(top))
         bottom += [None] * (width - len(bottom))
+        # A merged group title ("Lease" over "Start" / "End") only fills its
+        # first cell: carry it right while the sub-header row continues.
+        for c in range(1, width):
+            if (top[c] is None or not str(top[c]).strip()) and top[c - 1] and bottom[c] and bottom[c - 1]:
+                top[c] = top[c - 1]
         combined = [" ".join(str(x).strip() for x in (a, b) if x is not None and str(x).strip()) or None
                     for a, b in zip(top, bottom)]
         mapping = _match_columns(combined)

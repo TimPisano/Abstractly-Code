@@ -765,6 +765,28 @@ def test_rent_roll_header_after_a_long_parameter_block():
     print("✓ test_rent_roll_header_after_a_long_parameter_block: PASS")
 
 
+def test_two_row_header_with_merged_group_title():
+    """
+    A merged "Lease" title over "Start" / "End" sub-headers leaves the
+    second column's top cell empty, so it read as plain "End" -> unmapped,
+    and the rent roll lost its lease end dates.
+    """
+    from io import BytesIO
+    from openpyxl import Workbook
+    from app.rent_roll_import import parse_rent_roll_file
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["Unit", "Resident", "Monthly", "Lease", None])
+    ws.append([None, None, "Rent", "Start", "End"])
+    ws.merge_cells("D1:E1")
+    ws.append(["101", "Ann Lee", 1000, "04/01/2026", "03/31/2027"])
+    buf = BytesIO()
+    wb.save(buf)
+    f = parse_rent_roll_file(buf.getvalue(), "rr.xlsx", "9 Elm St")["leases"][0]["extracted_fields"]
+    assert (f["lease_start_date"]["value"], f["lease_end_date"]["value"]) == ("04/01/2026", "03/31/2027"), f
+    print("✓ test_two_row_header_with_merged_group_title: PASS")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):
