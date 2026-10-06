@@ -73,6 +73,12 @@ QUOTE_CLOSE = r"[\"”]"
 
 CONFIDENCE_LEVELS = ("high", "medium", "low")
 
+# Label-style party keywords ("Resident(s): Jordan Ellis", "Owner: Cedar
+# Bend Apartments, LLC"). "resident"/"owner" are the multifamily words for
+# tenant/landlord (NAA/TAA-style apartment leases use them throughout).
+TENANT_LABEL_KEYWORDS = ("tenant", "lessee", "renter", "resident")
+LANDLORD_LABEL_KEYWORDS = ("landlord", "lessor", "owner")
+
 
 def _clean_value(value: str) -> str:
     """Collapse line-wrap whitespace/newlines in a captured value."""
@@ -142,6 +148,24 @@ def looks_like_rent_roll_table(pages: List[Dict[str, Any]]) -> bool:
     return currency_count >= _RENT_ROLL_CURRENCY_THRESHOLD or date_count >= _RENT_ROLL_DATE_THRESHOLD
 
 
+# Title words that mark a page as an attachment to the lease before it
+# rather than the start of a new lease. Checked only in a page's opening
+# lines, where a document's own title sits.
+_ATTACHMENT_TITLE_RE = re.compile(
+    r"\b(?:addendum|addenda|amendment|renewal|extension\s+agreement|rider|exhibit|schedule\s+[A-Z0-9]\b|"
+    r"attachment|housing\s+assistance\s+payments?\s+contract|hap\s+contract|tenancy\s+addendum|"
+    r"notice\s+of\s+rent\s+(?:change|increase)|lease\s+modification|move[- ]in\s+(?:inspection|checklist))\b",
+    re.IGNORECASE,
+)
+_ATTACHMENT_TITLE_WINDOW = 160
+
+
+def is_attachment_page(text: str) -> bool:
+    """True if the page opens with an addendum/amendment/renewal/HAP-contract style title."""
+    head = re.sub(r"\s+", " ", (text or "").strip())[:_ATTACHMENT_TITLE_WINDOW]
+    return bool(_ATTACHMENT_TITLE_RE.search(head))
+
+
 def _concat_pages(pages: List[Dict[str, Any]]):
     """
     Join all pages into one continuous string (so a keyword/value pair
@@ -195,8 +219,8 @@ class FieldExtractor:
              "confidence": "high"/"medium"/"low" or None}
         """
         result = {
-            "tenant": self._extract_defined_party(pages, ("Tenant", "Lessee", "Renter", "Resident"), self._party_label_patterns("tenant", "lessee", "renter")),
-            "landlord": self._extract_defined_party(pages, ("Landlord", "Lessor", "Owner"), self._party_label_patterns("landlord", "lessor")),
+            "tenant": self._extract_defined_party(pages, ("Tenant", "Lessee", "Renter", "Resident"), self._party_label_patterns(*TENANT_LABEL_KEYWORDS)),
+            "landlord": self._extract_defined_party(pages, ("Landlord", "Lessor", "Owner"), self._party_label_patterns(*LANDLORD_LABEL_KEYWORDS)),
             "rent_amount": self._extract_rent(pages),
             "lease_start_date": self._extract_start_date(pages),
             "lease_end_date": self._extract_end_date(pages),
@@ -218,6 +242,7 @@ class FieldExtractor:
             "concessions": _concessions.build_field_entry(_concessions.parse_concessions(pages)),
         }
 
+        self._split_co_residents(result["tenant"])
         self._apply_confidence_validation(result, pages)
 
         # A lease with no concession is the normal case, not a parsing
@@ -428,6 +453,18 @@ class FieldExtractor:
     # Party name extraction (tenant / landlord)
     # ------------------------------------------------------------------
 
+    _LABEL_STOPWORDS = (
+        "Rent", "Rents", "Lease", "Leases", "Portion", "Payment", "Payments", "Share", "Name", "Names",
+        "Signature", "Signatures", "Initials", "Allowance", "Contribution", "Copy", "Notice", "Family",
+        "Based", "Agrees", "Agree", "Shall", "Will", "Must", "May", "Acknowledges", "Improvements",
+        "Information", "Certification", "Obligations", "Responsibilities", "Charges", "Ledger",
+        "Selection", "Screening", "Income", "Paid", "Pays", "Utilities", "Utility", "Address",
+        "Representative", "Agent", "Contact", "Phone", "Email", "Date", "Dated", "Account", "Unit",
+        "Household", "Certifies", "Default", "Defaults", "Insurance", "Responsibility", "The", "This",
+        "Party", "Parties", "Rules", "Handbook", "Policy", "Policies", "Assistance", "Housing",
+    )
+    _LABEL_STOPWORDS_LOOKAHEAD = r"(?!(?i:" + "|".join(_LABEL_STOPWORDS) + r")\b)"
+
     def _party_label_patterns(self, *keywords: str) -> List[str]:
         # Keyword and connector are scoped case-insensitive with (?i:...)
         # rather than relying on a global IGNORECASE flag, because these
@@ -437,18 +474,29 @@ class FieldExtractor:
         # flag, [A-Z][a-z]+ stops meaning "a capitalized word" and starts
         # matching any word at all, letting the match run on indefinitely
         # (e.g. "Landlord is Jordan Blake and the tenant is Alex Chen").
-        keyword_group = "|".join(keywords)
+        # \b...\b so "Owner" can't match inside "Homeowner"; "(s)" covers
+        # the multifamily "Resident(s): ..." label.
+        keyword_group = r"\b(?:" + "|".join(keywords) + r")(?:\(s\)|s\b|\b)"
         # Optional "is"/"was" filler covers casual phrasing like
-        # "the tenant is Alex Chen" alongside formal "Tenant: Alex Chen"
-        connector = r"[:\s]+(?:(?i:is|was)\s+)?"
+        # "the tenant is Alex Chen" alongside formal "Tenant: Alex Chen".
+        # The negative lookahead rejects role-word compounds that are
+        # headings or charges, not a party: "Tenant Rent: $312",
+        # "(To be attached to Tenant Lease)", "Owner Name:", "Resident
+        # Portion" -- each was being read as a party literally named
+        # "Rent"/"Lease"/..., which also split one Section 8 lease plus
+        # its HUD Tenancy Addendum into two "leases".
+        connector = r"[:\s]+(?:(?i:is|was)\s+)?" + self._LABEL_STOPWORDS_LOOKAHEAD
         # A repeated word may be a normal capitalized word ("Apparel") or an
         # ALL-CAPS acronym suffix ("LLC", "LP"), each with an optional
         # trailing period, so entity suffixes aren't truncated.
         word = r"(?:[A-Z][a-z]+\.?|[A-Z]{2,}\.?)"
+        # ", LLC" / ", Inc." after the name -- the comma used to end the
+        # match, so "Owner: Willow Creek Commons Owner, LLC" lost its suffix.
+        entity_suffix = r"(?:,?[ \t]+(?:LLC|L\.L\.C\.|Inc\.?|LP|L\.P\.|LLP|Ltd\.?|Corp\.?|Co\.?)(?![A-Za-z]))?"
         return [
             # Capitalized personal/company name, e.g. "Tenant: John Smith"
             # or "Landlord: Property Management LLC"
-            rf"(?i:{keyword_group}){connector}([A-Z][a-z]+(?:[ \t]+{word})*)",
+            rf"(?i:{keyword_group}){connector}([A-Z][a-z]+(?:[ \t]+{word})*{entity_suffix})",
             # Company/entity name (allows acronyms like LLC), to end of line,
             # e.g. "Landlord: Property Management LLC"
             rf"(?i:{keyword_group}){connector}([A-Z][\w&,\.\'\-\s]+?)(?:\n|$)",
@@ -476,12 +524,47 @@ class FieldExtractor:
         filler = r"(?:[A-Za-z,]+\s+){0,4}"
         return rf"([A-Z][A-Za-z0-9&,\.\'\-\s]{{2,80}}?)\s*\(\s*{filler}{QUOTE_OPEN}(?i:{role_group}){QUOTE_CLOSE}\s*\)"
 
+    # A bare personal name: "Wen Pruitt", "Maria J. Lopez", "Owen O'Neil-Hart".
+    _PERSON_NAME_RE = re.compile(r"^[A-Z][a-zA-Z'\-]+(?:\s+[A-Z]\.?)?(?:\s+[A-Z][a-zA-Z'\-]+){1,2}$")
+    # Lead-in prose a broad defined-term capture can sweep in ahead of the
+    # real name: "This Apartment Lease Contract is entered into between X".
+    _LEAD_IN_RE = re.compile(
+        r"^.*?\b(?:by\s+and\s+between|entered\s+into\s+(?:by\s+and\s+)?between|is\s+between|between)\s+",
+        re.IGNORECASE | re.DOTALL,
+    )
+
+    @classmethod
+    def split_person_list(cls, value: str) -> Optional[List[str]]:
+        """
+        "Wen Pruitt and Wen Quintero" / "A B, C D, and E F" -> each name,
+        but only when EVERY part is a bare personal name. A company like
+        "Smith and Jones Holdings LLC" is never split. Multifamily leases
+        routinely name every adult resident as a co-tenant.
+        """
+        parts = [p.strip() for p in re.split(r",?\s+and\s+|,\s+|\s*&\s*", value) if p.strip()]
+        if len(parts) >= 2 and all(cls._PERSON_NAME_RE.match(p) for p in parts):
+            return parts
+        return None
+
     def _clean_defined_term_value(self, value: str) -> str:
         """Shared cleanup for a defined-term-style party match (e.g. '...Some Company, LLC ("Tenant")')."""
-        # Strip leading connector words swept in by the broad name charclass
-        value = re.sub(
-            r"^(?:.*\bby\s+and\s+between\s+|.*\band\s+)", "", value, flags=re.IGNORECASE
-        )
+        value = re.sub(r"\s+", " ", value).strip()
+        # Strip lead-in prose ("...is entered into between X"), then a
+        # leading connector left over from 'X ("Owner") and Y ("Resident")'.
+        value = self._LEAD_IN_RE.sub("", value)
+        value = re.sub(r"^(?:and|with)\s+", "", value, flags=re.IGNORECASE)
+        if self.split_person_list(value) is None:
+            # 'ABC Corp, a Delaware corporation, and XYZ Inc ("Tenant")':
+            # the capture ran back over the OTHER party -- keep what
+            # follows the last "and".
+            # Only when the text before "and" ends like a complete party
+            # (an entity suffix, or a comma) -- "Smith and Jones Holdings
+            # LLC" is one company and stays whole.
+            if re.search(
+                r"(?:,|\b(?:LLC|L\.L\.C\.|Inc|LP|L\.P\.|LLP|Corp|Co|Ltd|corporation|company|partnership|trust)\.?,?)\s+and\s+",
+                value, re.IGNORECASE,
+            ):
+                value = re.sub(r"^.*\band\s+", "", value, flags=re.IGNORECASE)
         # Strip trailing entity-type boilerplate, e.g. ", a Delaware corporation"
         value = re.sub(
             r",?\s+an?\s+[A-Za-z\s]+?"
@@ -489,6 +572,18 @@ class FieldExtractor:
             "", value, flags=re.IGNORECASE
         )
         return value.strip().rstrip(",")
+
+    def _split_co_residents(self, entry: Dict[str, Any]) -> None:
+        """
+        "Wen Pruitt and Wen Quintero" -> value "Wen Pruitt" (the first-named
+        resident, which is who a rent roll lists), with every resident kept
+        in details.residents so nobody is lost.
+        """
+        value = entry.get("value")
+        names = self.split_person_list(value) if value else None
+        if names:
+            entry["value"] = names[0]
+            entry["details"] = {"residents": names}
 
     def _clean_label_style_value(self, value: str) -> str:
         """Shared cleanup for a label-style party match (e.g. 'Tenant: John Smith')."""
@@ -683,21 +778,41 @@ class FieldExtractor:
         and a later signature-block repeat would place the boundary too
         far into the document.
         """
-        kept: List[List[Any]] = []  # each: [value, first_page]
+        # each: [value, first_page, every lowercase form seen + co-residents]
+        # Co-residents count as the same party: a multifamily lease naming
+        # "Marcus Montclair and Sofia Hollister" on page 1 then has a
+        # "TENANT: Sofia Hollister" signature line on page 2 -- that's the
+        # same lease, not a second one.
+        # Co-resident groups from the whole document first, so the merge
+        # doesn't depend on which mention happens to come first.
+        groups: List[set] = []
+        for value, _page in occurrences:
+            names = FieldExtractor.split_person_list(value)
+            if names:
+                groups.append({value.lower()} | {n.lower() for n in names})
+
+        kept: List[List[Any]] = []
         for value, page in occurrences:
             value_lower = value.lower()
+            forms = {value_lower}
+            for group in groups:
+                if value_lower in group:
+                    forms |= group
             merged = False
             for entry in kept:
-                existing_lower = entry[0].lower()
-                if value_lower == existing_lower or value_lower.startswith(existing_lower) or existing_lower.startswith(value_lower):
+                if any(
+                    f == e or f.startswith(e) or e.startswith(f)
+                    for f in forms for e in entry[2]
+                ):
                     if len(value) < len(entry[0]):
                         entry[0] = value
                     entry[1] = min(entry[1], page)
+                    entry[2] |= forms
                     merged = True
                     break
             if not merged:
-                kept.append([value, page])
-        return [(value, page) for value, page in kept]
+                kept.append([value, page, forms])
+        return [(value, page) for value, page, _forms in kept]
 
     @staticmethod
     def _dedupe_party_values(values: List[str]) -> List[str]:
@@ -735,10 +850,10 @@ class FieldExtractor:
         {"landlords": [...]}, or both.
         """
         tenants = self._find_all_party_values(
-            pages, ("Tenant", "Lessee", "Renter", "Resident"), self._party_label_patterns("tenant", "lessee", "renter")
+            pages, ("Tenant", "Lessee", "Renter", "Resident"), self._party_label_patterns(*TENANT_LABEL_KEYWORDS)
         )
         landlords = self._find_all_party_values(
-            pages, ("Landlord", "Lessor", "Owner"), self._party_label_patterns("landlord", "lessor")
+            pages, ("Landlord", "Lessor", "Owner"), self._party_label_patterns(*LANDLORD_LABEL_KEYWORDS)
         )
 
         result: Dict[str, Any] = {}
@@ -789,15 +904,25 @@ class FieldExtractor:
             return []
 
         tenant_occurrences = self._find_all_party_occurrences(
-            pages, ("Tenant", "Lessee", "Renter", "Resident"), self._party_label_patterns("tenant", "lessee", "renter")
+            pages, ("Tenant", "Lessee", "Renter", "Resident"), self._party_label_patterns(*TENANT_LABEL_KEYWORDS)
         )
         landlord_occurrences = self._find_all_party_occurrences(
-            pages, ("Landlord", "Lessor", "Owner"), self._party_label_patterns("landlord", "lessor")
+            pages, ("Landlord", "Lessor", "Owner"), self._party_label_patterns(*LANDLORD_LABEL_KEYWORDS)
         )
         tenant_pages = {page for _value, page in self._dedupe_party_occurrences(tenant_occurrences)}
         landlord_pages = {page for _value, page in self._dedupe_party_occurrences(landlord_occurrences)}
 
-        boundary_pages = tenant_pages | landlord_pages
+        # An addendum, amendment, renewal, or HAP contract restates the
+        # parties (often in a slightly different form -- "Wen Pruitt" on
+        # the HAP contract vs. "Wen Pruitt and Wen Quintero" in the
+        # lease), but it belongs to the lease before it, never starts a
+        # new one. Without this, one Section 8 lease + its HUD Tenancy
+        # Addendum + HAP contract was stored as two or three "leases".
+        text_by_page = {p["page"]: p.get("text") or "" for p in pages}
+        boundary_pages = {
+            pg for pg in (tenant_pages | landlord_pages)
+            if pg == pages[0]["page"] or not is_attachment_page(text_by_page.get(pg, ""))
+        }
 
         doc_first_page = pages[0]["page"]
         doc_last_page = pages[-1]["page"]
