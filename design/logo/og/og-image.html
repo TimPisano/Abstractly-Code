@@ -5,9 +5,36 @@
 <title>Abstractly social preview</title>
 <!--
   Source for frontend/og-image.png (1200x630). Rendered headlessly by
-  design/logo/render_assets.mjs; open it in a browser at 1200x630 to edit.
-  Sized to survive a ~300px-wide iMessage/Slack thumbnail: headline
-  >= 80px, nothing important under ~28px.
+  design/logo/render_assets.mjs (`node design/logo/render_assets.mjs og`
+  renders just this).
+
+  Minimal on purpose: the landing hero's gold fluted light bands and the
+  mark + wordmark, no other text -- the page's og:title supplies the
+  headline under the image.
+
+  The bands are not an imitation: render_assets.mjs reads the hero's own
+  VERT_SRC/FRAG_SRC out of frontend/landing.js and calls renderBands()
+  below, so this image always matches the live site. The shader is drawn
+  as one still frame (u_reduced = 1, u_time = 0) with the spotlight dead
+  centre. Opened by hand in a browser, the canvas stays dark (no shader
+  is passed in).
+
+  Glow shape: the hero's spotlight is a circle sized in viewport-height
+  units. The canvas's drawing buffer is half as wide (relative to its
+  height) as the 1200x630 box it fills, so the circle stretches into a
+  wide oval -- brightest in the centre, fading to black before the
+  left/right edges -- while keeping the hero's 34 ribs across the width
+  (~35px apart, as on a 1200px screen) without editing the shader.
+
+  Retina: the page is rendered at deviceScaleFactor 2 (a 2400x1260 PNG),
+  and the buffer is 1200x1260 so the shader has a device pixel for every
+  output row -- the same picture as a 600x630 buffer, at twice the
+  detail. The mark (SVG) and wordmark (live text) are vector, so their
+  edges are drawn crisp at 2x by the browser.
+
+  Lockup: Inter 500 at 128px measures 120px from the top of the "b" to
+  the bottom of the "y"; the mark is 120px tall to match. At a ~300px
+  iMessage card (1/4 scale) that is ~30px.
 -->
 <style>
 @font-face {
@@ -16,58 +43,61 @@
   font-weight: 100 900;
 }
 * { box-sizing: border-box; margin: 0; }
-html, body { width: 1200px; height: 630px; background: #0a0a0b; overflow: hidden; }
+html, body { width: 1200px; height: 630px; background: #09090a; overflow: hidden; }
 body { position: relative; font-family: 'Inter', sans-serif; color: #ffffff; }
 
-/* Fluted light bands, after the hero's WebGL shader: a warm gold glow
-   sliced into thin vertical ribs, brightest at the core and fading out
-   toward the top, bottom and the text side. */
-.bands {
-  position: absolute; top: -40px; right: -40px; width: 700px; height: 710px;
-  background:
-    radial-gradient(ellipse 52% 60% at 56% 48%, rgba(232, 196, 140, 1), rgba(182, 138, 78, 0.7) 36%, rgba(182, 138, 78, 0.18) 66%, transparent 84%);
-  -webkit-mask-image:
-    repeating-linear-gradient(90deg, rgba(0,0,0,.18) 0px, #000 7px, rgba(0,0,0,.95) 11px, rgba(0,0,0,.12) 18px, rgba(0,0,0,.05) 22px),
-    linear-gradient(90deg, transparent 0%, #000 30%, #000 100%);
-  -webkit-mask-composite: source-in;
-  mask-composite: intersect;
-  filter: blur(0.6px);
-}
-/* Soft dark wash so the headline never sits on a bright band. */
-.wash {
+#bands { position: absolute; inset: 0; width: 1200px; height: 630px; display: block; }  /* buffer 1200x1260, stretched */
+
+.lockup {
   position: absolute; inset: 0;
-  background: linear-gradient(90deg, #0a0a0b 0%, #0a0a0b 44%, rgba(10,10,11,0.7) 55%, rgba(10,10,11,0) 70%);
+  display: flex; align-items: center; justify-content: center; gap: 36px;
+  padding-bottom: 6px;  /* optical centre: the wordmark's caps sit high */
+  /* Separates white from the brightest rods without a visible box. */
+  filter: drop-shadow(0 2px 18px rgba(0, 0, 0, 0.55)) drop-shadow(0 0 2px rgba(0, 0, 0, 0.35));
 }
-
-.content { position: absolute; inset: 0; padding: 64px 72px; display: flex; flex-direction: column; }
-.logo { display: flex; align-items: center; gap: 18px; height: 48px; }
-.logo img { height: 40px; width: auto; display: block; }
-.logo span { font-size: 40px; font-weight: 500; letter-spacing: -0.025em; line-height: 1; }
-
-h1 {
-  margin-top: auto;
-  font-size: 86px; line-height: 1.02; font-weight: 600; letter-spacing: -0.035em;
-  max-width: 720px;
-}
-.figure {
-  margin-top: 34px;
-  font: 500 32px/1.2 ui-monospace, 'SF Mono', Menlo, monospace;
-  letter-spacing: -0.01em;
-  color: #b68a4e;
-}
-.figure small {
-  display: block; margin-bottom: 8px;
-  font-size: 17px; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(182, 138, 78, 0.75);
-}
+.lockup img { height: 120px; width: auto; display: block; }
+.lockup span { font-size: 128px; font-weight: 500; letter-spacing: -0.03em; line-height: 1; }
 </style>
 </head>
 <body>
-<div class="bands"></div>
-<div class="wash"></div>
-<div class="content">
-  <div class="logo"><img src="../final/abstractly-mark-white.svg" alt=""><span>Abstractly</span></div>
-  <h1>Catch rent roll<br>errors before<br>you close</h1>
-  <p class="figure"><small>Sample report</small>$42,780 annual income overstated</p>
-</div>
+<canvas id="bands" width="1200" height="1260"></canvas>
+<div class="lockup"><img src="../final/abstractly-mark-white.svg" alt=""><span>Abstractly</span></div>
+<script>
+// Draw one frame of the hero shader. Returns true once drawn.
+window.renderBands = function (vertSrc, fragSrc, light) {
+  const canvas = document.getElementById('bands');
+  const gl = canvas.getContext('webgl', { preserveDrawingBuffer: true });
+  if (!gl) return false;
+  const compile = (type, src) => {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, src); gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+    return s;
+  };
+  const program = gl.createProgram();
+  gl.attachShader(program, compile(gl.VERTEX_SHADER, vertSrc));
+  gl.attachShader(program, compile(gl.FRAGMENT_SHADER, fragSrc));
+  gl.linkProgram(program);
+  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(program));
+  gl.useProgram(program);
+
+  const buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+  const pos = gl.getAttribLocation(program, 'a_position');
+  gl.enableVertexAttribArray(pos);
+  gl.vertexAttribPointer(pos, 2, gl.FLOAT, false, 0, 0);
+
+  const u = (name) => gl.getUniformLocation(program, name);
+  gl.viewport(0, 0, canvas.width, canvas.height);
+  gl.uniform2f(u('u_resolution'), canvas.width, canvas.height);
+  gl.uniform2f(u('u_mouse'), light.x, light.y);
+  gl.uniform1f(u('u_time'), 0);
+  gl.uniform1f(u('u_reduced'), 1);
+  gl.uniform1f(u('u_scrollFade'), 1);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  return true;
+};
+</script>
 </body>
 </html>
