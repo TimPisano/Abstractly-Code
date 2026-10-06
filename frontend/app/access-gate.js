@@ -217,6 +217,40 @@
         });
     }
 
+    // Two people, one browser: with "Keep me signed in" the token lives in
+    // localStorage, which every tab shares. If someone signs in as a
+    // DIFFERENT user in another tab, this tab's next request silently runs
+    // as them while the screen still shows the first person's name and
+    // data. So when the shared token changes, re-check who it belongs to:
+    // a different person (or no one) -> reload into the honest state. Tabs
+    // holding their own sessionStorage token are unaffected -- api.js
+    // prefers it.
+    window.addEventListener('storage', async (event) => {
+        if (event.key !== 'authToken' || event.storageArea !== localStorage) return;
+        let ownToken = null;
+        try { ownToken = sessionStorage.getItem('authToken'); } catch (e) { /* blocked */ }
+        if (ownToken || !window.CURRENT_USER) return;
+        if (!event.newValue) {
+            // Give a sign-in that's mid-write a moment, then trust what's
+            // actually stored.
+            await new Promise((resolve) => setTimeout(resolve, 300));
+            let now = null;
+            try { now = localStorage.getItem('authToken'); } catch (e) { /* blocked */ }
+            if (!now) {
+                window.location.replace('login.html?signedout=1');
+                return;
+            }
+            event = { newValue: now };
+        }
+        try {
+            const { data } = await fetchJson(`${API_BASE_URL}/auth/session`, {
+                credentials: 'include', headers: { 'Authorization': `Bearer ${event.newValue}` },
+            });
+            if (data.authenticated && data.id === window.CURRENT_USER.id) return;
+        } catch (e) { /* unreachable: reload and let the gate decide */ }
+        window.location.reload();
+    });
+
     // Back button after signing out (or after this login expired / was
     // revoked elsewhere): browsers restore the whole page from the
     // back/forward cache WITHOUT re-running this file, which would put

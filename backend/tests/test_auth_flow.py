@@ -688,6 +688,27 @@ def test_staff_consoles_send_a_bearer_token():
     print("✓ test_staff_consoles_send_a_bearer_token: PASS")
 
 
+def test_signing_in_never_momentarily_empties_the_shared_token():
+    """Regression (round 4): finishLogin cleared localStorage before writing the new token; other open tabs saw "signed out" and left. Browser-checked in round4.mjs ("two people, one browser")."""
+    js = open(os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "app", "auth-common.js")).read()
+    body = js[js.index("function finishLogin(data)"):js.index("window.location.replace('index.html');", js.index("function finishLogin(data)"))]
+    assert "clearToken()" not in body, "finishLogin must overwrite, not clear-then-set"
+    gate = open(os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "app", "access-gate.js")).read()
+    assert "window.addEventListener('storage'" in gate, "app tabs must react to the shared token changing hands"
+    print("✓ test_signing_in_never_momentarily_empties_the_shared_token: PASS")
+
+
+def test_auth_inputs_tell_phone_keyboards_what_enter_does():
+    root = os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "app")
+    for page in ("login.html", "signup.html", "forgot-password.html", "finish-signup.html", "reset-password.html"):
+        html = open(os.path.join(root, page)).read()
+        for tag in re.findall(r"<input [^>]*>", html):
+            if 'type="checkbox"' in tag or " hidden" in tag:
+                continue
+            assert "enterkeyhint=" in tag, f"{page}: {tag[:60]}"
+    print("✓ test_auth_inputs_tell_phone_keyboards_what_enter_does: PASS")
+
+
 def test_link_tokens_never_travel_in_a_url_to_the_api():
     """Regression (security audit): link-status was a GET with ?token=, which the access log records."""
     with _Env() as client:

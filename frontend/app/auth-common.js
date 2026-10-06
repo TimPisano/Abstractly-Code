@@ -72,9 +72,16 @@ realestate realestate1 multifamily apartments rentroll123 qwerty123456
      * not be one Back press away.
      */
     function finishLogin(data) {
-        clearToken();
-        const store = data.remember ? local : sess;
-        if (data.token && store) store.setItem(TOKEN_KEY, data.token);
+        // Write the new token straight over the old one, never clear-then-
+        // set: other open tabs watch the shared (localStorage) slot, and a
+        // momentary "empty" there reads to them as "signed out".
+        if (data.remember) {
+            if (sess) sess.removeItem(TOKEN_KEY);
+            if (data.token && local) local.setItem(TOKEN_KEY, data.token);
+        } else {
+            if (local) local.removeItem(TOKEN_KEY);
+            if (data.token && sess) sess.setItem(TOKEN_KEY, data.token);
+        }
         window.location.replace('index.html');
     }
 

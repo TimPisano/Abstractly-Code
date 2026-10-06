@@ -1,11 +1,14 @@
-# AUTH_NOTES — feature/auth-flow hardening log
+# AUTH_NOTES — auth-flow / auth-hardening log
 
 ## Summary (kept current — read this first)
 
-**State:** built, tested, pushed; three hardening rounds done. **Reviewer re-review: MERGE**
-(on `4a2b10f`; its two low notes fixed in round 3). The security auditor found nothing critical
-or high; its medium items are fixed. Not merged (never merge from this branch's session).
-Plan: `docs/plans/feature-auth-flow.md`.
+**State:** `feature/auth-flow` merged to `main` as `77e25f0` and deployed (rounds 1–3).
+Hardening continues on **`feature/auth-hardening`** (rounds 4+), pushed after each round and
+never merged. Plan: `docs/plans/feature-auth-hardening.md`.
+
+**Latest round:** 4. Two people signing in on one browser no longer leaves a tab acting as
+someone else; links that die while the page is open get the friendly screen; Back/Forward,
+double clicks and Enter repeats all checked; phone keyboards show Next/Go/Send.
 
 **What a person gets**
 - **Get started** (`/app/signup.html`): name, work email, company. They get an email from
@@ -196,3 +199,35 @@ server" and the button works again (no endless spinner).
    Test: `test_change_password_is_not_counted_as_a_login`.
 
 After the round: suite 83/83; E2E 41/41 (Chromium desktop, WebKit iPhone); round-2 checks 6/6.
+
+### Round 4 — 2026-10-05 (feature/auth-hardening)
+
+New headless script `round4.mjs` (16 checks): Chromium **16/16**, WebKit **15/16** (the one
+miss is noise from the app dashboard, not auth; see below). Suite **83/83**. Round-1 E2E still
+**41/41** (Chromium desktop, WebKit iPhone).
+
+Fixed:
+1. **Two people, one browser.** With "Keep me signed in", every tab shares one token. When
+   B signed in, A's open tab silently made requests *as B* while still showing A's name and
+   data. Now an app tab watches the shared token: if it changes hands, the tab reloads into
+   the new person; if it's cleared, the tab goes to "You're signed out". And sign-in now
+   overwrites the token in one step instead of clear-then-set (the momentary "empty" made
+   other tabs think they'd been signed out). Tests:
+   `test_signing_in_never_momentarily_empties_the_shared_token` + E2E "two people, one
+   browser".
+2. **Signup while already signed in** says "You're signed in as … Go to your dashboard"
+   (signing up for another firm is still allowed).
+3. **Phone keyboards**: every auth input has `enterkeyhint` (Next / Go / Send / Done). Test:
+   `test_auth_inputs_tell_phone_keyboards_what_enter_does`.
+
+Checked and fine (no change needed): a link that expires while the form is open → "This
+link has expired" on submit; a link superseded from another tab while open → "There's a
+newer link"; Back from "Check your inbox" → a usable login form; Forward → the forgot page
+is not frozen; Back after a successful reset never shows the password form; double-click
+"send it again" and "Send me a new link" each send one email; Enter pressed 3× on login →
+one sign-in; two signups at once for the same email → exactly one live link; 200% text in
+landscape and portrait → no sideways scroll.
+
+Observed, not auth: after signing in, leaving the dashboard immediately makes WebKit log its
+in-flight background requests (`/alerts/summary`, `/today`, `/activity`) as "access control
+checks" errors when they're cancelled. Harmless, existing app code.
