@@ -1262,6 +1262,41 @@ def test_ocr_t12_lines_that_dont_add_up_are_not_trusted():
     print("✓ test_ocr_t12_lines_that_dont_add_up_are_not_trusted: PASS")
 
 
+def test_failed_reimport_leaves_the_previous_rent_roll_active():
+    """
+    Security-audit follow-up: re-import superseded the old rows BEFORE
+    inserting the new ones, so a failure mid-import left the building with
+    no active rent roll at all. New rows are now inserted first.
+    """
+    from app import database
+    client, db = _client_with_fresh_db(team_id=1)
+    real_insert = database.insert_lease
+    try:
+        v1 = b"Unit,Tenant,Rent\r\n101,Ann Lee,1000\r\n102,Bo Diaz,900\r\n"
+        assert _post(client, "/leases/import-rent-roll", "rr_v1.csv", v1, {"property_address": "100 Oak St"}).status_code == 201
+        calls = {"n": 0}
+
+        def flaky_insert(*a, **k):
+            calls["n"] += 1
+            if calls["n"] == 2:
+                raise RuntimeError("disk full")
+            return real_insert(*a, **k)
+
+        database.insert_lease = flaky_insert
+        import app.api as api_module
+        api_module.app.config["PROPAGATE_EXCEPTIONS"] = False
+        r = _post(client, "/leases/import-rent-roll", "rr_v2.csv", b"Unit,Tenant,Rent\r\n101,Ann Lee,1050\r\n102,Bo Diaz,900\r\n",
+                  {"property_address": "100 Oak St"})
+        assert r.status_code >= 500
+        database.insert_lease = real_insert
+        active = [l["filename"] for l in database.get_all_effective_leases(1)]
+        assert active.count("rr_v1.csv") == 2, active
+    finally:
+        database.insert_lease = real_insert
+        os.unlink(db)
+    print("✓ test_failed_reimport_leaves_the_previous_rent_roll_active: PASS")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):

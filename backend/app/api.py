@@ -1434,12 +1434,35 @@ def import_rent_roll():
     except RentRollImportError as e:
         return jsonify({"error": str(e)}), 400
 
+    created = []
+    new_ids = []
+    try:
+        for lease_data in parsed["leases"]:
+            lease_id = database.insert_lease(
+                filename,
+                lease_data["extracted_fields"],
+                document_type="lease",
+                display_name=lease_data["display_name"],
+                source_kind="rent_roll",
+            team_id=current_team_id(),
+            )
+            new_ids.append(lease_id)
+            lease = database.get_effective_lease(lease_id, team_id=current_team_id())
+            lease["tags"] = []
+            created.append(_lease_summary(lease))
+    except Exception:
+        # Never leave a half-imported rent roll active -- and the previous
+        # one (not superseded yet) stays exactly as it was.
+        for lease_id in new_ids:
+            database.supersede_lease(lease_id)
+        raise
+
     # Re-importing a building's rent roll (the seller's updated export)
     # REPLACES that building's previous rent-roll rows instead of adding a
     # second copy of every unit (AUDIT.md §6.11). Old rows are marked
     # superseded -- excluded from every report, still retrievable by id --
-    # never deleted. Only this team's rows (team-scoped query), only the
-    # buildings this file covers.
+    # never deleted, and only after the new rows are all in. Only this
+    # team's rows (team-scoped query), only the buildings this file covers.
     new_buildings = {
         _normalize_building_address(l["extracted_fields"]["property_address"]["value"])
         for l in parsed["leases"] if l["extracted_fields"]["property_address"]["value"]
@@ -1447,24 +1470,10 @@ def import_rent_roll():
     replaced = 0
     if new_buildings:
         for old_row in database.get_all_effective_leases(team_id=current_team_id()):
-            if _is_rent_roll_import(old_row) and _normalize_building_address(
+            if old_row["id"] not in new_ids and _is_rent_roll_import(old_row) and _normalize_building_address(
                     field_value(old_row, "property_address")) in new_buildings:
                 if database.supersede_lease(old_row["id"]):
                     replaced += 1
-
-    created = []
-    for lease_data in parsed["leases"]:
-        lease_id = database.insert_lease(
-            filename,
-            lease_data["extracted_fields"],
-            document_type="lease",
-            display_name=lease_data["display_name"],
-            source_kind="rent_roll",
-        team_id=current_team_id(),
-        )
-        lease = database.get_effective_lease(lease_id, team_id=current_team_id())
-        lease["tags"] = []
-        created.append(_lease_summary(lease))
 
     for building, counts in (parsed.get("unit_summary") or {}).items():
         database.insert_rent_roll_unit_summary(
