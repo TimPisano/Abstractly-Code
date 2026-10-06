@@ -95,7 +95,7 @@ those by taking **main's** TASKS.md, not the branch's.
 
 | Branch | Worktree | +/− main | State |
 |---|---|---|---|
-| `fix/quick-wins` | `~/dev/projects/abstractly-quick-wins` | — | Branched off `main` 2026-10-06. (1) lease detail cards cut off on the right at 375px + sweep every page at 375px; (2) upgrade Pillow and every dependency with a known security advisory, full suite green. **Plan written, awaiting user approval** — `docs/plans/fix-quick-wins.md`. |
+| `fix/quick-wins` | `~/dev/projects/abstractly-quick-wins` | — | Branched off `main` 2026-10-06. (1) lease detail cards cut off on the right at 375px + sweep every page at 375px; (2) upgrade Pillow and every dependency with a known security advisory, full suite green. **Plan approved, building** — `docs/plans/fix-quick-wins.md`. |
 | `feature/loan-underwriting` | `~/dev/projects/abstractly-loan` | +2 / −16 | ~19 uncommitted files (`api.py`, `database.py`, tests, plan); not pushed. Feature-flagged off. Merge **after** team isolation (its plan defers all tenancy to it). Another session may be active — don't touch. |
 | `feature/deal-assistant` | `~/dev/projects/abstractly-assistant` | 0 / −7 | Worktree only, nothing built. Not started. |
 
@@ -108,9 +108,9 @@ those by taking **main's** TASKS.md, not the branch's.
 #### fix/quick-wins
 - Worktree: `~/dev/projects/abstractly-quick-wins`
 - Goal: fix lease detail cards cut off at 375px (and any page with the same issue); upgrade every dependency with a known security advisory; suite green.
-- Loop step: 3 — plan written, waiting for user approval
-- Last update: 2026-10-06 by start-task
-- Next action: user reviews `docs/plans/fix-quick-wins.md`
+- Loop step: 4 — building (plan approved 2026-10-06; branch tests in its own Python 3.11 venv, shared venv untouched)
+- Last update: 2026-10-06 by the quick-wins session
+- Next action: build per plan
 
 #### feature/auth-hardening
 - Worktree: `~/dev/projects/abstractly-auth-hardening`
