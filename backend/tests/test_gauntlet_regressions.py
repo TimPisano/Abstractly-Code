@@ -601,6 +601,23 @@ def test_two_row_rent_roll_header_yardi_style():
     print("✓ test_two_row_rent_roll_header_yardi_style: PASS")
 
 
+def test_section8_rent_is_contract_rent_not_tenant_portion():
+    """
+    Affordable rent rolls split rent into the resident's portion and the
+    housing authority's HAP. With no contract-rent total column the file
+    was rejected; the right rent is the sum. When a Contract Rent column
+    exists it must win over "Tenant Rent" (which alone would understate
+    every voucher unit's rent and fire a false rent_mismatch).
+    """
+    got = _parse_csv_text("Unit,Resident Name,Tenant Portion,HAP,Lease End\n101,Ann Lee,412.00,988.00,03/31/2027\n102,Bo Diaz,1250.00,0.00,03/31/2027\n")
+    assert [l["extracted_fields"]["rent_amount"]["value"] for l in got["leases"]] == ["$1,400.00", "$1,250.00"], got
+    got = _parse_csv_text("Unit,Resident,Contract Rent,Tenant Rent,HAP Amount\n101,Ann Lee,1400.00,412.00,988.00\n")
+    assert got["leases"][0]["extracted_fields"]["rent_amount"]["value"] == "$1,400.00"
+    got = _parse_csv_text("Unit,Resident,Tenant Rent,Subsidy\n101,Ann Lee,412.00,988.00\n")
+    assert got["leases"][0]["extracted_fields"]["rent_amount"]["value"] == "$1,400.00"
+    print("✓ test_section8_rent_is_contract_rent_not_tenant_portion: PASS")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):

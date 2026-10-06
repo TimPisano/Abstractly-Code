@@ -78,7 +78,17 @@ _COLUMN_ALIASES: Dict[str, List[str]] = {
     # Rent"/"Charged Rent" are RealPage's own equivalent terms, for the
     # exact same reason -- RealPage rent rolls commonly show both an
     # Actual Rent and a Market Rent column side by side.
+    # Affordable / Section 8 rent rolls: the resident's share and the
+    # housing authority's Housing Assistance Payment. Contract rent (the
+    # lease rent) is their sum -- see parse_rent_roll_rows. Listed before
+    # "tenant" so "Tenant Portion"/"Tenant Rent" never become the tenant
+    # NAME column (longest alias wins in Pass 2 anyway).
+    "tenant_portion": ["tenant portion", "tenant rent", "resident rent", "resident portion", "tenant share",
+                       "tenant paid", "tenant pays", "tenant payment"],
+    "hap": ["hap", "hap amount", "hap payment", "subsidy", "subsidy amount", "housing assistance",
+            "housing assistance payment", "assistance payment", "hud portion", "pha portion"],
     "rent_amount": [
+        "contract rent", "gross rent", "total contract rent",
         "monthly base rent", "monthly rent", "base rent", "current rent", "rent/mo", "rent",
         "scheduled rent", "rent charge", "scheduled charges", "actual rent", "charged rent",
     ],
@@ -278,6 +288,11 @@ _UNIT_DESIGNATOR_RE = re.compile(r"^\s*(?:suite|ste\.?|unit|apt\.?|#)\s*[\w-]+",
 _TENANT_NAME_HEADERS = ["tenant name", "resident name", "lessee name", "tenant names", "resident names", "name"]
 
 
+def _has_rent_column(mapping: Dict[str, int]) -> bool:
+    """A rent column, or a Section 8 tenant-portion column the rent can be built from."""
+    return "rent_amount" in mapping or "tenant_portion" in mapping
+
+
 def _match_columns(headers: List[Any]) -> Dict[str, int]:
     """Maps canonical field name -> column index for whichever headers could be confidently matched. See module docstring."""
     normalized = [_normalize_header(h) for h in headers]
@@ -436,7 +451,7 @@ def _find_header_row(all_rows: List[List[Any]]) -> int:
     """
     for i, row in enumerate(all_rows[:_HEADER_SCAN_WINDOW]):
         mapping = _match_columns(row)
-        if "tenant" in mapping and "rent_amount" in mapping:
+        if "tenant" in mapping and _has_rent_column(mapping):
             return i
     return 0
 
@@ -452,7 +467,7 @@ def _find_header(all_rows: List[List[Any]]):
     Each column's two parts are joined ("Actual Rent") and matched again.
     """
     idx = _find_header_row(all_rows)
-    if "tenant" in _match_columns(all_rows[idx]) and "rent_amount" in _match_columns(all_rows[idx]):
+    if "tenant" in _match_columns(all_rows[idx]) and _has_rent_column(_match_columns(all_rows[idx])):
         return list(all_rows[idx]), idx, idx + 1
     window = all_rows[:_HEADER_SCAN_WINDOW]
 
@@ -470,7 +485,7 @@ def _find_header(all_rows: List[List[Any]]):
         combined = [" ".join(str(x).strip() for x in (a, b) if x is not None and str(x).strip()) or None
                     for a, b in zip(top, bottom)]
         mapping = _match_columns(combined)
-        if "tenant" in mapping and "rent_amount" in mapping:
+        if "tenant" in mapping and _has_rent_column(mapping):
             candidate = (len(mapping), -i, combined, i)
             if best is None or candidate[:2] > best[:2]:
                 best = candidate
@@ -683,7 +698,7 @@ def parse_rent_roll_rows(
     """
     column_mapping = _match_columns(headers)
 
-    if "tenant" not in column_mapping or "rent_amount" not in column_mapping:
+    if "tenant" not in column_mapping or not _has_rent_column(column_mapping):
         raise RentRollImportError(
             "Couldn't find a row with a recognizable tenant name column and rent "
             "column anywhere in the first rows of this file. Recognized headers "
@@ -736,6 +751,17 @@ def parse_rent_roll_rows(
             continue
 
         rent = _parse_import_currency(cell("rent_amount"))
+        if "tenant_portion" in column_mapping and "hap" in column_mapping:
+            # Section 8: with no contract-rent column, the lease rent is the
+            # resident's portion plus the HAP. A "rent" column that is only
+            # the resident's portion would understate every voucher unit.
+            portion = _parse_import_currency(cell("tenant_portion"))
+            hap = _parse_import_currency(cell("hap"))
+            if "rent_amount" not in column_mapping or (rent is not None and portion is not None and abs(rent - portion) < 0.005):
+                if portion is not None or hap is not None:
+                    rent = round((portion or 0.0) + (hap or 0.0), 2)
+        elif rent is None and "tenant_portion" in column_mapping:
+            rent = _parse_import_currency(cell("tenant_portion"))
         landlord_str = _cell_to_str(cell("landlord"))
         unit_str = _cell_to_str(cell("unit"))
         sqft_str = _cell_to_str(cell("square_footage"))
@@ -957,7 +983,7 @@ def parse_xlsx_rent_roll(file_bytes: bytes, filename: str, base_property_address
 
         row_contents = [row for _, row in numbered_rows]
         headers, header_idx, data_start = _find_header(row_contents)
-        if "tenant" not in _match_columns(headers) or "rent_amount" not in _match_columns(headers):
+        if "tenant" not in _match_columns(headers) or not _has_rent_column(_match_columns(headers)):
             continue  # this sheet has no usable header row -- try the next one
 
         data_entries = numbered_rows[data_start:]
