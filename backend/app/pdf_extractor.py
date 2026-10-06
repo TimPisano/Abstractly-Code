@@ -6,6 +6,8 @@ and falling back to OCR (pytesseract + pdf2image) for scanned PDFs.
 """
 
 import logging
+import shutil
+import time
 from typing import Dict, Any, List
 import pypdf
 from pdf2image import convert_from_path
@@ -58,15 +60,30 @@ class PDFExtractor:
 
     # A page with less text than this gets an OCR attempt of its own
     # (same bar document_extractor.find_low_text_pages uses to call a page
-    # unusable). Capped per document so a long scanned exhibit can't turn
-    # one upload into minutes of OCR.
+    # unusable). This runs inside the upload request, so it's bounded by
+    # both a page count and a total time budget, well inside gunicorn's
+    # 120s worker timeout. Pages left over keep their (empty) text layer
+    # and get the old "OCR needed" handling -- the same as before this
+    # existed, never worse.
     MIN_PAGE_CHARS = 50
-    MAX_SPARSE_PAGES_TO_OCR = 30
+    MAX_SPARSE_PAGES_TO_OCR = 10
+    SPARSE_OCR_BUDGET_SECONDS = 60.0
+
+    @staticmethod
+    def _ocr_tools_available() -> bool:
+        return bool(shutil.which("tesseract") and shutil.which("pdftoppm"))
 
     def _ocr_sparse_pages(self, pages: List[Dict[str, Any]], pdf_path: str) -> List[Dict[str, Any]]:
         """OCR only the near-empty pages of an otherwise-digital PDF; keep OCR text only if it's longer."""
         sparse = [p for p in pages if len((p.get("text") or "").strip()) < self.MIN_PAGE_CHARS]
-        for page in sparse[:self.MAX_SPARSE_PAGES_TO_OCR]:
+        if not sparse or not self._ocr_tools_available():
+            return pages
+        started = time.monotonic()
+        for index, page in enumerate(sparse[:self.MAX_SPARSE_PAGES_TO_OCR]):
+            if time.monotonic() - started > self.SPARSE_OCR_BUDGET_SECONDS:
+                logger.warning("Sparse-page OCR budget (%.0fs) used up after %d of %d page(s); the rest stay unread",
+                               self.SPARSE_OCR_BUDGET_SECONDS, index, len(sparse))
+                break
             try:
                 images = convert_from_path(pdf_path, first_page=page["page"], last_page=page["page"])
                 if not images:

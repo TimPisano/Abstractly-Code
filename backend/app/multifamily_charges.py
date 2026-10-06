@@ -174,7 +174,7 @@ _UNIT_PATTERNS = [
     # Labels: "Unit: 3B", "Apartment No. 204", "Unit # 111", "Apt. 12"
     rf"(?m)^\s*(?:Apartment\s+Unit|Apartment|Apt\.?|Unit)\s*(?:No\.?|Number|#)?\s*[:#]?\s*{_UNIT_ID}",
     # Inside an address: "1250 Cedar Bend Lane, Apt. 204, Columbus"
-    rf"\d+\s+[A-Za-z0-9 .'\-]+?,\s*(?:Apartment|Apt\.?|Unit)\s*(?:No\.?|Number|#)?\s*#?\s*{_UNIT_ID}\b",
+    rf"(?<!\d)\d+\s+[A-Za-z0-9 .'\-]+?,\s*(?:Apartment|Apt\.?|Unit)\s*(?:No\.?|Number|#)?\s*#?\s*{_UNIT_ID}\b",
     # Comma-delimited unit inside a wrapped address line: "...Parkway, Apt. 412, Kansas City"
     rf",\s*(?:Apartment|Apt\.?|Unit|No\.)\s*(?:No\.?|Number|#)?\s*#?\s*{_UNIT_ID}\s*,",
     rf"\b(?:Apartment|Apt\.?|Unit)\s*(?:No\.?|Number|#)\s*#?\s*{_UNIT_ID}",

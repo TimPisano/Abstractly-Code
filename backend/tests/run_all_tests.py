@@ -58,6 +58,7 @@ UNIT_TESTS = [
     "test_lease_mf_phrasings.py",
     "test_lease_mixed_scan.py",
     "test_lease_ai_multifamily.py",
+    "test_lease_extraction_performance.py",
     "test_lease_corpus.py",
     "test_sheets_export.py",
     "test_lease_naming_and_tags.py",

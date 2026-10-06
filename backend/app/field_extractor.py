@@ -874,7 +874,10 @@ class FieldExtractor:
     # Inside the run, only an initial ("P.") or an abbreviation before a
     # comma ("Inc.,") may end in a period -- otherwise "...Investors LLC.
     # Resident: ..." would run on into the next sentence.
-    _NAME_RUN = r"((?:(?:[A-Z]\.|[A-Z][\w&'\-]*(?:\.(?=,))?),?\s+){0,6}[A-Z][\w&.'\-]*[\w.])"
+    # The lookbehind anchors the run at a word start: without it, a long
+    # unbroken token (OCR garbage, a base64 blob) is retried from every
+    # character inside it -- quadratic time on an upload.
+    _NAME_RUN = r"(?<![\w&'\-.])((?:(?:[A-Z]\.|[A-Z][\w&'\-]*(?:\.(?=,))?),?\s+){0,6}[A-Z][\w&.'\-]*[\w.])"
 
     def _prose_role_patterns(self, role_keywords: Tuple[str, ...]) -> List[str]:
         """
@@ -1688,7 +1691,9 @@ class FieldExtractor:
         prefers the one with "default"/"cure" nearby, rather than blindly
         taking the first match in document order.
         """
-        day_notice_pattern = r"\(?\s*(\d+)\s*\)?\s+(?:business\s+|calendar\s+)?days\b[^.]{0,40}?written\s+notice"
+        # (?<!\d): start only at the first digit -- otherwise a long digit run
+        # is retried from every position (quadratic on OCR garbage).
+        day_notice_pattern = r"(?<!\d)\(?\s*(\d+)\s*\)?\s+(?:business\s+|calendar\s+)?days\b[^.]{0,40}?written\s+notice"
         context_pattern = re.compile(r"\b(?:default|cure)\w*\b", re.IGNORECASE)
         context_window = 150
 
@@ -1818,7 +1823,8 @@ class FieldExtractor:
         patterns = [
             r"(?:square\s+footage|rentable\s+area|leasable\s+area)[:\s]+([\d,]+)",
             rf"(?:approximately|consisting\s+of)\s+([\d,]+)\s*{sqft_unit}",
-            rf"([\d,]+)\s*{sqft_unit}",
+            # (?<![\d,]): same quadratic-on-a-long-digit-run guard as above.
+            rf"(?<![\d,])([\d,]+)\s*{sqft_unit}",
         ]
         confidences = ["high", "high", "medium"]
 

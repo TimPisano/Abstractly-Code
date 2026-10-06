@@ -38,7 +38,8 @@ def test_only_sparse_pages_are_ocred_and_longer_text_wins():
         return ("TENANCY ADDENDUM Tenant Rent: $312.00 per month" if image == "image-2" else "", 88.0)
 
     with mock.patch.object(pdf_extractor, "convert_from_path", fake_convert), \
-            mock.patch.object(PDFExtractor, "_ocr_page_with_confidence", fake_ocr):
+            mock.patch.object(PDFExtractor, "_ocr_page_with_confidence", fake_ocr), \
+            mock.patch.object(PDFExtractor, "_ocr_tools_available", return_value=True):
         out = PDFExtractor()._ocr_sparse_pages(pages, "/tmp/unused.pdf")
     assert ocr_calls == [2, 3], ocr_calls
     assert out[1]["text"].startswith("TENANCY ADDENDUM") and out[1]["ocr_confidence"] == 88.0
@@ -49,10 +50,45 @@ def test_only_sparse_pages_are_ocred_and_longer_text_wins():
 
 def test_ocr_failure_on_one_page_keeps_the_rest():
     pages = [{"page": 1, "text": "x" * 200}, {"page": 2, "text": ""}]
-    with mock.patch.object(pdf_extractor, "convert_from_path", side_effect=RuntimeError("poppler missing")):
+    with mock.patch.object(pdf_extractor, "convert_from_path", side_effect=RuntimeError("poppler missing")), \
+            mock.patch.object(PDFExtractor, "_ocr_tools_available", return_value=True):
         out = PDFExtractor()._ocr_sparse_pages(pages, "/tmp/unused.pdf")
     assert out == pages
     print("✓ A page whose OCR fails keeps its text layer, nothing raises: PASS")
+
+
+def test_sparse_ocr_is_bounded_by_pages_and_time():
+    """It runs inside the upload request: never more than 10 pages or ~60s."""
+    pages = [{"page": n, "text": ""} for n in range(1, 41)]
+    calls = []
+
+    def fake_convert(path, first_page, last_page):
+        calls.append(first_page)
+        return ["img"]
+
+    with mock.patch.object(pdf_extractor, "convert_from_path", fake_convert), \
+            mock.patch.object(PDFExtractor, "_ocr_page_with_confidence", return_value=("", None)), \
+            mock.patch.object(PDFExtractor, "_ocr_tools_available", return_value=True):
+        PDFExtractor()._ocr_sparse_pages(pages, "/tmp/unused.pdf")
+    assert len(calls) == PDFExtractor.MAX_SPARSE_PAGES_TO_OCR == 10, calls
+
+    calls.clear()
+    clock = iter([0.0, 0.0, 30.0, 61.0, 90.0, 120.0])  # start, then one reading per page
+    with mock.patch.object(pdf_extractor, "convert_from_path", fake_convert), \
+            mock.patch.object(PDFExtractor, "_ocr_page_with_confidence", return_value=("", None)), \
+            mock.patch.object(PDFExtractor, "_ocr_tools_available", return_value=True), \
+            mock.patch.object(pdf_extractor.time, "monotonic", lambda: next(clock)):
+        PDFExtractor()._ocr_sparse_pages(pages, "/tmp/unused.pdf")
+    assert calls == [1, 2], calls  # the 60s budget stops it before page 3
+    print("✓ Sparse-page OCR stops at 10 pages or 60 seconds: PASS")
+
+
+def test_no_ocr_attempt_without_tesseract():
+    pages = [{"page": 1, "text": ""}]
+    with mock.patch.object(PDFExtractor, "_ocr_tools_available", return_value=False), \
+            mock.patch.object(pdf_extractor, "convert_from_path", side_effect=AssertionError("must not be called")):
+        assert PDFExtractor()._ocr_sparse_pages(pages, "/tmp/unused.pdf") == pages
+    print("✓ No OCR attempt when tesseract/poppler aren't installed: PASS")
 
 
 def test_real_mixed_pdf_extracts_from_the_scanned_addendum():
@@ -86,5 +122,7 @@ def test_real_mixed_pdf_extracts_from_the_scanned_addendum():
 if __name__ == "__main__":
     test_only_sparse_pages_are_ocred_and_longer_text_wins()
     test_ocr_failure_on_one_page_keeps_the_rest()
+    test_sparse_ocr_is_bounded_by_pages_and_time()
+    test_no_ocr_attempt_without_tesseract()
     test_real_mixed_pdf_extracts_from_the_scanned_addendum()
     print("\nAll mixed-scan tests passed.")
