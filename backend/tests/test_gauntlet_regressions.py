@@ -1161,6 +1161,16 @@ def test_comma_decimal_amounts_are_read_correctly():
     print("✓ test_comma_decimal_amounts_are_read_correctly: PASS")
 
 
+def test_dotted_european_dates():
+    """European-locale exports write 31.03.2027 (day.month.year); parsed to None -> no lease dates."""
+    from app.normalize import parse_date
+    assert parse_date("31.03.2027") == date(2027, 3, 31)
+    assert parse_date("01.04.2026") == date(2026, 4, 1)   # dots mean day-first, even when both readings are valid
+    assert parse_date("1.4.26") == date(2026, 4, 1)
+    assert parse_date("31.13.2027") is None
+    print("✓ test_dotted_european_dates: PASS")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):

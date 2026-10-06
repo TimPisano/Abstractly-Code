@@ -209,6 +209,15 @@ def parse_date(value: Optional[str]) -> Optional[date]:
             year += 2000 if year < 70 else 1900
         return _safe_date(year, month, int(match.group(1))) if month else None
 
+    # "31.03.2027": dotted dates are the European day.month.year
+    # convention (a US export never uses dots), so read day-first.
+    match = re.match(r"^(\d{1,2})\.(\d{1,2})\.(\d{2}|\d{4})$", value)
+    if match:
+        year = int(match.group(3))
+        if year < 100:
+            year += 2000 if year < 70 else 1900
+        return _safe_date(year, int(match.group(2)), int(match.group(1)))
+
     # MM/DD/YYYY or M-D-YY etc. -- this app's existing, documented
     # convention (US-style, month first) for the genuinely ambiguous
     # case where both readings would be valid (e.g. "03/04/2024").
