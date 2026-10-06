@@ -101,8 +101,8 @@ def fixes():
     out = []
     for line in log.splitlines():
         h, subj = line.split("\t", 1)
-        if subj.startswith("Fix:"):
-            out.append(f"| `{h}` | {subj[4:].strip()} |")
+        if subj.startswith("Fix"):
+            out.append(f"| `{h}` | {subj.split(":", 1)[1].strip()} |")
     return "| Commit | Fix |\n|---|---|\n" + "\n".join(out) + "\n" if out else "(none yet)\n"
 
 

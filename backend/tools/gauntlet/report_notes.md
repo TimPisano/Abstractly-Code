@@ -5,7 +5,7 @@
 - **False alarms: 19, down from 337.** All are lease-extraction misreads of accented names (owned by `feature/lease-intelligence`) or character-level OCR misreads on scanned rent rolls.
 - **Scanned rent rolls now import.** Columns are rebuilt from the data rows, sideways and tilted pages are turned upright, and impossible OCR rents are blanked with a warning. Remaining scan failures are character misreads (a lost space, "4201" for 1201) that grid logic can't fix. The heavily degraded sideways fixture still fails with a clear 400.
 - **No crashes and no hangs.**
-- **Fixes:** 64, each its own commit with a regression test. All 83 test files pass.
+- **Fixes:** 59, each its own commit with a regression test. All 83 test files pass.
 - **Reviews:** the `security-auditor` said MERGE (no cross-team leak). Its three follow-ups are fixed: image-size cap, tesseract timeouts, insert-before-supersede. The `reviewer` said FIX FIRST with four items, all fixed (`b888ef9`, `c0b4403`, `99920ec`, `4e5d765`). A re-review is pending.
 
 **AUDIT.md top priority: "the Deal Mismatch Report gets dollar figures wrong on ordinary lease files" (§6.11, §6.1).** It is reproduced with golden fixtures (property `p18` + a re-import case) and fixed at the root:
