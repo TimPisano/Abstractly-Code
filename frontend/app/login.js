@@ -32,6 +32,9 @@
         signedout: ["You're signed out.", 'success'],
     };
     const params = new URLSearchParams(window.location.search);
+    // Set by api.js when a session ends mid-use: the screen to return to.
+    // A bare view name only (validated again in Auth.finishLogin).
+    const returnTo = /^[a-z0-9-]{1,40}$/.test(params.get('next') || '') ? params.get('next') : '';
     for (const [key, [text, kind]] of Object.entries(NOTICES)) {
         if (params.get(key) === '1') {
             notice.textContent = text;
@@ -78,7 +81,7 @@
                 onSlow: () => Auth.setStatus(statusEl, 'Still working. The server may be waking up, which can take up to a minute.'),
             });
             if (!ok) throw new Error(data.error || 'Something went wrong. Please try again.');
-            Auth.finishLogin(data);
+            Auth.finishLogin(data, returnTo);
             return true;
         } catch (err) {
             Auth.setStatus(statusEl, err.message, 'error');

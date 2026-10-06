@@ -71,7 +71,13 @@ async function apiRequest(path, options = {}) {
         // admin/dashboard.html loads this file too; its sign-in page is
         // admin/index.html (there is no admin/login.html).
         const inAdmin = window.location.pathname.includes('/admin/');
-        window.location.href = inAdmin ? 'index.html?expired=1' : 'login.html?expired=1';
+        // Remember which screen they were on, so signing back in returns
+        // there instead of the dashboard. Just the view's name -- login.js
+        // only accepts a plain [a-z0-9-] word, never a URL.
+        const activeView = document.querySelector('.view.active');
+        const viewName = activeView ? activeView.id.replace(/^view-/, '') : '';
+        const next = !inAdmin && /^[a-z0-9-]{1,40}$/.test(viewName) && viewName !== 'dashboard' ? `&next=${viewName}` : '';
+        window.location.href = inAdmin ? 'index.html?expired=1' : `login.html?expired=1${next}`;
         // Never resolves -- the redirect is already underway, and
         // nothing calling this should keep running against a session
         // that just turned out to be invalid.

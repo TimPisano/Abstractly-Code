@@ -6,9 +6,16 @@
 Hardening continues on **`feature/auth-hardening`** (rounds 4+), pushed after each round and
 never merged. Plan: `docs/plans/feature-auth-hardening.md`.
 
-**Latest round:** 4. Two people signing in on one browser no longer leaves a tab acting as
-someone else; links that die while the page is open get the friendly screen; Back/Forward,
-double clicks and Enter repeats all checked; phone keyboards show Next/Go/Send.
+**Latest round:** 5. Signing back in after a session ends mid-use returns you to the
+screen you were on. Logging in on one device while a reset link is open on another is
+checked end to end. (Round 4: two people on one browser, links dying while open,
+Back/Forward, double clicks, phone keyboard hints.)
+
+**Deploy state (2026-10-05):** the auth-flow merge reached prod `abstractly-api`, but **the
+tester and demo APIs did not redeploy** while their static sites did. Tester's new
+reset/finish pages call `POST /auth/link-status`, which the old tester API doesn't have, so
+**password reset on tester is broken until a Manual Deploy of `abstractly-tester-api` (and
+`abstractly-demo-api`) in Render.**
 
 **What a person gets**
 - **Get started** (`/app/signup.html`): name, work email, company. They get an email from
@@ -231,3 +238,21 @@ landscape and portrait → no sideways scroll.
 Observed, not auth: after signing in, leaving the dashboard immediately makes WebKit log its
 in-flight background requests (`/alerts/summary`, `/today`, `/activity`) as "access control
 checks" errors when they're cancelled. Harmless, existing app code.
+
+### Round 5 — 2026-10-05 (feature/auth-hardening)
+
+New headless script `round5.mjs` (7 checks): Chromium **7/7**, WebKit **7/7**. Suite **83/83**.
+Round-1 E2E still **41/41** (Chromium desktop, WebKit iPhone).
+
+1. **Return to where you were.** A session that ends mid-use (expired, or signed out by a
+   reset elsewhere) used to land you on the dashboard after signing back in. Now `api.js`
+   passes the current screen's name (`?next=tasks`), and sign-in returns there. Only a plain
+   `[a-z0-9-]` view name is accepted (checked on both ends), so it can't be turned into an
+   off-site redirect. E2E: back on `#alerts` after re-login, and `?next=https://evil.example/x`
+   ignored. Test: `test_return_to_screen_only_accepts_a_plain_view_name`.
+2. **Logging in during a reset, two devices, UI only** (no change needed): phone opens the
+   reset link; the laptop signs in with the old password (works); the phone saves the new
+   password (works, signed in); the laptop's next click lands on "Your session ended".
+
+Test upkeep: round 4's static finishLogin test now finds the function body without relying
+on its exact signature (still verified to catch the original clear-then-set bug).

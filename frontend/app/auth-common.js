@@ -71,7 +71,7 @@ realestate realestate1 multifamily apartments rentroll123 qwerty123456
      * page we're leaving (a used link, a submitted password form) should
      * not be one Back press away.
      */
-    function finishLogin(data) {
+    function finishLogin(data, returnToView) {
         // Write the new token straight over the old one, never clear-then-
         // set: other open tabs watch the shared (localStorage) slot, and a
         // momentary "empty" there reads to them as "signed out".
@@ -82,7 +82,8 @@ realestate realestate1 multifamily apartments rentroll123 qwerty123456
             if (local) local.removeItem(TOKEN_KEY);
             if (data.token && sess) sess.setItem(TOKEN_KEY, data.token);
         }
-        window.location.replace('index.html');
+        const view = /^[a-z0-9-]{1,40}$/.test(returnToView || '') ? `#${returnToView}` : '';
+        window.location.replace(`index.html${view}`);
     }
 
     /**
