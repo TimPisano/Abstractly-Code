@@ -730,6 +730,22 @@ def test_garden_community_building_letter_is_part_of_the_unit():
     print("✓ test_garden_community_building_letter_is_part_of_the_unit: PASS")
 
 
+def test_future_resident_rows_are_not_current_rent():
+    """
+    PMS rent rolls list pre-leased applicants ("Future", "Applicant") on
+    units still occupied by the current resident. They were imported as a
+    second tenant on the unit: double rent, plus false tenant/rent/date
+    mismatches against the current resident's lease. A resident "Pending
+    Renewal" or on notice is still the current resident.
+    """
+    got = _parse_csv_text("Unit,Tenant,Status,Rent\n101,Ann Lee,Current,1000\n101,Cy Ray,Future,1050\n"
+                          "102,Bo Diaz,Notice-Rented,900\n102,Ed Fox,Applicant,950\n103,Gil Ho,Pending Renewal,800\n"
+                          "104,Ida Kim,Pending Move-In,850\n")
+    assert [t for _, t in _units_of(got)] == ["Ann Lee", "Bo Diaz", "Gil Ho"], _units_of(got)
+    assert sum("future" in r["reason"] for r in got["skipped_rows"]) == 3, got["skipped_rows"]
+    print("✓ test_future_resident_rows_are_not_current_rent: PASS")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):

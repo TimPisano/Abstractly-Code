@@ -640,6 +640,20 @@ _PLACEHOLDER_TENANT_CELLS = {"down", "down unit", "model", "model unit", "offlin
 _UNIT_ID_RE = re.compile(r"^[A-Za-z]{0,3}[\s#-]*\d[\w-]{0,8}$")
 
 
+def _is_future_resident_status(status: Optional[str]) -> bool:
+    """
+    "Future", "Applicant", "Pending Move-In": a pre-leased resident whose
+    lease hasn't started, listed alongside the unit's CURRENT resident.
+    Not current rent. "Pending Renewal" / "Notice" residents are current.
+    """
+    if not status:
+        return False
+    words = set(re.sub(r"[^a-z\s]", " ", status.lower()).split())
+    if "renewal" in words:
+        return False
+    return bool(words & {"future", "applicant", "applicants"}) or ("pending" in words and ("move" in words or "movein" in words))
+
+
 def _unit_status_of_skipped_row(row: List[Any], column_mapping: Dict[str, int], tenant_raw: Optional[str]) -> Optional[str]:
     """
     "vacant" or "down" when this row is a real unit with no current
@@ -792,6 +806,12 @@ def parse_rent_roll_rows(
             return row[idx]
 
         tenant_raw = _cell_to_str(cell("tenant"))
+        if _is_future_resident_status(_cell_to_str(cell("status"))):
+            skipped_rows.append({
+                "row": row_num,
+                "reason": "future resident / applicant (lease not started) -- not current rent, not imported",
+            })
+            continue
         non_occupied = _unit_status_of_skipped_row(row, column_mapping, tenant_raw)
         if non_occupied:
             unit_id = _cell_to_str(cell("unit"))
