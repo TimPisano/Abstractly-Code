@@ -132,7 +132,37 @@ def _display_unit(rr_lease: Optional[Dict[str, Any]], doc_lease: Optional[Dict[s
     return None
 
 
-def _address_groups(leases: List[Dict[str, Any]]) -> Dict[str, Dict[str, List[Dict[str, Any]]]]:
+def _operative_documents(docs: List[Dict[str, Any]], today: date) -> List[Dict[str, Any]]:
+    """
+    The lease document(s) that govern a unit on `today`. A buyer gets the
+    whole lease folder -- the expired original AND its renewal -- and
+    comparing the rent roll against every one of them invented money:
+    the old rent became a rent_mismatch and the old end date an
+    expired_but_occupied, ~$28,800/yr of phantom overstatement on a
+    correct unit (AUDIT.md §6.11). Rule: the lease(s) whose term covers
+    `today`; if none does, the one that starts latest (the newest term,
+    whether it has already ended or is a signed renewal yet to start).
+    Undated documents are kept only when no dated lease decides it.
+    Older documents are history, not a second lease to compare against.
+    """
+    if len(docs) <= 1:
+        return docs
+    dated = []
+    for doc in docs:
+        start = parse_date(field_value(doc, "lease_start_date"))
+        end = parse_date(field_value(doc, "lease_end_date"))
+        if start or end:
+            dated.append((start, end, doc))
+    if not dated:
+        return docs
+    covering = [d for s_, e_, d in dated if (s_ is None or s_ <= today) and (e_ is None or today <= e_) and s_ and e_]
+    if covering:
+        return covering
+    latest = max(dated, key=lambda t: (t[0] or t[1] or date.min))
+    return [latest[2]]
+
+
+def _address_groups(leases: List[Dict[str, Any]], today: Optional[date] = None) -> Dict[str, Dict[str, List[Dict[str, Any]]]]:
     """
     Same grouping compute_rent_roll_reconciliation builds internally
     (portfolio.py), rebuilt here rather than imported since that
@@ -155,6 +185,9 @@ def _address_groups(leases: List[Dict[str, Any]]) -> Dict[str, Dict[str, List[Di
         if address is None:
             continue
         groups.setdefault(address, {"rent_roll": [], "lease_document": []})["lease_document"].append(lease)
+    today = today or date.today()
+    for group in groups.values():
+        group["lease_document"] = _operative_documents(group["lease_document"], today)
     return groups
 
 
@@ -224,7 +257,7 @@ def detect_rent_mismatch(leases: List[Dict[str, Any]], today: Optional[date] = N
     """
     today = today or date.today()
     rows: List[Dict[str, Any]] = []
-    for group in _address_groups(leases).values():
+    for group in _address_groups(leases, today).values():
         if not group["rent_roll"] or not group["lease_document"]:
             continue
         for rr_lease in group["rent_roll"]:
@@ -274,7 +307,7 @@ def detect_expired_but_occupied(leases: List[Dict[str, Any]], today: Optional[da
     """
     today = today or date.today()
     rows: List[Dict[str, Any]] = []
-    for group in _address_groups(leases).values():
+    for group in _address_groups(leases, today).values():
         if not group["rent_roll"] or not group["lease_document"]:
             continue
         for doc_lease in group["lease_document"]:
@@ -303,7 +336,7 @@ def detect_expired_but_occupied(leases: List[Dict[str, Any]], today: Optional[da
     return rows
 
 
-def detect_unit_no_lease(leases: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def detect_unit_no_lease(leases: List[Dict[str, Any]], today: Optional[date] = None) -> List[Dict[str, Any]]:
     """
     A rent-roll row with no lease PDF on file at all for its unit --
     compute_rent_roll_reconciliation (portfolio.py) explicitly skips
@@ -315,7 +348,7 @@ def detect_unit_no_lease(leases: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     roll's number is too HIGH or too LOW, only that it's unconfirmed.
     """
     rows: List[Dict[str, Any]] = []
-    for group in _address_groups(leases).values():
+    for group in _address_groups(leases, today).values():
         if group["lease_document"]:
             continue
         for rr_lease in group["rent_roll"]:
@@ -337,7 +370,7 @@ def detect_unit_no_lease(leases: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return rows
 
 
-def detect_lease_no_unit(leases: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def detect_lease_no_unit(leases: List[Dict[str, Any]], today: Optional[date] = None) -> List[Dict[str, Any]]:
     """
     A lease PDF whose unit never appears on the rent roll at all -- the
     mirror image of unit_no_lease. Unlike that case, this one DOES have
@@ -346,7 +379,7 @@ def detect_lease_no_unit(leases: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     that lease's rent.
     """
     rows: List[Dict[str, Any]] = []
-    for group in _address_groups(leases).values():
+    for group in _address_groups(leases, today).values():
         if group["rent_roll"]:
             continue
         for doc_lease in group["lease_document"]:
@@ -403,7 +436,7 @@ def detect_concession_missing(leases: List[Dict[str, Any]], today: Optional[date
     """
     today = today or date.today()
     rows: List[Dict[str, Any]] = []
-    for group in _address_groups(leases).values():
+    for group in _address_groups(leases, today).values():
         if not group["rent_roll"] or not group["lease_document"]:
             continue
         for doc_lease in group["lease_document"]:
@@ -499,7 +532,7 @@ def detect_concession_mismatch(leases: List[Dict[str, Any]], today: Optional[dat
     """
     today = today or date.today()
     rows: List[Dict[str, Any]] = []
-    for group in _address_groups(leases).values():
+    for group in _address_groups(leases, today).values():
         if not group["rent_roll"] or not group["lease_document"]:
             continue
         for doc_lease in group["lease_document"]:
@@ -582,7 +615,7 @@ def detect_concession_expiring(leases: List[Dict[str, Any]], today: Optional[dat
     """
     today = today or date.today()
     rows: List[Dict[str, Any]] = []
-    for group in _address_groups(leases).values():
+    for group in _address_groups(leases, today).values():
         if not group["rent_roll"] or not group["lease_document"]:
             continue
         for doc_lease in group["lease_document"]:
@@ -645,7 +678,7 @@ def detect_concession_expiring(leases: List[Dict[str, Any]], today: Optional[dat
     return rows
 
 
-def detect_dates_mismatch(leases: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def detect_dates_mismatch(leases: List[Dict[str, Any]], today: Optional[date] = None) -> List[Dict[str, Any]]:
     """
     lease_start_date and lease_end_date, zero tolerance on both -- same
     "no meaningful close enough for a date" stance
@@ -659,7 +692,7 @@ def detect_dates_mismatch(leases: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     rather than a fabricated number.
     """
     rows: List[Dict[str, Any]] = []
-    for group in _address_groups(leases).values():
+    for group in _address_groups(leases, today).values():
         if not group["rent_roll"] or not group["lease_document"]:
             continue
         for rr_lease in group["rent_roll"]:
@@ -686,7 +719,7 @@ def detect_dates_mismatch(leases: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return rows
 
 
-def detect_tenant_mismatch(leases: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def detect_tenant_mismatch(leases: List[Dict[str, Any]], today: Optional[date] = None) -> List[Dict[str, Any]]:
     """
     Any tenant-name disagreement at all is flagged -- same "no close
     enough for whether it's the same tenant" stance
@@ -695,7 +728,7 @@ def detect_tenant_mismatch(leases: List[Dict[str, Any]]) -> List[Dict[str, Any]]
     No dollar amount is assignable to a naming disagreement on its own.
     """
     rows: List[Dict[str, Any]] = []
-    for group in _address_groups(leases).values():
+    for group in _address_groups(leases, today).values():
         if not group["rent_roll"] or not group["lease_document"]:
             continue
         for rr_lease in group["rent_roll"]:
@@ -1018,6 +1051,12 @@ _DETECTORS = [
 # `today` so a report run with an explicit as-of date is consistent across
 # every row.
 _DATE_AWARE_DETECTORS = {
+    # Every detector that pairs rent-roll rows with lease documents is
+    # date-aware: which lease is operative depends on the as-of date.
+    detect_unit_no_lease,
+    detect_lease_no_unit,
+    detect_dates_mismatch,
+    detect_tenant_mismatch,
     detect_rent_mismatch,
     detect_expired_but_occupied,
     detect_concession_missing,

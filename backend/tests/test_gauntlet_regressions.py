@@ -862,6 +862,46 @@ def test_t12_actual_vs_budget_columns_read_actuals():
     print("✓ test_t12_actual_vs_budget_columns_read_actuals: PASS")
 
 
+# ---------------------------------------------------------------- AUDIT.md §6.11: operative lease per unit
+def _report_rows(leases, today=TODAY):
+    rows = []
+    for det in dm._DETECTORS:
+        rows += det(leases, today) if det in dm._DATE_AWARE_DETECTORS else det(leases)
+    return rows
+
+
+def test_original_lease_plus_renewal_compares_only_the_operative_lease():
+    """
+    AUDIT.md §6.11 (CRITICAL): a unit's folder holds the expired 2025
+    original ($1,800) and the current 2026 renewal ($2,100); the rent roll
+    correctly shows $2,100. The report compared the rent roll against BOTH
+    leases: a $3,600 rent_mismatch plus a $25,200 expired_but_occupied --
+    $28,800/yr of phantom overstatement on a correct unit.
+    """
+    addr_rr = "100 Oak St, Austin, TX 78701, Suite 101"
+    rr = _rr(tenant="Ann Lee", rent_amount="$2,100.00", property_address=addr_rr,
+             lease_start_date="01/01/2026", lease_end_date="12/31/2026")
+    original = _doc(tenant="Ann Lee", rent_amount="$1,800.00", property_address="100 Oak St, Apt 101, Austin, TX 78701",
+                    lease_start_date="January 1, 2025", lease_end_date="December 31, 2025")
+    renewal = _doc(tenant="Ann Lee", rent_amount="$2,100.00", property_address="100 Oak St, Apt 101, Austin, TX 78701",
+                   lease_start_date="January 1, 2026", lease_end_date="December 31, 2026")
+    for docs in ([original, renewal], [renewal, original]):
+        assert _report_rows([rr] + docs) == [], [(r["discrepancy_type"], r["annual_dollar_impact"]) for r in _report_rows([rr] + docs)]
+    # A real gap against the CURRENT lease is still caught, priced against it.
+    rr_high = dict(rr, extracted_fields=_fields(tenant="Ann Lee", rent_amount="$2,300.00", property_address=addr_rr,
+                                                lease_start_date="01/01/2026", lease_end_date="12/31/2026"))
+    rows = _report_rows([rr_high, original, renewal])
+    assert [(r["discrepancy_type"], r["annual_dollar_impact"]) for r in rows] == [("rent_mismatch", 2400.0)], rows
+    # Only the expired original on file (no renewal): still expired_but_occupied.
+    rows = _report_rows([rr, original])
+    assert "expired_but_occupied" in _types(rows), rows
+    # A lease document for a unit missing from the rent roll is ONE lease_no_unit, priced at the current lease.
+    other_rr = _rr(tenant="Bo Diaz", rent_amount="$900.00", property_address="100 Oak St, Austin, TX 78701, Suite 102")
+    rows = dm.detect_lease_no_unit([other_rr, original, renewal], TODAY)
+    assert [(r["discrepancy_type"], r["annual_dollar_impact"]) for r in rows] == [("lease_no_unit", 25200.0)], rows
+    print("✓ test_original_lease_plus_renewal_compares_only_the_operative_lease: PASS")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):
