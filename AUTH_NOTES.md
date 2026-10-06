@@ -54,6 +54,12 @@ Plan: `docs/plans/feature-auth-flow.md`.
 
 ## Known gaps (accepted for now)
 
+- **Safari caps "keep me signed in" at 7 days of not visiting.** Safari deletes storage written
+  by page scripts on sites you haven't used in 7 days (ITP), and the 30-day token lives in
+  localStorage. Someone who signs in every few days stays signed in; after a week away they
+  sign in again. The real fix is the same-site API (`api.getabstractly.com` + an HttpOnly
+  cookie) described in the plan's question 1; it's a DNS + Render task, not done here.
+
 - **Sign out can't revoke a copied 30-day token.** The token is stateless. Sign-out clears it
   from this browser and every open tab, and a password change or reset kills every token. But
   a token copied off the machine before sign-out keeps working until it expires. A per-device
