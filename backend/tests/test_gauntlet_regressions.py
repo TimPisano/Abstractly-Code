@@ -1080,6 +1080,32 @@ def test_scanned_rent_roll_columns_rebuilt_from_data_rows():
     print("✓ test_scanned_rent_roll_columns_rebuilt_from_data_rows: PASS")
 
 
+def test_sideways_and_tilted_rent_roll_photo_is_turned_upright():
+    """
+    A rent roll scanned or photographed sideways (landscape page fed
+    portrait), and a little tilted, was OCR'd as-is and rejected. Tesseract's
+    orientation detection turns it upright and a projection-profile search
+    straightens the tilt before the grid is rebuilt.
+    """
+    import io, json
+    from pdf2image import convert_from_bytes
+    from app.rent_roll_import import parse_rent_roll_file
+    from app.normalize import parse_currency
+    with open(os.path.join(_GAUNTLET_FIX, "rent_rolls", "p00__pdf_text.pdf"), "rb") as f:
+        page = convert_from_bytes(f.read(), dpi=200)[0].convert("L")
+    sideways = page.rotate(1.0, expand=True, fillcolor=255).rotate(90, expand=True, fillcolor=255)
+    buf = io.BytesIO()
+    sideways.save(buf, format="PNG")
+    got = parse_rent_roll_file(buf.getvalue(), "rent_roll_photo.png", "1 A St")
+    with open(os.path.join(_GAUNTLET_FIX, "manifest.json")) as f:
+        want = next(r for r in json.load(f)["rent_rolls"] if r["file"] == "rent_rolls/p00__pdf_text.pdf")["expected_rent_roll"]
+    rents = {(l["extracted_fields"]["property_address"]["value"] or "").rsplit("Suite ", 1)[-1]:
+             parse_currency(l["extracted_fields"]["rent_amount"]["value"] or "") for l in got["leases"]}
+    right = sum(1 for u, w in want["occupied"].items() if rents.get(u) == w["rent"])
+    assert right >= len(want["occupied"]) - 1, (right, rents)
+    print("✓ test_sideways_and_tilted_rent_roll_photo_is_turned_upright: PASS")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):

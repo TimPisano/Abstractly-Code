@@ -385,7 +385,7 @@ def _ocr_image_to_rows(image):
     except Exception:
         pass
 
-    # ORIENT_PLACEHOLDER
+    image = _deskew(_upright(image, pytesseract))
 
     try:
         data = pytesseract.image_to_data(image, output_type=pytesseract.Output.DICT)
