@@ -1551,6 +1551,19 @@ def _operative_documents(docs: List[Dict[str, Any]], today: date) -> List[Dict[s
     """
     if len(docs) <= 1:
         return docs
+    # Two copies of the same lease (signed + unsigned scan) are one lease:
+    # comparing against both counted every finding on that unit twice.
+    unique, seen = [], set()
+    for doc in docs:
+        key = tuple((field_value(doc, f) or "").strip().lower()
+                    for f in ("tenant", "rent_amount", "lease_start_date", "lease_end_date", "concessions", "rent_escalation"))
+        if any(key) and key in seen:
+            continue
+        seen.add(key)
+        unique.append(doc)
+    docs = unique
+    if len(docs) <= 1:
+        return docs
     dated = []
     for doc in docs:
         start = parse_date(field_value(doc, "lease_start_date"))

@@ -1194,6 +1194,22 @@ def test_t24_reads_the_latest_twelve_months():
     print("✓ test_t24_reads_the_latest_twelve_months: PASS")
 
 
+def test_two_copies_of_the_same_lease_count_once():
+    """
+    A buyer's folder often holds the same lease twice (signed and unsigned
+    copy, different bytes, so upload de-dup doesn't catch it). A real $60/mo
+    rent gap was then reported twice -- $1,440/yr counted instead of $720.
+    """
+    rr = _rr(tenant="Ann Lee", rent_amount="$1,060.00", property_address="1 A St, Suite 1")
+    copy_a = _doc(tenant="Ann Lee", rent_amount="$1,000.00", property_address="1 A St, Apt 1",
+                  lease_start_date="January 1, 2026", lease_end_date="December 31, 2026")
+    copy_b = _doc(tenant="Ann Lee", rent_amount="$1,000.00", property_address="1 A St, Apt 1",
+                  lease_start_date="January 1, 2026", lease_end_date="December 31, 2026")
+    rows = _report_rows([rr, copy_a, copy_b])
+    assert [(r["discrepancy_type"], r["annual_dollar_impact"]) for r in rows] == [("rent_mismatch", 720.0)], rows
+    print("✓ test_two_copies_of_the_same_lease_count_once: PASS")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):
