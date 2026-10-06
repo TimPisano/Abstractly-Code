@@ -712,6 +712,24 @@ def test_rent_roll_with_no_occupied_rows_is_a_clear_error():
     print("✓ test_rent_roll_with_no_occupied_rows_is_a_clear_error: PASS")
 
 
+def test_garden_community_building_letter_is_part_of_the_unit():
+    """
+    Garden communities: the rent roll says "A-101"; the lease says
+    "Building A, Apartment 101". Same unit -- but the building letter was
+    dropped from the lease's key ("101"), so nothing paired. And
+    "Building B, Apt 101" is a DIFFERENT unit from "A-101".
+    """
+    rr = "3600 Willow Creek Rd, Houston, TX 77064, Suite A-101"
+    assert _normalize_address(rr) == _normalize_address("3600 Willow Creek Rd, Building A, Apartment 101, Houston, TX 77064")
+    assert _normalize_address(rr) == _normalize_address("3600 Willow Creek Rd, Bldg. A, Apt 101, Houston, TX 77064")
+    assert _normalize_address(rr) != _normalize_address("3600 Willow Creek Rd, Building B, Apartment 101, Houston, TX 77064")
+    assert _normalize_address("9 Elm St, Suite 1-204") == _normalize_address("9 Elm St, Building 1, Unit 204")
+    # ...and such a lease is inside the property the uploader typed (report scope).
+    assert _normalize_building_address("3600 Willow Creek Rd, Building A, Apartment 101, Houston, TX 77064") == \
+        _normalize_building_address("3600 Willow Creek Rd, Houston, TX 77064")
+    print("✓ test_garden_community_building_letter_is_part_of_the_unit: PASS")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):

@@ -292,8 +292,16 @@ def _normalize_address(address: Optional[str]) -> Optional[str]:
     if not match:
         return _canonical_street_words(_normalize_for_matching(address))
     building = address[:match.start()] + " " + address[match.end():]
+    unit = _canonical_unit_id(match.group(1))
+    # Garden communities: "Building A, Apartment 101" is the rent roll's
+    # "A-101" -- the building letter/number is part of the unit id, not of
+    # the street address.
+    bldg = _BUILDING_IN_ADDRESS_RE.search(building)
+    if bldg:
+        building = building[:bldg.start()] + " " + building[bldg.end():]
+        unit = _canonical_unit_id(bldg.group(1) + unit)
     building_key = _canonical_street_words(_normalize_for_matching(building)) or ""
-    return f"{building_key} #{_canonical_unit_id(match.group(1))}"
+    return f"{building_key} #{unit}"
 
 
 # Street-type words and directionals, long form -> USPS abbreviation, so
@@ -318,6 +326,9 @@ def _canonical_street_words(normalized: Optional[str]) -> Optional[str]:
 # must be a whole word, so a street like "Unity Ave" is never "Unit y".
 _DESIGNATOR = r"(?:\b(?:suite|ste|unit|apt|apartment)\b\.?\s*(?:no\.?\s*|#\s*)?|#\s*)"
 _UNIT_IN_ADDRESS_RE = re.compile(_DESIGNATOR + r"([A-Za-z0-9][A-Za-z0-9-]*)", re.IGNORECASE)
+
+
+_BUILDING_IN_ADDRESS_RE = re.compile(r",?\s*\b(?:building|bldg)\b\.?\s*(?:no\.?\s*|#\s*)?([A-Za-z0-9]{1,4})\b", re.IGNORECASE)
 
 
 def _canonical_unit_id(raw: str) -> str:
@@ -353,6 +364,7 @@ def _normalize_building_address(address: Optional[str]) -> Optional[str]:
     if not address:
         return None
     stripped = _SUITE_DESIGNATOR_RE.sub("", address)
+    stripped = _BUILDING_IN_ADDRESS_RE.sub("", stripped)  # "Building A" of a garden community is the same property
     return _canonical_street_words(_normalize_for_matching(stripped))
 
 
