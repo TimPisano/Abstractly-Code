@@ -354,6 +354,15 @@ def test_t12_loss_lines_are_read_as_magnitudes():
     print("✓ test_t12_loss_lines_are_read_as_magnitudes: PASS")
 
 
+def test_t12_zero_concessions_is_not_a_finding():
+    """A T-12 whose Concessions line is $0.00 produced a "$0.00 (T12)" concession-gap row."""
+    leases = [_rr(tenant="T", rent_amount="$1,000.00", property_address="9 Elm St, Suite 1")]
+    assert dm.detect_t12_concession_gap(leases, {"concessions": _t12_cat(0.0)}, 3.0) == []
+    rows = dm.detect_t12_concession_gap(leases, {"concessions": _t12_cat(-1800.0)}, 3.0)
+    assert len(rows) == 1 and rows[0]["lease_value"].startswith("$1,800.00"), rows
+    print("✓ test_t12_zero_concessions_is_not_a_finding: PASS")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):

@@ -867,8 +867,9 @@ def detect_t12_concession_gap(
     concessions = t12_data["concessions"]
     annual = concessions.get("annual")
 
-    if annual is None:
-        return []
+    if annual is None or round(abs(annual), 2) == 0:
+        return []  # no concessions on the T-12 -> nothing to point out
+    annual = abs(annual)  # printed negative on most T-12s
 
     rows: List[Dict[str, Any]] = []
     rows.append({
