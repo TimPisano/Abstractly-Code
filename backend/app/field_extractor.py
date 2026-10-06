@@ -166,6 +166,53 @@ def is_attachment_page(text: str) -> bool:
     return bool(_ATTACHMENT_TITLE_RE.search(head))
 
 
+# Rent context that means "not the dwelling's rent": pet rent, parking or
+# garage rent, storage, the Section 8 tenant portion.
+_NON_DWELLING_RENT_RE = re.compile(
+    r"\b(?:pet|pets|animal|animals|parking|garage|carport|storage|tenant\s+rent|tenant'?s\s+portion|"
+    r"family\s+share|portion\s+of\s+(?:the\s+)?rent|late\s+(?:fee|charge))\b",
+    re.IGNORECASE,
+)
+
+
+def _is_dwelling_rent(full_text: str, match: "re.Match") -> bool:
+    before = full_text[max(0, match.start() - 40):match.start()]
+    after = full_text[match.end():match.end() + 40]
+    # The clause the figure sits in: from the last sentence break before
+    # the match to the next one after it.
+    before = re.split(r"\n|\.\s", before)[-1]
+    after = re.split(r"\n|\.\s", after)[0]
+    return not _NON_DWELLING_RENT_RE.search(before + match.group(0) + after)
+
+
+_NUMBER_WORDS = {
+    "zero": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8,
+    "nine": 9, "ten": 10, "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14, "fifteen": 15,
+    "sixteen": 16, "seventeen": 17, "eighteen": 18, "nineteen": 19, "twenty": 20, "thirty": 30,
+    "forty": 40, "fifty": 50, "sixty": 60, "seventy": 70, "eighty": 80, "ninety": 90,
+}
+
+
+def _words_to_number(text: str) -> Optional[int]:
+    """'Seventeen Hundred Eighty' -> 1780; 'One Thousand Two Hundred Five' -> 1205. None if not a number."""
+    total = current = 0
+    seen = False
+    for word in re.split(r"[\s\-]+", (text or "").lower().strip()):
+        if not word or word == "and":
+            continue
+        if word in _NUMBER_WORDS:
+            current += _NUMBER_WORDS[word]
+        elif word == "hundred":
+            current = (current or 1) * 100
+        elif word == "thousand":
+            total += (current or 1) * 1000
+            current = 0
+        else:
+            return None
+        seen = True
+    return (total + current) if seen and (total + current) > 0 else None
+
+
 def _concat_pages(pages: List[Dict[str, Any]]):
     """
     Join all pages into one continuous string (so a keyword/value pair
@@ -394,7 +441,8 @@ class FieldExtractor:
         confidences: List[str],
         reasons: Optional[List[Optional[str]]] = None,
         group: int = 1,
-        flags: int = re.IGNORECASE
+        flags: int = re.IGNORECASE,
+        accept=None,
     ) -> Optional[Dict[str, Any]]:
         """
         Try each pattern (in priority order) against each page (in document
@@ -433,7 +481,12 @@ class FieldExtractor:
         full_text, page_for_offset = _concat_pages(pages)
 
         for i, (pattern, confidence) in enumerate(zip(patterns, confidences)):
-            match = re.search(pattern, full_text, flags)
+            # `accept(full_text, match)` lets a field veto a match by its
+            # context (e.g. "monthly rent of $50.00 for the animal" is pet
+            # rent, not the apartment's rent) and keep looking.
+            match = next(
+                (m for m in re.finditer(pattern, full_text, flags) if accept(full_text, m)), None
+            ) if accept else re.search(pattern, full_text, flags)
             if match:
                 value = _clean_value(match.group(group))
                 quote = _make_quote(full_text, match.start(), match.end())
@@ -1056,17 +1109,27 @@ class FieldExtractor:
           5. Generic "rent is $X" fallback (low)
         """
         rent_keyword = r"(?:base\s+rent|monthly\s+rent|rental\s+amount|monthly\s+payment)"
+        per_month = r"(?:per\s+month|/\s*mo(?:nth)?\.?|monthly|each\s+month)"
 
         patterns = [
             rf"{rent_keyword}[:\s]+{CURRENCY_REGEX}",
             rf"{rent_keyword}{GAP}\$[\d,.]+\s*per\s+annum\s*\(\s*{CURRENCY_REGEX}\s*per\s+month\s*\)",
-            rf"{rent_keyword}{GAP}{CURRENCY_REGEX}\s*(?:per\s+month|/\s*mo\.?|monthly)",
+            rf"{rent_keyword}{GAP}{CURRENCY_REGEX}\s*{per_month}",
+            # Apartment-lease prose: "Resident will pay $1,450.00 per month
+            # as rent for the Apartment".
+            rf"{CURRENCY_REGEX}\s*{per_month}\s+as\s+(?:the\s+)?(?:base\s+|monthly\s+)?rent\b",
+            # Section 8 / HAP contract: the contract rent is the total rent
+            # to owner (tenant portion + HAP) -- what the rent roll's lease
+            # rent should match.
+            rf"(?:contract\s+rent|(?:initial\s+)?rent\s+to\s+owner)(?:\s+is)?[:\s]+{CURRENCY_REGEX}",
             rf"{rent_keyword}{GAP}{CURRENCY_REGEX}",
             rf"rent\s+(?:is|will\s+be|shall\s+be)[:\s]*{CURRENCY_REGEX}",
         ]
-        confidences = ["high", "high", "high", "medium", "low"]
+        confidences = ["high", "high", "high", "high", "high", "medium", "low"]
 
-        result = self._search_ordered(pages, patterns, confidences)
+        result = self._search_ordered(self._base_lease_pages(pages), patterns, confidences, accept=_is_dwelling_rent)
+        if not result:
+            result = self._search_ordered(pages, patterns, confidences, accept=_is_dwelling_rent)
         if result:
             value = result["value"]
             if not value.startswith("$"):
@@ -1074,7 +1137,38 @@ class FieldExtractor:
             result["value"] = value
             return result
 
+        # Rent written only in words: "the sum of Seventeen Hundred Eighty
+        # Dollars per month as rent". Medium -- a word-number is easier to
+        # misread than digits, so a human should glance at it.
+        full_text, page_for_offset = _concat_pages(pages)
+        m = re.search(
+            rf"(?:sum|amount)\s+of\s+((?:[A-Za-z]+[\s\-]+){{1,10}}?)Dollars\s*(?:and\s+(?:00|no)/100\s*)?{per_month}",
+            full_text, re.IGNORECASE,
+        )
+        amount = _words_to_number(m.group(1)) if m else None
+        if amount:
+            return {
+                "value": f"${amount:,.2f}",
+                "source": {"page": page_for_offset(m.start()), "quote": _make_quote(full_text, m.start(), m.end())},
+                "confidence": "medium",
+                "validation_note": "Rent is written out in words only -- confirm the converted figure.",
+            }
+
         return _not_found()
+
+    def _base_lease_pages(self, pages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        The lease's own pages: everything before the first attachment page
+        (addendum, amendment, renewal, HAP contract). Base terms -- rent,
+        dates, deposit -- are searched here first so a renewal's new rent
+        or a pet addendum's fee can't win over the lease's own figure.
+        """
+        if not pages:
+            return pages
+        for i, page in enumerate(pages[1:], start=1):
+            if is_attachment_page(page.get("text") or ""):
+                return pages[:i]
+        return pages
 
     # ------------------------------------------------------------------
     # Dates
@@ -1126,7 +1220,8 @@ class FieldExtractor:
 
     def _extract_start_date(self, pages: List[Dict[str, Any]]) -> Dict[str, Any]:
         patterns, confidences, reasons = self._start_date_patterns()
-        result = self._search_ordered(pages, patterns, confidences, reasons=reasons)
+        result = (self._search_ordered(self._base_lease_pages(pages), patterns, confidences, reasons=reasons)
+                  or self._search_ordered(pages, patterns, confidences, reasons=reasons))
         return result if result else _not_found()
 
     def _end_date_patterns(self):
@@ -1139,6 +1234,10 @@ class FieldExtractor:
         """
         patterns = [
             rf"(?:lease\s+)?end\s+date[:\s]+{DATE_REGEX}",
+            rf"ending\s+date[:\s]+{DATE_REGEX}",
+            # "ends at 11:59 p.m. on February 28, 2027" -- the periods in
+            # "p.m." stop the period-free GAP the prose patterns use.
+            rf"\bend(?:s|ing)?\s+at\s+\d{{1,2}}:\d{{2}}\s*[ap]\.?\s?m\.?\s+on\s+{DATE_REGEX}",
             rf"expiration\s+date[:\s]+{DATE_REGEX}",
             rf"termination\s+date[:\s]+{DATE_REGEX}",
             rf"term\s+ends?[:\s]+{DATE_REGEX}",
@@ -1159,8 +1258,8 @@ class FieldExtractor:
             # Same WIDE_GAP last resort as the start-date list above.
             rf"(?:shall\s+)?expir\w*\b(?!\s+Date){WIDE_GAP}{DATE_REGEX}",
         ]
-        confidences = ["high", "high", "high", "high", "high", "high", "high", "medium", "medium", "medium", "low"]
-        reasons = [None, None, None, None, None, None, None, None, None, None,
+        confidences = ["high", "high", "high", "high", "high", "high", "high", "high", "high", "medium", "medium", "medium", "low"]
+        reasons = [None, None, None, None, None, None, None, None, None, None, None, None,
             "Date found further from the expiration keyword than a direct statement usually appears -- "
             "confirm it actually describes this lease's end, not a different referenced event or date."]
         return patterns, confidences, reasons
@@ -1198,7 +1297,8 @@ class FieldExtractor:
     def _extract_end_date(self, pages: List[Dict[str, Any]]) -> Dict[str, Any]:
         patterns, confidences, reasons = self._end_date_patterns()
 
-        result = self._search_ordered(pages, patterns, confidences, reasons=reasons)
+        result = (self._search_ordered(self._base_lease_pages(pages), patterns, confidences, reasons=reasons)
+                  or self._search_ordered(pages, patterns, confidences, reasons=reasons))
         return result if result else _not_found()
 
     def _extract_rent_escalation(self, pages: List[Dict[str, Any]]) -> Dict[str, Any]:
