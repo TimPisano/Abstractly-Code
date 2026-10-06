@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Render the chosen mark's raster assets into frontend/, headlessly:
-//   frontend/og-image.png        1200x630, from og/og-image.html
+//   frontend/og-image.png        2400x1260 (1200x630 at 2x), from og/og-image.html
 //   frontend/apple-touch-icon.png 180x180, white mark on near-black
 //   frontend/favicon.ico          16 + 32 + 48 px PNGs from final/favicon.svg
 // Run `python3 build.py` first (it writes final/). Then:
@@ -72,9 +72,9 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'abstractly-assets-'));
 
 // OG image. Its light bands are the landing hero's own shader, read out of
 // frontend/landing.js so the preview can't drift from the live site.
-// Spotlight: centred horizontally, a little below centre so the brightest
-// rods sit under the wordmark rather than behind its strokes.
-const OG_LIGHT = { x: 600, y: 360 };
+// Spotlight dead centre, in the canvas's own 1200x1260 drawing buffer (see
+// og-image.html for why the buffer is stretched).
+const OG_LIGHT = { x: 600, y: 630 };
 {
   const landing = fs.readFileSync(path.join(FRONTEND, 'landing.js'), 'utf8');
   const grab = (name) => {
@@ -82,7 +82,8 @@ const OG_LIGHT = { x: 600, y: 360 };
     if (!m) throw new Error(`${name} not found in frontend/landing.js -- did the hero shader move?`);
     return m[1];
   };
-  const page = await browser.newPage({ viewport: { width: 1200, height: 630 }, deviceScaleFactor: 1 });
+  // 2x: a 2400x1260 PNG, sharp on Retina screens.
+  const page = await browser.newPage({ viewport: { width: 1200, height: 630 }, deviceScaleFactor: 2 });
   await page.goto(fileUrl(path.join(HERE, 'og', 'og-image.html')));
   await page.evaluate(() => document.fonts.ready);
   const drawn = await page.evaluate(([v, f, light]) => window.renderBands(v, f, light),
