@@ -344,6 +344,16 @@ realestate realestate1 multifamily apartments rentroll123 qwerty123456
         },
     };
 
+    // Static, trusted SVG markup (no user data), one per link state.
+    const svg = (paths) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
+    const DEAD_LINK_ICONS = {
+        expired: svg('<circle cx="12" cy="12" r="9"/><path d="M12 7.5v5l3 2"/>'),
+        superseded: svg('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3.5 6.5l8.5 6.5 8.5-6.5"/>'),
+        used: svg('<path d="M5 12.5l4.5 4.5L19 7.5"/>'),
+        account_exists: svg('<circle cx="12" cy="8" r="3.5"/><path d="M5 20c1.2-3.5 4-5 7-5s5.8 1.5 7 5"/>'),
+        invalid: svg('<path d="M10 14a4 4 0 005.66 0l3-3a4 4 0 00-5.66-5.66l-1 1"/><path d="M14 10a4 4 0 00-5.66 0l-3 3a4 4 0 005.66 5.66l1-1"/><path d="M4 4l16 16"/>'),
+    };
+
     /**
      * Fills the page's `data-view="dead"` card for a link that can't be
      * used, and wires "Send me a new link" to /auth/resend-link (which
@@ -352,6 +362,8 @@ realestate realestate1 multifamily apartments rentroll123 qwerty123456
     function showDeadLink(kind, status, token) {
         const copy = DEAD_LINK_COPY[kind][status] || DEAD_LINK_COPY[kind].invalid;
         const view = document.querySelector('[data-view="dead"]');
+        const icon = view.querySelector('.auth-icon');
+        if (icon) icon.innerHTML = DEAD_LINK_ICONS[status] || DEAD_LINK_ICONS.invalid;
         view.querySelector('[data-dead="title"]').textContent = copy.title;
         view.querySelector('[data-dead="body"]').textContent = copy.body;
         const actions = view.querySelector('[data-dead="actions"]');

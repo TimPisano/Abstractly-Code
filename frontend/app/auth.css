@@ -520,3 +520,17 @@ a.auth-button.is-secondary:hover { color: var(--auth-text); }
 }
 
 .auth-logo { color: var(--auth-text); }
+
+/* Headings get focus programmatically when a view changes (for screen
+   readers) -- that's not a keyboard focus, so no ring. */
+.auth-title:focus { outline: none; }
+
+/* Inline text buttons ("send it again") sit in a sentence: no padding
+   that would push the line apart. */
+.auth-small .auth-link-button,
+.auth-lede .auth-link-button {
+    padding: 0;
+    font-size: inherit;
+    line-height: inherit;
+    vertical-align: baseline;
+}
