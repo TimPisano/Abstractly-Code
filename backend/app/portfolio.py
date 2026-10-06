@@ -275,19 +275,64 @@ def _normalize_address(address: Optional[str]) -> Optional[str]:
     catching the SAME unit uploaded twice with conflicting numbers, so
     two different suites in the same building must NOT match here (see
     _normalize_building_address for the opposite, building-level need).
+
+    The unit designator's WORDING is not part of the key: "Suite 101",
+    "Apt 101", "Unit 101", "#101" and "Apartment No. 101" (before or after
+    the city) are the same unit of the same building. The rent-roll
+    importer itself writes "<typed address>, Suite <unit>" for a bare unit
+    number while multifamily leases say "Apt"/"Unit", so matching on the
+    literal wording meant a correct rent roll and a correct lease could
+    never be paired (overnight gauntlet, 2026-10-05). The unit NUMBER
+    still has to match ("0101" == "101" and "A-101" == "A101" aside), and
+    so does the building (street suffixes canonicalized, "Drive" == "Dr").
     """
-    return _normalize_for_matching(address)
+    if not address:
+        return None
+    match = _UNIT_IN_ADDRESS_RE.search(address)
+    if not match:
+        return _canonical_street_words(_normalize_for_matching(address))
+    building = address[:match.start()] + " " + address[match.end():]
+    building_key = _canonical_street_words(_normalize_for_matching(building)) or ""
+    return f"{building_key} #{_canonical_unit_id(match.group(1))}"
+
+
+# Street-type words and directionals, long form -> USPS abbreviation, so
+# "1450 Cedar Bend Drive" and "1450 Cedar Bend Dr." are the same building.
+_STREET_WORD_CANON = {
+    "street": "st", "avenue": "ave", "av": "ave", "drive": "dr", "boulevard": "blvd", "road": "rd",
+    "lane": "ln", "court": "ct", "place": "pl", "terrace": "ter", "parkway": "pkwy", "circle": "cir",
+    "highway": "hwy", "square": "sq", "trail": "trl", "expressway": "expy", "freeway": "fwy",
+    "north": "n", "south": "s", "east": "e", "west": "w",
+    "northeast": "ne", "northwest": "nw", "southeast": "se", "southwest": "sw",
+}
+
+
+def _canonical_street_words(normalized: Optional[str]) -> Optional[str]:
+    if not normalized:
+        return normalized
+    return " ".join(_STREET_WORD_CANON.get(w, w) for w in normalized.split())
+
+
+# One unit designator anywhere in an address: "Suite 101", "Ste. 4",
+# "Unit 12B", "Apt #3", "Apartment No. 7", "#301". The designator word
+# must be a whole word, so a street like "Unity Ave" is never "Unit y".
+_DESIGNATOR = r"(?:\b(?:suite|ste|unit|apt|apartment)\b\.?\s*(?:no\.?\s*|#\s*)?|#\s*)"
+_UNIT_IN_ADDRESS_RE = re.compile(_DESIGNATOR + r"([A-Za-z0-9][A-Za-z0-9-]*)", re.IGNORECASE)
+
+
+def _canonical_unit_id(raw: str) -> str:
+    unit = raw.upper().replace("-", "")
+    if unit.isdigit():
+        unit = unit.lstrip("0") or "0"
+    return unit
 
 
 # Strips a recognizable suite/unit designator (", Suite 200", " Ste. 4",
 # " Unit 12B", " #301") wherever it appears, case-insensitively, before
 # the usual lowercase/punctuation/whitespace normalization runs. Applied
-# in _normalize_building_address only -- _normalize_address (used for
-# cross-lease mismatch detection) deliberately does NOT do this, since
-# that check exists specifically to catch the same unit's numbers
-# disagreeing across two uploads, which requires the suite to still be
-# part of the match key there.
-_SUITE_DESIGNATOR_RE = re.compile(r",?\s*(?:suite|ste\.?|unit|apt\.?|#)\s*[\w-]+", re.IGNORECASE)
+# in _normalize_building_address only; _normalize_address keeps the unit
+# number (canonicalized) in its key.
+_SUITE_DESIGNATOR_RE = re.compile(r",?\s*" + _DESIGNATOR + r"[\w-]+", re.IGNORECASE)
 
 
 def _normalize_building_address(address: Optional[str]) -> Optional[str]:
@@ -308,7 +353,7 @@ def _normalize_building_address(address: Optional[str]) -> Optional[str]:
     if not address:
         return None
     stripped = _SUITE_DESIGNATOR_RE.sub("", address)
-    return _normalize_for_matching(stripped)
+    return _canonical_street_words(_normalize_for_matching(stripped))
 
 
 def _normalize_tenant_name(tenant: Optional[str]) -> Optional[str]:

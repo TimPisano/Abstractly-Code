@@ -657,6 +657,13 @@ def test_unit_designator_preservation_is_intentional():
     When a rent roll and lease PDF don't agree on designator wording, they
     legitimately don't match (produce unit_no_lease + lease_no_unit pairs).
     This is acceptable behavior, not a bug.
+
+    SUPERSEDED for MATCHING (2026-10-05, qa/overnight-gauntlet, see
+    docs/DECISIONS.md): the import still preserves the literal strings
+    asserted below, but portfolio._normalize_address now treats the
+    designator wording as irrelevant ("Suite 104" == "Apt 104"), because
+    the importer's own "Suite " prefix made every multifamily lease
+    unmatchable. The assertions below are unchanged.
     """
     csv_bytes = _csv_bytes([
         ["Tenant", "Rent", "Unit"],
