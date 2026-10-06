@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>Reset your password — Abstractly</title>
+    <title>Get started — Abstractly</title>
     <meta name="description" content="Abstractly checks the leases behind a multifamily rent roll, unit by unit, before your deal closes.">
     <meta name="robots" content="noindex">
     <meta name="theme-color" content="#0a0a0b">
@@ -23,27 +23,47 @@
 
     <main class="auth-main">
         <section class="auth-card" data-view="form">
-            <h1 class="auth-title">Reset your password</h1>
-            <p class="auth-lede">Enter your email and we'll send you a link to choose a new one.</p>
-            <form class="auth-form" id="forgotForm" novalidate>
+            <p class="auth-eyebrow">Get started</p>
+            <h1 class="auth-title">Create your account</h1>
+            <p class="auth-lede">Three quick details. We'll email you a link to choose a password and finish setting up.</p>
+            <form class="auth-form" id="signupForm" novalidate>
                 <div class="auth-field">
-                    <label class="auth-label" for="email">Email</label>
-                    <input class="auth-input" type="email" id="email" name="email" autocomplete="username" inputmode="email" autocapitalize="off" spellcheck="false" required aria-describedby="emailError">
+                    <label class="auth-label" for="name">Your name</label>
+                    <input class="auth-input" type="text" id="name" name="name" autocomplete="name" maxlength="100" required aria-describedby="nameError">
+                    <p class="auth-field-error" id="nameError"></p>
+                </div>
+                <div class="auth-field">
+                    <label class="auth-label" for="email">Work email</label>
+                    <input class="auth-input" type="email" id="email" name="email" autocomplete="email" inputmode="email" autocapitalize="off" spellcheck="false" maxlength="254" required aria-describedby="emailError">
                     <p class="auth-field-error" id="emailError"></p>
                 </div>
-                <button class="auth-button" type="submit" id="submitButton">Send reset link</button>
+                <div class="auth-field">
+                    <label class="auth-label" for="company">Company</label>
+                    <input class="auth-input" type="text" id="company" name="company" autocomplete="organization" maxlength="120" required aria-describedby="companyError">
+                    <p class="auth-field-error" id="companyError"></p>
+                </div>
+                <button class="auth-button" type="submit" id="submitButton">Email me the link</button>
                 <p class="auth-status" id="formStatus" role="status" aria-live="polite"></p>
             </form>
-            <p class="auth-alt">Remembered it? <a href="login.html">Sign in</a></p>
+            <p class="auth-alt">Already have an account? <a href="login.html">Sign in</a></p>
         </section>
 
         <section class="auth-card" data-view="sent" hidden>
             <div class="auth-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3.5 6.5l8.5 6.5 8.5-6.5"/></svg></div>
             <h1 class="auth-title">Check your inbox</h1>
-            <p class="auth-lede" id="sentMessage">If an account exists for that email, we just sent a reset link.</p>
-            <p class="auth-small">The link works for 1 hour. Nothing yet? It can take a minute. Check your spam folder, or <button class="auth-link-button" type="button" id="resendButton">send it again</button>.</p>
+            <p class="auth-lede">We sent a link to <strong id="sentEmail"></strong>. Click it to choose a password and you're in. It works for 72 hours.</p>
+            <p class="auth-small">Nothing yet? It can take a minute. Check your spam folder, or <button class="auth-link-button" type="button" id="resendButton">send it again</button>.</p>
             <p class="auth-status" id="resendStatus" role="status" aria-live="polite"></p>
-            <p class="auth-alt"><a href="login.html">Back to sign in</a></p>
+            <p class="auth-small">Wrong email? <button class="auth-link-button" type="button" id="startOverButton">Start over</button></p>
+        </section>
+
+        <section class="auth-card" data-view="closed" hidden>
+            <h1 class="auth-title">We're in private beta</h1>
+            <p class="auth-lede">Self-serve signup isn't open yet. Book a quick call and we'll get your team set up.</p>
+            <div class="auth-actions">
+                <a class="auth-button" href="/#book-demo">Book a demo</a>
+                <a class="auth-button is-secondary" href="login.html">Sign in</a>
+            </div>
         </section>
     </main>
 
@@ -53,6 +73,6 @@
 
     <script src="../config.js"></script>
     <script src="auth-common.js?v=1"></script>
-    <script src="forgot-password.js?v=1"></script>
+    <script src="signup.js?v=1"></script>
 </body>
 </html>

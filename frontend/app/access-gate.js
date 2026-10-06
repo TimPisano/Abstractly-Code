@@ -57,6 +57,26 @@
         bootLoadingEl.style.display = 'none';
     }
 
+    // Sign out: ends the cookie session server-side and forgets the
+    // token in BOTH storages ("Keep me signed in" keeps it in
+    // localStorage, which would otherwise survive this). Other open tabs
+    // using that same localStorage token get bounced to the login page
+    // on their next request.
+    const signOutBtn = document.getElementById('signOutBtn');
+    if (signOutBtn) {
+        signOutBtn.addEventListener('click', async () => {
+            signOutBtn.disabled = true;
+            try {
+                await fetch(`${API_BASE_URL}/auth/logout`, { method: 'POST', credentials: 'include' });
+            } catch (e) { /* offline: still forget the token locally */ }
+            try {
+                sessionStorage.removeItem('authToken');
+                localStorage.removeItem('authToken');
+            } catch (e) { /* storage blocked */ }
+            window.location.replace('login.html?signedout=1');
+        });
+    }
+
     function grant(session) {
         // Stashed globally (not fetched again per-module) so tasks-view.js,
         // messaging.js, and the Today dashboard rebuild can all know "who
@@ -157,9 +177,12 @@
     }
 
     (async function init() {
-        let session = { authenticated: false };
+        let session = { authenticated: null };
+        let token = null;
         try {
-            const token = sessionStorage.getItem('authToken');
+            try {
+                token = sessionStorage.getItem('authToken') || localStorage.getItem('authToken');
+            } catch (e) { /* storage blocked -- fall back to the cookie */ }
             const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
             const { data } = await fetchJson(`${API_BASE_URL}/auth/session`, { credentials: 'include', headers });
             session = data;
@@ -172,6 +195,17 @@
             grant(session);
             return;
         }
-        window.location.href = 'login.html';
+        // A stored token the server no longer accepts (it expired, or a
+        // password reset signed this device out) -- drop it and say why,
+        // rather than a bare login form with no explanation.
+        if (token && session.authenticated === false) {
+            try {
+                sessionStorage.removeItem('authToken');
+                localStorage.removeItem('authToken');
+            } catch (e) { /* storage blocked */ }
+            window.location.replace('login.html?expired=1');
+            return;
+        }
+        window.location.replace('login.html');
     })();
 })();

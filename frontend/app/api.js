@@ -22,6 +22,23 @@
  * `err.message || "fallback"` doesn't work, since a raw network error's
  * `message` is a non-empty string and always wins over the fallback.
  */
+// Wrapped: Safari with "Block all cookies" (and some private modes)
+// throws on any Storage access rather than returning null.
+function getAuthToken() {
+    try {
+        return sessionStorage.getItem('authToken') || localStorage.getItem('authToken');
+    } catch (e) {
+        return null;
+    }
+}
+
+function clearAuthToken() {
+    try {
+        sessionStorage.removeItem('authToken');
+        localStorage.removeItem('authToken');
+    } catch (e) { /* nothing stored, nothing to clear */ }
+}
+
 async function apiRequest(path, options = {}) {
     let response;
     try {
@@ -30,9 +47,10 @@ async function apiRequest(path, options = {}) {
         // surface (see login.js, which stores the token issue_token()
         // returns), since that cookie is silently dropped by Safari/ITP
         // and other strict-cookie browsers regardless of SameSite/Secure
-        // being set correctly. Token lives in sessionStorage: readable by
-        // this origin's own JS only, cleared when the tab closes.
-        const token = sessionStorage.getItem('authToken');
+        // being set correctly. The token lives in sessionStorage (cleared
+        // when the tab closes) or, with "Keep me signed in", localStorage
+        // (kept for its 30-day life) -- see auth-common.js's finishLogin.
+        const token = getAuthToken();
         const headers = { ...(options.headers || {}) };
         if (token) headers['Authorization'] = `Bearer ${token}`;
         response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
@@ -49,7 +67,7 @@ async function apiRequest(path, options = {}) {
     // at once, indistinguishable from a real server-side bug, with
     // nothing telling the user the actual fix is just signing in again.
     if (response.status === 401) {
-        sessionStorage.removeItem('authToken');
+        clearAuthToken();
         window.location.href = 'login.html?expired=1';
         // Never resolves -- the redirect is already underway, and
         // nothing calling this should keep running against a session

@@ -1,122 +1,90 @@
 /**
- * Main app login page behavior. Same shared /auth/login every role
- * logs in through (see backend/app/api.py and frontend/admin/login.js,
- * which uses the identical pattern for the admin mini-SPA) -- this
- * page just doesn't reject any particular role, unlike admin/login.js.
+ * Sign-in page for the customer app. Posts to /auth/login (the same
+ * route admin/ and owner/ use) and hands the returned token to
+ * Auth.finishLogin, which stores it per "Keep me signed in" and goes to
+ * the dashboard.
  *
- * Every request here uses `credentials: 'include'` -- fetch omits
- * cookies on a cross-origin request by default, and the frontend
- * (served on its own port) and backend API are different origins in
- * this project's dev setup, so the session cookie the backend sets on
- * a successful login would otherwise never actually be sent back on
- * later requests. See backend/app/api.py's CORS/session config for
- * the matching server-side half of this (supports_credentials=True,
- * an explicit origin allowlist, SameSite=None; Secure).
+ * Always shows the form, even if a session already exists -- a login
+ * page must never silently skip its own credentials form (same
+ * convention as admin/login.js). Someone with a live session who opens
+ * index.html directly is let straight in by access-gate.js.
  *
- * This page never checks for or acts on an existing session -- it
- * always renders the credentials form, unconditionally, on every
- * visit, same convention as admin/login.js (see that file's comment
- * for why). Someone who navigates directly to index.html with an
- * already-valid session is unaffected -- that's access-gate.js's own
- * concern, not this page's.
- *
- * API_BASE_URL comes from ../config.js, loaded before this script.
+ * Arrival notices (one-shot; the query param is stripped so a refresh
+ * or bookmark doesn't repeat them):
+ *   ?expired=1  -- api.js sends people here on any 401
+ *   ?reset=1    -- older reset links / admin flow, password changed
+ *   ?setup=1    -- team-setup.js, after an invited admin sets a password
+ *   ?signedout=1 -- after signing out
  */
+(function () {
+    const form = document.getElementById('loginForm');
+    const emailInput = document.getElementById('email');
+    const passwordInput = document.getElementById('password');
+    const rememberInput = document.getElementById('remember');
+    const button = document.getElementById('submitButton');
+    const statusEl = document.getElementById('formStatus');
+    const notice = document.getElementById('loginNotice');
 
-// reset-password.js sends people here as ?reset=1 after a successful
-// password change. Confirm it on arrival so the trip ends with visible
-// proof it worked, rather than dropping them on an ordinary login form
-// with no indication anything happened. The param is stripped from the
-// URL afterward so a refresh (or a bookmark) doesn't keep re-asserting
-// a reset that happened once, minutes ago.
-if (new URLSearchParams(window.location.search).get('reset') === '1') {
-    const messageEl = document.getElementById('loginMessage');
-    messageEl.textContent = 'Password updated. Sign in with your new password.';
-    messageEl.classList.add('is-success');
-    window.history.replaceState({}, '', window.location.pathname);
-}
-
-// team-setup.js sends a brand-new team's first admin here as ?setup=1
-// after they set their own password -- same "visible proof it worked"
-// pattern as ?reset=1 above.
-if (new URLSearchParams(window.location.search).get('setup') === '1') {
-    const messageEl = document.getElementById('loginMessage');
-    messageEl.textContent = "You're all set. Sign in with the password you just created.";
-    messageEl.classList.add('is-success');
-    window.history.replaceState({}, '', window.location.pathname);
-}
-
-// api.js's apiRequest sends people here as ?expired=1 on any 401 (see
-// its own comment for why that always means session expiry in this
-// app). Same pattern as ?reset=1 above -- land with a clear reason
-// instead of an unexplained bare login form, and strip the param so a
-// refresh/bookmark doesn't keep re-asserting an expiry that happened
-// once, minutes ago.
-if (new URLSearchParams(window.location.search).get('expired') === '1') {
-    const messageEl = document.getElementById('loginMessage');
-    messageEl.textContent = 'Your session expired. Sign in again to continue.';
-    messageEl.classList.add('is-error');
-    window.history.replaceState({}, '', window.location.pathname);
-}
-
-document.getElementById('loginForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
-
-    const emailInput = document.getElementById('loginEmail');
-    const passwordInput = document.getElementById('loginPassword');
-    const messageEl = document.getElementById('loginMessage');
-    const submitBtn = document.getElementById('loginSubmitBtn');
-
-    messageEl.textContent = '';
-    // Both, not just is-error: a leftover is-success from the
-    // post-reset banner above would otherwise still be on the element
-    // and paint a subsequent login *error* in the success color.
-    messageEl.classList.remove('is-error', 'is-success', 'is-pending');
-    submitBtn.disabled = true;
-    submitBtn.textContent = 'Signing in...';
-
-    // Render's free tier spins the backend down after 15 min idle, and
-    // the first request after that takes 30-60s to wake it back up
-    // (DEPLOYMENT.md's "Free-tier behavior you should know about").
-    // Without this, that wait is indistinguishable from a hung page --
-    // this only fires if the request below is still pending past the
-    // point a warm backend would have already responded, so a normal
-    // login never shows it.
-    const coldStartHintTimer = setTimeout(() => {
-        messageEl.textContent = 'Still working — the server may be waking up after being idle. This can take up to a minute.';
-        messageEl.classList.add('is-pending');
-    }, 5000);
-
-    try {
-        let response;
-        try {
-            response = await fetch(`${API_BASE_URL}/auth/login`, {
-                method: 'POST',
-                credentials: 'include',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email: emailInput.value.trim(), password: passwordInput.value }),
-            });
-        } catch (networkErr) {
-            throw new Error("Couldn't reach the server. Check your connection and try again.");
+    const NOTICES = {
+        expired: ['Your session ended. Sign in again to pick up where you left off.', 'error'],
+        reset: ['Password updated. Sign in with your new password.', 'success'],
+        setup: ["You're all set. Sign in with the password you just created.", 'success'],
+        signedout: ["You're signed out.", 'success'],
+    };
+    const params = new URLSearchParams(window.location.search);
+    for (const [key, [text, kind]] of Object.entries(NOTICES)) {
+        if (params.get(key) === '1') {
+            notice.textContent = text;
+            notice.classList.toggle('is-error', kind === 'error');
+            notice.hidden = false;
+            window.history.replaceState(null, '', window.location.pathname);
+            break;
         }
-        const data = await response.json().catch(() => ({}));
-
-        if (!response.ok) {
-            throw new Error(data.error || 'Something went wrong. Please try again.');
-        }
-
-        if (data.token) sessionStorage.setItem('authToken', data.token);
-
-        clearTimeout(coldStartHintTimer);
-        window.location.href = 'index.html';
-    } catch (err) {
-        clearTimeout(coldStartHintTimer);
-        messageEl.textContent = err.message;
-        messageEl.classList.remove('is-pending');
-        messageEl.classList.add('is-error');
-        submitBtn.disabled = false;
-        submitBtn.textContent = 'Sign In';
-        passwordInput.value = '';
-        passwordInput.focus();
     }
-});
+
+    Auth.setupRevealToggle(passwordInput, document.getElementById('passwordToggle'));
+
+    // Only advertise signup where it's switched on (SELF_SERVE_SIGNUP_ENABLED).
+    Auth.request('/auth/options').then(({ ok, data }) => {
+        if (ok && data.signup_enabled) {
+            document.getElementById('getStartedAlt').hidden = false;
+            document.getElementById('topGetStarted').hidden = false;
+        }
+    }).catch(() => { /* offline: just don't show it */ });
+
+    emailInput.addEventListener('input', () => Auth.setFieldError(emailInput, ''));
+    passwordInput.addEventListener('input', () => Auth.setFieldError(passwordInput, ''));
+
+    Auth.handleSubmit(form, button, 'Signing in...', async () => {
+        Auth.setStatus(statusEl, '');
+        notice.hidden = true;
+        const email = emailInput.value.trim();
+        const password = passwordInput.value;
+        if (!email) {
+            Auth.setFieldError(emailInput, 'Enter your email.');
+            emailInput.focus();
+            return false;
+        }
+        if (!password) {
+            Auth.setFieldError(passwordInput, 'Enter your password.');
+            passwordInput.focus();
+            return false;
+        }
+
+        try {
+            const { ok, data } = await Auth.request('/auth/login', {
+                method: 'POST',
+                body: { email, password, remember: rememberInput.checked },
+                onSlow: () => Auth.setStatus(statusEl, 'Still working. The server may be waking up, which can take up to a minute.'),
+            });
+            if (!ok) throw new Error(data.error || 'Something went wrong. Please try again.');
+            Auth.finishLogin(data);
+            return true;
+        } catch (err) {
+            Auth.setStatus(statusEl, err.message, 'error');
+            passwordInput.value = '';
+            passwordInput.focus();
+            return false;
+        }
+    });
+})();
