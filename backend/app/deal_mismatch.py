@@ -275,6 +275,8 @@ def detect_rent_mismatch(leases: List[Dict[str, Any]], today: Optional[date] = N
                 doc_rent = in_effect
                 if rr_rent == doc_rent or _same_amount(rr_rent, doc_rent):
                     continue
+                if any(_same_amount(rr_rent, v) for v in doc_lease.get("_rent_versions") or []):
+                    continue  # matches another version of this lease (e.g. a rent amendment on file)
                 effective = effective_rent_for_lease(doc_lease, today)
                 if effective and rent_reflects_concession(
                     rr_rent, effective, _RENT_DISAGREEMENT_TOLERANCE_ABS, _RENT_DISAGREEMENT_TOLERANCE_PCT

@@ -1574,9 +1574,37 @@ def _operative_documents(docs: List[Dict[str, Any]], today: date) -> List[Dict[s
         return docs
     covering = [d for s_, e_, d in dated if (s_ is None or s_ <= today) and (e_ is None or today <= e_) and s_ and e_]
     if covering:
-        return covering
+        return _collapse_lease_versions(covering)
     latest = max(dated, key=lambda t: (t[0] or t[1] or date.min))
     return [latest[2]]
+
+
+def _collapse_lease_versions(docs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Same tenant + same term on several documents = versions of ONE lease
+    (the lease and its rent amendment, uploaded separately). Collapse them
+    to the latest upload, carrying every version's rent in
+    `_rent_versions` so a rent roll matching any version isn't a mismatch
+    (an amendment's rent was flagged against the original's).
+    """
+    families: Dict[tuple, List[Dict[str, Any]]] = {}
+    order = []
+    for doc in docs:
+        key = (_normalize_tenant_name(field_value(doc, "tenant")), parse_date(field_value(doc, "lease_start_date")),
+               parse_date(field_value(doc, "lease_end_date")))
+        if key not in families:
+            order.append(key)
+        families.setdefault(key, []).append(doc)
+    out = []
+    for key in order:
+        family = families[key]
+        if len(family) == 1:
+            out.append(family[0])
+            continue
+        rep = dict(max(family, key=lambda d: d.get("id") or 0))
+        rep["_rent_versions"] = [r for r in (parse_currency(field_value(d, "rent_amount")) for d in family) if r is not None]
+        out.append(rep)
+    return out
 
 
 def compute_rent_roll_reconciliation(leases: List[Dict[str, Any]], today: Optional[date] = None) -> Dict[str, Any]:
@@ -1689,7 +1717,10 @@ def compute_rent_roll_reconciliation(leases: List[Dict[str, Any]], today: Option
                         rr_rent, effective_rent_for_lease(doc_lease, date.today()),
                         _RENT_DISAGREEMENT_TOLERANCE_ABS, _RENT_DISAGREEMENT_TOLERANCE_PCT,
                     )
-                    if diff_abs > _RENT_DISAGREEMENT_TOLERANCE_ABS and diff_pct > _RENT_DISAGREEMENT_TOLERANCE_PCT and not reflects_concession:
+                    matches_a_version = any(
+                        abs(rr_rent - v) <= _RENT_DISAGREEMENT_TOLERANCE_ABS for v in doc_lease.get("_rent_versions") or []
+                    )  # e.g. the rent amendment on file (see _collapse_lease_versions)
+                    if diff_abs > _RENT_DISAGREEMENT_TOLERANCE_ABS and diff_pct > _RENT_DISAGREEMENT_TOLERANCE_PCT and not reflects_concession and not matches_a_version:
                         _add_mismatch(
                             mismatches, rr_lease, doc_lease, address, "rent_amount",
                             field_value(rr_lease, "rent_amount"), field_value(doc_lease, "rent_amount"),

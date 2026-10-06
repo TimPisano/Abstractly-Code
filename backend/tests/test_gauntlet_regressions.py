@@ -1210,6 +1210,32 @@ def test_two_copies_of_the_same_lease_count_once():
     print("✓ test_two_copies_of_the_same_lease_count_once: PASS")
 
 
+def test_rent_amendment_on_file_is_not_a_rent_mismatch():
+    """
+    A mid-term rent amendment uploaded as its own document reads as the
+    same tenant and term with the new rent. The rent roll correctly shows
+    the amended rent and was flagged against the ORIGINAL rent. Same tenant
+    + same term = versions of one lease: matching any version is fine, and
+    findings aren't duplicated across versions.
+    """
+    rr = _rr(tenant="Ann Lee", rent_amount="$1,935.00", property_address="1 A St, Suite 1",
+             lease_start_date="05/01/2026", lease_end_date="04/30/2027")
+    original = _doc(tenant="Ann Lee", rent_amount="$1,875.00", property_address="1 A St, Apt 1",
+                    lease_start_date="May 1, 2026", lease_end_date="April 30, 2027")
+    amendment = _doc(tenant="Ann Lee", rent_amount="$1,935.00", property_address="1 A St, Apt 1",
+                     lease_start_date="May 1, 2026", lease_end_date="April 30, 2027")
+    assert _report_rows([rr, original, amendment]) == []
+    assert _report_rows([rr, amendment, original]) == []
+    # A rent matching neither version is ONE finding, priced against the latest upload (the amendment).
+    rr2 = _rr(tenant="Ann Lee", rent_amount="$2,035.00", property_address="1 A St, Suite 1",
+              lease_start_date="05/01/2026", lease_end_date="04/30/2027")
+    rows = _report_rows([rr2, original, amendment])
+    assert [(r["discrepancy_type"], r["annual_dollar_impact"]) for r in rows] == [("rent_mismatch", 1200.0)], rows
+    from app.portfolio import compute_rent_roll_reconciliation
+    assert compute_rent_roll_reconciliation([rr, original, amendment], today=TODAY)["mismatches"] == []
+    print("✓ test_rent_amendment_on_file_is_not_a_rent_mismatch: PASS")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):
