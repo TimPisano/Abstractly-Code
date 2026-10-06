@@ -12,7 +12,7 @@ Make lease extraction as accurate and complete as possible for
 **multifamily and Section 8** leases, and prove it with numbers: a graded,
 synthetic lease corpus with a known right answer for every field, and a
 per-field accuracy table before and after each fix
-(`LEASE_EXTRACTION_REPORT.md`, rewritten each cycle).
+(`docs/LEASE_EXTRACTION_REPORT.md`, rewritten each cycle).
 
 ## Prior art (searched TASKS.md, all branches, stashes, git log)
 
@@ -154,7 +154,7 @@ cycles. Update the report each cycle.
   (`_extract_leases_from_file_storage` OCR gate), only if needed
 - `frontend/app/app.js` and `frontend/app/detail-view.js`: labels and group
 - new `backend/tools/lease_corpus/**`, new `backend/tests/test_lease_*.py`
-  (registered in `run_all_tests.py`), `LEASE_EXTRACTION_REPORT.md`
+  (registered in `run_all_tests.py`), `docs/LEASE_EXTRACTION_REPORT.md`
 
 ## Files not to touch
 - Rent roll and T-12 (owned by `qa/overnight-gauntlet`):
