@@ -40,6 +40,7 @@ sys.path.insert(0, HERE)
 # Never touch a real database from a grading run.
 os.environ.setdefault("DB_PATH", os.path.join(tempfile.mkdtemp(prefix="lease_corpus_"), "corpus.db"))
 os.environ.setdefault("LEASE_EXTRACTION_ENGINE", "regex")
+os.environ.setdefault("LEASE_MULTIFAMILY_FIELDS", "1")
 os.environ.setdefault("LOG_LEVEL", "WARNING")
 
 from werkzeug.datastructures import FileStorage  # noqa: E402

@@ -35,6 +35,7 @@ from datetime import date as _date
 from typing import Optional, Dict, Any, List, Tuple
 
 from . import concessions as _concessions
+from . import multifamily_charges as _multifamily
 from .normalize import parse_currency, parse_date, parse_square_footage
 
 logger = logging.getLogger(__name__)
@@ -292,10 +293,18 @@ class FieldExtractor:
         self._split_co_residents(result["tenant"])
         self._apply_confidence_validation(result, pages)
 
+        # Multifamily terms (unit, pet/parking/utility charges, Section 8
+        # split, in-document renewals/amendments) -- behind
+        # LEASE_MULTIFAMILY_FIELDS, see multifamily_charges.py. Absent keys
+        # when off, so existing behavior is unchanged.
+        if _multifamily.enabled():
+            result.update(_multifamily.extract(pages, result))
+
         # A lease with no concession is the normal case, not a parsing
         # gap -- left out of the not-found log so it doesn't drown out
         # the fields whose absence actually means something.
-        not_found = [name for name, entry in result.items() if entry.get("value") is None and name != "concessions"]
+        not_found = [name for name, entry in result.items()
+                     if entry.get("value") is None and name != "concessions" and name not in _multifamily.MF_FIELDS]
         if not_found:
             # This engine has no notion of document sections (recitals,
             # signature block, exhibits, ...) -- it only knows it searched

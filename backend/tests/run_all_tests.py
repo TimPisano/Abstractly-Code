@@ -54,6 +54,8 @@ UNIT_TESTS = [
     "test_multi_lease_structural_variation.py",
     "test_lease_mf_parties.py",
     "test_lease_mf_terms.py",
+    "test_lease_mf_charges.py",
+    "test_lease_corpus.py",
     "test_sheets_export.py",
     "test_lease_naming_and_tags.py",
     "test_tenant_concentration_api.py",
