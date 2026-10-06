@@ -1297,6 +1297,45 @@ def test_failed_reimport_leaves_the_previous_rent_roll_active():
     print("✓ test_failed_reimport_leaves_the_previous_rent_roll_active: PASS")
 
 
+def test_huge_rent_roll_image_is_refused_and_tesseract_calls_have_timeouts():
+    """
+    Security-audit follow-up (medium/low): a <16 MB image can decode to
+    tens of millions of pixels, and OCR now makes extra full-size copies
+    (upright/deskew) -- enough to OOM a 512 MB worker. Decoding is capped;
+    every tesseract call has a timeout.
+    """
+    import io
+    from PIL import Image
+    from app.rent_roll_import import parse_rent_roll_file, RentRollImportError
+    buf = io.BytesIO()
+    Image.new("L", (7000, 7000), 255).save(buf, format="PNG")
+    try:
+        parse_rent_roll_file(buf.getvalue(), "huge.png", "1 A St")
+        raise AssertionError("huge image accepted")
+    except RentRollImportError as e:
+        assert "too large" in str(e).lower(), str(e)
+    import pytesseract
+    import app.rent_roll_table_extract as rte
+    seen = {}
+    real_data, real_osd = pytesseract.image_to_data, pytesseract.image_to_osd
+
+    def fake_data(img, **kw):
+        seen["data"] = kw.get("timeout")
+        return real_data(img, **kw)
+
+    def fake_osd(img, **kw):
+        seen["osd"] = kw.get("timeout")
+        raise RuntimeError("no osd")
+
+    pytesseract.image_to_data, pytesseract.image_to_osd = fake_data, fake_osd
+    try:
+        rte._ocr_image_to_rows(Image.new("RGB", (400, 200), "white"))
+    finally:
+        pytesseract.image_to_data, pytesseract.image_to_osd = real_data, real_osd
+    assert seen.get("data") and seen.get("osd"), seen
+    print("✓ test_huge_rent_roll_image_is_refused_and_tesseract_calls_have_timeouts: PASS")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):

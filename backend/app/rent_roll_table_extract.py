@@ -52,6 +52,15 @@ from app.rent_roll_import import RentRollImportError
 logger = logging.getLogger(__name__)
 
 
+# Resource bounds for uploaded images (security audit, overnight gauntlet):
+# a <16 MB PNG can decode to tens of millions of pixels, and OCR makes a
+# few full-size working copies. Refuse beyond this, and downscale before
+# OCR; every tesseract call is time-limited.
+_MAX_IMAGE_PIXELS = 40_000_000
+_MAX_OCR_SIDE = 4000
+_TESSERACT_TIMEOUT_S = 60
+
+
 class RentRollTableError(RentRollImportError):
     """A specific, user-facing reason this file couldn't be read as a rent-roll table."""
 
@@ -347,8 +356,15 @@ def _extract_image(file_bytes: bytes, ext: str) -> ExtractedTable:
             ) from exc
 
     try:
-        image = Image.open(io.BytesIO(file_bytes))
+        image = Image.open(io.BytesIO(file_bytes))  # lazy: only the header is read here
+        if image.width * image.height > _MAX_IMAGE_PIXELS:
+            raise RentRollTableError(
+                f"This image is too large to read ({image.width:,} x {image.height:,} pixels). Resize it to under "
+                "about 6,000 pixels on the long side, or upload the rent roll as Excel or CSV."
+            )
         image.load()
+    except Image.DecompressionBombError as exc:
+        raise RentRollTableError("This image is too large to read. Upload a smaller image, or the rent roll as Excel or CSV.") from exc
     except (UnidentifiedImageError, OSError) as exc:
         raise RentRollTableError(
             "This image couldn't be read -- it may be corrupted or an unsupported format."
@@ -385,10 +401,18 @@ def _ocr_image_to_rows(image):
     except Exception:
         pass
 
+    # Bound memory before the orientation/deskew copies (security audit):
+    # OCR gains nothing past ~4,000 px on the long side.
+    try:
+        if max(image.size) > _MAX_OCR_SIDE:
+            scale = _MAX_OCR_SIDE / max(image.size)
+            image = image.resize((int(image.width * scale), int(image.height * scale)))
+    except Exception:
+        pass
     image = _deskew(_upright(image, pytesseract))
 
     try:
-        data = pytesseract.image_to_data(image, output_type=pytesseract.Output.DICT)
+        data = pytesseract.image_to_data(image, output_type=pytesseract.Output.DICT, timeout=_TESSERACT_TIMEOUT_S)
     except Exception as exc:
         # pytesseract.TesseractNotFoundError, or a crash mid-page.
         logger.warning("tesseract failed during rent-roll OCR: %s", exc)
@@ -456,7 +480,7 @@ def _upright(image, pytesseract):
     little text to decide, OSD data missing) leaves the image unchanged.
     """
     try:
-        osd = pytesseract.image_to_osd(image, output_type=pytesseract.Output.DICT)
+        osd = pytesseract.image_to_osd(image, output_type=pytesseract.Output.DICT, timeout=_TESSERACT_TIMEOUT_S)
         rotate = int(osd.get("rotate", 0)) % 360
         if rotate and float(osd.get("orientation_conf", 0)) >= 1.0:
             return image.rotate(-rotate, expand=True, fillcolor="white")
