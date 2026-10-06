@@ -193,6 +193,22 @@ def parse_date(value: Optional[str]) -> Optional[date]:
         return None
     value = value.strip()
 
+    # ISO "2026-03-01" / "2026/03/01" (optionally with a midnight time, as
+    # spreadsheet/database exports write it), and Excel's default text
+    # date "01-Mar-2026" / "1-Mar-26" / "1 March 2026". Rent-roll exports
+    # use these constantly; they used to parse to None, silently dropping
+    # every lease date in the file (overnight gauntlet, 2026-10-05).
+    match = re.match(r"^(\d{4})[/-](\d{1,2})[/-](\d{1,2})(?:[ T]00:00(?::00)?)?$", value)
+    if match:
+        return _safe_date(int(match.group(1)), int(match.group(2)), int(match.group(3)))
+    match = re.match(r"^(\d{1,2})[\s-]([A-Za-z]{3,9})\.?[\s-](\d{2}|\d{4})$", value)
+    if match:
+        month = MONTHS_MAP.get(match.group(2).lower())
+        year = int(match.group(3))
+        if year < 100:
+            year += 2000 if year < 70 else 1900
+        return _safe_date(year, month, int(match.group(1))) if month else None
+
     # MM/DD/YYYY or M-D-YY etc. -- this app's existing, documented
     # convention (US-style, month first) for the genuinely ambiguous
     # case where both readings would be valid (e.g. "03/04/2024").

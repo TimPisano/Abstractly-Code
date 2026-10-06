@@ -657,6 +657,22 @@ def test_yardi_rent_roll_with_lease_charges_layout():
     print("✓ test_yardi_rent_roll_with_lease_charges_layout: PASS")
 
 
+def test_rent_roll_date_formats_from_pms_exports():
+    """
+    ISO dates (Entrata, every database export), "01-Mar-2026"/"01-Mar-26"
+    (Excel's default text date) and "1 March 2026" all parsed to None, so
+    those rent rolls carried no lease dates and expiry/date checks never ran.
+    """
+    from app.normalize import parse_date
+    want = date(2026, 3, 1)
+    for text in ("2026-03-01", "2026/03/01", "01-Mar-2026", "1-Mar-26", "01 Mar 2026", "1 March 2026",
+                 "03/01/2026", "3/1/26", "March 1, 2026", "2026-03-01 00:00:00", "2026-03-01T00:00:00"):
+        assert parse_date(text) == want, (text, parse_date(text))
+    for text in ("2026-13-01", "31-Feb-2026", "Mar-2026", "1 Smarch 2026"):
+        assert parse_date(text) is None, text
+    print("✓ test_rent_roll_date_formats_from_pms_exports: PASS")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):
