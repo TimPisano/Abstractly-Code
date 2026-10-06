@@ -4062,6 +4062,31 @@ def portfolio_t12_reconciliation():
     return jsonify(result), 200
 
 
+def _t12_scope_from_rent_roll():
+    """
+    (property_address, error) for a T-12 sent without one -- what the
+    report page does (AUDIT.md §6.1(a): the T-12 cross-check was
+    unreachable from the UI, always 400). A T-12 covers one property: if
+    this team's rent roll covers exactly one building, that's the scope;
+    otherwise say which buildings there are. Team-scoped.
+    """
+    from app.portfolio import _SUITE_DESIGNATOR_RE
+    buildings = {}
+    for lease in database.get_all_effective_leases(team_id=current_team_id()):
+        if not _is_rent_roll_import(lease):
+            continue
+        address = field_value(lease, "property_address")
+        key = _normalize_building_address(address)
+        if key and key not in buildings:
+            buildings[key] = _SUITE_DESIGNATOR_RE.sub("", address).strip(" ,")
+    if len(buildings) == 1:
+        return next(iter(buildings.values())), None
+    if not buildings:
+        return None, "Import the property's rent roll before adding a T-12 -- there's no rent roll to compare it against."
+    names = "; ".join(sorted(buildings.values()))
+    return None, f"Your rent rolls cover {len(buildings)} properties ({names}). Choose which property this T-12 is for (property_address)."
+
+
 @app.route('/portfolio/deal-mismatch-report', methods=['POST'])
 @require_role('analyst')
 def portfolio_deal_mismatch_report():
@@ -4098,7 +4123,9 @@ def portfolio_deal_mismatch_report():
     t12_data = None
     if 't12_file' in request.files:
         if not property_address:
-            return jsonify({"error": "t12_file requires property_address"}), 400
+            property_address, scope_error = _t12_scope_from_rent_roll()
+            if scope_error:
+                return jsonify({"error": scope_error}), 400
 
         t12_file: FileStorage = request.files['t12_file']
         if not t12_file.filename:
@@ -4149,7 +4176,9 @@ def portfolio_deal_mismatch_report_pdf():
     t12_data = None
     if 't12_file' in request.files:
         if not property_address:
-            return jsonify({"error": "t12_file requires property_address"}), 400
+            property_address, scope_error = _t12_scope_from_rent_roll()
+            if scope_error:
+                return jsonify({"error": scope_error}), 400
 
         t12_file: FileStorage = request.files['t12_file']
         if not t12_file.filename:
@@ -4208,7 +4237,9 @@ def portfolio_deal_mismatch_report_excel():
     t12_data = None
     if 't12_file' in request.files:
         if not property_address:
-            return jsonify({"error": "t12_file requires property_address"}), 400
+            property_address, scope_error = _t12_scope_from_rent_roll()
+            if scope_error:
+                return jsonify({"error": scope_error}), 400
 
         t12_file: FileStorage = request.files['t12_file']
         if not t12_file.filename:

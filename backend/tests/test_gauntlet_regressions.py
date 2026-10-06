@@ -1016,6 +1016,34 @@ def test_property_name_prefix_does_not_break_the_address_key():
     print("✓ test_property_name_prefix_does_not_break_the_address_key: PASS")
 
 
+def test_report_t12_without_property_address_uses_the_single_rent_roll_building():
+    """
+    AUDIT.md §6.1(a): the report page posts a T-12 with no property_address
+    and always got 400 "t12_file requires property_address" -- the T-12
+    cross-check was unreachable from the UI. With one building on the
+    team's rent roll, that building is the scope; with several, the error
+    names them.
+    """
+    import io
+    client, db = _client_with_fresh_db(team_id=1)
+    try:
+        rr = b"Unit,Tenant,Rent\r\n101,Ann Lee,1000\r\n102,Bo Diaz,1000\r\n"
+        _post(client, "/leases/import-rent-roll", "rr.csv", rr, {"property_address": "100 Oak St, Austin, TX 78701"})
+        t12 = _t12_csv([("Gross Potential Rent", [2000.0] * 12), ("Net Rental Income", [1500.0] * 12)])
+        for path in ("/portfolio/deal-mismatch-report", "/portfolio/deal-mismatch-report.pdf", "/portfolio/deal-mismatch-report.xlsx"):
+            r = client.post(path, data={"t12_file": (io.BytesIO(t12), "t12.csv")}, content_type="multipart/form-data")
+            assert r.status_code == 200, (path, r.status_code, r.data[:200])
+        body = client.post("/portfolio/deal-mismatch-report", data={"t12_file": (io.BytesIO(t12), "t12.csv")},
+                           content_type="multipart/form-data").get_json()
+        assert [x["discrepancy_type"] for x in body["rent_roll_vs_actual_collections"]] == ["t12_income_gap"], body
+        _post(client, "/leases/import-rent-roll", "rr2.csv", b"Unit,Tenant,Rent\r\n1,Cy Ray,700\r\n", {"property_address": "5 Pine Ave, Austin, TX 78701"})
+        r = client.post("/portfolio/deal-mismatch-report", data={"t12_file": (io.BytesIO(t12), "t12.csv")}, content_type="multipart/form-data")
+        assert r.status_code == 400 and "5 Pine Ave" in r.get_json()["error"] and "100 Oak St" in r.get_json()["error"], r.get_json()
+    finally:
+        os.unlink(db)
+    print("✓ test_report_t12_without_property_address_uses_the_single_rent_roll_building: PASS")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):
