@@ -44,6 +44,7 @@ from __future__ import annotations
 
 import io
 import logging
+import re
 from typing import List, Optional
 
 from app.rent_roll_import import RentRollImportError
@@ -384,6 +385,8 @@ def _ocr_image_to_rows(image):
     except Exception:
         pass
 
+    # ORIENT_PLACEHOLDER
+
     try:
         data = pytesseract.image_to_data(image, output_type=pytesseract.Output.DICT)
     except Exception as exc:
@@ -418,6 +421,50 @@ def _ocr_image_to_rows(image):
     return _ocr_words_to_rows(words), mean_conf
 
 
+def _deskew(image):
+    """
+    Straighten a slightly tilted scan (a page fed at 1-3 degrees). Rows of
+    text are sharpest -- the horizontal projection profile has the most
+    contrast -- at the right angle; tried in 0.25 degree steps on a small
+    greyscale copy. PIL only (no numpy on the server).
+    """
+    try:
+        from PIL import Image
+        small = image.convert("L")
+        small.thumbnail((900, 900))
+        best_angle, best_score = 0.0, None
+        for step in range(-12, 13):
+            angle = step * 0.25
+            rotated = small.rotate(angle, resample=Image.BILINEAR, fillcolor=255)
+            profile = list(rotated.resize((1, rotated.height), Image.BOX).getdata())
+            mean = sum(profile) / len(profile)
+            score = sum((v - mean) ** 2 for v in profile)
+            if best_score is None or score > best_score:
+                best_angle, best_score = angle, score
+        if best_angle:
+            return image.rotate(best_angle, resample=Image.BICUBIC, expand=True, fillcolor="white")
+    except Exception as exc:
+        logger.info("OCR deskew skipped: %s", exc)
+    return image
+
+
+def _upright(image, pytesseract):
+    """
+    A rent roll scanned or photographed sideways (landscape page fed
+    portrait) was OCR'd as-is and came back as garbage. Tesseract's
+    orientation detection (OSD) says how far to turn it; any failure (too
+    little text to decide, OSD data missing) leaves the image unchanged.
+    """
+    try:
+        osd = pytesseract.image_to_osd(image, output_type=pytesseract.Output.DICT)
+        rotate = int(osd.get("rotate", 0)) % 360
+        if rotate and float(osd.get("orientation_conf", 0)) >= 1.0:
+            return image.rotate(-rotate, expand=True, fillcolor="white")
+    except Exception as exc:
+        logger.info("OCR orientation detection skipped: %s", exc)
+    return image
+
+
 def _ocr_words_to_rows(words):
     """
     Rebuild a grid from a flat list of positioned words.
@@ -448,6 +495,13 @@ def _ocr_words_to_rows(words):
     heights = sorted(w["height"] for w in words)
     med_h = heights[len(heights) // 2] or 10
     row_gap = med_h * 0.7
+    # Scan speckle comes back as one-character "words" ("|", "-", "A") that
+    # land in column gutters and wreck the column split -- drop marks with
+    # no letter/digit and tiny fragments.
+    cleaned = [w for w in words if re.search(r"[A-Za-z0-9$]", w["text"]) and w["height"] >= med_h * 0.35
+               and not (len(w["text"]) == 1 and not w["text"].isdigit() and w.get("conf", 100) < 60)]
+    if cleaned:
+        words = cleaned
 
     words.sort(key=lambda w: (w["top"], w["left"]))
     rows_words = []
@@ -469,15 +523,73 @@ def _ocr_words_to_rows(words):
     # to this word's START exceeds a real gutter (~3 char widths). This
     # keeps multi-word headers ("Lease From", "Monthly Rent") as ONE
     # column instead of splitting on the internal space.
-    header = sorted(rows_words[0], key=lambda w: w["left"])
     char_w = max(4.0, med_h * 0.5)
     gutter = char_w * 3.0
-    anchors = [header[0]["left"]]
-    prev_end = header[0]["left"] + header[0]["width"]
-    for w in header[1:]:
-        if w["left"] - prev_end > gutter:
-            anchors.append(w["left"])
-        prev_end = w["left"] + w["width"]
+
+    def _anchors_of(row_words):
+        hdr = sorted(row_words, key=lambda w: w["left"])
+        found = [hdr[0]["left"]]
+        prev = hdr[0]["left"] + hdr[0]["width"]
+        for w in hdr[1:]:
+            if w["left"] - prev > gutter:
+                found.append(w["left"])
+            prev = w["left"] + w["width"]
+        return found
+
+    # The header is not necessarily the FIRST line: a real scan usually
+    # opens with a title ("Maple Ridge Rent Roll", "As of 10/05/2026"),
+    # and anchoring the columns on that title collapsed every data row
+    # into one or two cells (overnight gauntlet, 2026-10-05). Use the
+    # first line within the top of the page that reads like a header
+    # (a tenant-ish AND a rent-ish word); else the line with the most
+    # gutter-separated segments; else the first line, as before.
+    header_idx = 0
+    for k, rw in enumerate(rows_words[:15]):
+        text = " ".join(w["text"].lower() for w in rw)
+        if re.search(r"tenant|resident|lessee|name", text) and re.search(r"rent|amount|charge", text):
+            header_idx = k
+            break
+    else:
+        widest = max(range(min(15, len(rows_words))), key=lambda k: len(_anchors_of(rows_words[k])))
+        if len(_anchors_of(rows_words[widest])) > len(_anchors_of(rows_words[0])):
+            header_idx = widest
+    anchors = _anchors_of(rows_words[header_idx])
+
+    # Prefer columns read off the DATA rows: an x-range no data word ever
+    # covers is a real gutter, however tight the table, while gaps inside a
+    # cell ("Avery Marchetti") are covered by some other row's text. Header
+    # words are noisier (bold, wrapped, speckled), so they only decide
+    # columns when there aren't enough data rows to project.
+    data_words = [w for rw in rows_words[header_idx + 1:] for w in rw]
+    if len(rows_words) - header_idx - 1 >= 2 and data_words:
+        x_min = min(w["left"] for w in data_words)
+        x_max = max(w["left"] + w["width"] for w in data_words)
+        # Per-x count of DATA ROWS with ink there: one OCR glitch (two
+        # cells glued into one word on one row) must not erase a gutter
+        # every other row agrees on.
+        counts = [0] * (x_max - x_min + 1)
+        data_rows = [rw for rw in rows_words[header_idx + 1:] if rw]
+        for rw in data_rows:
+            hit = bytearray(x_max - x_min + 1)
+            for w in rw:
+                hit[w["left"] - x_min: w["left"] + w["width"] - x_min] = b"\x01" * w["width"]
+            for x, h in enumerate(hit):
+                counts[x] += h
+        allowed = 1 if len(data_rows) >= 8 else 0
+        min_gutter = max(6, int(med_h * 0.3))
+        starts = [x_min]
+        run = 0
+        for x, cnt in enumerate(counts):
+            c = cnt > allowed
+            if not c:
+                run += 1
+            else:
+                if run >= min_gutter and x > 0:
+                    starts.append(x_min + x)
+                run = 0
+        if len(starts) >= max(2, len(anchors) - 1):
+            # Header words left of the first data column still belong to it.
+            anchors = [min(starts[0], min(w["left"] for w in rows_words[header_idx]))] + starts[1:]
 
     if len(anchors) < 2:
         return _ocr_words_to_rows_by_projection(rows_words, words, med_h)
@@ -542,7 +654,16 @@ def _ocr_words_to_rows_by_projection(rows_words, words, med_h):
     return grid
 
 
+_OCR_EDGE_JUNK = " \u201c\u201d\u2018\u2019\"'|.,;:`"
+
+
+def _clean_ocr_cell(cell: str) -> str:
+    """Scan speckle clings to cell edges as quotes, pipes and periods ("\u201c1102", "02/28/2027.") and breaks unit ids and dates."""
+    return cell.strip(_OCR_EDGE_JUNK)
+
+
 def _finish_ocr_table(rows: List[List[str]], mean_conf: Optional[float], source_kind: str) -> ExtractedTable:
+    rows = [[_clean_ocr_cell(c) for c in r] for r in rows]
     if not rows:
         raise RentRollTableError(
             "OCR ran but found no readable text in this file. Make sure it's a clear, straight, "

@@ -1044,6 +1044,42 @@ def test_report_t12_without_property_address_uses_the_single_rent_roll_building(
     print("✓ test_report_t12_without_property_address_uses_the_single_rent_roll_building: PASS")
 
 
+# ---------------------------------------------------------------- scanned rent rolls (OCR)
+def _ocr_import(fixture):
+    import json
+    from app.rent_roll_import import parse_rent_roll_file
+    with open(os.path.join(_GAUNTLET_FIX, "manifest.json")) as f:
+        m = json.load(f)
+    want = next(r for r in m["rent_rolls"] if r["file"] == f"rent_rolls/{fixture}")["expected_rent_roll"]
+    with open(os.path.join(_GAUNTLET_FIX, "rent_rolls", fixture), "rb") as f:
+        got = parse_rent_roll_file(f.read(), fixture, "1 A St")
+    from app.normalize import parse_currency
+    rents = {}
+    for l in got["leases"]:
+        unit = (l["extracted_fields"]["property_address"]["value"] or "").rsplit("Suite ", 1)[-1]
+        rents[unit] = parse_currency(l["extracted_fields"]["rent_amount"]["value"] or "")
+    right = sum(1 for u, w in want["occupied"].items() if rents.get(u) == w["rent"])
+    return got, want, right
+
+
+def test_scanned_rent_roll_columns_rebuilt_from_data_rows():
+    """
+    Scanned rent rolls: the OCR grid took its column anchors from the FIRST
+    text line -- the page title -- so each data row collapsed into one or
+    two cells and the file was rejected (or imported with "Avery Marchetti
+    Occupied 1,010" as the tenant). Columns now come from the header line
+    and the gutters every data row agrees on; speckle and edge junk
+    ("\u201c1102", "1203.") are cleaned. OCR still misreads the odd digit, so this
+    asserts most units, not all.
+    """
+    for fixture, min_right in (("p13__pdf_scanned.pdf", 9), ("p04__pdf_scanned.pdf", 7)):
+        got, want, right = _ocr_import(fixture)
+        assert right >= min_right, (fixture, right, len(want["occupied"]))
+        summary = next(iter(got["unit_summary"].values()))
+        assert sorted(summary["vacant_units"]) == sorted(want["vacant"]), (fixture, summary)
+    print("✓ test_scanned_rent_roll_columns_rebuilt_from_data_rows: PASS")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):
