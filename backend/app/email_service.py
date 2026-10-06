@@ -389,7 +389,123 @@ def send_waitlist_approval_email(to_email: str) -> bool:
     return _send(to_email, subject, text_body, html_body)
 
 
-def send_password_reset_email(to_email: str, reset_url: str) -> bool:
+# ---- Account emails (self-serve signup, forgot password) -------------
+#
+# Written to read like a short note from Tim, not a branded template:
+# _personal_email_html (white, no logo, ordinary text), one clear
+# button that's easy to hit with a thumb, the raw link underneath for
+# anyone whose mail app breaks buttons, and a plain-text part that says
+# the same thing. No user-typed text goes in a subject line.
+
+_SIGN_OFF_TEXT = ["Thanks,", "Tim", "Founder, Abstractly"]
+_SIGN_OFF_HTML = "Thanks,<br>Tim<br>Founder, Abstractly"
+
+
+def _greeting_name(name: str) -> str:
+    """
+    The first name to greet someone by, or "there". Stricter than
+    _first_name on purpose: on the signup form the name is typed by
+    whoever submits it -- not necessarily the inbox's owner -- and it's
+    then put in an email that comes from Tim. Anything that isn't
+    plainly a first name (a URL, "Click here", 40 characters of
+    whatever) is replaced with "there" rather than repeated back.
+    """
+    first = _first_name(name)
+    if first == "there" or len(first) > 30:
+        return "there"
+    if not all(ch.isalpha() or ch in "-'" for ch in first):
+        return "there"
+    return first
+
+
+def _email_button(url: str, label: str) -> str:
+    """A link styled as a button: big enough to tap, no images, works without CSS support (it's still a link)."""
+    return (
+        f'<a href="{html.escape(url, quote=True)}" style="display:inline-block;'
+        'background-color:#17171a;color:#ffffff;text-decoration:none;font-weight:bold;'
+        'padding:13px 22px;border-radius:6px;font-size:16px;">'
+        f'{html.escape(label)}</a>'
+    )
+
+
+def _raw_link_note(url: str) -> str:
+    return (
+        '<span style="font-size:13px;color:#6b6760;">Button not working? Paste this into your browser:<br>'
+        f'<a href="{html.escape(url, quote=True)}" style="color:#6b6760;word-break:break-all;">'
+        f'{html.escape(url)}</a></span>'
+    )
+
+
+def send_signup_link_email(to_email: str, name: str, setup_url: str) -> bool:
+    """
+    The "Finish setting up your account" email for a self-serve signup.
+    No account exists yet -- the link (72 hours, single use) is what
+    creates it. Sent again, with a fresh link, each time the person
+    signs up again or asks for a new link; only the newest one works.
+    """
+    first = _greeting_name(name)
+    subject = "Finish setting up your Abstractly account"
+    text_body = "\n".join([
+        f"Hi {first},",
+        "",
+        "Thanks for signing up for Abstractly. Choose a password here and you're in:",
+        "",
+        setup_url,
+        "",
+        "The link works for 72 hours, and only once. If you didn't sign up, "
+        "you can ignore this email and nothing will happen.",
+        "",
+        *_SIGN_OFF_TEXT,
+    ])
+    html_body = _personal_email_html([
+        f"Hi {html.escape(first)},",
+        "Thanks for signing up for Abstractly. Choose a password here and you&rsquo;re in:",
+        _email_button(setup_url, "Finish setting up your account"),
+        "The link works for 72 hours, and only once. If you didn&rsquo;t sign up, "
+        "you can ignore this email and nothing will happen.",
+        _SIGN_OFF_HTML,
+        _raw_link_note(setup_url),
+    ])
+    return _send(to_email, subject, text_body, html_body)
+
+
+def send_account_exists_email(to_email: str, name: str, login_url: str, forgot_url: str) -> bool:
+    """
+    Sent instead of a signup link when someone signs up with an email
+    that already has an account. The signup page shows the same "check
+    your inbox" either way -- only the inbox's owner learns the account
+    exists, which is exactly who should.
+    """
+    first = _greeting_name(name)
+    subject = "You already have an Abstractly account"
+    text_body = "\n".join([
+        f"Hi {first},",
+        "",
+        "Someone (hopefully you) just tried to sign up for Abstractly with this "
+        "email, but you already have an account. You can sign in here:",
+        "",
+        login_url,
+        "",
+        f"Forgot your password? Reset it here: {forgot_url}",
+        "",
+        "If this wasn't you, you can ignore this email. Nothing has changed.",
+        "",
+        *_SIGN_OFF_TEXT,
+    ])
+    html_body = _personal_email_html([
+        f"Hi {html.escape(first)},",
+        "Someone (hopefully you) just tried to sign up for Abstractly with this "
+        "email, but you already have an account.",
+        _email_button(login_url, "Sign in"),
+        f'Forgot your password? <a href="{html.escape(forgot_url, quote=True)}" '
+        'style="color:#17171a;">Reset it here</a>.',
+        "If this wasn&rsquo;t you, you can ignore this email. Nothing has changed.",
+        _SIGN_OFF_HTML,
+    ])
+    return _send(to_email, subject, text_body, html_body)
+
+
+def send_password_reset_email(to_email: str, reset_url: str, name: str = "") -> bool:
     """
     Sent when someone uses "Forgot password?" on a login page. The URL
     carries a single-use, one-hour token (see
@@ -397,31 +513,62 @@ def send_password_reset_email(to_email: str, reset_url: str) -> bool:
     address actually has an account -- the route that calls this
     returns the same generic response either way, and only calls this
     at all for a real, active user.
-
-    reset_url is built server-side from the request's own (allow-listed)
-    origin plus a freshly generated token -- it is not caller- or
-    user-supplied free text -- so it's embedded without escaping, same
-    as this module's other hardcoded/trusted strings.
     """
+    first = _greeting_name(name)
     subject = "Reset your Abstractly password"
-    text_body = (
-        "We received a request to reset the password for your Abstractly "
-        "account.\n\n"
-        f"Open this link to choose a new one (it expires in 1 hour):\n{reset_url}\n\n"
-        "If you didn't request this, you can ignore this email -- your "
-        "password won't change until the link is used.\n\n"
-        "Best,\nTim Pisano"
-    )
-    html_body = _email_html(
-        heading="Reset your password.",
-        paragraphs=[
-            "We received a request to reset the password for your Abstractly account.",
-            f'<a href="{reset_url}" style="color:{_COLOR_ACCENT};">Choose a new password</a> '
-            "&mdash; this link expires in 1 hour and can only be used once.",
-            "If you didn&rsquo;t request this, you can ignore this email &mdash; your "
-            "password won&rsquo;t change until the link is used.",
-        ],
-    )
+    text_body = "\n".join([
+        f"Hi {first},",
+        "",
+        "Here's the link to choose a new password:",
+        "",
+        reset_url,
+        "",
+        "It works for 1 hour, and only once. If you didn't ask for this, you can "
+        "ignore this email. Your password won't change.",
+        "",
+        *_SIGN_OFF_TEXT,
+    ])
+    html_body = _personal_email_html([
+        f"Hi {html.escape(first)},",
+        "Here&rsquo;s the link to choose a new password:",
+        _email_button(reset_url, "Choose a new password"),
+        "It works for 1 hour, and only once. If you didn&rsquo;t ask for this, you can "
+        "ignore this email. Your password won&rsquo;t change.",
+        _SIGN_OFF_HTML,
+        _raw_link_note(reset_url),
+    ])
+    return _send(to_email, subject, text_body, html_body)
+
+
+def send_password_changed_email(to_email: str, name: str, forgot_url: str) -> bool:
+    """
+    Security notice after a password reset: if it wasn't them, they
+    find out now instead of the next time they can't sign in. Every
+    other session was signed out as part of the reset (see
+    database.update_user_password), so it says so.
+    """
+    first = _greeting_name(name)
+    subject = "Your Abstractly password was changed"
+    text_body = "\n".join([
+        f"Hi {first},",
+        "",
+        "Your Abstractly password was just changed, and any other devices "
+        "signed in to your account were signed out.",
+        "",
+        "If that was you, you're all set. If it wasn't, reset your password "
+        f"right away ({forgot_url}) and reply to this email so I can help.",
+        "",
+        *_SIGN_OFF_TEXT,
+    ])
+    html_body = _personal_email_html([
+        f"Hi {html.escape(first)},",
+        "Your Abstractly password was just changed, and any other devices "
+        "signed in to your account were signed out.",
+        "If that was you, you&rsquo;re all set. If it wasn&rsquo;t, "
+        f'<a href="{html.escape(forgot_url, quote=True)}" style="color:#17171a;">reset your password</a> '
+        "right away and reply to this email so I can help.",
+        _SIGN_OFF_HTML,
+    ])
     return _send(to_email, subject, text_body, html_body)
 
 

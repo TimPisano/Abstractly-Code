@@ -108,6 +108,14 @@ document.getElementById('adminLoginForm').addEventListener('submit', async (e) =
             throw new Error('This account does not have admin access.');
         }
 
+        // dashboard.html reuses the app's api.js, which authenticates
+        // with this bearer token, not the cookie (the cookie is cross-site
+        // and dropped by Safari, and api.js never sent it). Without this,
+        // every dashboard call was a 401 and bounced to a page that
+        // doesn't exist. Per-tab, like the app without "keep me signed in".
+        try {
+            if (data.token) sessionStorage.setItem('authToken', data.token);
+        } catch (e) { /* storage blocked: cookie-only, as before */ }
         clearTimeout(coldStartHintTimer);
         window.location.href = 'dashboard.html';
     } catch (err) {

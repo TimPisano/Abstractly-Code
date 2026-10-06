@@ -220,6 +220,19 @@ services:
         sync: false
       - key: LEASE_EXTRACTION_QUEUE
         value: extraction-tester
+      # Self-serve signup (feature/auth-flow): "Get started" on the
+      # tester login page, account created by an emailed link. Off
+      # everywhere else (unset = off). Needs the two email vars below
+      # set in the dashboard, or the signup/reset emails silently never
+      # send. CAVEAT while this service has no disk: a restart or the
+      # 15-min idle spindown wipes the database, taking pending signup
+      # links and new accounts with it.
+      - key: SELF_SERVE_SIGNUP_ENABLED
+        value: "true"
+      - key: EMAIL_USER
+        sync: false
+      - key: EMAIL_APP_PASSWORD
+        sync: false
       # No persistent disk and still plan: free, deliberately -- only
       # abstractly-api gets a disk in this change. The tester's uploads
       # are therefore still wiped on restart and on the free tier's
