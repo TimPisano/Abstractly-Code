@@ -1121,6 +1121,29 @@ def test_tenant_names_ignore_accents_and_a_lost_space():
     print("✓ test_tenant_names_ignore_accents_and_a_lost_space: PASS")
 
 
+def test_ocr_rent_that_cannot_be_a_rent_is_unreadable_not_a_finding():
+    """
+    OCR read a scan's "$1,475.00" as "$1.00"; the report priced a
+    $17,700/yr rent_mismatch on it. On OCR imports a rent between $0 and
+    $100 is treated as unreadable (no value, plus a warning naming the row).
+    """
+    from app import rent_roll_import as rri
+    from app.rent_roll_table_extract import ExtractedTable
+    rows = [["Unit", "Tenant", "Rent"], ["101", "Ann Lee", "$1.00"], ["102", "Bo Diaz", "$1,200.00"], ["103", "Cy Ray", "$0.00"]]
+    real = rri.__dict__.get("extract_rent_roll_table")
+    import app.rent_roll_table_extract as rte
+    orig = rte.extract_rent_roll_table
+    rte.extract_rent_roll_table = lambda b, f: ExtractedTable(rows, "image-ocr", ocr_confidence=80.0, warnings=["ocr"])
+    try:
+        got = rri.parse_rent_roll_file(b"x", "scan.png", "1 A St")
+    finally:
+        rte.extract_rent_roll_table = orig
+    rents = [l["extracted_fields"]["rent_amount"]["value"] for l in got["leases"]]
+    assert rents == [None, "$1,200.00", "$0.00"], rents
+    assert any("$1.00" in w for w in got["warnings"]), got["warnings"]
+    print("✓ test_ocr_rent_that_cannot_be_a_rent_is_unreadable_not_a_finding: PASS")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):

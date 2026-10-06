@@ -1229,6 +1229,20 @@ def parse_rent_roll_file(
 
     result["source_kind"] = table.source_kind
     result["warnings"] = list(table.warnings)
+    if table.source_kind in ("pdf-ocr", "image-ocr"):
+        # OCR drops digits ("$1,475.00" -> "$1.00"). A monthly rent between
+        # $0 and $100 can't be a real apartment rent: treat it as unreadable
+        # rather than letting the report price a phantom rent mismatch on it.
+        for lease in result["leases"]:
+            entry = lease["extracted_fields"].get("rent_amount") or {}
+            value = parse_currency(entry.get("value") or "")
+            if value is not None and 0 < abs(value) < 100:
+                row = (entry.get("source") or {}).get("row")
+                result["warnings"].append(
+                    f"Row {row}: rent read as {entry['value']} -- almost certainly an OCR misread, so it was left "
+                    "blank. Check this unit against the original."
+                )
+                lease["extracted_fields"]["rent_amount"] = {"value": None, "source": entry.get("source"), "confidence": "low"}
     if table.ocr_confidence is not None:
         result["ocr_confidence"] = table.ocr_confidence
     return result
