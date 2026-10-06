@@ -1225,7 +1225,16 @@ def test_rent_amendment_on_file_is_not_a_rent_mismatch():
     amendment = _doc(tenant="Ann Lee", rent_amount="$1,935.00", property_address="1 A St, Apt 1",
                      lease_start_date="May 1, 2026", lease_end_date="April 30, 2027")
     assert _report_rows([rr, original, amendment]) == []
-    assert _report_rows([rr, amendment, original]) == []
+    # Reviewer follow-up: only the CURRENT version (latest upload) excuses a
+    # rent. A rent roll matching an OLDER version -- e.g. an amendment
+    # LOWERED the rent and the rent roll still shows the old one -- is
+    # flagged, unpriced, rather than silently accepted.
+    original_uploaded_last = _doc(tenant="Ann Lee", rent_amount="$1,875.00", property_address="1 A St, Apt 1",
+                                  lease_start_date="May 1, 2026", lease_end_date="April 30, 2027")
+    rows = _report_rows([rr, amendment, original_uploaded_last])
+    assert [(r["discrepancy_type"], r["annual_dollar_impact"], r["income_direction"]) for r in rows] == \
+        [("rent_mismatch", None, None)], rows
+    assert "earlier version" in rows[0]["note"], rows
     # A rent matching neither version is ONE finding, priced against the latest upload (the amendment).
     rr2 = _rr(tenant="Ann Lee", rent_amount="$2,035.00", property_address="1 A St, Suite 1",
               lease_start_date="05/01/2026", lease_end_date="04/30/2027")
@@ -1233,6 +1242,7 @@ def test_rent_amendment_on_file_is_not_a_rent_mismatch():
     assert [(r["discrepancy_type"], r["annual_dollar_impact"]) for r in rows] == [("rent_mismatch", 1200.0)], rows
     from app.portfolio import compute_rent_roll_reconciliation
     assert compute_rent_roll_reconciliation([rr, original, amendment], today=TODAY)["mismatches"] == []
+    assert compute_rent_roll_reconciliation([rr, amendment, original_uploaded_last], today=TODAY)["mismatches"] != []
     print("✓ test_rent_amendment_on_file_is_not_a_rent_mismatch: PASS")
 
 

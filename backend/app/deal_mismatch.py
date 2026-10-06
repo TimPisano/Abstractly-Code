@@ -275,8 +275,7 @@ def detect_rent_mismatch(leases: List[Dict[str, Any]], today: Optional[date] = N
                 doc_rent = in_effect
                 if rr_rent == doc_rent or _same_amount(rr_rent, doc_rent):
                     continue
-                if any(_same_amount(rr_rent, v) for v in doc_lease.get("_rent_versions") or []):
-                    continue  # matches another version of this lease (e.g. a rent amendment on file)
+                matches_older_version = any(_same_amount(rr_rent, v) for v in doc_lease.get("_rent_versions") or [])
                 effective = effective_rent_for_lease(doc_lease, today)
                 if effective and rent_reflects_concession(
                     rr_rent, effective, _RENT_DISAGREEMENT_TOLERANCE_ABS, _RENT_DISAGREEMENT_TOLERANCE_PCT
@@ -302,7 +301,16 @@ def detect_rent_mismatch(leases: List[Dict[str, Any]], today: Optional[date] = N
                     "lease_document_id": doc_lease.get("id"),
                     "effective_rent": _effective_rent_summary(effective),
                 }
-                if escalation_unpriced and rr_rent > doc_rent:
+                if matches_older_version:
+                    # The rent roll matches an EARLIER version of this lease
+                    # (another document with the same tenant and term) but
+                    # not the latest one on file. Which is in force can't be
+                    # told from the documents alone -- flag it, don't price it.
+                    row.update(monthly_dollar_impact=None, annual_dollar_impact=None, income_direction=None,
+                               severity="medium",
+                               note="The rent roll matches an earlier version of this lease on file, not the latest "
+                                    "one (e.g. an amendment changed the rent). Check which rent is in force.")
+                elif escalation_unpriced and rr_rent > doc_rent:
                     # The lease states an increase we couldn't price: the
                     # rent roll may simply show the stepped-up rent. Flag
                     # it, but don't count it as an overstatement.
