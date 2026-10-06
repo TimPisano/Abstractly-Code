@@ -63,7 +63,10 @@ _COLUMN_ALIASES: Dict[str, List[str]] = {
     # a full lease abstraction states it -- doesn't silently drop it,
     # see api.py's _try_table_extraction for the round-trip this backs.
     "landlord": ["landlord", "owner", "lessor"],
-    "unit": ["unit number", "unit #", "suite #", "unit", "suite", "space"],
+    # "Bldg-Unit"/"Bldg/Unit" (Entrata, RealPage) normalize to "bldgunit"
+    # once punctuation is stripped, so they need their own aliases.
+    "unit": ["unit number", "unit #", "suite #", "unit", "suite", "space", "bldg-unit", "bldg/unit",
+             "building/unit", "building unit", "bldg unit", "apt #", "apt", "apartment", "unit id"],
     # "Unit SF" is Yardi/AppFolio's own compact form of "square feet".
     "square_footage": ["square footage", "square feet", "sq ft", "sqft", "sf", "rsf", "size", "area", "unit sf"],
     # "Scheduled Rent"/"Rent Charge" are Yardi/AppFolio's own terms for
