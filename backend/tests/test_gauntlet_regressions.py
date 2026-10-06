@@ -618,6 +618,21 @@ def test_section8_rent_is_contract_rent_not_tenant_portion():
     print("✓ test_section8_rent_is_contract_rent_not_tenant_portion: PASS")
 
 
+def test_exact_duplicate_rent_roll_row_counted_once():
+    """
+    PMS exports occasionally repeat a row verbatim. It was imported twice:
+    the unit's rent counted double in the T-12 cross-check and every
+    finding for it appeared twice. Two DIFFERENT residents on the same
+    unit are not duplicates and still both import.
+    """
+    got = _parse_csv_text("Unit,Tenant,Rent,Lease End\n101,Ann Lee,1000,03/31/2027\n101,Ann Lee,1000,03/31/2027\n102,Bo Diaz,900,03/31/2027\n")
+    assert [t for _, t in _units_of(got)] == ["Ann Lee", "Bo Diaz"], _units_of(got)
+    assert any("duplicate" in r["reason"] for r in got["skipped_rows"]), got["skipped_rows"]
+    got = _parse_csv_text("Unit,Tenant,Rent\n101,Ann Lee,1000\n101,Cy Ray,1000\n")
+    assert len(got["leases"]) == 2
+    print("✓ test_exact_duplicate_rent_roll_row_counted_once: PASS")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):

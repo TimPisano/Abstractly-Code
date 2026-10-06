@@ -715,6 +715,7 @@ def parse_rent_roll_rows(
     # unit ids, so occupancy can be computed later -- vacant rows are not
     # imported as leases, which made every rent roll look 100% occupied.
     unit_summary: Dict[str, Dict[str, Any]] = {}
+    seen_rows: Dict[tuple, int] = {}
 
     def _summary_for(base):
         return unit_summary.setdefault(base, {"occupied_units": 0, "vacant_units": [], "down_units": []})
@@ -851,6 +852,13 @@ def parse_rent_roll_rows(
             set_field("concessions", f"${abs(concession):,.2f}/mo", _cell_to_str(cell("concessions")))
 
         display_name = f"{tenant_raw} - {address}" if address else tenant_raw
+        identity = tuple((fields[n]["value"] or "") for n in FIELD_NAMES)
+        if identity in seen_rows:
+            # A verbatim repeat (an export glitch) -- importing it again
+            # would double the unit's rent and every finding on it.
+            skipped_rows.append({"row": row_num, "reason": f"exact duplicate of row {seen_rows[identity]} -- counted once"})
+            continue
+        seen_rows[identity] = row_num
         parsed_leases.append({"extracted_fields": fields, "display_name": display_name})
         if effective_base:
             _summary_for(effective_base)["occupied_units"] += 1
