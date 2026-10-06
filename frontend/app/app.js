@@ -39,6 +39,37 @@ const FIELD_LABELS = {
     exclusivity_clause: 'Exclusivity Clause',
 };
 
+// Multifamily & Section 8 terms (backend LEASE_MULTIFAMILY_FIELDS flag).
+// Kept out of FIELD_GROUPS / FIELD_LABELS on purpose: those drive the
+// comparison table, task modal and session stats, which only know the
+// core fields. Only the lease detail page shows this group, only when
+// the lease actually has these keys (flag off = nothing renders), and
+// read-only -- the edit/verify routes don't accept these fields yet.
+const MULTIFAMILY_FIELD_GROUP = {
+    name: 'Multifamily & Section 8',
+    fields: ['unit_number', 'current_rent_amount', 'current_lease_end_date', 'section_8',
+             'pet_charges', 'parking_charges', 'utility_charges', 'lease_changes'],
+};
+
+const MULTIFAMILY_FIELD_LABELS = {
+    unit_number: 'Unit',
+    current_rent_amount: 'Current Rent (after renewals)',
+    current_lease_end_date: 'Current Lease End (after renewals)',
+    section_8: 'Section 8 / HAP',
+    pet_charges: 'Pet Charges',
+    parking_charges: 'Parking',
+    utility_charges: 'Utility Charges (RUBS / flat fees)',
+    lease_changes: 'Renewals & Amendments in File',
+};
+
+function fieldLabel(key) {
+    return FIELD_LABELS[key] || MULTIFAMILY_FIELD_LABELS[key] || key;
+}
+
+function isReadOnlyField(key) {
+    return MULTIFAMILY_FIELD_GROUP.fields.includes(key);
+}
+
 /**
  * View router. Each view module registers itself in VIEW_HANDLERS with a
  * load() called every time that view becomes active, so data is always

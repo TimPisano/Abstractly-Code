@@ -2149,6 +2149,15 @@
     word-wrap: break-word;
 }
 
+/* Co-residents under the tenant card (multifamily leases name every adult). */
+.field-residents {
+    margin-top: 0.375rem;
+    font-size: 0.8125rem;
+    color: var(--text-medium);
+    line-height: 1.5;
+    word-wrap: break-word;
+}
+
 .field-validation-note {
     display: flex;
     align-items: flex-start;

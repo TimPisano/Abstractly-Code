@@ -132,7 +132,7 @@ const LeaseDetail = {
         container.innerHTML = '';
         const data = this.lease.extracted_fields;
 
-        FIELD_GROUPS.forEach(group => {
+        [...FIELD_GROUPS, MULTIFAMILY_FIELD_GROUP].forEach(group => {
             const groupFieldsPresent = group.fields.filter(key => data.hasOwnProperty(key));
             if (groupFieldsPresent.length === 0) return;
 
@@ -195,8 +195,9 @@ const LeaseDetail = {
         const header = document.createElement('div');
         header.className = 'card-header';
         const title = document.createElement('h4');
-        title.textContent = FIELD_LABELS[fieldKey] || fieldKey;
+        title.textContent = fieldLabel(fieldKey);
         header.appendChild(title);
+        const readOnly = isReadOnlyField(fieldKey);
         const badgeWrapper = document.createElement('div');
         badgeWrapper.className = 'card-header-badges';
         const badgeEl = document.createElement('div');
@@ -209,11 +210,11 @@ const LeaseDetail = {
         // just to push confidence back to "high" (which would also
         // needlessly null the source citation -- see
         // database.mark_field_verified's docstring).
-        if (found && fieldData.confidence === 'medium') {
+        if (found && fieldData.confidence === 'medium' && !readOnly) {
             const verifyBtn = document.createElement('button');
             verifyBtn.type = 'button';
             verifyBtn.className = 'field-verify-btn';
-            verifyBtn.title = `Mark ${FIELD_LABELS[fieldKey] || fieldKey} as manually verified`;
+            verifyBtn.title = `Mark ${fieldLabel(fieldKey)} as manually verified`;
             verifyBtn.innerHTML = `
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.5 12.75l6 6 9-13.5"/></svg>
                 Mark as verified
@@ -229,20 +230,35 @@ const LeaseDetail = {
         body.className = 'card-body';
 
         const valueDiv = document.createElement('div');
-        valueDiv.className = found ? 'field-value editable' : 'field-value editable not-found-value';
-        valueDiv.textContent = found ? fieldData.value : 'Not Found — click to enter a value';
-        valueDiv.title = 'Click to edit';
-        // Keyboard-operable: it's a button in behaviour (opens an inline
-        // editor), so it needs the role, a tab stop, and Enter/Space.
-        valueDiv.setAttribute('role', 'button');
-        valueDiv.setAttribute('tabindex', '0');
-        valueDiv.setAttribute('aria-label', `Edit ${FIELD_LABELS[fieldKey] || fieldKey}`);
-        const openEdit = () => this.startInlineEdit(valueDiv, fieldKey, card);
-        valueDiv.addEventListener('click', openEdit);
-        valueDiv.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openEdit(); }
-        });
+        if (readOnly) {
+            valueDiv.className = found ? 'field-value' : 'field-value not-found-value';
+            valueDiv.textContent = found ? fieldData.value : 'Not in this lease';
+        } else {
+            valueDiv.className = found ? 'field-value editable' : 'field-value editable not-found-value';
+            valueDiv.textContent = found ? fieldData.value : 'Not Found — click to enter a value';
+            valueDiv.title = 'Click to edit';
+            // Keyboard-operable: it's a button in behaviour (opens an inline
+            // editor), so it needs the role, a tab stop, and Enter/Space.
+            valueDiv.setAttribute('role', 'button');
+            valueDiv.setAttribute('tabindex', '0');
+            valueDiv.setAttribute('aria-label', `Edit ${fieldLabel(fieldKey)}`);
+            const openEdit = () => this.startInlineEdit(valueDiv, fieldKey, card);
+            valueDiv.addEventListener('click', openEdit);
+            valueDiv.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openEdit(); }
+            });
+        }
         body.appendChild(valueDiv);
+
+        // Co-residents: the tenant value is the first-named resident (who a
+        // rent roll lists); everyone else named on the lease is shown here.
+        const residents = fieldData.details && Array.isArray(fieldData.details.residents) ? fieldData.details.residents : null;
+        if (found && residents && residents.length > 1) {
+            const residentsDiv = document.createElement('div');
+            residentsDiv.className = 'field-residents';
+            residentsDiv.textContent = `All residents: ${residents.join(', ')}`;
+            body.appendChild(residentsDiv);
+        }
 
         if (fieldData.manually_verified) {
             const editedBadge = document.createElement('span');
