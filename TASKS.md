@@ -116,16 +116,11 @@ those by taking **main's** TASKS.md, not the branch's.
 #### audit/production-readiness
 - Worktree: `~/dev/projects/abstractly-audit`
 - Goal: read-only production readiness audit written to `AUDIT.md` (summary + ranked top 10 with estimates), then an overnight deep bug hunt appended by severity.
-- Loop step: 4 — auditing (no code changes; user said don't commit/push, so AUDIT.md stays an uncommitted file in the worktree)
+- Loop step: done for the overnight run — `AUDIT.md` (≈700 lines) is complete and **uncommitted by user instruction** (no code edits, commits, pushes, or Render changes). 3 waves, 19 subagents, every kept finding re-checked by the audit session; rejected subagent claims listed in its Appendix A.
+- Headline: Deal Mismatch Report gives wrong dollars on ordinary lease folders (renewal + original both compared; "St"/"Street", "Unit"/"Apt" don't pair; step-ups ignored; rent-roll re-import doubles units; dashboard double-counts); T-12 cross-check broken 4 ways; regex extractor (what testers get, no API key) finds rent in 5/12 common phrasings and reads "Tenant Name:" as tenant "Name"; PDF page cap dead + whole-PDF OCR in-request; no DB backup; stale token = different user after DB wipe; 32 dependency advisories. No cross-team leak found.
+- Incident: a subagent overwrote `backend/benchmark_data/last_run.json` in the primary checkout; restored to HEAD, its copy saved in the session scratchpad.
 - Last update: 2026-10-05 by the audit session
-- Next action: read `AUDIT.md`; turn the top-10 into tasks via /start-task
-
-#### feature/auth-flow
-- Worktree: `~/dev/projects/abstractly-auth-flow`
-- Goal: the simplest, smoothest account experience: email-link signup, forgot password, keep me signed in, hardened links and rate limits.
-- Loop step: 4 — building (plan approved 2026-10-05 with defaults: bearer-token keep-me-signed-in, `SELF_SERVE_SIGNUP_ENABLED` off by default / on for tester, real test mail to timmypisano24@gmail.com)
-- Last update: 2026-10-05 by the auth-flow session
-- Next action: build per plan, then overnight hardening rounds logged in AUTH_NOTES.md on the branch
+- Next action: user reads `AUDIT.md` (Summary + top 10 + §6 severity index), decides whether to commit it, and turns top-10 items into tasks via /start-task.
 
 #### chore/repo-layout
 - Worktree: `~/dev/projects/abstractly-repo-layout`
