@@ -9,6 +9,7 @@ mocked smtplib.SMTP_SSL, an isolated temp SQLite file per test.
 """
 
 import email
+import email.header
 import json
 import os
 import re
@@ -33,6 +34,7 @@ _FAKE_ENV = {
     "EMAIL_USER": "fake@example.com",
     "EMAIL_APP_PASSWORD": "fake-app-password",
     "ADMIN_EMAIL": "timmypisano24@gmail.com",
+    "CALENDLY_URL": "https://calendly.com/test-host/intro-call",
 }
 
 _VALID_BODY = {
@@ -90,7 +92,7 @@ def test_valid_submission_succeeds_persists_and_sends_both_emails():
             assert mock_server.sendmail.call_count == 2
             recipients = [call.args[1] for call in mock_server.sendmail.call_args_list]
             assert ["jane@example.com"] in recipients
-            assert ["tim@getabstractly.com"] in recipients
+            assert [_FAKE_ENV["ADMIN_EMAIL"]] in recipients
     finally:
         os.unlink(db_path)
 
@@ -360,24 +362,24 @@ def _body_text(msg, subtype):
     return ""
 
 
-def test_notification_goes_to_tim_with_reply_to_the_visitor():
-    """The founder gets every field and can hit Reply in Gmail to answer the
-    visitor directly -- regardless of what ADMIN_EMAIL (the admin login
-    seed) happens to be."""
+def test_notification_goes_to_admin_email_with_reply_to_the_visitor():
+    """The founder gets every field at ADMIN_EMAIL and can hit Reply in
+    Gmail to answer the visitor directly. Regression: it used to go to
+    tim@getabstractly.com, which forwards back into the sending Gmail
+    account, where Gmail hides it."""
     db_path = _fresh_temp_db()
     try:
-        env = dict(_FAKE_ENV, ADMIN_EMAIL="someone-else@example.com")
+        env = dict(_FAKE_ENV, ADMIN_EMAIL="founder-inbox@example.com")
         with mock.patch.dict(os.environ, env):
-            os.environ.pop("DEMO_REQUEST_NOTIFY_EMAIL", None)
             mock_smtp_ssl, mock_server = _mocked_smtp()
             with mock.patch("smtplib.SMTP_SSL", mock_smtp_ssl):
                 resp = app.test_client().post("/demo-request", json=_VALID_BODY)
         assert resp.status_code == 201, resp.get_json()
 
         sent = _sent_messages(mock_server)
-        assert "tim@getabstractly.com" in sent, list(sent)
-        assert "someone-else@example.com" not in sent
-        note = sent["tim@getabstractly.com"]
+        assert set(sent) == {"founder-inbox@example.com", "jane@example.com"}, list(sent)
+        assert "tim@getabstractly.com" not in sent
+        note = sent["founder-inbox@example.com"]
         assert note["Reply-To"] == "jane@example.com", note["Reply-To"]
         text = _body_text(note, "plain")
         for value in ("Jane Doe", "jane@example.com", "Example Capital Partners",
@@ -386,44 +388,307 @@ def test_notification_goes_to_tim_with_reply_to_the_visitor():
     finally:
         os.unlink(db_path)
 
-    print("✓ test_notification_goes_to_tim_with_reply_to_the_visitor: PASS")
+    print("✓ test_notification_goes_to_admin_email_with_reply_to_the_visitor: PASS")
 
 
-def test_notification_recipient_can_be_overridden_by_env():
+def test_missing_admin_email_logs_error_and_requester_still_gets_confirmation():
     db_path = _fresh_temp_db()
     try:
-        env = dict(_FAKE_ENV, DEMO_REQUEST_NOTIFY_EMAIL="sales@example.com")
-        with mock.patch.dict(os.environ, env):
+        with mock.patch.dict(os.environ, _FAKE_ENV):
+            os.environ.pop("ADMIN_EMAIL", None)
             mock_smtp_ssl, mock_server = _mocked_smtp()
-            with mock.patch("smtplib.SMTP_SSL", mock_smtp_ssl):
+            with mock.patch("smtplib.SMTP_SSL", mock_smtp_ssl), _CapturedLogs("app.email_service") as logs:
                 resp = app.test_client().post("/demo-request", json=_VALID_BODY)
         assert resp.status_code == 201
-        assert "sales@example.com" in _sent_messages(mock_server)
+        assert list(_sent_messages(mock_server)) == ["jane@example.com"]
+        assert any("ADMIN_EMAIL is not set" in m for m in logs.errors()), logs.errors()
     finally:
         os.unlink(db_path)
 
-    print("✓ test_notification_recipient_can_be_overridden_by_env: PASS")
+    print("✓ test_missing_admin_email_logs_error_and_requester_still_gets_confirmation: PASS")
+
+
+_TEST_CALENDLY_URL = "https://calendly.com/test-host/intro-call"
+
+
+class _CapturedLogs(list):
+    """Collects log records from one logger for the duration of a with-block."""
+
+    def __init__(self, logger_name):
+        super().__init__()
+        self._logger = __import__("logging").getLogger(logger_name)
+        self._handler = __import__("logging").Handler()
+        self._handler.emit = self.append
+
+    def __enter__(self):
+        # run_all_tests.py may raise the log level; capture INFO regardless.
+        self._old_level = self._logger.level
+        self._logger.setLevel("INFO")
+        self._logger.addHandler(self._handler)
+        return self
+
+    def __exit__(self, *exc):
+        self._logger.removeHandler(self._handler)
+        self._logger.setLevel(self._old_level)
+
+    def errors(self):
+        return [r.getMessage() for r in self if r.levelname == "ERROR"]
 
 
 def test_confirmation_includes_calendly_link_and_replies_to_tim():
     db_path = _fresh_temp_db()
     try:
-        with mock.patch.dict(os.environ, _FAKE_ENV):
-            os.environ.pop("CALENDLY_URL", None)
+        with mock.patch.dict(os.environ, {**_FAKE_ENV, "CALENDLY_URL": _TEST_CALENDLY_URL}):
             mock_smtp_ssl, mock_server = _mocked_smtp()
             with mock.patch("smtplib.SMTP_SSL", mock_smtp_ssl):
                 resp = app.test_client().post("/demo-request", json=_VALID_BODY)
         assert resp.status_code == 201
+        assert resp.get_json()["message"] == api_module._DEMO_REQUEST_SUCCESS_WITH_LINK_MESSAGE
 
         confirm = _sent_messages(mock_server)["jane@example.com"]
         assert confirm["Reply-To"] == "tim@getabstractly.com"
-        link = "https://calendly.com/timpisano/abstractly-intro-call"
-        assert link in _body_text(confirm, "plain")
-        assert f'href="{link}"' in _body_text(confirm, "html")
+        assert _TEST_CALENDLY_URL in _body_text(confirm, "plain")
+        assert f'href="{_TEST_CALENDLY_URL}"' in _body_text(confirm, "html")
     finally:
         os.unlink(db_path)
 
     print("✓ test_confirmation_includes_calendly_link_and_replies_to_tim: PASS")
+
+
+def test_missing_calendly_url_logs_error_and_sends_confirmation_without_a_link():
+    """Regression: an unset CALENDLY_URL used to fall back silently to a
+    hard-coded link. Now it's an ERROR naming the variable, the visitor
+    still gets an acknowledgement (minus the link), and the form doesn't
+    claim a link was emailed."""
+    db_path = _fresh_temp_db()
+    try:
+        with mock.patch.dict(os.environ, _FAKE_ENV):
+            os.environ.pop("CALENDLY_URL", None)
+            mock_smtp_ssl, mock_server = _mocked_smtp()
+            with mock.patch("smtplib.SMTP_SSL", mock_smtp_ssl), _CapturedLogs("app.email_service") as logs:
+                resp = app.test_client().post("/demo-request", json=_VALID_BODY)
+
+        assert resp.status_code == 201
+        assert resp.get_json()["message"] == api_module._DEMO_REQUEST_SUCCESS_MESSAGE
+        assert len(database.get_all_demo_requests()) == 1
+        assert any("CALENDLY_URL is not set" in m for m in logs.errors()), logs.errors()
+
+        confirm = _sent_messages(mock_server)["jane@example.com"]
+        assert "calendly.com" not in _body_text(confirm, "plain")
+        assert "Grab a time" not in _body_text(confirm, "plain")
+        assert "just reply here with a few times" in _body_text(confirm, "plain").lower()
+        assert confirm["Reply-To"] == "tim@getabstractly.com"
+    finally:
+        os.unlink(db_path)
+
+    print("✓ test_missing_calendly_url_logs_error_and_sends_confirmation_without_a_link: PASS")
+
+
+def test_non_https_calendly_url_is_treated_as_missing():
+    with mock.patch.dict(os.environ, {"CALENDLY_URL": "javascript:alert(1)"}):
+        assert email_service.calendly_url() is None
+    with mock.patch.dict(os.environ, {"CALENDLY_URL": "  " + _TEST_CALENDLY_URL + "  "}):
+        assert email_service.calendly_url() == _TEST_CALENDLY_URL
+
+    print("✓ test_non_https_calendly_url_is_treated_as_missing: PASS")
+
+
+def test_missing_email_credentials_log_an_error_naming_the_variable():
+    """Regression: missing SMTP credentials used to be a WARNING that
+    didn't say which one. Now it's an ERROR naming the missing variable,
+    and the submission is still saved."""
+    db_path = _fresh_temp_db()
+    try:
+        with mock.patch.dict(os.environ, {"EMAIL_USER": "fake@example.com", "CALENDLY_URL": _TEST_CALENDLY_URL}):
+            os.environ.pop("EMAIL_APP_PASSWORD", None)
+            with _CapturedLogs("app.email_service") as logs:
+                resp = app.test_client().post("/demo-request", json=_VALID_BODY)
+
+        assert resp.status_code == 201
+        # No email went out, so the form must not claim one did.
+        assert resp.get_json()["message"] == api_module._DEMO_REQUEST_SUCCESS_MESSAGE
+        assert len(database.get_all_demo_requests()) == 1
+        errors = logs.errors()
+        assert any("EMAIL_APP_PASSWORD not set" in m and "jane@example.com" in m for m in errors), errors
+        assert not any("EMAIL_USER and" in m for m in errors), errors
+    finally:
+        os.unlink(db_path)
+
+    print("✓ test_missing_email_credentials_log_an_error_naming_the_variable: PASS")
+
+
+def test_from_header_keeps_a_parseable_sender_address():
+    """Regression: the em dash in the display name made Python encode the
+    whole From header, address included, so no client could parse a
+    sender out of it (parseaddr returned an empty address)."""
+    from email.utils import parseaddr
+    db_path = _fresh_temp_db()
+    try:
+        with mock.patch.dict(os.environ, {**_FAKE_ENV, "CALENDLY_URL": _TEST_CALENDLY_URL}):
+            mock_smtp_ssl, mock_server = _mocked_smtp()
+            with mock.patch("smtplib.SMTP_SSL", mock_smtp_ssl):
+                app.test_client().post("/demo-request", json=_VALID_BODY)
+        confirm = _sent_messages(mock_server)["jane@example.com"]
+        name, address = parseaddr(confirm["From"])
+        assert address == "fake@example.com", confirm["From"]
+        assert str(email.header.make_header(email.header.decode_header(name))) == "Tim Pisano — Abstractly"
+    finally:
+        os.unlink(db_path)
+
+    print("✓ test_from_header_keeps_a_parseable_sender_address: PASS")
+
+
+def test_public_config_serves_calendly_url_without_login():
+    client = app.test_client()
+    with mock.patch.dict(os.environ, {"CALENDLY_URL": _TEST_CALENDLY_URL}):
+        resp = client.get("/public-config")
+    assert resp.status_code == 200
+    assert resp.get_json() == {"calendly_url": _TEST_CALENDLY_URL}
+
+    with mock.patch.dict(os.environ, {}):
+        os.environ.pop("CALENDLY_URL", None)
+        resp = client.get("/public-config")
+    assert resp.status_code == 200
+    assert resp.get_json() == {"calendly_url": None}
+
+    print("✓ test_public_config_serves_calendly_url_without_login: PASS")
+
+
+def test_requester_confirmation_is_sent_with_link_and_logged():
+    """The requester's own email: sent to the address they typed, with the
+    CALENDLY_URL link and Reply-To tim@getabstractly.com, and a success
+    line in the log naming the recipient (so "did it send?" is answerable
+    from the Render logs)."""
+    db_path = _fresh_temp_db()
+    try:
+        body = dict(_VALID_BODY, work_email="requester@example.org")
+        with mock.patch.dict(os.environ, {**_FAKE_ENV, "CALENDLY_URL": _TEST_CALENDLY_URL}):
+            mock_smtp_ssl, mock_server = _mocked_smtp()
+            with mock.patch("smtplib.SMTP_SSL", mock_smtp_ssl), _CapturedLogs("app.email_service") as logs:
+                resp = app.test_client().post("/demo-request", json=body)
+        assert resp.status_code == 201
+        assert resp.get_json()["message"] == api_module._DEMO_REQUEST_SUCCESS_WITH_LINK_MESSAGE
+
+        confirm = _sent_messages(mock_server)["requester@example.org"]
+        assert confirm["To"] == "requester@example.org"
+        assert confirm["Reply-To"] == "tim@getabstractly.com"
+        assert _TEST_CALENDLY_URL in _body_text(confirm, "plain")
+        infos = [r.getMessage() for r in logs if r.levelname == "INFO"]
+        assert any("Email sent to requester@example.org" in m for m in infos), infos
+        assert not logs.errors(), logs.errors()
+    finally:
+        os.unlink(db_path)
+
+    print("✓ test_requester_confirmation_is_sent_with_link_and_logged: PASS")
+
+
+def test_requester_send_failure_logs_the_exact_error():
+    db_path = _fresh_temp_db()
+    try:
+        with mock.patch.dict(os.environ, {**_FAKE_ENV, "CALENDLY_URL": _TEST_CALENDLY_URL}):
+            boom = mock.MagicMock(side_effect=OSError("[Errno 101] Network is unreachable"))
+            with mock.patch("smtplib.SMTP_SSL", boom), _CapturedLogs("app.email_service") as logs:
+                resp = app.test_client().post("/demo-request", json=_VALID_BODY)
+        assert resp.status_code == 201
+        # Nothing was emailed, so the form must not say a link was.
+        assert resp.get_json()["message"] == api_module._DEMO_REQUEST_SUCCESS_MESSAGE
+        assert any("Email FAILED to jane@example.com" in m and "OSError: [Errno 101] Network is unreachable" in m
+                   for m in logs.errors()), logs.errors()
+    finally:
+        os.unlink(db_path)
+
+    print("✓ test_requester_send_failure_logs_the_exact_error: PASS")
+
+
+def test_refused_recipient_is_logged_as_a_failure():
+    db_path = _fresh_temp_db()
+    try:
+        with mock.patch.dict(os.environ, {**_FAKE_ENV, "CALENDLY_URL": _TEST_CALENDLY_URL}):
+            mock_smtp_ssl, mock_server = _mocked_smtp()
+            mock_server.sendmail.side_effect = lambda frm, to, msg: (
+                {to[0]: (550, b"5.1.1 No such user")} if to[0] == "jane@example.com" else {})
+            with mock.patch("smtplib.SMTP_SSL", mock_smtp_ssl), _CapturedLogs("app.email_service") as logs:
+                resp = app.test_client().post("/demo-request", json=_VALID_BODY)
+        assert resp.get_json()["message"] == api_module._DEMO_REQUEST_SUCCESS_MESSAGE
+        assert any("Email FAILED to jane@example.com" in m and "No such user" in m for m in logs.errors()), logs.errors()
+    finally:
+        os.unlink(db_path)
+
+    print("✓ test_refused_recipient_is_logged_as_a_failure: PASS")
+
+
+def _confirmation_for(body):
+    """POST a demo request with mocked SMTP; return the requester's parsed confirmation."""
+    db_path = _fresh_temp_db()
+    try:
+        with mock.patch.dict(os.environ, _FAKE_ENV):
+            mock_smtp_ssl, mock_server = _mocked_smtp()
+            with mock.patch("smtplib.SMTP_SSL", mock_smtp_ssl):
+                resp = app.test_client().post("/demo-request", json=body)
+        assert resp.status_code == 201, resp.get_json()
+        return _sent_messages(mock_server)[body["work_email"]]
+    finally:
+        os.unlink(db_path)
+
+
+def test_confirmation_reads_as_a_personal_note_from_the_founder():
+    confirm = _confirmation_for(_VALID_BODY)
+    assert confirm["Subject"] == "Thanks for reaching out, Jane"
+    assert confirm["Reply-To"] == "tim@getabstractly.com"
+
+    plain = _body_text(confirm, "plain")
+    lines = plain.splitlines()
+    assert lines[0] == "Hi Jane,"
+    assert ("Thanks for requesting a demo of Abstractly. I'm Tim, the founder, and I "
+            "read every request that comes in personally.") in plain
+    assert ("I'd love to hear how Example Capital Partners handles leases and rent rolls "
+            "today, then show you how Abstractly catches the mismatches before they cost "
+            "you money. It only takes about 20 minutes.") in plain
+    assert f"Grab a time that works for you: {_FAKE_ENV['CALENDLY_URL']}" in plain
+    assert "If none of those times fit, just reply here and I'll work around your schedule." in plain
+    assert lines[-3:] == ["Talk soon,", "Tim Pisano", "Founder, Abstractly"]
+    assert "Doe" not in plain  # first name only
+
+    page = _body_text(confirm, "html")
+    assert 'name="viewport"' in page
+    assert f'href="{_FAKE_ENV["CALENDLY_URL"]}"' in page
+    assert "Grab a time that works for you &rarr;</a>" in page
+    assert "Hi Jane," in page
+    # The light "normal email" layout, not the branded card template.
+    assert "<h1" not in page and "letter-spacing:2px" not in page
+
+    print("✓ test_confirmation_reads_as_a_personal_note_from_the_founder: PASS")
+
+
+def test_confirmation_first_name_and_company_fallbacks():
+    assert email_service._first_name("jacinta pisano") == "Jacinta"
+    assert email_service._first_name("  McKenzie  Smith ") == "McKenzie"
+    assert email_service._first_name("") == "there"
+
+    db_path = _fresh_temp_db()
+    try:
+        with mock.patch.dict(os.environ, _FAKE_ENV):
+            mock_smtp_ssl, mock_server = _mocked_smtp()
+            with mock.patch("smtplib.SMTP_SSL", mock_smtp_ssl):
+                email_service.send_demo_request_confirmation("x@example.com", "sam", "   ")
+        confirm = _sent_messages(mock_server)["x@example.com"]
+    finally:
+        os.unlink(db_path)
+    assert confirm["Subject"] == "Thanks for reaching out, Sam"
+    plain = _body_text(confirm, "plain")
+    assert "I'd love to hear how your team handles leases and rent rolls today" in plain
+    assert "how  handles" not in plain
+
+    print("✓ test_confirmation_first_name_and_company_fallbacks: PASS")
+
+
+def test_confirmation_escapes_what_the_visitor_typed():
+    confirm = _confirmation_for(dict(_VALID_BODY, name="<b>Jane</b> Doe", company="Acme & <i>Co</i>"))
+    page = _body_text(confirm, "html")
+    assert "<b>Jane" not in page and "<i>Co</i>" not in page
+    assert "Acme &amp; &lt;i&gt;Co&lt;/i&gt;" in page
+
+    print("✓ test_confirmation_escapes_what_the_visitor_typed: PASS")
 
 
 def test_reply_to_cannot_inject_extra_headers():
@@ -531,9 +796,20 @@ if __name__ == "__main__":
     test_error_response_never_leaks_internal_detail()
     test_rate_limit_blocks_after_max_requests_per_ip()
     test_cross_origin_request_rejected_by_csrf_middleware()
-    test_notification_goes_to_tim_with_reply_to_the_visitor()
-    test_notification_recipient_can_be_overridden_by_env()
+    test_notification_goes_to_admin_email_with_reply_to_the_visitor()
+    test_missing_admin_email_logs_error_and_requester_still_gets_confirmation()
     test_confirmation_includes_calendly_link_and_replies_to_tim()
+    test_missing_calendly_url_logs_error_and_sends_confirmation_without_a_link()
+    test_non_https_calendly_url_is_treated_as_missing()
+    test_missing_email_credentials_log_an_error_naming_the_variable()
+    test_from_header_keeps_a_parseable_sender_address()
+    test_public_config_serves_calendly_url_without_login()
+    test_requester_confirmation_is_sent_with_link_and_logged()
+    test_confirmation_reads_as_a_personal_note_from_the_founder()
+    test_confirmation_first_name_and_company_fallbacks()
+    test_confirmation_escapes_what_the_visitor_typed()
+    test_requester_send_failure_logs_the_exact_error()
+    test_refused_recipient_is_logged_as_a_failure()
     test_reply_to_cannot_inject_extra_headers()
     test_request_from_getabstractly_origin_is_accepted_with_production_config()
     test_line_break_in_company_still_delivers_notification()

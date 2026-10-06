@@ -27,6 +27,7 @@ import time
 from typing import Optional
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.utils import formataddr
 
 logger = logging.getLogger(__name__)
 
@@ -89,15 +90,23 @@ FROM_DISPLAY_NAME = "Tim Pisano — Abstractly"
 # contact address shown in the site footer.
 REPLY_TO_EMAIL = "tim@getabstractly.com"
 
-# Where Book a Demo notifications go. Deliberately NOT ADMIN_EMAIL: that
-# variable also seeds the admin login, so it can't be repointed freely.
-def _demo_notify_email() -> str:
-    return os.environ.get("DEMO_REQUEST_NOTIFY_EMAIL", "").strip() or REPLY_TO_EMAIL
+# Where Book a Demo notifications go: ADMIN_EMAIL, the founder's own
+# inbox. Not REPLY_TO_EMAIL -- tim@getabstractly.com forwards to the same
+# Gmail account that sends these, and Gmail hides a message that arrives
+# back at the mailbox it was sent from, so the notification was never seen.
+def _demo_notify_email() -> Optional[str]:
+    return os.environ.get("ADMIN_EMAIL", "").strip() or None
 
 
-# The founder's booking page, sent to everyone who requests a demo.
-def _calendly_url() -> str:
-    return os.environ.get("CALENDLY_URL", "").strip() or "https://calendly.com/timpisano/abstractly-intro-call"
+# The founder's booking page, sent to everyone who requests a demo and
+# served to the marketing site's "Book a call" links (GET /public-config).
+# CALENDLY_URL is the only source -- no hard-coded fallback, so a missing
+# or mistyped value shows up as an error instead of quietly sending people
+# to a stale link. Only an https:// URL counts: the value ends up in an
+# href, so anything else (a typo, a javascript: URL) is treated as unset.
+def calendly_url() -> Optional[str]:
+    url = os.environ.get("CALENDLY_URL", "").strip()
+    return url if url.lower().startswith("https://") else None
 
 # Landing page's luxury palette (see frontend/landing.css), reused here
 # so the confirmation email doesn't feel like a different product.
@@ -120,10 +129,12 @@ def _credentials():
 def _send(to_email: str, subject: str, text_body: str, html_body: str, reply_to: Optional[str] = None) -> bool:
     email_user, app_password = _credentials()
     if not email_user or not app_password:
-        logger.warning(
-            "Email not sent to %s (subject: %r): EMAIL_USER/EMAIL_APP_PASSWORD "
-            "are not configured. Set them in backend/.env — see backend/.env.example.",
-            to_email, subject,
+        missing = [name for name in ("EMAIL_USER", "EMAIL_APP_PASSWORD") if not os.environ.get(name)]
+        logger.error(
+            "Email NOT sent to %s (subject: %r): %s not set. Set %s on this "
+            "service (Render dashboard > Environment) or in backend/.env locally "
+            "-- see backend/.env.example.",
+            to_email, subject, " and ".join(missing), "it" if len(missing) == 1 else "them",
         )
         return False
 
@@ -143,7 +154,10 @@ def _send(to_email: str, subject: str, text_body: str, html_body: str, reply_to:
     # the stdlib refuses a header with a line break in it, which would
     # silently drop the email, so flatten any to spaces.
     message["Subject"] = " ".join(subject.splitlines())
-    message["From"] = f"{FROM_DISPLAY_NAME} <{email_user}>"
+    # formataddr, not an f-string: the display name has an em dash, and a
+    # non-ASCII header written as one string gets encoded WHOLE --
+    # address included -- leaving no parseable sender address at all.
+    message["From"] = formataddr((FROM_DISPLAY_NAME, email_user))
     # A CR/LF in a header value would let the caller add headers (Bcc...),
     # so anything containing one falls back to the default address.
     if not reply_to or "\r" in reply_to or "\n" in reply_to:
@@ -156,18 +170,32 @@ def _send(to_email: str, subject: str, text_body: str, html_body: str, reply_to:
     try:
         with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=SMTP_TIMEOUT_SECONDS) as server:
             server.login(email_user, app_password)
-            server.sendmail(email_user, [to_email], message.as_string())
-        return True
-    except Exception:
+            refused = server.sendmail(email_user, [to_email], message.as_string())
+    except Exception as exc:
         # Deliberately broad: smtplib raises several distinct exception
         # types (auth failure, connection error, recipient refused) and
         # a plain socket timeout isn't even an smtplib exception — all
         # of them must degrade the same way. The real exception is
         # logged server-side only, matching this project's established
         # error-handling convention (see api.py's global error handlers
-        # from the hardening pass).
-        logger.exception("Failed to send email to %s (subject: %r)", to_email, subject)
+        # from the hardening pass) -- and named in the log line itself,
+        # not just the traceback, so it shows up in a one-line log search.
+        logger.exception(
+            "Email FAILED to %s (subject: %r): %s: %s",
+            to_email, subject, type(exc).__name__, exc,
+        )
         return False
+
+    # sendmail returns {recipient: (code, reason)} for any recipient the
+    # server refused without raising.
+    if isinstance(refused, dict) and refused:
+        logger.error("Email FAILED to %s (subject: %r): server refused recipient: %s", to_email, subject, refused)
+        return False
+    # Gmail accepting the message is as far as SMTP can see: a later
+    # bounce from the recipient's provider lands in EMAIL_USER's inbox,
+    # not here.
+    logger.info("Email sent to %s (subject: %r) via %s", to_email, subject, SMTP_HOST)
+    return True
 
 
 def send_operational_alert(to_email: str, subject: str, body: str) -> bool:
@@ -247,34 +275,66 @@ def send_admin_new_request_notification(requester_email: str) -> bool:
     return _send(admin_email, subject, text_body, html_body)
 
 
-def send_demo_request_confirmation(to_email: str, name: str) -> bool:
-    """Sent immediately when someone submits the landing page's Book a Demo form."""
-    subject = "We've received your demo request"
-    calendly_url = _calendly_url()
-    text_body = (
-        f"Thanks for reaching out to Abstractly, {name}.\n\n"
-        "We've received your request for a demo. Pick a time that works "
-        f"for you here: {calendly_url}\n\n"
-        "Or just reply to this email.\n\n"
-        "Best,\nTim Pisano"
-    )
-    html_body = _email_html(
-        heading="We've received your request.",
-        paragraphs=[
-            f"Thanks for reaching out, {html.escape(name)}. We&rsquo;ve received "
-            "your request for a demo.",
-            f'<a href="{html.escape(calendly_url)}" style="color: {_COLOR_ACCENT}; '
-            'font-weight: 600;">Pick a time that works for you &rarr;</a>',
-            "Or just reply to this email.",
-        ],
-    )
-    return _send(to_email, subject, text_body, html_body)
+def _first_name(name: str) -> str:
+    """First word of the form's name field; 'there' if it's blank. An
+    all-lowercase entry gets its first letter capitalized ("jacinta" ->
+    "Jacinta"); anything else is left exactly as the person typed it."""
+    words = (name or "").split()
+    if not words:
+        return "there"
+    first = words[0]
+    return first[:1].upper() + first[1:] if first.islower() else first
+
+
+def send_demo_request_confirmation(to_email: str, name: str, company: str = "") -> bool:
+    """
+    Sent immediately when someone submits the landing page's Book a Demo
+    form: a short personal note from the founder with the CALENDLY_URL
+    booking link. Reply-To is tim@getabstractly.com (set in _send).
+    """
+    first_name = _first_name(name)
+    company = (company or "").strip()
+    whose = company if company else "your team"
+    subject = f"Thanks for reaching out, {first_name}"
+    booking_url = calendly_url()
+
+    intro = ("Thanks for requesting a demo of Abstractly. I'm Tim, the founder, "
+             "and I read every request that comes in personally.")
+    pitch = (f"I'd love to hear how {whose} handles leases and rent rolls today, then "
+             "show you how Abstractly catches the mismatches before they cost you "
+             "money. It only takes about 20 minutes.")
+    if booking_url:
+        closing = "If none of those times fit, just reply here and I'll work around your schedule."
+    else:
+        # Still a complete, sensible note -- just no link. The error below
+        # says exactly why.
+        logger.error(
+            "CALENDLY_URL is not set (or isn't an https:// URL): the demo "
+            "confirmation to %s goes out WITHOUT a booking link. Set "
+            "CALENDLY_URL on this service (Render dashboard > Environment).",
+            to_email,
+        )
+        closing = "Just reply here with a few times that work for you and I'll set something up."
+
+    text_lines = [f"Hi {first_name},", "", intro, "", pitch, ""]
+    if booking_url:
+        text_lines += [f"Grab a time that works for you: {booking_url}", ""]
+    text_lines += [closing, "", "Talk soon,", "Tim Pisano", "Founder, Abstractly"]
+    text_body = "\n".join(text_lines)
+
+    paragraphs = [f"Hi {html.escape(first_name)},", html.escape(intro), html.escape(pitch)]
+    if booking_url:
+        paragraphs.append(
+            f'<a href="{html.escape(booking_url)}" style="color:{_COLOR_ACCENT};'
+            'font-weight:bold;text-decoration:underline;">Grab a time that works for you &rarr;</a>'
+        )
+    paragraphs += [html.escape(closing), "Talk soon,<br>Tim Pisano<br>Founder, Abstractly"]
+    return _send(to_email, subject, text_body, _personal_email_html(paragraphs))
 
 
 def send_demo_request_notification(name: str, work_email: str, company: str, units: int, message: Optional[str]) -> bool:
     """
-    Sent to the founder (DEMO_REQUEST_NOTIFY_EMAIL, default
-    tim@getabstractly.com) whenever someone submits the landing page's
+    Sent to the founder (ADMIN_EMAIL) whenever someone submits the landing page's
     Book a Demo form, with every field it collects. Reply-To is the
     visitor, so hitting Reply in Gmail answers them directly.
     """
@@ -300,7 +360,15 @@ def send_demo_request_notification(name: str, work_email: str, company: str, uni
         paragraphs.append(f"Message: {html.escape(message)}")
     html_body = _email_html(heading="New demo request.", paragraphs=paragraphs)
 
-    return _send(_demo_notify_email(), subject, text_body, html_body, reply_to=work_email)
+    recipient = _demo_notify_email()
+    if not recipient:
+        logger.error(
+            "Demo request notification NOT sent (request from %s at %r): ADMIN_EMAIL "
+            "is not set. Set it on this service (Render dashboard > Environment).",
+            work_email, company,
+        )
+        return False
+    return _send(recipient, subject, text_body, html_body, reply_to=work_email)
 
 
 def send_waitlist_approval_email(to_email: str) -> bool:
@@ -386,6 +454,27 @@ def send_team_setup_email(to_email: str, name: str, firm_name: str, setup_url: s
         ],
     )
     return _send(to_email, subject, text_body, html_body)
+
+
+def _personal_email_html(paragraphs) -> str:
+    """
+    Reads like a normal email from a person, not a branded template: white
+    background, no card, no heading, no logo, ordinary body text, left
+    aligned. Fluid up to 560px so it fits a phone without zooming; inline
+    styles only (email clients ignore most stylesheets).
+    """
+    paragraphs_html = "".join(
+        f'<p style="margin:0 0 16px;">{p}</p>' for p in paragraphs
+    )
+    return f"""<!DOCTYPE html>
+<html>
+<head><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+<body style="margin:0;padding:0;background-color:#ffffff;">
+  <div style="max-width:560px;padding:24px 20px;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.55;color:#222222;">
+    {paragraphs_html}
+  </div>
+</body>
+</html>"""
 
 
 def _email_html(heading: str, paragraphs) -> str:

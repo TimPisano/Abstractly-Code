@@ -36,8 +36,16 @@ def test_footers_offer_business_email_and_book_a_call():
         line = footer.group(1)
         assert 'href="mailto:tim@getabstractly.com"' in line, f"{name} footer email is wrong"
         assert 'timmypisano24@gmail.com' not in html, f"{name} still shows the personal email"
-        assert re.search(r'href="(index\.html)?#book-demo">Book a call</a>', line), \
-            f"{name} footer has no Book a call link"
+        # data-book-call: landing.js repoints it at CALENDLY_URL; the
+        # #book-demo href is the fallback until (or unless) that loads.
+        assert re.search(r'href="(index\.html)?#book-demo" data-book-call>Book a call</a>', line), \
+            f"{name} footer has no Book a call link wired to CALENDLY_URL"
+
+
+def test_every_book_a_call_link_is_wired_to_calendly():
+    for name in ['index.html', 'pricing.html']:
+        for tag in re.findall(r'<a [^>]*>\s*book a call\s*</a>', _read(name), re.I):
+            assert 'data-book-call' in tag, f"{name}: {tag} isn't wired to CALENDLY_URL"
 
 
 def test_tim_at_getabstractly_is_the_only_public_email():
@@ -59,6 +67,7 @@ def test_faqs_and_contact_section_link_the_email():
 if __name__ == "__main__":
     test_no_public_page_contains_the_personal_phone_number()
     test_footers_offer_business_email_and_book_a_call()
+    test_every_book_a_call_link_is_wired_to_calendly()
     test_tim_at_getabstractly_is_the_only_public_email()
     test_faqs_and_contact_section_link_the_email()
     print("\nAll public-contact tests passed.")
