@@ -922,6 +922,20 @@ def parse_rent_roll_rows(
         if effective_base:
             _summary_for(effective_base)["occupied_units"] += 1
 
+    if not parsed_leases and rows:
+        non_occupied = sum(len(v["vacant_units"]) + len(v["down_units"]) for v in unit_summary.values())
+        if non_occupied:
+            raise RentRollImportError(
+                f"Every unit in this file is vacant or down ({non_occupied} unit(s)) -- there are no occupied "
+                "units with a resident and rent to import. If that's wrong, check the tenant and status columns."
+            )
+        raise RentRollImportError(
+            f"Found the column headers but no tenant rows could be imported ({len(skipped_rows)} row(s) skipped: "
+            "totals, blanks or rows with no rent or dates). Check that the rows under the header list each "
+            "unit's resident and rent."
+        )
+    if not rows:
+        raise RentRollImportError("This file has a header row but no rows under it -- no units to import.")
     return {
         "leases": parsed_leases,
         "skipped_rows": skipped_rows,

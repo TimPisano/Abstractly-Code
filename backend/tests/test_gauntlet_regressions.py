@@ -700,6 +700,18 @@ def test_file_with_no_t12_line_items_is_rejected_not_silently_empty():
     print("✓ test_file_with_no_t12_line_items_is_rejected_not_silently_empty: PASS")
 
 
+def test_rent_roll_with_no_occupied_rows_is_a_clear_error():
+    """A header-only or all-vacant file returned 201 "imported 0" with no explanation."""
+    from app.rent_roll_import import RentRollImportError
+    for text, word in (("Unit,Tenant,Rent,Lease Start,Lease End\n", "no "), ("Unit,Tenant,Rent\n101,VACANT,\n102,VACANT,\n", "vacant")):
+        try:
+            _parse_csv_text(text)
+            raise AssertionError("accepted")
+        except RentRollImportError as e:
+            assert word in str(e).lower(), str(e)
+    print("✓ test_rent_roll_with_no_occupied_rows_is_a_clear_error: PASS")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):
