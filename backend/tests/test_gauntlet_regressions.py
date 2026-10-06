@@ -902,6 +902,20 @@ def test_original_lease_plus_renewal_compares_only_the_operative_lease():
     print("✓ test_original_lease_plus_renewal_compares_only_the_operative_lease: PASS")
 
 
+def test_rent_roll_reconciliation_also_uses_the_operative_lease():
+    """Same renewal-chain bug in the rent-roll reconciliation view: the old lease's rent and dates were flagged."""
+    from app.portfolio import compute_rent_roll_reconciliation
+    rr = _rr(tenant="Ann Lee", rent_amount="$2,100.00", property_address="100 Oak St, Austin, TX 78701, Suite 101",
+             lease_start_date="01/01/2026", lease_end_date="12/31/2026")
+    original = _doc(tenant="Ann Lee", rent_amount="$1,800.00", property_address="100 Oak St, Apt 101, Austin, TX 78701",
+                    lease_start_date="January 1, 2025", lease_end_date="December 31, 2025")
+    renewal = _doc(tenant="Ann Lee", rent_amount="$2,100.00", property_address="100 Oak St, Apt 101, Austin, TX 78701",
+                   lease_start_date="January 1, 2026", lease_end_date="December 31, 2026")
+    got = compute_rent_roll_reconciliation([rr, original, renewal], today=TODAY)
+    assert got["mismatches"] == [], got["mismatches"]
+    print("✓ test_rent_roll_reconciliation_also_uses_the_operative_lease: PASS")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):

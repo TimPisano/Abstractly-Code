@@ -90,6 +90,7 @@ from .portfolio import (
     _is_rent_roll_import,
     _normalize_address,
     _normalize_for_matching,
+    _operative_documents,
     _same_tenant,
     _RENT_DISAGREEMENT_TOLERANCE_ABS,
     _RENT_DISAGREEMENT_TOLERANCE_PCT,
@@ -130,36 +131,6 @@ def _display_unit(rr_lease: Optional[Dict[str, Any]], doc_lease: Optional[Dict[s
     if doc_lease is not None:
         return field_value(doc_lease, "property_address")
     return None
-
-
-def _operative_documents(docs: List[Dict[str, Any]], today: date) -> List[Dict[str, Any]]:
-    """
-    The lease document(s) that govern a unit on `today`. A buyer gets the
-    whole lease folder -- the expired original AND its renewal -- and
-    comparing the rent roll against every one of them invented money:
-    the old rent became a rent_mismatch and the old end date an
-    expired_but_occupied, ~$28,800/yr of phantom overstatement on a
-    correct unit (AUDIT.md §6.11). Rule: the lease(s) whose term covers
-    `today`; if none does, the one that starts latest (the newest term,
-    whether it has already ended or is a signed renewal yet to start).
-    Undated documents are kept only when no dated lease decides it.
-    Older documents are history, not a second lease to compare against.
-    """
-    if len(docs) <= 1:
-        return docs
-    dated = []
-    for doc in docs:
-        start = parse_date(field_value(doc, "lease_start_date"))
-        end = parse_date(field_value(doc, "lease_end_date"))
-        if start or end:
-            dated.append((start, end, doc))
-    if not dated:
-        return docs
-    covering = [d for s_, e_, d in dated if (s_ is None or s_ <= today) and (e_ is None or today <= e_) and s_ and e_]
-    if covering:
-        return covering
-    latest = max(dated, key=lambda t: (t[0] or t[1] or date.min))
-    return [latest[2]]
 
 
 def _address_groups(leases: List[Dict[str, Any]], today: Optional[date] = None) -> Dict[str, Dict[str, List[Dict[str, Any]]]]:
