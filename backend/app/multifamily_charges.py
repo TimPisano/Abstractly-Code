@@ -144,15 +144,21 @@ class _Doc:
 # Unit number
 # ----------------------------------------------------------------------
 
-_UNIT_ID = r"([A-Z]{0,2}-?\d{1,5}[A-Z]?|\d{1,3}-?[A-Z])"
+# "204", "3B", "14-C", "B-215", "A-12", "C-5", "11-B" -- or a lone letter
+# ("Unit B"), allowed only right after an explicit unit label.
+_UNIT_ID = r"((?:[A-Z]{1,2}-?)?\d{1,5}(?:-?[A-Z]{1,2})?(?![\w-])|[A-Z](?=[,.\s]|$))"
 _UNIT_PATTERNS = [
     # Labels: "Unit: 3B", "Apartment No. 204", "Unit # 111", "Apt. 12"
-    rf"(?m)^\s*(?:Apartment|Apt\.?|Unit)\s*(?:No\.?|Number|#)?\s*[:#]?\s*{_UNIT_ID}\b",
+    rf"(?m)^\s*(?:Apartment\s+Unit|Apartment|Apt\.?|Unit)\s*(?:No\.?|Number|#)?\s*[:#]?\s*{_UNIT_ID}",
     # Inside an address: "1250 Cedar Bend Lane, Apt. 204, Columbus"
     rf"\d+\s+[A-Za-z0-9 .'\-]+?,\s*(?:Apartment|Apt\.?|Unit|Suite|Ste\.?)\s*(?:No\.?|Number|#)?\s*#?\s*{_UNIT_ID}\b",
     # Comma-delimited unit inside a wrapped address line: "...Parkway, Apt. 412, Kansas City"
     rf",\s*(?:Apartment|Apt\.?|Unit|Suite|Ste\.?)\s*(?:No\.?|Number|#)?\s*#?\s*{_UNIT_ID}\s*,",
-    rf"\b(?:Apartment|Apt\.?|Unit)\s*(?:No\.?|Number|#)\s*#?\s*{_UNIT_ID}\b",
+    rf"\b(?:Apartment|Apt\.?|Unit)\s*(?:No\.?|Number|#)\s*#?\s*{_UNIT_ID}",
+    # "...Way, #204." / "Road, #11-B to"
+    rf",\s*#\s*{_UNIT_ID}",
+    # Any explicit unit label followed by an ID: "Unit 418, 1015 Mariner Walk", "Apartment Unit 14-C"
+    rf"\b(?:Apartment\s+Unit|Apartment|Apt\.?|Unit)\s+{_UNIT_ID}",
 ]
 
 

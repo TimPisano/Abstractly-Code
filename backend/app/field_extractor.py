@@ -53,8 +53,16 @@ ORDINAL_SUFFIX = r"(?:st|nd|rd|th)?"
 DATE_REGEX = (
     rf"(\d{{1,2}}[/-]\d{{1,2}}[/-]\d{{2,4}}"
     rf"|(?:{MONTHS})\s+\d{{1,2}}{ORDINAL_SUFFIX},?\s+\d{{4}}"
-    rf"|\d{{1,2}}{ORDINAL_SUFFIX}\s+day\s+of\s+(?:{MONTHS}),?\s+\d{{4}})"
+    rf"|\d{{1,2}}{ORDINAL_SUFFIX}\s+day\s+of\s+(?:{MONTHS}),?\s+\d{{4}}"
+    # Day-first "1 April 2026" (common in plain-English and non-US forms)
+    rf"|\d{{1,2}}\s+(?:{MONTHS_FULL}|{MONTHS_ABBR}),?\s+\d{{4}})"
 )
+# Same shapes, non-capturing -- for a lookahead or a second date in a range.
+DATE_NC = "(?:" + DATE_REGEX[1:]
+# "April 1, 2026 to March 31, 2027" / "... through ..." / "... until ..." / "... - ..."
+RANGE_SEP = r"\s*(?:to|through|thru|until|till|[-\u2013\u2014])\s*"
+# A term/period label a date range follows: "Term:", "3. Term.", "Lease term:"
+TERM_CUE = r"\b(?:lease\s+term|term\s+of\s+(?:this\s+)?lease|term|tenancy|lease\s+period|rental\s+period)\b\.?"
 
 # Matches "$2,500.00", "$2,500", "$ 2,500.00"
 CURRENCY_REGEX = r"\$\s?([\d,]+(?:\.\d{2})?)"
@@ -171,7 +179,8 @@ def is_attachment_page(text: str) -> bool:
 # garage rent, storage, the Section 8 tenant portion.
 _NON_DWELLING_RENT_RE = re.compile(
     r"\b(?:pet|pets|animal|animals|parking|garage|carport|storage|tenant\s+rent|tenant'?s\s+portion|"
-    r"family\s+share|portion\s+of\s+(?:the\s+)?rent|late\s+(?:fee|charge))\b",
+    r"family\s+share|portion\s+of\s+(?:the\s+)?rent|late\s+(?:fee|charge)|total\s+monthly|prorated|pro-rated|"
+    r"concession|free|discount|credit|off)\b",
     re.IGNORECASE,
 )
 
@@ -524,6 +533,7 @@ class FieldExtractor:
         "Representative", "Agent", "Contact", "Phone", "Email", "Date", "Dated", "Account", "Unit",
         "Household", "Certifies", "Default", "Defaults", "Insurance", "Responsibility", "The", "This",
         "Party", "Parties", "Rules", "Handbook", "Policy", "Policies", "Assistance", "Housing",
+        "Agreement", "Agreements", "Addendum", "Signature", "Signs", "Initial", "Ledger", "Portal",
     )
     _LABEL_STOPWORDS_LOOKAHEAD = r"(?!(?i:" + "|".join(_LABEL_STOPWORDS) + r")\b)"
 
@@ -538,7 +548,11 @@ class FieldExtractor:
         # (e.g. "Landlord is Jordan Blake and the tenant is Alex Chen").
         # \b...\b so "Owner" can't match inside "Homeowner"; "(s)" covers
         # the multifamily "Resident(s): ..." label.
-        keyword_group = r"\b(?:" + "|".join(keywords) + r")(?:\(s\)|s\b|\b)"
+        # Also absorbed: a parenthetical alias ("Landlord (Owner)" in the HUD
+        # model lease), "Name" ("Resident Name"), and the NAA wording
+        # "the resident(s) named here:".
+        keyword_group = (r"\b(?:" + "|".join(keywords) + r")(?:\(s\)|s\b|\b)"
+                         r"(?:\s*\([A-Za-z ]{1,20}\))?(?:\s+names?\b)?(?:\s+named\s+(?:here|below|above))?")
         # Optional "is"/"was" filler covers casual phrasing like
         # "the tenant is Alex Chen" alongside formal "Tenant: Alex Chen".
         # The negative lookahead rejects role-word compounds that are
@@ -547,18 +561,21 @@ class FieldExtractor:
         # Portion" -- each was being read as a party literally named
         # "Rent"/"Lease"/..., which also split one Section 8 lease plus
         # its HUD Tenancy Addendum into two "leases".
-        connector = r"[:\s]+(?:(?i:is|was)\s+)?" + self._LABEL_STOPWORDS_LOOKAHEAD
+        # "(?:\d+[.)]\s+)?" -- a numbered list of residents ("Resident(s):\n1. Anneliese K. Brandvold").
+        connector = r"[:\s]+(?:(?i:is|was)\s+)?(?:\d{1,2}[.)]\s+)?" + self._LABEL_STOPWORDS_LOOKAHEAD
         # A repeated word may be a normal capitalized word ("Apparel") or an
         # ALL-CAPS acronym suffix ("LLC", "LP"), each with an optional
         # trailing period, so entity suffixes aren't truncated.
-        word = r"(?:[A-Z][a-z]+\.?|[A-Z]{2,}\.?)"
+        # Also a middle initial ("Cornelius P. Ibarra") and hyphenated or
+        # apostrophe surnames ("Okafor-Bell", "O'Callaghan-Sato").
+        word = r"(?:[A-Z][a-zA-Z']*[a-z](?:-[A-Z][a-zA-Z']*[a-z])*\.?|[A-Z]{2,}\.?|[A-Z]\.)"
         # ", LLC" / ", Inc." after the name -- the comma used to end the
         # match, so "Owner: Willow Creek Commons Owner, LLC" lost its suffix.
         entity_suffix = r"(?:,?[ \t]+(?:LLC|L\.L\.C\.|Inc\.?|LP|L\.P\.|LLP|Ltd\.?|Corp\.?|Co\.?)(?![A-Za-z]))?"
         return [
             # Capitalized personal/company name, e.g. "Tenant: John Smith"
             # or "Landlord: Property Management LLC"
-            rf"(?i:{keyword_group}){connector}([A-Z][a-z]+(?:[ \t]+{word})*{entity_suffix})",
+            rf"(?i:{keyword_group}){connector}([A-Z][a-zA-Z']*[a-z](?:-[A-Z][a-zA-Z']*[a-z])*(?:[ \t]+{word})*{entity_suffix})",
             # Company/entity name (allows acronyms like LLC), to end of line,
             # e.g. "Landlord: Property Management LLC"
             rf"(?i:{keyword_group}){connector}([A-Z][\w&,\.\'\-\s]+?)(?:\n|$)",
@@ -584,7 +601,10 @@ class FieldExtractor:
         # follow "(" immediately, so either of those missed entirely
         # even though the defined-term relationship is just as clear.
         filler = r"(?:[A-Za-z,]+\s+){0,4}"
-        return rf"([A-Z][A-Za-z0-9&,\.\'\-\s]{{2,80}}?)\s*\(\s*{filler}{QUOTE_OPEN}(?i:{role_group}){QUOTE_CLOSE}\s*\)"
+        # Unquoted '(Owner)' / '(the tenant)' is accepted too, but only when
+        # the role word fills the whole parenthetical.
+        return (rf"([A-Z][A-Za-z0-9&,\.\'\-\s]{{2,80}}?)\s*\(\s*(?:{filler}{QUOTE_OPEN}(?i:{role_group}){QUOTE_CLOSE}"
+                rf"|(?i:the\s+)?(?i:{role_group})(?:\(s\)|s)?)\s*\)")
 
     # A bare personal name: "Wen Pruitt", "Maria J. Lopez", "Owen O'Neil-Hart".
     _PERSON_NAME_RE = re.compile(r"^[A-Z][a-zA-Z'\-]+(?:\s+[A-Z]\.?)?(?:\s+[A-Z][a-zA-Z'\-]+){1,2}$")
@@ -615,6 +635,19 @@ class FieldExtractor:
         # leading connector left over from 'X ("Owner") and Y ("Resident")'.
         value = self._LEAD_IN_RE.sub("", value)
         value = re.sub(r"^(?:and|with)\s+", "", value, flags=re.IGNORECASE)
+        # "...rents 2 Verbena Row, Apartment 305 to Leopold Strand (Tenant)":
+        # a name never contains these lowercase connectors, so keep what
+        # follows the last one.
+        value = re.split(r"\s+(?:to|from|at|by|for|rents|leases|lets|hereby)\s+", value)[-1]
+        # A document title swept in from the line above: "LEASE AGREEMENT
+        # Sparrowhill Apartments LLC" -> "Sparrowhill Apartments LLC".
+        value = re.sub(
+            r"^(?:[A-Z0-9][A-Z0-9.&'\-]*\s+)*?(?:LEASE|AGREEMENT|CONTRACT|ADDENDUM|AMENDMENT|IDENTIFICATION|PROGRAMS?)\b\.?\s+(?=[A-Z][a-z])",
+            "", value)
+        # The capture IS a role label ("... Landlord (Owner)" in a table
+        # heading) -- not a name.
+        if re.search(r"\b(?:landlord|tenant|owner|resident|lessor|lessee|renter)(?:\(s\)|s)?$", value, re.IGNORECASE):
+            return ""
         if self.split_person_list(value) is None:
             # 'ABC Corp, a Delaware corporation, and XYZ Inc ("Tenant")':
             # the capture ran back over the OTHER party -- keep what
@@ -655,7 +688,9 @@ class FieldExtractor:
         # per-word period in the pattern, so strip it.
         if value.endswith("."):
             last_word = value[:-1].rsplit(" ", 1)[-1].lower()
-            if last_word not in ("co", "inc", "corp", "ltd", "llp", "lp", "llc"):
+            # Not "llc"/"lp"/"llp": nobody writes "LLC." as the name, so
+            # that period is the sentence's ("...owner: Larkspur Partners LLC.").
+            if last_word not in ("co", "inc", "corp", "ltd"):
                 value = value[:-1]
         return value
 
@@ -745,7 +780,11 @@ class FieldExtractor:
         The first two run case-sensitive (flags=0) with keywords scoped
         case-insensitive via (?i:...) — see _party_label_patterns.
         """
-        result = self._search_ordered(pages, [self._defined_term_pattern(*role_keywords)], ["high"], flags=0)
+        # accept: skip a match whose cleaned value is empty (a role label,
+        # not a name) and keep looking, rather than giving up on the tier.
+        cleans_to_name = lambda text, m: bool(self._clean_defined_term_value(_clean_value(m.group(1))))  # noqa: E731
+        result = self._search_ordered(pages, [self._defined_term_pattern(*role_keywords)], ["high"], flags=0,
+                                      accept=cleans_to_name)
         if result:
             result["value"] = self._clean_defined_term_value(result["value"])
             return result
@@ -755,11 +794,53 @@ class FieldExtractor:
             result["value"] = self._clean_label_style_value(result["value"])
             return result
 
+        result = self._search_ordered(pages, self._prose_role_patterns(role_keywords), ["high", "high", "high"], flags=0,
+                                      accept=cleans_to_name)
+        if result:
+            result["value"] = self._clean_defined_term_value(result["value"])
+            return result
+
         result = self._extract_party_from_signature_caption(pages, role_keywords)
         if result:
             return result
 
+        result = self._search_ordered(pages, self._rents_to_patterns(role_keywords), ["medium"], flags=0,
+                                      accept=cleans_to_name)
+        if result:
+            result["value"] = self._clean_defined_term_value(result["value"])
+            result["validation_note"] = ("Party inferred from 'X rents/leases ... to Y' wording -- the lease never "
+                                         "labels the parties, so confirm who is the owner and who is the resident.")
+            return result
+
         return _not_found()
+
+    # A run of capitalized words (a person or company name), commas allowed
+    # between them for entity suffixes ("Gannet Point Apartments LP").
+    _NAME_RUN = r"((?:[A-Z][\w&.'\-]*,?\s+){0,6}[A-Z][\w&.'\-]*[\w.])"
+
+    def _prose_role_patterns(self, role_keywords: Tuple[str, ...]) -> List[str]:
+        """
+        Party roles stated in prose rather than a label or a parenthetical:
+          'Copperfield Holdings LP, hereinafter called "Landlord"'
+          'Gannet Point Apartments LP, as Landlord, rents ...'
+          'Aspen Slate Residential LLC, Owner, and ...'
+          'Hutchins Family Rentals LLC ("we") and Sunniva Albrecht ("you")'
+        The role word must be capitalized, so ordinary prose ("the tenant
+        shall") can't qualify.
+        """
+        roles = "|".join(list(role_keywords) + [k.upper() for k in role_keywords])
+        pronoun = r"we|us" if "Landlord" in role_keywords else r"you"
+        return [
+            rf"{self._NAME_RUN},?\s+(?:hereinafter|hereafter|herein)\s+(?:called|referred\s+to\s+as|known\s+as)\s+(?:the\s+)?{QUOTE_OPEN}?(?:{roles})",
+            rf"{self._NAME_RUN},\s+(?:as\s+(?:the\s+)?)?(?:{roles})(?:\(s\))?(?=[,.;)\s])",
+            rf"{self._NAME_RUN}\s*\(\s*{QUOTE_OPEN}(?:{pronoun}){QUOTE_CLOSE}\s*\)",
+        ]
+
+    def _rents_to_patterns(self, role_keywords: Tuple[str, ...]) -> List[str]:
+        """Last resort for unlabeled leases: 'Fernhill Terrace LP rents Unit C-5 ... to Casimir J. Obuya'."""
+        if "Landlord" in role_keywords:
+            return [rf"{self._NAME_RUN}\s+(?:hereby\s+)?(?:rents|leases|lets)\b(?=[^.]{{0,160}}?\bto\s+[A-Z])"]
+        return [rf"\b(?:rents|leases|lets)\b[^.]{{0,160}}?\bto\s+((?:[A-Z][\w.'\-]*\s+){{1,3}}[A-Z][\w'\-]*[a-z])"]
 
     def _find_all_party_occurrences(
         self,
@@ -1083,7 +1164,21 @@ class FieldExtractor:
 
     def _extract_security_deposit(self, pages: List[Dict[str, Any]]) -> Dict[str, Any]:
         result = self._extract_amount(pages, r"security\s+deposit", amount_before_keyword=True)
-        return result if result else _not_found()
+        if result:
+            return result
+        # A plain "Deposit" label ("Deposit: $900.00", or a table row), or
+        # "deposited with Landlord the sum of $1,450.00 as security". Never
+        # a pet or animal deposit.
+        not_pet = lambda text, m: not re.search(  # noqa: E731
+            r"\b(?:pet|animal|key|parking|holding|application)\b", text[max(0, m.start() - 20):m.end()], re.IGNORECASE)
+        result = self._search_ordered(pages, [
+            rf"\bdeposit\s*[:\-]?\s*\n?\s*{CURRENCY_REGEX}",
+            rf"deposited\s+with\s+\w+\s+the\s+sum\s+of\s+{CURRENCY_REGEX}\s+as\s+security",
+        ], ["high", "high"], accept=not_pet)
+        if result:
+            result["value"] = "$" + result["value"] if not result["value"].startswith("$") else result["value"]
+            return result
+        return _not_found()
 
     def _extract_cam_charges(self, pages: List[Dict[str, Any]]) -> Dict[str, Any]:
         cam_keyword = r"(?:common\s+area\s+maintenance(?:\s*\(\s*cam\s*\))?|cam\s+(?:charges|contribution|fees?))"
@@ -1118,7 +1213,7 @@ class FieldExtractor:
           5. Generic "rent is $X" fallback (low)
         """
         rent_keyword = r"(?:base\s+rent|monthly\s+rent|rental\s+amount|monthly\s+payment)"
-        per_month = r"(?:per\s+month|/\s*mo(?:nth)?\.?|monthly|each\s+month)"
+        per_month = r"(?:per\s+month|per\s+mo\.?|/\s*mo(?:nth)?\.?|monthly|each\s+month|a\s+month|every\s+month)"
 
         patterns = [
             rf"{rent_keyword}[:\s]+{CURRENCY_REGEX}",
@@ -1131,10 +1226,26 @@ class FieldExtractor:
             # to owner (tenant portion + HAP) -- what the rent roll's lease
             # rent should match.
             rf"(?:contract\s+rent|(?:initial\s+)?rent\s+to\s+owner)(?:\s+is)?[:\s]+{CURRENCY_REGEX}",
+            # A bare "Rent" label: on its own line in a two-column table
+            # ("Rent\n$2,140.00 / month", "Apartment rent\n$1,225.00") or
+            # inline ("Rent: $1,525.00 each month", "Rent per month: $1,820.00").
+            rf"(?:^|\n)[ \t]*(?:monthly\s+|apartment\s+|base\s+)?rent(?:\s+per\s+month)?[ \t]*[:\-]?[ \t]*\n?[ \t]*{CURRENCY_REGEX}",
+            rf"\b(?:monthly\s+)?rent(?:\s+per\s+month)?\s*:\s*{CURRENCY_REGEX}",
+            # "4. Rent. $1,895 per month."
+            rf"\brent\.\s*{CURRENCY_REGEX}\s*{per_month}",
+            rf"contract\s+rent{GAP}{CURRENCY_REGEX}",
             rf"{rent_keyword}{GAP}{CURRENCY_REGEX}",
+            # Prose with a per-month cue: "The rent is $975 a month", "as rent
+            # for the Premises the sum of ... ($1,450.00) per month",
+            # "TENANT SHALL PAY $1,085.00 PER MONTH", "at $1,240.00 per month".
+            rf"\brent\b{GAP}{CURRENCY_REGEX}\s*\)?\s*{per_month}",
+            rf"\b(?:pay|pays)\s+(?:to\s+\w+\s+)?{CURRENCY_REGEX}\s*{per_month}",
+            rf"\bat\s+{CURRENCY_REGEX}\s*{per_month}",
             rf"rent\s+(?:is|will\s+be|shall\s+be)[:\s]*{CURRENCY_REGEX}",
+            rf"\byou\s+will\s+pay\s+{CURRENCY_REGEX}\s+on\s+the\s+first",
         ]
-        confidences = ["high", "high", "high", "high", "high", "medium", "low"]
+        confidences = ["high", "high", "high", "high", "high", "high", "high", "high", "high", "medium",
+                       "medium", "medium", "medium", "low", "low"]
 
         result = self._search_ordered(self._base_lease_pages(pages), patterns, confidences, accept=_is_dwelling_rent)
         if not result:
@@ -1194,12 +1305,20 @@ class FieldExtractor:
         and multi-match scanning (find_all_date_candidates, used for
         cross-section consistency checking) stay in sync.
         """
-        patterns = [
-            rf"(?:lease\s+)?start\s+date[:\s]+{DATE_REGEX}",
-            rf"commencement\s+date[:\s]+{DATE_REGEX}",
-            rf"begin(?:ning)?\s+date[:\s]+{DATE_REGEX}",
-            rf"term\s+begins?[:\s]+{DATE_REGEX}",
-            rf"effective\s+date[:\s]+{DATE_REGEX}",
+        low_reason = (
+            "Date found further from the commencement keyword than a direct statement usually appears -- "
+            "confirm it actually describes this lease's start, not a different referenced event or date.")
+        table = [
+            (rf"(?:lease\s+)?start\s+date[:\s]+{DATE_REGEX}", "high", None),
+            (rf"lease\s+start[:\s]+{DATE_REGEX}", "high", None),
+            (rf"commencement\s+date[:\s]+{DATE_REGEX}", "high", None),
+            (rf"begin(?:ning)?\s+date[:\s]+{DATE_REGEX}", "high", None),
+            (rf"term\s+begins?[:\s]+{DATE_REGEX}", "high", None),
+            (rf"effective\s+date[:\s]+{DATE_REGEX}", "high", None),
+            # "Term: April 1, 2026 to March 31, 2027" -- the first date of a
+            # term range. The lookahead requires the range's second date.
+            (rf"{TERM_CUE}[:\s]{GAP}{DATE_REGEX}(?={RANGE_SEP}{DATE_NC})", "high", None),
+            (rf"\bfrom\s+{DATE_REGEX}(?={RANGE_SEP}{DATE_NC})", "high", None),
             # \b(?!\s+Date) excludes the noun form in a defined-term aside
             # like '(the "Commencement Date")'. The \b matters: without it,
             # \w* backtracks one character short of the full word (e.g.
@@ -1210,27 +1329,48 @@ class FieldExtractor:
             # (e.g. the lease's END date). \b forces \w* to only stop at
             # an actual word boundary, so the lookahead can't be dodged
             # by a partial-word backtrack.
-            rf"(?:shall\s+)?commenc\w*\b(?!\s+Date){GAP}{DATE_REGEX}",
-            rf"begin\w*\b(?!\s+Date){GAP}{DATE_REGEX}",
-            rf"starting{GAP}{DATE_REGEX}",
+            (rf"(?:shall\s+)?commenc\w*\b(?!\s+Date){GAP}{DATE_REGEX}", "high", None),
+            # "The lease starts on February 1, 2026" / "will start July 1, 2026"
+            (rf"\b(?:lease|tenancy|term)\s+(?:will\s+)?start(?:s)?\b(?:\s+on)?{GAP}{DATE_REGEX}", "high", None),
+            (rf"begin\w*\b(?!\s+Date){GAP}{DATE_REGEX}", "medium", None),
+            (rf"start(?:s|ing)?\b(?!\s+Date){GAP}{DATE_REGEX}", "medium", None),
+            (rf"move[- ]in\s+date[:\s]+{DATE_REGEX}", "medium",
+             "Taken from the move-in date -- usually the lease start, but confirm."),
             # Last resort: the same commence/begin cue, but allowing up to
             # WIDE_GAP's ~150 chars (crossing one more clause) instead of
             # GAP's ~100 -- covers a date stated a sentence away from the
             # keyword (e.g. "...as defined in Section 3. The Commencement
             # Date is anticipated to be April 1, 2025"), at the cost of a
             # higher chance the date belongs to something else nearby.
-            rf"(?:shall\s+)?commenc\w*\b(?!\s+Date){WIDE_GAP}{DATE_REGEX}",
+            (rf"(?:shall\s+)?commenc\w*\b(?!\s+Date){WIDE_GAP}{DATE_REGEX}", "low", low_reason),
         ]
-        confidences = ["high", "high", "high", "high", "high", "high", "medium", "medium", "low"]
-        reasons = [None, None, None, None, None, None, None, None,
-            "Date found further from the commencement keyword than a direct statement usually appears -- "
-            "confirm it actually describes this lease's start, not a different referenced event or date."]
+        patterns = [t[0] for t in table]
+        confidences = [t[1] for t in table]
+        reasons = [t[2] for t in table]
         return patterns, confidences, reasons
+
+    @staticmethod
+    def _canonical_date(entry: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        """
+        A day-first date ("1 April 2026") that normalize.parse_date can't
+        read is rewritten as "April 1, 2026", so the report's date checks
+        and everything else downstream can use it. Formats parse_date
+        already reads are left exactly as the lease wrote them.
+        """
+        if not entry or not entry.get("value") or parse_date(entry["value"]):
+            return entry
+        m = re.match(r"^(\d{1,2})\s+([A-Za-z]+)\.?,?\s+(\d{4})$", entry["value"])
+        if m:
+            d = parse_date(f"{m.group(2)} {m.group(1)}, {m.group(3)}")
+            if d:
+                entry["value"] = f"{d.strftime('%B')} {d.day}, {d.year}"
+        return entry
 
     def _extract_start_date(self, pages: List[Dict[str, Any]]) -> Dict[str, Any]:
         patterns, confidences, reasons = self._start_date_patterns()
-        result = (self._search_ordered(self._base_lease_pages(pages), patterns, confidences, reasons=reasons)
-                  or self._search_ordered(pages, patterns, confidences, reasons=reasons))
+        result = self._canonical_date(
+            self._search_ordered(self._base_lease_pages(pages), patterns, confidences, reasons=reasons)
+            or self._search_ordered(pages, patterns, confidences, reasons=reasons))
         return result if result else _not_found()
 
     def _end_date_patterns(self):
@@ -1241,19 +1381,27 @@ class FieldExtractor:
           3. "...and ending March 31, 2030" cue (medium — broader verb,
              slightly more room for a false positive)
         """
-        patterns = [
-            rf"(?:lease\s+)?end\s+date[:\s]+{DATE_REGEX}",
-            rf"ending\s+date[:\s]+{DATE_REGEX}",
+        low_reason = (
+            "Date found further from the expiration keyword than a direct statement usually appears -- "
+            "confirm it actually describes this lease's end, not a different referenced event or date.")
+        table = [
+            (rf"(?:lease\s+)?end\s+date[:\s]+{DATE_REGEX}", "high", None),
+            (rf"ending\s+date[:\s]+{DATE_REGEX}", "high", None),
+            (rf"lease\s+end[:\s]+{DATE_REGEX}", "high", None),
             # "ends at 11:59 p.m. on February 28, 2027" -- the periods in
             # "p.m." stop the period-free GAP the prose patterns use.
-            rf"\bend(?:s|ing)?\s+at\s+\d{{1,2}}:\d{{2}}\s*[ap]\.?\s?m\.?\s+on\s+{DATE_REGEX}",
-            rf"expiration\s+date[:\s]+{DATE_REGEX}",
-            rf"termination\s+date[:\s]+{DATE_REGEX}",
-            rf"term\s+ends?[:\s]+{DATE_REGEX}",
-            rf"expires?[:\s]+{DATE_REGEX}",
-            rf"(?:shall\s+)?expir\w*\b(?!\s+Date){GAP}{DATE_REGEX}",
-            rf"(?:shall\s+)?terminat\w*\b(?!\s+Date){GAP}{DATE_REGEX}",
-            rf"ending{GAP}{DATE_REGEX}",
+            (rf"\bend(?:s|ing)?\s+at\s+\d{{1,2}}:\d{{2}}\s*[ap]\.?\s?m\.?\s+on\s+{DATE_REGEX}", "high", None),
+            (rf"expiration\s+date[:\s]+{DATE_REGEX}", "high", None),
+            (rf"termination\s+date[:\s]+{DATE_REGEX}", "high", None),
+            (rf"term\s+ends?[:\s]+{DATE_REGEX}", "high", None),
+            (rf"expires?[:\s]+{DATE_REGEX}", "high", None),
+            # Second date of a term range: "Term: April 1, 2026 to March 31, 2027"
+            (rf"{TERM_CUE}[:\s]{GAP}{DATE_NC}{RANGE_SEP}{DATE_REGEX}", "high", None),
+            (rf"\bfrom\s+{DATE_NC}{RANGE_SEP}{DATE_REGEX}", "high", None),
+            (rf"(?:shall\s+)?expir\w*\b(?!\s+Date){GAP}{DATE_REGEX}", "high", None),
+            (rf"(?:shall\s+)?terminat\w*\b(?!\s+Date){GAP}{DATE_REGEX}", "high", None),
+            (rf"\bends\s+{DATE_REGEX}", "high", None),
+            (rf"ending{GAP}{DATE_REGEX}", "medium", None),
             # "...commence on April 1, 2025 and end on March 31, 2030" --
             # the verb form ("end on"), as distinct from the gerund
             # "ending" above -- a real, common phrasing found via
@@ -1262,15 +1410,15 @@ class FieldExtractor:
             # "end") still requires a following "on" plus an actual
             # DATE_REGEX match, so this doesn't false-positive on
             # unrelated "end" mentions with no real date attached.
-            rf"\bend\w*\s+on{GAP}{DATE_REGEX}",
-            rf"running\s+through{GAP}{DATE_REGEX}",
+            (rf"\bend\w*\s+on{GAP}{DATE_REGEX}", "medium", None),
+            (rf"running\s+through{GAP}{DATE_REGEX}", "medium", None),
+            (rf"\b(?:until|through)\s+{DATE_REGEX}", "medium", None),
             # Same WIDE_GAP last resort as the start-date list above.
-            rf"(?:shall\s+)?expir\w*\b(?!\s+Date){WIDE_GAP}{DATE_REGEX}",
+            (rf"(?:shall\s+)?expir\w*\b(?!\s+Date){WIDE_GAP}{DATE_REGEX}", "low", low_reason),
         ]
-        confidences = ["high", "high", "high", "high", "high", "high", "high", "high", "high", "medium", "medium", "medium", "low"]
-        reasons = [None, None, None, None, None, None, None, None, None, None, None, None,
-            "Date found further from the expiration keyword than a direct statement usually appears -- "
-            "confirm it actually describes this lease's end, not a different referenced event or date."]
+        patterns = [t[0] for t in table]
+        confidences = [t[1] for t in table]
+        reasons = [t[2] for t in table]
         return patterns, confidences, reasons
 
     def find_all_date_candidates(self, pages: List[Dict[str, Any]], role: str) -> List[Dict[str, Any]]:
@@ -1306,8 +1454,9 @@ class FieldExtractor:
     def _extract_end_date(self, pages: List[Dict[str, Any]]) -> Dict[str, Any]:
         patterns, confidences, reasons = self._end_date_patterns()
 
-        result = (self._search_ordered(self._base_lease_pages(pages), patterns, confidences, reasons=reasons)
-                  or self._search_ordered(pages, patterns, confidences, reasons=reasons))
+        result = self._canonical_date(
+            self._search_ordered(self._base_lease_pages(pages), patterns, confidences, reasons=reasons)
+            or self._search_ordered(pages, patterns, confidences, reasons=reasons))
         return result if result else _not_found()
 
     def _extract_rent_escalation(self, pages: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -1516,7 +1665,61 @@ class FieldExtractor:
         confidences = ["high", "high"]
 
         result = self._search_ordered(pages, patterns, confidences)
+        if result:
+            return result
+        result = self._find_street_address(self._base_lease_pages(pages)) or self._find_street_address(pages)
         return result if result else _not_found()
+
+    # "4410 Harbor Pointe Blvd", "2 Verbena Row", "2020 N. LANTERN HILL RD." --
+    # a number, up to five capitalized (or ALL-CAPS) words, and a street type.
+    _STREET_RE = re.compile(
+        r"\b\d{1,6}\s+(?:[NSEW]\.?\s+)?(?:[A-Z][A-Za-z'\.\-]*\s+){0,4}"
+        r"(?i:street|st|avenue|ave|road|rd|drive|dr|lane|ln|court|ct|boulevard|blvd|way|place|pl|parkway|pkwy|"
+        r"terrace|ter|circle|cir|row|run|walk|trail|trl|highway|hwy|square|sq|loop|path|pike|crossing|point|"
+        r"pointe|alley|plaza|bend|commons|landing|ridge|hill|heights|green|glen|cove|creek|park)\b\.?"
+        # then an optional unit and city/state/zip on the same address
+        r"(?:,?\s*(?:Apartment|Apt\.?|Unit|Suite|Ste\.?|#)\s*(?:No\.?\s*)?#?\s*[A-Z0-9][\w\-]*)?"
+        r"(?:,\s*[A-Z][A-Za-z .]+,\s*[A-Z]{2}\s+\d{5}(?:-\d{4})?)?"
+    )
+    # What should sit just before the premises' own address -- as opposed
+    # to a notice / payment address for the owner's office.
+    _PREMISES_CUE_RE = re.compile(
+        r"(?i:premises|dwelling|residence|home|rental\s+unit|contract\s+unit|unit|apartment|apt|located|address|"
+        r"property|renting|rents|leases|known\s+as|community)\b[^\n$]{0,40}$")
+    _NOTICE_CUE_RE = re.compile(r"(?i:notice|notices|payments?\s+(?:to|at)|mail|remit|office|send)\b[^$]{0,60}$")
+
+    def _find_street_address(self, pages: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        """
+        A street address anywhere in the lease's own pages, preferring one
+        introduced by a premises cue ("Premises:", "Dwelling Unit",
+        "renting ... at", "known as") -- high -- over the first bare one
+        (medium). Addresses after "notices to"/"payments to" are skipped:
+        those are the owner's office, not the apartment.
+        """
+        if not pages:
+            return None
+        full_text, page_for_offset = _concat_pages(pages)
+        fallback = None
+        for m in self._STREET_RE.finditer(full_text):
+            before = full_text[max(0, m.start() - 80):m.start()]
+            notice = self._NOTICE_CUE_RE.search(before)
+            premises = self._PREMISES_CUE_RE.search(before)
+            # Whichever cue sits closer to the address decides.
+            if notice and not (premises and premises.start() > notice.start()):
+                continue
+            entry = {
+                "value": _clean_value(m.group(0)).rstrip(".,"),
+                "source": {"page": page_for_offset(m.start()), "quote": _make_quote(full_text, m.start(), m.end())},
+                "confidence": "high",
+            }
+            if premises:
+                return entry
+            if fallback is None:
+                entry["confidence"] = "medium"
+                entry["validation_note"] = ("No 'premises' / 'dwelling' label next to this address -- confirm "
+                                            "it is the leased apartment, not another address in the lease.")
+                fallback = entry
+        return fallback
 
     def _extract_square_footage(self, pages: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
