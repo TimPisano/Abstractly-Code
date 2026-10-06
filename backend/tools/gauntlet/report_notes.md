@@ -1,11 +1,11 @@
 <!-- SUMMARY -->
-**Cycle 4: 156 of 169 cases pass (92%). It was 22 of 132 (17%) at the start.** The gauntlet now runs 86 messy rent rolls, 43 T-12s and 190 leases through the full local pipeline, graded against a manifest of correct answers.
+**Cycle 5: 156 of 169 cases pass (92%). It was 22 of 132 (17%) at the start.** The gauntlet now runs 86 messy rent rolls, 43 T-12s and 190 leases through the full local pipeline, graded against a manifest of correct answers.
 
-- **Planted mismatches caught: 1,925 of 1,925, every one with the right dollar amount.**
-- **False alarms: 15, down from 337.** All come from *lease extraction* misreading three accented tenant names (owned by `feature/lease-intelligence`; logged, not fixed).
-- **The only failures still on my side are 3 scanned/rotated PDF rent rolls.** They fail with a clear 400, never with wrong numbers.
+- **Planted mismatches caught: 1,932 of 1,932, every one with the right dollar amount.**
+- **False alarms: 19, down from 337.** All are lease-extraction misreads of accented names (owned by `feature/lease-intelligence`) or character-level OCR misreads on scanned rent rolls.
+- **Scanned rent rolls now import.** Columns are rebuilt from the data rows, sideways and tilted pages are turned upright, and impossible OCR rents are blanked with a warning. Remaining scan failures are character misreads (a lost space, "4201" for 1201) that grid logic can't fix. The heavily degraded sideways fixture still fails with a clear 400.
 - **No crashes and no hangs.**
-- **Fixes:** 45, each its own commit with a regression test. All 83 test files pass.
+- **Fixes:** 50, each its own commit with a regression test. All 83 test files pass.
 
 **AUDIT.md top priority: "the Deal Mismatch Report gets dollar figures wrong on ordinary lease files" (§6.11, §6.1).** It is reproduced with golden fixtures (property `p18` + a re-import case) and fixed at the root:
 
@@ -54,10 +54,7 @@ All of these are fixed and covered by tests. **Two decisions are yours, before m
    - For tenants with accented names, the regex extractor returns the *owner entity* ("Bluebonnet Commons Owner LLC", "Copper Canyon Owner LLC") or only the surname ("Delacroix" for "François Delacroix"). The result is a high-severity false tenant_mismatch on that unit.
    - Repro: `backend/tools/gauntlet/fixtures/leases/p04/1301.pdf`, `p04/1303.pdf`, `p08/202.pdf`.
    - The runner tags these `[extraction-caused]`. Overall, tenant extraction is 560/585 correct; rent, dates and unit are 585/585.
-2. **Scanned rent-roll PDFs (OCR): 3 failing cases.**
-   - A 200 dpi scan with speckle noise either reconstructs no table or loses the header.
-   - A sideways (rotated 90°) scan is never re-oriented.
-   - Both fail with a clear 400 rather than wrong numbers, which is the safe failure. Fixing them properly means orientation detection (tesseract OSD) and a sturdier grid rebuild in `rent_roll_table_extract.py`. Not attempted yet.
+2. **Scanned rent-roll PDFs (OCR): 3 cases still fail.** The reasons are character-level misreads, not structure: "EzraQuintero" (lost space; tenant matching now tolerates it), "4201" for unit 1201, and "$1.00" for $1,475.00 (now blanked with a warning, not priced). The worst fixture (sideways, tilted, speckled, 57% OCR confidence) still fails with a clear 400. Better results would need a better OCR engine or a cleaner scan, not more grid logic.
 3. **AI extraction path not exercised.** No funded `ANTHROPIC_API_KEY` exists, and CLAUDE.md rule 8 requires asking before any real-API run. Every run used the regex engine; the runner strips the key from its own environment.
 4. **File types still narrower than the parsers.**
    - The rent-roll picker's `accept` list doesn't include `.txt`, though the backend now takes it. This is a frontend change, out of scope here.
