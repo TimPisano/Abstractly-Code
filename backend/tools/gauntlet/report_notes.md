@@ -1,11 +1,25 @@
 <!-- SUMMARY -->
-**Cycle 3: 148 of 161 cases pass (92%). It was 22 of 132 (17%) at the start.** Cycle 3 added nastier files aimed at the weak spots. The gauntlet now runs 83 messy rent rolls, 41 T-12s and 178 leases through the full local pipeline, graded against a manifest of correct answers.
+**Cycle 4: 156 of 169 cases pass (92%). It was 22 of 132 (17%) at the start.** The gauntlet now runs 86 messy rent rolls, 43 T-12s and 190 leases through the full local pipeline, graded against a manifest of correct answers.
 
-- **Planted mismatches caught: 1,907 of 1,907, every one with the right dollar amount.** The count is large because the 600-unit stress file plants ~530 of them. At baseline it was 108 of 193, and that denominator was smaller because many files never got past import.
-- **False alarms: 15, down from 337.** All 15 come from *lease extraction* misreading three accented tenant names, which is owned by the `feature/lease-intelligence` session. Logged, not fixed.
+- **Planted mismatches caught: 1,925 of 1,925, every one with the right dollar amount.**
+- **False alarms: 15, down from 337.** All come from *lease extraction* misreading three accented tenant names (owned by `feature/lease-intelligence`; logged, not fixed).
 - **The only failures still on my side are 3 scanned/rotated PDF rent rolls.** They fail with a clear 400, never with wrong numbers.
-- **No crashes and no hangs.** The 600-unit rent roll imports and reports in about 2 seconds.
-- **Fixes:** 37, each its own commit with a regression test. All 83 test files pass.
+- **No crashes and no hangs.**
+- **Fixes:** 45, each its own commit with a regression test. All 83 test files pass.
+
+**AUDIT.md top priority: "the Deal Mismatch Report gets dollar figures wrong on ordinary lease files" (§6.11, §6.1).** It is reproduced with golden fixtures (property `p18` + a re-import case) and fixed at the root:
+
+| Audit finding | Before (on the pre-fix code, same fixtures) | Fix |
+|---|---|---|
+| Original lease + renewal on file | Each renewed unit got a phantom rent_mismatch + expired_but_occupied + dates_mismatch (the audit's $3,600 + $25,200 = $28,800/yr reproduced exactly in a unit test) | Each unit is compared only against its **operative** lease (term covering the as-of date, else the newest). This applies in both the report and the reconciliation view. |
+| Scheduled rent step-up | A correct year-2 rent roll was flagged as an overstatement | Rent in effect on the as-of date, from the escalation schedule. An escalation that can't be priced is flagged but **not** counted in dollars. |
+| "First month 50% off" | Priced as a full-term discount: **$10,950 instead of $912.50** (12×) | A singular "first/last month" means one month |
+| Re-import of an updated rent roll | Every unit doubled (9 stale rows stayed active) | A new import for a building supersedes that building's previous rows (kept, not deleted; team-scoped) |
+| "Unit"/"Apt"/"#", "St"/"Street", "Building A, Apt 101", leading property name | Real gaps became unpriced "no lease"/"no unit" pairs | One canonical unit/building key |
+| T-12 from the report page | Always 400 (no property address sent) | Scoped to the rent roll's building when there is exactly one; otherwise a clear error naming the buildings |
+| T-12 income gap / occupancy / bad-debt months | Never fired / false alarm / wrong months | Fixed in cycles 1–2 (see the fixes table) |
+
+Still open from the audit's §6.11 list, all owned by lease extraction: everyday rent phrasings the regex misses (§6.16), and a "rent not found" finding. Those are for the `feature/lease-intelligence` session.
 
 **What was broken, in plain terms:**
 
