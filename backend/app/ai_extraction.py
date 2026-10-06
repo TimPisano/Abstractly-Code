@@ -35,6 +35,7 @@ from typing import Any, Dict, List, Optional
 import anthropic
 
 from . import concessions
+from . import multifamily_charges
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +45,12 @@ DEFAULT_MODEL = os.environ.get("LEASE_EXTRACTION_MODEL", "claude-sonnet-5")
 # rubric changes. The training harness records it per round so a trend
 # line can be attributed to a specific prompt revision. History of what
 # changed each version lives in AI_PIPELINE_LOG.md (Phase 4).
-PROMPT_VERSION = "v2"  # v2: added the multifamily `concessions` field
+# v2: added the multifamily `concessions` field.
+# v3: residential / Section 8 aware prompt; rent_amount is the original
+#     lease's dwelling rent (Section 8: contract rent); termination_options
+#     added so both engines return the same keys; multifamily fields when
+#     LEASE_MULTIFAMILY_FIELDS is on (version reported as "v3+mf").
+PROMPT_VERSION = "v3"
 
 # Generous: a long lease produces a lot of output tokens (15 fields,
 # each with a value + a verbatim source quote that can be a full
@@ -94,7 +100,32 @@ LEASE_FIELDS = [
     # concessions.py turns that verbatim quote into the structured
     # schedule and does every dollar calculation (see _attach_concession_items).
     "concessions",
+    # The regex engine has always returned this; the AI engine now does too.
+    "termination_options",
 ]
+
+# Multifamily fields the model is asked for when LEASE_MULTIFAMILY_FIELDS is
+# on. The model locates and quotes; multifamily_charges.py's deterministic
+# parser computes every number in `details` (same rule as concessions).
+# current_rent_amount / current_lease_end_date are never asked of the
+# model -- they're derived in code from rent_amount + lease_changes.
+MF_FIELDS = [
+    "unit_number",
+    "pet_charges",
+    "parking_charges",
+    "utility_charges",
+    "section_8",
+    "lease_changes",
+]
+
+
+def active_fields() -> List[str]:
+    """The fields this call asks the model for (flag-dependent)."""
+    return LEASE_FIELDS + (MF_FIELDS if multifamily_charges.enabled() else [])
+
+
+def prompt_version() -> str:
+    return PROMPT_VERSION + ("+mf" if multifamily_charges.enabled() else "")
 
 CONFIDENCE_LEVELS = ("high", "medium", "low")
 
@@ -120,7 +151,7 @@ class AIExtractionError(Exception):
 # the confidence rubric here in sync with any updates to the original.
 # ----------------------------------------------------------------------
 
-SYSTEM_PROMPT = """You are a commercial real estate lease abstraction specialist. You read a lease document and extract a fixed set of structured fields, each with a confidence rating and a verbatim source quote a human can use to verify it.
+SYSTEM_PROMPT = """You are a real estate lease abstraction specialist for both commercial leases and multifamily residential (apartment) leases, including subsidized housing (Section 8 Housing Choice Voucher, project-based Section 8 / HUD model leases). You read a lease document and extract a fixed set of structured fields, each with a confidence rating and a verbatim source quote a human can use to verify it.
 
 Non-negotiable rules:
 1. GROUND EVERY VALUE IN THE TEXT. Only report a value you can point to a specific quote for. Never infer, calculate, or "fill in" a plausible-looking value. If the document does not state a field, return it as not found (value null) -- that is a correct, expected answer, not a failure.
@@ -132,6 +163,8 @@ Non-negotiable rules:
    Do not use "high" as a default. If you are reporting a value mainly because you expect the field to exist, that is "low" at best.
 4. NEVER GUESS BETWEEN CANDIDATES. If two different values could each be "the rent" (e.g. an initial rate and a later escalated rate), report the one the lease establishes as the current/base value and note the ambiguity in source_text context; lower the confidence accordingly.
 5. NORMALIZE VALUES to clean display strings (details per field below). Keep source_text raw.
+6. ONE FILE, SEVERAL DOCUMENTS. The document may be the lease followed by addenda (pet, parking, utility, HUD Tenancy Addendum), a HAP contract, renewals, amendments, or a housing authority's rent change notice. The core fields (rent, dates) describe the ORIGINAL lease. Later renewals, amendments and rent change notices are never folded into the core fields; when lease_changes is requested, record them there.
+7. RESIDENTIAL WORDING. Apartment leases call the parties "Resident(s)" and "Owner"/"Management"; treat these as tenant and landlord. A managing agent signing for the owner is not the landlord.
 
 You will always call the record_lease_abstraction tool exactly once. Never reply with prose."""
 
@@ -140,12 +173,12 @@ You will always call the record_lease_abstraction tool exactly once. Never reply
 # compact but specific -- these are the descriptions Phase 4 tuning
 # will sharpen against observed failures.
 FIELD_GUIDANCE = {
-    "tenant": "The tenant / lessee / renter party. The entity or person leasing the space, not the owner. Full legal name including entity suffix (\"Blue Sky Coffee Roasters, Inc.\"). Exclude defined-term boilerplate like \"a Delaware corporation\".",
-    "landlord": "The landlord / lessor party. The owner/grantor of the leasehold. Full legal name as above.",
-    "rent_amount": "The base / minimum monthly rent for the initial term, as a monthly figure. Display as \"$6,250.00\". If the lease states an annual figure, convert to monthly and say so in source_text context. Do NOT return a later escalated year's rent here -- that belongs in rent_escalation.",
-    "lease_start_date": "The commencement date of the lease term (not the execution/signing date unless they are the same). Display as \"April 1, 2025\".",
-    "lease_end_date": "The expiration date of the initial term (before any renewal options). Display as \"March 31, 2030\".",
-    "property_address": "The street address of the leased premises. Include suite/unit if given. Exclude the \"(the “Premises”)\" defined-term tail.",
+    "tenant": "The tenant / lessee / renter / resident party. The entity or person leasing the space, not the owner. Full legal name including entity suffix (\"Blue Sky Coffee Roasters, Inc.\"). Exclude defined-term boilerplate like \"a Delaware corporation\". If several residents are named (co-tenants), value is the FIRST-named resident only; quote the clause naming all of them in source_text.",
+    "landlord": "The landlord / lessor / owner party. The owner/grantor of the leasehold -- not a managing agent acting for it. Full legal name as above.",
+    "rent_amount": "The base / minimum monthly rent for the dwelling or premises under the ORIGINAL lease, as a monthly figure. Display as \"$6,250.00\". If the lease states an annual figure, convert to monthly and say so in source_text context. Do NOT return a later escalated year's rent (that belongs in rent_escalation), a renewal's or amendment's new rent, or a rent change notice's figure. Residential: exclude pet rent, parking/garage fees, utility charges and other monthly fees; if the lease only gives a total of rent plus charges, use the base rent line. Section 8: the CONTRACT RENT / rent to owner (tenant portion + housing assistance payment), never the tenant's portion alone.",
+    "lease_start_date": "The commencement date of the ORIGINAL lease term (not the execution/signing date unless they are the same, and not a renewal term's start). Display as \"April 1, 2025\".",
+    "lease_end_date": "The expiration date of the ORIGINAL lease's initial term (before any renewal option or renewal agreement). Display as \"March 31, 2030\".",
+    "property_address": "The street address of the leased premises (the apartment or suite), not an owner's notice or payment address. Include suite/unit if given. Exclude the \"(the “Premises”)\" defined-term tail.",
     "security_deposit": "The security deposit amount held by the landlord. Display as \"$12,500.00\". Not the first month's rent unless the lease explicitly equates them.",
     "cam_charges": "Common Area Maintenance / operating expense contribution. The amount or the basis (e.g. \"$3.50 per sq ft annually\", \"$1,200.00 per month\", \"pro-rata share of 12.5%\"). Verbatim enough that a human can price it.",
     "rent_escalation": "How base rent increases over the term. Prefer a compact schedule (\"Year 1: $6,250/mo; Year 2: $6,438/mo; ...\") or a rule (\"3% annually on each anniversary\", \"CPI, capped at 4%\"). If rent is flat for the whole term, value is \"None\" only if the lease says so explicitly; otherwise not found.",
@@ -155,6 +188,13 @@ FIELD_GUIDANCE = {
     "insurance_requirements": "Tenant's required insurance coverage -- the key limits (e.g. \"$2,000,000 per occurrence CGL\"). The headline requirement, not every sub-clause.",
     "default_cure_period": "The time the defaulting party has to cure after written notice of a monetary/general default. Display as \"10 days after written notice\". If monetary and non-monetary differ, report the general/non-monetary one and note the split.",
     "square_footage": "Rentable/leasable area of the premises. Display as \"2,400 sq ft\".",
+    "termination_options": "Any right to end the lease early: who holds it, the notice required, and any fee (e.g. \"Tenant may terminate after month 36 on 6 months notice with a fee of 3 months rent\"; residential: \"early termination fee equal to two months rent with 30 days notice\"; military clause). Not found if none.",
+    "unit_number": "The apartment / unit number alone, exactly as written (\"204\", \"14-C\", \"B\"), without \"Apt.\"/\"Unit\"/\"#\". Not found for a whole-building or commercial lease with no unit.",
+    "pet_charges": "Pet / animal charges: monthly pet rent, one-time pet fee, pet deposit. Display compactly (\"$35.00/mo pet rent; $300.00 pet fee (one-time); $250.00 pet deposit\"). source_text MUST quote every pet charge clause verbatim (join separate clauses with \" ... \"). Not found if no pet charges (a no-pets rule alone is not found).",
+    "parking_charges": "Monthly parking, garage, carport or reserved-space fees and the space identifier. Display as \"$75.00/mo parking (space P-14)\". Quote the clause verbatim. Not found if parking is free or not mentioned.",
+    "utility_charges": "Utilities the resident pays the OWNER (not the provider directly): RUBS / ratio billing / allocated or sub-metered bill-backs (name each utility) and flat monthly fees (valet trash, pest control, trash, cable/internet package, package locker, etc. with amounts). Display e.g. \"RUBS bill-back: water, sewer, trash; Valet Trash $25.00/mo\". source_text MUST quote every such clause verbatim, joined with \" ... \". Not found if the resident only pays providers directly or the owner pays.",
+    "section_8": "Present only for subsidized tenancies (Section 8 / Housing Choice Voucher / HAP contract / HUD model lease). Display the housing authority (PHA or contract administrator) name and the rent split exactly as stated: contract rent (rent to owner), tenant rent / tenant portion / total tenant payment, housing assistance payment (HAP), utility allowance -- from the lease, HUD Tenancy Addendum or HAP contract as of the ORIGINAL lease, not a later rent change notice. source_text MUST quote every clause stating the PHA name or one of these figures, joined with \" ... \". Never compute a figure the document doesn't state. Not found for a market-rate lease.",
+    "lease_changes": "Every renewal agreement, lease amendment / modification, or rent change notice included in this document AFTER the original lease. Display one per change separated by \"; \", e.g. \"Renewal effective March 1, 2027: rent $1,510.00, ends February 29, 2028; Rent change notice effective July 1, 2026: contract rent $1,235.00, tenant rent $320.00, HAP $915.00\". source_text MUST quote each change's operative sentences verbatim, joined with \" ... \". Not found if the document is only the original lease (a renewal OPTION clause inside the lease is not a change).",
     "concessions": "Every rent concession the lease grants the tenant: free months / abated rent, move-in or look-and-lease specials, recurring monthly discounts ($ or % off), and one-time rent credits -- including renewal, retention, military, or employee incentives. For each: the amount, how long it lasts (which months, or the full term), and what triggered it. Display compactly, one concession per clause separated by \"; \", e.g. \"1 month free (move-in, Oct 2025); $100.00/mo off for the first 6 months (renewal)\". source_text MUST quote every concession clause verbatim (join separate clauses with \" ... \"). Do NOT include rent abatement that only applies after casualty/condemnation, late-fee waivers, or rent escalations. Not found if the lease grants no concession.",
 }
 
@@ -182,7 +222,8 @@ def _field_property_schema() -> Dict[str, Any]:
 
 
 def _build_tool() -> Dict[str, Any]:
-    field_lines = "\n".join(f"  - {name}: {FIELD_GUIDANCE[name]}" for name in LEASE_FIELDS)
+    fields = active_fields()
+    field_lines = "\n".join(f"  - {name}: {FIELD_GUIDANCE[name]}" for name in fields)
     return {
         "name": "record_lease_abstraction",
         "description": (
@@ -192,8 +233,8 @@ def _build_tool() -> Dict[str, Any]:
         ),
         "input_schema": {
             "type": "object",
-            "properties": {name: _field_property_schema() for name in LEASE_FIELDS},
-            "required": list(LEASE_FIELDS),
+            "properties": {name: _field_property_schema() for name in fields},
+            "required": list(fields),
         },
     }
 
@@ -231,7 +272,7 @@ def _pages_to_prompt_text(pages: List[Dict[str, Any]]) -> str:
 
 def _user_message(pages: List[Dict[str, Any]]) -> str:
     return (
-        "Abstract the following commercial lease. Page markers are shown as "
+        "Abstract the following lease document. Page markers are shown as "
         "\"===== PAGE N =====\". Extract each field per the tool's field guidance and "
         "the confidence rubric in your instructions. For every field you find, source_text "
         "must be copied verbatim from the text below.\n\n"
@@ -382,9 +423,11 @@ def _attach_concession_items(entry: Dict[str, Any], pages: List[Dict[str, Any]])
 
 def _parse_tool_payload(payload: Dict[str, Any], pages: List[Dict[str, Any]]) -> Dict[str, Any]:
     result = {}
-    for name in LEASE_FIELDS:
+    for name in active_fields():
         result[name] = _coerce_field_entry(payload.get(name), pages)
     result["concessions"] = _attach_concession_items(result["concessions"], pages)
+    if multifamily_charges.enabled():
+        result.update(multifamily_charges.attach_ai_details(result, pages))
     return result
 
 
@@ -518,7 +561,10 @@ def extract_lease_fields(
                       "source_text": str | None,
                       "engine": "ai"}}
 
-    with exactly the keys in LEASE_FIELDS (the 15 core fields + concessions). Raises AIExtractionError
+    with exactly the keys in active_fields() (the core fields, concessions and
+    termination_options; plus the multifamily fields and the derived
+    current_rent_amount / current_lease_end_date when LEASE_MULTIFAMILY_FIELDS
+    is on). Raises AIExtractionError
     (never a raw exception, never a partial/empty dict) if the call
     fails or the response is unusable.
     """
@@ -533,7 +579,7 @@ def extract_lease_fields(
     usage = getattr(response, "usage", None)
     telemetry = {
         "model": DEFAULT_MODEL,
-        "prompt_version": PROMPT_VERSION,
+        "prompt_version": prompt_version(),
         "latency_ms": int((time.monotonic() - started) * 1000),
         "input_tokens": getattr(usage, "input_tokens", None),
         "output_tokens": getattr(usage, "output_tokens", None),

@@ -370,9 +370,9 @@ _PHA_RE = re.compile(
 )
 
 
-def parse_section_8(doc: _Doc, base_rent: Optional[float] = None) -> Entry:
+def parse_section_8(doc: _Doc, base_rent: Optional[float] = None, require_cue: bool = True) -> Entry:
     cue = _S8_CUE.search(doc.text)
-    if not cue:
+    if not cue and require_cue:
         return _not_found()
     doc = doc.without_changes()
     pha_m = None
@@ -551,7 +551,7 @@ def _current(base: Optional[Entry], changes_entry: Entry, key: str, display) -> 
         if c.get(key) is not None:
             return {
                 "value": display(c[key]),
-                "source": {"page": c["page"], "quote": changes_entry["source"]["quote"]},
+                "source": {"page": c.get("page"), "quote": (changes_entry.get("source") or {}).get("quote")},
                 "confidence": "high",
                 "details": {"from": c["kind"], "effective_date": c.get("effective_date")},
             }
@@ -586,3 +586,78 @@ def extract(pages: List[Dict[str, Any]], base_fields: Dict[str, Entry]) -> Dict[
         "current_rent_amount": _current(base_fields.get("rent_amount"), changes, "new_rent", _money),
         "current_lease_end_date": _current(base_fields.get("lease_end_date"), changes, "new_end_date", _display_date),
     }
+
+
+# ----------------------------------------------------------------------
+# AI engine: the model finds and quotes; this module computes the numbers
+# ----------------------------------------------------------------------
+
+_UNIT_PREFIX = re.compile(r"^(?:apartment|apt\.?|unit|suite|ste\.?|no\.?|number|#)\s*", re.IGNORECASE)
+_QUOTE_PARSERS = {
+    "pet_charges": parse_pet_charges,
+    "parking_charges": parse_parking_charges,
+    "utility_charges": parse_utility_charges,
+}
+AI_FIELDS = ("unit_number", "pet_charges", "parking_charges", "utility_charges", "section_8", "lease_changes")
+
+
+def _quote_doc(entry: Entry) -> _Doc:
+    """The model's verbatim quote as a one-page document (" ... "-joined clauses on their own lines)."""
+    quote = entry.get("source_text") or (entry.get("source") or {}).get("quote") or ""
+    clauses = [c.strip() for c in re.split(r"\s*(?:\.\.\.|\u2026)\s*", quote) if c.strip()]
+    return _Doc([{"page": (entry.get("source") or {}).get("page") or 1, "text": "\n".join(clauses)}])
+
+
+def attach_ai_details(fields: Dict[str, Entry], pages: List[Dict[str, Any]]) -> Dict[str, Entry]:
+    """
+    Give the AI engine's multifamily entries the same `details` the regex
+    engine produces -- parsed from the model's verbatim quote, never from
+    the model's own arithmetic -- and derive current_rent_amount /
+    current_lease_end_date. A field the model reported as not found stays
+    not found (the regex engine doesn't second-guess it). When the quote
+    alone doesn't parse, the full document is parsed instead; when that
+    fails too, the value is kept but marked low confidence.
+    """
+    out: Dict[str, Entry] = {}
+    full: Optional[Dict[str, Entry]] = None
+
+    def from_document(name: str) -> Optional[Dict[str, Any]]:
+        nonlocal full
+        if full is None:
+            full = extract(pages, fields)
+        return full[name].get("details")
+
+    base_rent = parse_currency((fields.get("rent_amount") or {}).get("value"))
+    for name in AI_FIELDS:
+        entry = dict(fields.get(name) or _not_found())
+        if entry.get("value") is None:
+            out[name] = entry
+            continue
+        details: Optional[Dict[str, Any]] = None
+        if name == "unit_number":
+            entry["value"] = _UNIT_PREFIX.sub("", entry["value"]).strip() or entry["value"]
+            details = {}
+        elif name in _QUOTE_PARSERS:
+            details = _QUOTE_PARSERS[name](_quote_doc(entry)).get("details")
+        elif name == "section_8":
+            # The quote may be just the figures ("Rent to owner: $1,450.00 ...
+            # Tenant Rent: $312.00") with no "Section 8" wording in it -- the
+            # model already judged the tenancy subsidized.
+            details = parse_section_8(_quote_doc(entry), base_rent, require_cue=False).get("details")
+        if not details and name != "unit_number":
+            # lease_changes always lands here: it needs page structure
+            # (which document a sentence belongs to), not just the quote.
+            details = from_document(name)
+        if details is None:
+            entry["details"] = {}
+            entry["confidence"] = "low"
+            entry["validation_note"] = ("Found by the model, but its figures couldn't be read automatically -- "
+                                        "verify against the document.")
+        else:
+            entry["details"] = details
+        out[name] = entry
+
+    changes = out["lease_changes"] if out["lease_changes"].get("details") else _not_found()
+    out["current_rent_amount"] = _current(fields.get("rent_amount"), changes, "new_rent", _money)
+    out["current_lease_end_date"] = _current(fields.get("lease_end_date"), changes, "new_end_date", _display_date)
+    return out
