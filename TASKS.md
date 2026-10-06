@@ -109,28 +109,9 @@ those by taking **main's** TASKS.md, not the branch's.
 #### qa/overnight-gauntlet
 - Worktree: ~/dev/projects/abstractly-gauntlet
 - Goal: overnight reliability gauntlet — synthetic messy rent rolls/T-12s/leases graded against a manifest through the full local pipeline; fix root causes with regression tests; QA_REPORT.md per cycle.
-- Loop step: 4/5 — building + cycling (user's prompt = approved scope; autonomous overnight)
-- Last update: 2026-10-05 by start-task
-- Next action: see QA_REPORT.md on the branch for the latest cycle
-
-#### audit/production-readiness
-- Worktree: `~/dev/projects/abstractly-audit`
-- Goal: read-only production readiness audit written to `AUDIT.md` (summary + ranked top 10 with estimates), then an overnight deep bug hunt appended by severity.
-- Loop step: done for the overnight run — `AUDIT.md` (≈700 lines) is complete and **uncommitted by user instruction** (no code edits, commits, pushes, or Render changes). 3 waves, 19 subagents, every kept finding re-checked by the audit session; rejected subagent claims listed in its Appendix A.
-- Headline: Deal Mismatch Report gives wrong dollars on ordinary lease folders (renewal + original both compared; "St"/"Street", "Unit"/"Apt" don't pair; step-ups ignored; rent-roll re-import doubles units; dashboard double-counts); T-12 cross-check broken 4 ways; regex extractor (what testers get, no API key) finds rent in 5/12 common phrasings and reads "Tenant Name:" as tenant "Name"; PDF page cap dead + whole-PDF OCR in-request; no DB backup; stale token = different user after DB wipe; 32 dependency advisories. No cross-team leak found.
-- Incident: a subagent overwrote `backend/benchmark_data/last_run.json` in the primary checkout; restored to HEAD, its copy saved in the session scratchpad.
-- Last update: 2026-10-05 by the audit session
-- Next action: user reads `AUDIT.md` (Summary + top 10 + §6 severity index), decides whether to commit it, and turns top-10 items into tasks via /start-task.
-
-#### feature/auth-flow
-- Worktree: `~/dev/projects/abstractly-auth-flow`
-- Goal: the simplest, smoothest account experience: email-link signup, forgot password, keep me signed in, hardened links and rate limits.
-- Loop step: 8 — pushed `1ae353b`, reviewer + security-auditor running; overnight hardening rounds continue (log: `AUTH_NOTES.md` on the branch)
-- Last update: 2026-10-05 by the auth-flow session
-- Suite: 83/83 files; `test_auth_flow.py` 34 tests; headless E2E 41/41 on Chromium desktop/tablet/Android + WebKit iPhone
-- Real email: 4 sends to timmypisano24@gmail.com accepted by Gmail SMTP (inbox rendering not seen)
-- **Needs you before signup works on tester:** set `EMAIL_USER`/`EMAIL_APP_PASSWORD` on `abstractly-tester-api` in the Render dashboard; tester has no disk, so a restart/15-min spindown wipes pending links + new accounts
-- Next action: fix reviewer/auditor findings, then next hardening round; never merge
+- Loop step: 4/5 — cycling (user's prompt = approved scope; autonomous overnight). Lease extraction is OUT of scope (owned by feature/lease-intelligence, per user 2026-10-05).
+- Last update: 2026-10-05 late evening — cycle 2 done, pushed `2cf7762`. 119/132 cases pass (22 at baseline); 257/257 planted mismatches caught; 15 false alarms, all lease-extraction; 28 Fix commits, each with a regression test; full suite 83/83.
+- Next action: cycle 3 (nastier fixtures at weak spots). Before merge the USER must confirm two decisions in QA_REPORT.md: unit-wording matching (Suite=Apt=Unit, docs/DECISIONS.md) and the new team-scoped `rent_roll_unit_summaries` table. Then reviewer + security-auditor.
 
 #### chore/repo-layout
 - Worktree: `~/dev/projects/abstractly-repo-layout`
