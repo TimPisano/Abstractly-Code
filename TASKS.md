@@ -107,7 +107,7 @@ those by taking **main's** TASKS.md, not the branch's.
 #### feature/auth-hardening
 - Worktree: `~/dev/projects/abstractly-auth-hardening`
 - Goal: keep hardening the merged auth flows (double clicks, back button, expired/reused links, two tabs, mobile Safari, slow email, signing up twice, login during reset); fix with failing-first tests; push each round; never merge.
-- Loop step: 4–9 rounds — round 5 built (return-to-screen after a session ends; login-during-reset across two devices checked); round 4 pushed `55cf729`
+- Loop step: rounds 4–5 pushed (`55cf729`, `f2cbf0e`); suite 83/83; round-4 E2E 16/16 Chromium + 15/16 WebKit (miss = app-dashboard noise), round-5 7/7 both; reviewer running; round 6 next
 - Last update: 2026-10-05 by the auth-flow session (plan approved by user: `docs/plans/feature-auth-hardening.md`)
 - Log: `AUTH_NOTES.md` on the branch (summary at top, rounds 4+)
 - Next action: next round; never merge
