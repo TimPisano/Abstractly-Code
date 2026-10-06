@@ -1,0 +1,589 @@
+{
+ "0": {
+  "by_format": {
+   "bad_rr:bad_rent_roll": {
+    "pass": 9,
+    "total": 14
+   },
+   "bad_t12:bad_t12": {
+    "pass": 3,
+    "total": 5
+   },
+   "deal:full_deal": {
+    "pass": 0,
+    "total": 14
+   },
+   "iso:team_isolation": {
+    "pass": 1,
+    "total": 1
+   },
+   "rr:appfolio_csv": {
+    "pass": 1,
+    "total": 4
+   },
+   "rr:appfolio_xlsx": {
+    "pass": 1,
+    "total": 3
+   },
+   "rr:appfolio_xlsx_dup": {
+    "pass": 0,
+    "total": 2
+   },
+   "rr:broker_csv_messy": {
+    "pass": 0,
+    "total": 3
+   },
+   "rr:broker_xlsx": {
+    "pass": 0,
+    "total": 4
+   },
+   "rr:clean_csv": {
+    "pass": 4,
+    "total": 14
+   },
+   "rr:cp1252_csv": {
+    "pass": 0,
+    "total": 2
+   },
+   "rr:docx": {
+    "pass": 0,
+    "total": 2
+   },
+   "rr:entrata_csv": {
+    "pass": 0,
+    "total": 6
+   },
+   "rr:merged_roommates_xlsx": {
+    "pass": 1,
+    "total": 2
+   },
+   "rr:pdf_scanned": {
+    "pass": 0,
+    "total": 2
+   },
+   "rr:pdf_scanned_rotated": {
+    "pass": 0,
+    "total": 1
+   },
+   "rr:pdf_text": {
+    "pass": 0,
+    "total": 3
+   },
+   "rr:realpage_csv": {
+    "pass": 0,
+    "total": 3
+   },
+   "rr:realpage_xlsx": {
+    "pass": 0,
+    "total": 3
+   },
+   "rr:s8_split_csv": {
+    "pass": 0,
+    "total": 2
+   },
+   "rr:s8_xlsx": {
+    "pass": 2,
+    "total": 3
+   },
+   "rr:utf16_txt": {
+    "pass": 0,
+    "total": 2
+   },
+   "rr:xls": {
+    "pass": 0,
+    "total": 2
+   },
+   "rr:yardi_charges_xlsx": {
+    "pass": 0,
+    "total": 3
+   },
+   "rr:yardi_xlsx": {
+    "pass": 0,
+    "total": 4
+   },
+   "t12:csv_dollar_mondash": {
+    "pass": 0,
+    "total": 4
+   },
+   "t12:csv_long_year": {
+    "pass": 0,
+    "total": 3
+   },
+   "t12:csv_mm_yyyy_nototal": {
+    "pass": 0,
+    "total": 3
+   },
+   "t12:pdf_text": {
+    "pass": 0,
+    "total": 3
+   },
+   "t12:xls": {
+    "pass": 0,
+    "total": 2
+   },
+   "t12:xlsx_extra_sheets": {
+    "pass": 0,
+    "total": 3
+   },
+   "t12:xlsx_mon": {
+    "pass": 0,
+    "total": 4
+   },
+   "t12:xlsx_monyear": {
+    "pass": 0,
+    "total": 6
+   }
+  },
+  "by_kind": {
+   "bad_rr": {
+    "pass": 9,
+    "total": 14
+   },
+   "bad_t12": {
+    "pass": 3,
+    "total": 5
+   },
+   "deal": {
+    "pass": 0,
+    "total": 14
+   },
+   "iso": {
+    "pass": 1,
+    "total": 1
+   },
+   "rr": {
+    "pass": 9,
+    "total": 70
+   },
+   "t12": {
+    "pass": 0,
+    "total": 28
+   }
+  },
+  "cases": 132,
+  "crashes": 1,
+  "findings": {
+   "caught": 108,
+   "expected": 193,
+   "false_alarms": 337,
+   "wrong_amount": 0
+  },
+  "hangs": 0,
+  "lease_extraction_field_accuracy": {
+   "end": {
+    "ok": 585,
+    "total": 585
+   },
+   "rent": {
+    "ok": 585,
+    "total": 585
+   },
+   "start": {
+    "ok": 585,
+    "total": 585
+   },
+   "tenant": {
+    "ok": 560,
+    "total": 585
+   },
+   "unit": {
+    "ok": 585,
+    "total": 585
+   }
+  },
+  "passed": 22,
+  "wall_seconds": 28.5
+ },
+ "1": {
+  "by_format": {
+   "bad_rr:bad_rent_roll": {
+    "pass": 11,
+    "total": 14
+   },
+   "bad_t12:bad_t12": {
+    "pass": 4,
+    "total": 5
+   },
+   "deal:full_deal": {
+    "pass": 12,
+    "total": 14
+   },
+   "iso:team_isolation": {
+    "pass": 1,
+    "total": 1
+   },
+   "rr:appfolio_csv": {
+    "pass": 4,
+    "total": 4
+   },
+   "rr:appfolio_xlsx": {
+    "pass": 3,
+    "total": 3
+   },
+   "rr:appfolio_xlsx_dup": {
+    "pass": 2,
+    "total": 2
+   },
+   "rr:broker_csv_messy": {
+    "pass": 0,
+    "total": 3
+   },
+   "rr:broker_xlsx": {
+    "pass": 2,
+    "total": 4
+   },
+   "rr:clean_csv": {
+    "pass": 12,
+    "total": 14
+   },
+   "rr:cp1252_csv": {
+    "pass": 0,
+    "total": 2
+   },
+   "rr:docx": {
+    "pass": 2,
+    "total": 2
+   },
+   "rr:entrata_csv": {
+    "pass": 0,
+    "total": 6
+   },
+   "rr:merged_roommates_xlsx": {
+    "pass": 2,
+    "total": 2
+   },
+   "rr:pdf_scanned": {
+    "pass": 0,
+    "total": 2
+   },
+   "rr:pdf_scanned_rotated": {
+    "pass": 0,
+    "total": 1
+   },
+   "rr:pdf_text": {
+    "pass": 3,
+    "total": 3
+   },
+   "rr:realpage_csv": {
+    "pass": 3,
+    "total": 3
+   },
+   "rr:realpage_xlsx": {
+    "pass": 3,
+    "total": 3
+   },
+   "rr:s8_split_csv": {
+    "pass": 0,
+    "total": 2
+   },
+   "rr:s8_xlsx": {
+    "pass": 3,
+    "total": 3
+   },
+   "rr:utf16_txt": {
+    "pass": 2,
+    "total": 2
+   },
+   "rr:xls": {
+    "pass": 2,
+    "total": 2
+   },
+   "rr:yardi_charges_xlsx": {
+    "pass": 2,
+    "total": 3
+   },
+   "rr:yardi_xlsx": {
+    "pass": 4,
+    "total": 4
+   },
+   "t12:csv_dollar_mondash": {
+    "pass": 4,
+    "total": 4
+   },
+   "t12:csv_long_year": {
+    "pass": 3,
+    "total": 3
+   },
+   "t12:csv_mm_yyyy_nototal": {
+    "pass": 3,
+    "total": 3
+   },
+   "t12:pdf_text": {
+    "pass": 3,
+    "total": 3
+   },
+   "t12:xls": {
+    "pass": 2,
+    "total": 2
+   },
+   "t12:xlsx_extra_sheets": {
+    "pass": 3,
+    "total": 3
+   },
+   "t12:xlsx_mon": {
+    "pass": 4,
+    "total": 4
+   },
+   "t12:xlsx_monyear": {
+    "pass": 6,
+    "total": 6
+   }
+  },
+  "by_kind": {
+   "bad_rr": {
+    "pass": 11,
+    "total": 14
+   },
+   "bad_t12": {
+    "pass": 4,
+    "total": 5
+   },
+   "deal": {
+    "pass": 12,
+    "total": 14
+   },
+   "iso": {
+    "pass": 1,
+    "total": 1
+   },
+   "rr": {
+    "pass": 49,
+    "total": 70
+   },
+   "t12": {
+    "pass": 28,
+    "total": 28
+   }
+  },
+  "cases": 132,
+  "crashes": 0,
+  "findings": {
+   "caught": 255,
+   "expected": 257,
+   "false_alarms": 15,
+   "wrong_amount": 0
+  },
+  "hangs": 0,
+  "lease_extraction_field_accuracy": {
+   "end": {
+    "ok": 585,
+    "total": 585
+   },
+   "rent": {
+    "ok": 585,
+    "total": 585
+   },
+   "start": {
+    "ok": 585,
+    "total": 585
+   },
+   "tenant": {
+    "ok": 560,
+    "total": 585
+   },
+   "unit": {
+    "ok": 585,
+    "total": 585
+   }
+  },
+  "passed": 105,
+  "passed_excluding_extraction": 112,
+  "wall_seconds": 30.7
+ },
+ "2": {
+  "by_format": {
+   "bad_rr:bad_rent_roll": {
+    "pass": 14,
+    "total": 14
+   },
+   "bad_t12:bad_t12": {
+    "pass": 5,
+    "total": 5
+   },
+   "deal:full_deal": {
+    "pass": 12,
+    "total": 14
+   },
+   "iso:team_isolation": {
+    "pass": 1,
+    "total": 1
+   },
+   "rr:appfolio_csv": {
+    "pass": 4,
+    "total": 4
+   },
+   "rr:appfolio_xlsx": {
+    "pass": 3,
+    "total": 3
+   },
+   "rr:appfolio_xlsx_dup": {
+    "pass": 2,
+    "total": 2
+   },
+   "rr:broker_csv_messy": {
+    "pass": 3,
+    "total": 3
+   },
+   "rr:broker_xlsx": {
+    "pass": 2,
+    "total": 4
+   },
+   "rr:clean_csv": {
+    "pass": 12,
+    "total": 14
+   },
+   "rr:cp1252_csv": {
+    "pass": 0,
+    "total": 2
+   },
+   "rr:docx": {
+    "pass": 2,
+    "total": 2
+   },
+   "rr:entrata_csv": {
+    "pass": 5,
+    "total": 6
+   },
+   "rr:merged_roommates_xlsx": {
+    "pass": 2,
+    "total": 2
+   },
+   "rr:pdf_scanned": {
+    "pass": 0,
+    "total": 2
+   },
+   "rr:pdf_scanned_rotated": {
+    "pass": 0,
+    "total": 1
+   },
+   "rr:pdf_text": {
+    "pass": 3,
+    "total": 3
+   },
+   "rr:realpage_csv": {
+    "pass": 3,
+    "total": 3
+   },
+   "rr:realpage_xlsx": {
+    "pass": 3,
+    "total": 3
+   },
+   "rr:s8_split_csv": {
+    "pass": 2,
+    "total": 2
+   },
+   "rr:s8_xlsx": {
+    "pass": 3,
+    "total": 3
+   },
+   "rr:utf16_txt": {
+    "pass": 2,
+    "total": 2
+   },
+   "rr:xls": {
+    "pass": 2,
+    "total": 2
+   },
+   "rr:yardi_charges_xlsx": {
+    "pass": 2,
+    "total": 3
+   },
+   "rr:yardi_xlsx": {
+    "pass": 4,
+    "total": 4
+   },
+   "t12:csv_dollar_mondash": {
+    "pass": 4,
+    "total": 4
+   },
+   "t12:csv_long_year": {
+    "pass": 3,
+    "total": 3
+   },
+   "t12:csv_mm_yyyy_nototal": {
+    "pass": 3,
+    "total": 3
+   },
+   "t12:pdf_text": {
+    "pass": 3,
+    "total": 3
+   },
+   "t12:xls": {
+    "pass": 2,
+    "total": 2
+   },
+   "t12:xlsx_extra_sheets": {
+    "pass": 3,
+    "total": 3
+   },
+   "t12:xlsx_mon": {
+    "pass": 4,
+    "total": 4
+   },
+   "t12:xlsx_monyear": {
+    "pass": 6,
+    "total": 6
+   }
+  },
+  "by_kind": {
+   "bad_rr": {
+    "pass": 14,
+    "total": 14
+   },
+   "bad_t12": {
+    "pass": 5,
+    "total": 5
+   },
+   "deal": {
+    "pass": 12,
+    "total": 14
+   },
+   "iso": {
+    "pass": 1,
+    "total": 1
+   },
+   "rr": {
+    "pass": 59,
+    "total": 70
+   },
+   "t12": {
+    "pass": 28,
+    "total": 28
+   }
+  },
+  "cases": 132,
+  "crashes": 0,
+  "findings": {
+   "caught": 257,
+   "expected": 257,
+   "false_alarms": 15,
+   "wrong_amount": 0
+  },
+  "hangs": 0,
+  "lease_extraction_field_accuracy": {
+   "end": {
+    "ok": 585,
+    "total": 585
+   },
+   "rent": {
+    "ok": 585,
+    "total": 585
+   },
+   "start": {
+    "ok": 585,
+    "total": 585
+   },
+   "tenant": {
+    "ok": 560,
+    "total": 585
+   },
+   "unit": {
+    "ok": 585,
+    "total": 585
+   }
+  },
+  "passed": 119,
+  "passed_excluding_extraction": 129,
+  "wall_seconds": 32.0
+ }
+}

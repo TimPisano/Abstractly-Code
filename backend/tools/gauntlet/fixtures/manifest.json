@@ -11959,7 +11959,7 @@
    "file": "rent_rolls/bad__blank_page.pdf",
    "expect_status": 400,
    "expect_keywords": [
-    "blank|no text|empty|unreadable|table|scanned"
+    "blank|no text|no readable|empty|unreadable|table|scanned"
    ],
    "note": "PDF with a single blank page"
   },

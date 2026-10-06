@@ -20,6 +20,7 @@ import io
 import json
 import os
 import random
+import re
 import shutil
 import sys
 import zipfile
@@ -27,6 +28,8 @@ from datetime import date, timedelta
 
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
+from reportlab import rl_config
+rl_config.invariant = 1  # byte-identical PDFs on every run (no timestamps / random ids)
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import landscape, letter
 from reportlab.lib.units import inch
@@ -120,10 +123,31 @@ def csv_bytes(rows, encoding="utf-8", delimiter=","):
     return text.encode(encoding)
 
 
+_FIXED_TS = __import__("datetime").datetime(2026, 10, 5, 0, 0, 0)
+
+
+def stable_zip(raw):
+    """Rewrite an OOXML zip with fixed entry timestamps so regenerating doesn't churn the repo."""
+    src = zipfile.ZipFile(io.BytesIO(raw))
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as dst:
+        for info in src.infolist():
+            data = src.read(info.filename)
+            if info.filename == "docProps/core.xml":
+                data = re.sub(rb"(<dcterms:(?:created|modified)[^>]*>)[^<]*(</dcterms:)", rb"\g<1>2026-10-05T00:00:00Z\g<2>", data)
+            fixed = zipfile.ZipInfo(info.filename, date_time=(2026, 10, 5, 0, 0, 0))
+            fixed.compress_type = zipfile.ZIP_DEFLATED
+            fixed.external_attr = info.external_attr
+            dst.writestr(fixed, data)
+    return out.getvalue()
+
+
 def xlsx_bytes(wb):
+    wb.properties.created = _FIXED_TS
+    wb.properties.modified = _FIXED_TS
     buf = io.BytesIO()
     wb.save(buf)
-    return buf.getvalue()
+    return stable_zip(buf.getvalue())
 
 
 def unit_cell(u, style="bare"):
@@ -633,7 +657,8 @@ def _scan(pdf_bytes, rotate=0, skew=0.0, dpi=200, noise=True):
         out.append(p.convert("RGB"))
     buf = io.BytesIO()
     out[0].save(buf, format="PDF", save_all=True, append_images=out[1:], resolution=dpi)
-    return buf.getvalue()
+    # PIL stamps the current time; pin it (same byte length keeps the xref valid).
+    return re.sub(rb"D:\d{14}", b"D:20261005000000", buf.getvalue())
 
 
 def rr_pdf_scanned(prop, rng):
@@ -682,9 +707,11 @@ def rr_docx(prop, rng):
     for i, r in enumerate(rows):
         for j, v in enumerate(r):
             t.cell(i, j).text = str(v)
+    doc.core_properties.created = _FIXED_TS
+    doc.core_properties.modified = _FIXED_TS
     buf = io.BytesIO()
     doc.save(buf)
-    return "docx", buf.getvalue(), {"start", "end"}, "Word document with a rent roll table"
+    return "docx", stable_zip(buf.getvalue()), {"start", "end"}, "Word document with a rent roll table"
 
 
 def rr_merged_roommates_xlsx(prop, rng):
@@ -965,7 +992,12 @@ def render_t12(prop, fmt, lines):
 
 
 # ---------------------------------------------------------------- bad files
-def _encrypt_xlsx(raw, password="gauntlet"):
+_PREVIOUS_ENCRYPTED = {}  # rel path -> bytes from the last run (encryption salts are random)
+
+
+def _encrypt_xlsx(raw, password="gauntlet", reuse=None):
+    if reuse and reuse in _PREVIOUS_ENCRYPTED:
+        return _PREVIOUS_ENCRYPTED[reuse]
     import msoffcrypto
     from msoffcrypto.format.ooxml import OOXMLFile
     out = io.BytesIO()
@@ -1013,14 +1045,14 @@ def bad_rent_rolls(props):
     ]
     out.append(("password.pdf", _encrypt_pdf(_rr_table_pdf(p0)), ["password|encrypted|protected"], "password-protected PDF rent roll"))
     if HAVE_CRYPTO:
-        out.append(("password.xlsx", _encrypt_xlsx(clean_xlsx), ["password|encrypted|protected"], "password-protected xlsx (Office encryption)"))
+        out.append(("password.xlsx", _encrypt_xlsx(clean_xlsx, reuse="rent_rolls/bad__password.xlsx"), ["password|encrypted|protected"], "password-protected xlsx (Office encryption)"))
     return out
 
 
 def _zip_bytes():
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as z:
-        z.writestr("readme.txt", "not a workbook")
+        z.writestr(zipfile.ZipInfo("readme.txt", date_time=(2026, 10, 5, 0, 0, 0)), "not a workbook")
     return buf.getvalue()
 
 
@@ -1028,9 +1060,11 @@ def _prose_docx():
     from docx import Document
     doc = Document()
     doc.add_paragraph("Dear investor, attached please find the rent roll. Let me know if you have questions.")
+    doc.core_properties.created = _FIXED_TS
+    doc.core_properties.modified = _FIXED_TS
     buf = io.BytesIO()
     doc.save(buf)
-    return buf.getvalue()
+    return stable_zip(buf.getvalue())
 
 
 def _blank_pdf():
@@ -1050,13 +1084,17 @@ def bad_t12s(props, t12_lines_p0):
         ("budget_only.csv", csv_bytes([["Account", "Budget 2026"], ["Gross Potential Rent", "1,000,000"]]), ["month|t-12|t12|total"], "a budget, not a T-12"),
     ]
     if HAVE_CRYPTO:
-        out.append(("password.xlsx", _encrypt_xlsx(t12_xlsx(p0, t12_lines_p0)), ["password|encrypted|protected"], "password-protected T-12"))
+        out.append(("password.xlsx", _encrypt_xlsx(t12_xlsx(p0, t12_lines_p0), reuse="t12/bad__password.xlsx"), ["password|encrypted|protected"], "password-protected T-12"))
     return out
 
 
 # ---------------------------------------------------------------- main
 def main():
     props = truth.all_properties()
+    for rel in ("rent_rolls/bad__password.xlsx", "t12/bad__password.xlsx"):
+        if os.path.exists(os.path.join(FIX, rel)):
+            with open(os.path.join(FIX, rel), "rb") as f:
+                _PREVIOUS_ENCRYPTED[rel] = f.read()
     for sub in ("leases", "rent_rolls", "t12"):
         shutil.rmtree(os.path.join(FIX, sub), ignore_errors=True)
     manifest = {"as_of": AS_OF.isoformat(), "generated_by": "backend/tools/gauntlet/generate.py",

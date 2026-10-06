@@ -80,16 +80,18 @@ def tables(latest):
 
 
 def history():
+    path = os.path.join(HERE, "history.json")
+    if not os.path.exists(path):
+        return ""
+    with open(path) as f:
+        hist = json.load(f)
     rows = []
-    for p in sorted(glob.glob(os.path.join(RESULTS, "cycle_*.json")), key=lambda x: int(re.findall(r"\d+", os.path.basename(x))[0])):
-        with open(p) as f:
-            s = json.load(f)["summary"]
-        n = re.findall(r"\d+", os.path.basename(p))[0]
+    for n in sorted(hist, key=int):
+        s = hist[n]
         f_ = s["findings"]
         rows.append(f"| {n} | {_pct(s['passed'], s['cases'])} | {_pct(f_['caught'], f_['expected'])} | {f_['false_alarms']} | {s['crashes']} | {s['hangs']} |")
-    if not rows:
-        return ""
-    return "| Cycle | Cases passed | Mismatches caught | False alarms | Crashes | Hangs |\n|---|---|---|---|---|---|\n" + "\n".join(rows) + "\n"
+    return ("| Cycle | Cases passed | Mismatches caught | False alarms | Crashes | Hangs |\n|---|---|---|---|---|---|\n"
+            + "\n".join(rows) + "\n")
 
 
 def fixes():

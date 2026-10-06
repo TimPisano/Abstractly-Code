@@ -377,8 +377,9 @@ def run_t12_case(m, props, t, canonical_rr, with_leases=False, rr_expected_findi
             out["problems"].append(f"[t12 parse] raised {type(e).__name__}: {str(e)[:200]}")
         out["parse_ok"] = not out["problems"]
         # 2. full pipeline
+        lscores = []
         if with_leases:
-            lf, _ = upload_leases(c, prop)
+            lf, lscores = upload_leases(c, prop)
             out["problems"] += lf
         rname = f"{prop['id']}_rent_roll.csv"
         r = post_file(c, "/leases/import-rent-roll", "file", canonical_rr["file"], {"property_address": prop["typed_address"]}, name=rname)
@@ -408,7 +409,7 @@ def run_t12_case(m, props, t, canonical_rr, with_leases=False, rr_expected_findi
         out["metrics"]["t12_rows"] = {"expected": len(want), "caught": len(set(want) & set(got)), "false": len(set(got) - set(want))}
         if with_leases and rr_expected_findings is not None:
             fp, fm = grade_findings(rep["discrepancies"], rr_expected_findings)
-            out["problems"] += [f"[report] {x}" for x in fp]
+            out["problems"] += [_tag_extraction(f"[report] {x}", lscores) for x in fp]
             out["metrics"]["findings"] = fm
         # 3. the standalone T-12 cross-check route (csv/xlsx only by design)
         if t["ext"] in ("csv", "xlsx"):
@@ -557,6 +558,14 @@ def main():
     if args.cycle:
         with open(os.path.join(RESULTS, f"cycle_{args.cycle}.json"), "w") as f:
             json.dump(payload, f, indent=1, default=str)
+        hist_path = os.path.join(HERE, "history.json")  # tracked in git; results/ is not
+        hist = {}
+        if os.path.exists(hist_path):
+            with open(hist_path) as f:
+                hist = json.load(f)
+        hist[str(args.cycle)] = summary
+        with open(hist_path, "w") as f:
+            json.dump(hist, f, indent=1, sort_keys=True)
     print_summary(summary)
 
 
