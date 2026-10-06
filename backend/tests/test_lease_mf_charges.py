@@ -74,6 +74,9 @@ def test_pet_charges():
     e = mf.parse_pet_charges(_doc("Resident agrees to pay additional monthly rent of $40.00 for the animal."))
     assert e["details"]["monthly_rent"] == 40.0 and e["details"]["fee"] is None
     assert mf.parse_pet_charges(_doc("No animals are allowed. Pet Deposit: N/A"))["value"] is None
+    # Adjacent clauses are quoted once, not repeated per charge.
+    e = mf.parse_pet_charges(_doc("Monthly Pet Rent: $35.00 per month. Resident shall pay a one-time non-refundable pet fee of $300.00."))
+    assert e["source"]["quote"].count("$35.00") == 1, e["source"]
     print("✓ Pet rent / fee / deposit: PASS")
 
 

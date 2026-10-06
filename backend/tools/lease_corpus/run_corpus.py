@@ -144,6 +144,14 @@ def grade_case(case: Dict[str, Any], leases: List[Dict[str, Any]], status: Optio
         add("base" if name in BASE_FIELDS else "multifamily", name, got, exp.get(name),
             _match(name, got, exp.get(name)), (entry or {}).get("confidence") if isinstance(entry, dict) else None)
 
+    # The address should carry the unit too (it's what the report's
+    # address matching and the lease's display name are built from).
+    addr = _value(fields.get("property_address"))
+    unit = exp.get("unit_number")
+    if unit:
+        add("base", "property_address.has_unit", addr, unit,
+            bool(addr) and re.search(r"(?<![\w-])" + re.escape(unit) + r"(?![\w-])", addr) is not None)
+
     # --- structured multifamily charges -------------------------------
     pet = _details(fields, "pet_charges") or {}
     want_pet = case.get("pet_charges") or {}

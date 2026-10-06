@@ -98,7 +98,21 @@ def test_street_address_without_located_at():
         assert got and got.startswith(want), (text, got)
     f = _f("Send all notices to Owner at 77 Commerce Street, Suite 400.\nPremises: 12 Pelican Court, Unit 6-D.")
     assert _v(f, "property_address").startswith("12 Pelican Court"), f["property_address"]
-    print("✓ Street address found by premises cue, not the owner's notice address: PASS")
+    # The unit stays in the address -- the report matches leases to rent roll
+    # units by address, and the lease's display name is built from it.
+    cases = {
+        'the dwelling located at 9021 Pinehaven Court, Apartment No. 3B, Richmond, VA 23233 (the "Premises")':
+            "9021 Pinehaven Court, Apartment No. 3B, Richmond, VA 23233",
+        "You are renting Apartment No. 14-C at 4410 Harbor Pointe Blvd, in the city of Port Alder.":
+            "4410 Harbor Pointe Blvd, Apartment No. 14-C",
+        "Dwelling Unit\nApt. 5-F, 1900 Elmstead Place\n": "1900 Elmstead Place, Apt. 5-F",
+        "Tenant: Tamsin Rourke. Unit: 7A, 1730 Corbin Avenue, Fairview.": "1730 Corbin Avenue, Unit: 7A",
+        "PREMISES: 2020 N. LANTERN HILL RD., APT. A-12.": "2020 N. LANTERN HILL RD., APT. A-12",
+    }
+    for text, want in cases.items():
+        got = _v(_f(text), "property_address")
+        assert got == want, (text, got)
+    print("✓ Street address found by premises cue, not the owner's notice address; unit kept: PASS")
 
 
 def test_unit_ids_with_letters_and_hyphens():

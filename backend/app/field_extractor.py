@@ -223,6 +223,18 @@ def _words_to_number(text: str) -> Optional[int]:
     return (total + current) if seen and (total + current) > 0 else None
 
 
+# A period that belongs to an address abbreviation ("No.", "Apt.", "N.",
+# "Rd.") or sits right before a unit id ("No. 412"), not a sentence end.
+_ADDRESS_ABBREV_PERIOD = (
+    r"(?:(?<=\bNo)|(?<=\bApt)|(?<=\bSte)|(?<=\bSt)|(?<=\bAve)|(?<=\bRd)|(?<=\bDr)|(?<=\bLn)|(?<=\bCt)|"
+    r"(?<=\bBlvd)|(?<=\b[NSEW])|(?<=\bBldg))\.(?=[ \t]?(?:#|\d|[A-Z]))"
+)
+# ...and the address's real end: any period NOT followed by a unit id
+# ("No. 412", "Apt. B,", "Apt. A-12") -- a lazy match would otherwise
+# stop at the first period it sees.
+_ADDRESS_END_PERIOD = r"\.(?![ \t]?(?:#|\d|[A-Z](?:-?\d|(?![A-Za-z]))))"
+
+
 def _concat_pages(pages: List[Dict[str, Any]]):
     """
     Join all pages into one continuous string (so a keyword/value pair
@@ -299,7 +311,7 @@ class FieldExtractor:
             "concessions": _concessions.build_field_entry(_concessions.parse_concessions(pages)),
         }
 
-        self._split_co_residents(result["tenant"])
+        self._split_co_residents(result["tenant"], pages)
         self._apply_confidence_validation(result, pages)
 
         # Multifamily terms (unit, pet/parking/utility charges, Section 8
@@ -668,14 +680,23 @@ class FieldExtractor:
         )
         return value.strip().rstrip(",")
 
-    def _split_co_residents(self, entry: Dict[str, Any]) -> None:
+    def _split_co_residents(self, entry: Dict[str, Any], pages: Optional[List[Dict[str, Any]]] = None) -> None:
         """
         "Wen Pruitt and Wen Quintero" -> value "Wen Pruitt" (the first-named
         resident, which is who a rent roll lists), with every resident kept
-        in details.residents so nobody is lost.
+        in details.residents so nobody is lost. A label match ("Resident(s):
+        Nadia Achebe and Jordan Quintero") stops at the first name, so the
+        rest of that line is checked for co-residents too.
         """
         value = entry.get("value")
         names = self.split_person_list(value) if value else None
+        if value and not names and pages:
+            full_text, _ = _concat_pages(pages)
+            m = re.search(re.escape(value) + r"((?:[ \t]*(?:,|&|\band\b)[ \t]*(?:and[ \t]+)?"
+                          r"[A-Z][a-zA-Z'\-]+(?:[ \t]+[A-Z]\.)?(?:[ \t]+[A-Z][a-zA-Z'\-]+){1,2})+)[ \t]*(?:\n|$|\()",
+                          full_text)
+            if m:
+                names = self.split_person_list(value + m.group(1))
         if names:
             entry["value"] = names[0]
             entry["details"] = {"residents": names}
@@ -1659,7 +1680,10 @@ class FieldExtractor:
 
     def _extract_property_address(self, pages: List[Dict[str, Any]]) -> Dict[str, Any]:
         patterns = [
-            rf"located\s+at\s+([^.(]{{5,120}}?)(?:\s*\(\s*the\s*{QUOTE_OPEN}Premises{QUOTE_CLOSE}\s*\)|,?\s+consisting|\.)",
+            # A period inside the address -- "Apartment No. 412", "Apt. A-12",
+            # "N. Lantern Hill Rd." -- doesn't end it: only a period after an
+            # abbreviation, or before a unit number, is let through.
+            rf"located\s+at\s+((?:[^.(]|{_ADDRESS_ABBREV_PERIOD}){{5,120}}?)(?:\s*\(\s*the\s*{QUOTE_OPEN}Premises{QUOTE_CLOSE}\s*\)|,?\s+consisting|{_ADDRESS_END_PERIOD})",
             r"(?:property\s+)?address[:\s]+([^\n]+)",
         ]
         confidences = ["high", "high"]
@@ -1678,7 +1702,7 @@ class FieldExtractor:
         r"terrace|ter|circle|cir|row|run|walk|trail|trl|highway|hwy|square|sq|loop|path|pike|crossing|point|"
         r"pointe|alley|plaza|bend|commons|landing|ridge|hill|heights|green|glen|cove|creek|park)\b\.?"
         # then an optional unit and city/state/zip on the same address
-        r"(?:,?\s*(?:Apartment|Apt\.?|Unit|Suite|Ste\.?|#)\s*(?:No\.?\s*)?#?\s*[A-Z0-9][\w\-]*)?"
+        r"(?:,?\s*(?i:apartment|apt\.?|unit|suite|ste\.?|#)\s*(?i:no\.?\s*)?#?\s*[A-Z0-9][\w\-]*)?"
         r"(?:,\s*[A-Z][A-Za-z .]+,\s*[A-Z]{2}\s+\d{5}(?:-\d{4})?)?"
     )
     # What should sit just before the premises' own address -- as opposed
@@ -1686,6 +1710,11 @@ class FieldExtractor:
     _PREMISES_CUE_RE = re.compile(
         r"(?i:premises|dwelling|residence|home|rental\s+unit|contract\s+unit|unit|apartment|apt|located|address|"
         r"property|renting|rents|leases|known\s+as|community)\b[^\n$]{0,40}$")
+    # Word-bounded: "Elmstead" must not count as containing "ste".
+    _UNIT_IN_ADDRESS_RE = re.compile(r"\b(?i:apartment|apt|unit|suite|ste)\b|#")
+    _UNIT_BEFORE_STREET_RE = re.compile(
+        r"((?i:apartment\s+unit|apartment|apt\.?|unit|suite|ste\.?|#)\s*:?\s*(?i:no\.?\s*)?#?\s*[A-Z0-9][\w\-]*)"
+        r"(?:,|\s+at|\s+of)\s*$")
     _NOTICE_CUE_RE = re.compile(r"(?i:notice|notices|payments?\s+(?:to|at)|mail|remit|office|send)\b[^$]{0,60}$")
 
     def _find_street_address(self, pages: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
@@ -1707,8 +1736,17 @@ class FieldExtractor:
             # Whichever cue sits closer to the address decides.
             if notice and not (premises and premises.start() > notice.start()):
                 continue
+            value = _clean_value(m.group(0)).rstrip(".,")
+            # The unit is often stated BEFORE the street: "Apartment No. 14-C
+            # at 4410 Harbor Pointe Blvd", "Unit 5-A, 615 Fenwick Terrace".
+            # Keep it with the address -- the report matches leases to rent
+            # roll units by address.
+            if not self._UNIT_IN_ADDRESS_RE.search(value):
+                unit_before = self._UNIT_BEFORE_STREET_RE.search(before)
+                if unit_before:
+                    value = f"{value}, {_clean_value(unit_before.group(1))}"
             entry = {
-                "value": _clean_value(m.group(0)).rstrip(".,"),
+                "value": value,
                 "source": {"page": page_for_offset(m.start()), "quote": _make_quote(full_text, m.start(), m.end())},
                 "confidence": "high",
             }

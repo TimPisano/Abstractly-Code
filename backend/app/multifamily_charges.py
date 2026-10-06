@@ -149,7 +149,17 @@ class _Doc:
         if not ms:
             return None
         ms.sort(key=lambda m: m.start())
-        quote = " ... ".join(_quote(self.text, m.start(), m.end()) for m in ms)
+        # Merge clauses whose padded quote windows overlap, so two charges
+        # in adjacent sentences are quoted once, not twice.
+        pad = 40
+        spans: List[List[int]] = []
+        for m in ms:
+            a, b = max(0, m.start() - pad), min(len(self.text), m.end() + pad)
+            if spans and a <= spans[-1][1]:
+                spans[-1][1] = max(spans[-1][1], b)
+            else:
+                spans.append([a, b])
+        quote = " ... ".join(re.sub(r"\s+", " ", self.text[a:b]).strip() for a, b in spans)
         return {"page": self.page_at(ms[0].start()), "quote": quote}
 
 

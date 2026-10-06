@@ -105,7 +105,9 @@ def test_owner_and_residents_labels():
     ))
     assert fields["landlord"]["value"] == "Willow Creek Commons Owner, LLC", fields["landlord"]
     assert fields["tenant"]["value"] == "Leah Ellis", fields["tenant"]
-    print("✓ 'Owner:' and 'Resident(s):' labels recognized: PASS")
+    # The label match stops at the first name; every co-resident is still kept.
+    assert fields["tenant"]["details"]["residents"] == ["Leah Ellis", "Owen Varga"], fields["tenant"]
+    print("✓ 'Owner:' and 'Resident(s):' labels recognized, co-residents kept: PASS")
 
 
 def test_company_names_with_and_are_not_split():
