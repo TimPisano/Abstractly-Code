@@ -1106,6 +1106,21 @@ def test_sideways_and_tilted_rent_roll_photo_is_turned_upright():
     print("✓ test_sideways_and_tilted_rent_roll_photo_is_turned_upright: PASS")
 
 
+def test_tenant_names_ignore_accents_and_a_lost_space():
+    """
+    A rent roll from a scan, or typed on a US keyboard, writes "Francois
+    Delacroix" / "EzraQuintero" for the lease's "François Delacroix" /
+    "Ezra Quintero" -- flagged as a high-severity tenant mismatch.
+    """
+    from app.portfolio import _same_tenant
+    for a, b in (("Francois Delacroix", "François Delacroix"), ("Soren Agard", "Søren Ågård"),
+                 ("EzraQuintero", "Ezra Quintero"), ("QUINTERO, EZRA", "Ezra Quintero"), ("Renee Cote", "Renée Côté")):
+        assert _same_tenant(a, b), (a, b)
+    for a, b in (("Mateo Nakamura", "Malik Nakamura"), ("Ann Lee", "Anna Lee"), ("EzraQuintero", "Ezra Quinn")):
+        assert not _same_tenant(a, b), (a, b)
+    print("✓ test_tenant_names_ignore_accents_and_a_lost_space: PASS")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):

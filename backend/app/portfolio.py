@@ -392,10 +392,18 @@ def _normalize_tenant_name(tenant: Optional[str]) -> Optional[str]:
 _RESIDENT_SPLIT_RE = re.compile(r"\s*(?:&|\band\b|;|/|\+|\n)\s*", re.IGNORECASE)
 
 
+def _fold_accents(text: str) -> str:
+    """"François Søren" -> "Francois Soren" (NFKD + drop combining marks; ø/å/æ/ß spelled out)."""
+    import unicodedata
+    text = text.translate(str.maketrans({"ø": "o", "Ø": "O", "æ": "ae", "Æ": "AE", "ß": "ss", "đ": "d", "ł": "l", "Ł": "L"}))
+    return "".join(ch for ch in unicodedata.normalize("NFKD", text) if not unicodedata.combining(ch))
+
+
 def _resident_token_sets(tenant: Optional[str]) -> List[frozenset]:
     """One word-set per person named in a tenant cell ("A & B", "Smith, John")."""
     if not tenant:
         return []
+    tenant = _fold_accents(tenant)
     people = []
     for part in _RESIDENT_SPLIT_RE.split(tenant):
         words = frozenset(w for w in re.sub(r"[^\w\s]", " ", part.lower()).split() if len(w) > 1)
@@ -417,6 +425,12 @@ def _same_tenant(a: Optional[str], b: Optional[str]) -> bool:
     share only a surname, which is never enough.
     """
     if _normalize_tenant_name(a) == _normalize_tenant_name(b):
+        return True
+    # Accents and spacing are not identity: "Francois" == "François", and a
+    # scan's "EzraQuintero" == "Ezra Quintero" (letters identical, in order).
+    squash_a = re.sub(r"[^a-z]", "", _fold_accents(a or "").lower())
+    squash_b = re.sub(r"[^a-z]", "", _fold_accents(b or "").lower())
+    if squash_a and squash_a == squash_b:
         return True
     for pa in _resident_token_sets(a):
         for pb in _resident_token_sets(b):
