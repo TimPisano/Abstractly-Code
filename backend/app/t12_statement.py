@@ -199,6 +199,15 @@ def parse_t12_statement_rows(
                 "source": {"row": row_num, "file": filename, "quote": label_str} if annual is not None or monthly else None,
             }
 
+    if all(v is None for v in result.values()):
+        # Nothing recognizable at all -- most likely not a T-12 (a rent roll
+        # or budget dropped into the T-12 slot). Saying so beats a report
+        # that silently has no T-12 section.
+        raise T12ImportError(
+            "This doesn't look like a T-12 operating statement: none of its rows is a recognizable income "
+            "line (Gross Potential Rent, Rental Income, Vacancy Loss, Concessions, Bad Debt, Other Income). "
+            "Check that you uploaded the trailing-12-month income statement, not a rent roll or budget."
+        )
     return result
 
 

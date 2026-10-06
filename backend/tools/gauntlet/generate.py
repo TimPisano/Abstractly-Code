@@ -1006,7 +1006,7 @@ def bad_rent_rolls(props):
         ("truncated.xlsx", clean_xlsx[: len(clean_xlsx) // 2], ["excel|workbook|read|corrupt|damaged"], "xlsx cut off halfway (partial download)"),
         ("prose.docx", _prose_docx(), ["table"], "Word doc with no table at all"),
         ("rentroll.numbers", b"PK\x03\x04fake", ["file type|supported"], "Apple Numbers file"),
-        ("blank_page.pdf", _blank_pdf(), ["blank|no text|empty|unreadable|table|scanned"], "PDF with a single blank page"),
+        ("blank_page.pdf", _blank_pdf(), ["blank|no text|no readable|empty|unreadable|table|scanned"], "PDF with a single blank page"),
         ("random_bytes.pdf", bytes(random.Random(3).randrange(256) for _ in range(4000)), ["pdf|read|corrupt|damaged"], "not actually a PDF"),
         ("lease_instead_of_rent_roll.pdf", render_paragraph_pdf(lease_paragraphs(p0, truth.lease_units(p0)[0]), "x"),
          ["rent roll|table|tenant"], "a single lease PDF uploaded into the rent-roll slot"),

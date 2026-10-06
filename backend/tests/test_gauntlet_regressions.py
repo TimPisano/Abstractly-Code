@@ -683,6 +683,23 @@ def test_lease_date_header_synonyms():
     print("✓ test_lease_date_header_synonyms: PASS")
 
 
+def test_file_with_no_t12_line_items_is_rejected_not_silently_empty():
+    """
+    A rent roll dropped into the T-12 slot parsed "successfully" (its Total
+    row looked like a header) with every category empty, so the report
+    quietly had no T-12 section and no error.
+    """
+    from app.t12_statement import parse_csv_t12_statement
+    from app.t12_import import T12ImportError
+    rr_as_t12 = b"Unit,Tenant,Rent,Total\r\n101,Ann Lee,1000,1000\r\nTotal,,1000,1000\r\n"
+    try:
+        parse_csv_t12_statement(rr_as_t12, "t12.csv")
+        raise AssertionError("accepted")
+    except T12ImportError as e:
+        assert "t-12" in str(e).lower() or "income" in str(e).lower(), str(e)
+    print("✓ test_file_with_no_t12_line_items_is_rejected_not_silently_empty: PASS")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):
