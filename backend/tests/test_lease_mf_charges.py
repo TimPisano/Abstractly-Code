@@ -264,6 +264,75 @@ def test_pet_and_parking_wording_variants():
     print("✓ Pet 'added to the monthly rent' and parking 'fee for the space': PASS")
 
 
+def test_blind_set_charges():
+    e = mf.parse_utility_charges(_doc("Resident shall pay a monthly pest-control charge of $6.00 and a package-locker fee of "
+                                      "$4.00 together with rent."))
+    assert e["details"]["flat_monthly_total"] == 10.0, e
+    e = mf.parse_utility_charges(_doc("Water is submetered. Resident pays for the water used according to the meter reading, "
+                                      "billed monthly. Valet trash pickup is mandatory for a flat fee of $28.00."))
+    assert e["details"]["rubs_utilities"] == ["water"] and e["details"]["flat_monthly_total"] == 28.0, e
+    e = mf.parse_utility_charges(_doc("Other recurring charges (billed with rent):\nTrash service | $15.00\nPest control | $5.00\n"
+                                      "Water / Sewer / Stormwater - RUBS estimate | $45.00\n"))
+    d = e["details"]
+    assert d["rubs_utilities"] == ["water", "sewer", "stormwater"], d  # trash has its own flat fee
+    assert d["flat_monthly_total"] == 20.0, d
+    e = mf.parse_utility_charges(_doc("Trash valet service is a flat $12.00 per month."))
+    assert e["details"]["flat_monthly_total"] == 12.0, e
+    e = mf.parse_parking_charges(_doc("[X] Reserved covered space: $30.00 per month [ ] No vehicle space requested"))
+    assert e["details"]["monthly_fee"] == 30.0, e
+    print("✓ Blind-set charges: hyphenated services, 'flat fee of', RUBS table row, covered space: PASS")
+
+
+def test_blind_set_section_8_and_changes():
+    e = mf.parse_section_8(_doc(
+        "HUD Tenancy Addendum - Section 8 Tenant-Based\nAssistance\nPublic Housing Agency: Greater Linden County Housing Authority.\n"
+        "Contract rent to owner\n$1,180.00\nFamily (tenant) share\n$342.00\nPHA housing assistance payment\n$838.00\n"
+    ))
+    d = e["details"]
+    assert d["pha_name"] == "Greater Linden County Housing Authority", d
+    assert (d["tenant_rent"], d["hap_amount"]) == (342.0, 838.0), d
+    e = mf.parse_section_8(_doc("Voucher lease. Contract rent | $1,260.00 | Tenant rent | $380.00 | "
+                                "HAP paid by Riverbend Metropolitan Housing Authority | $880.00"))
+    assert e["details"]["hap_amount"] == 880.0, e["details"]
+
+    lease = "Apartment Lease Agreement\nCobblestone Mews Owner LLC (Landlord) leases Apt 22 to Anselm Rutherford (Tenant) " \
+            "from June 1, 2025 until May 31, 2026.\nMonthly rent: $1,310.00."
+    letter = "March 20, 2026\nDear Mr. Rutherford,\nYour lease for Apt 22 expires on May 31, 2026. If you renew, your new " \
+             "monthly rent will be $1,360.00 for a renewal term of June 1, 2026 through May 31, 2027."
+    with mock.patch.dict(os.environ, {mf.FLAG_ENV: "1"}):
+        f = FieldExtractor().extract_fields(_pages(lease, letter))
+    assert (f["lease_start_date"]["value"], f["lease_end_date"]["value"]) == ("June 1, 2025", "May 31, 2026"), f
+    assert f["current_rent_amount"]["value"] == "$1,360.00", f["current_rent_amount"]
+    assert f["current_lease_end_date"]["value"] == "May 31, 2027", f["current_lease_end_date"]
+
+    ch = mf.parse_lease_changes(_pages(lease, "Addendum No. 1 - Transfer to Unit 204\nEffective October 1, 2025 Tenant will "
+                                              "transfer from Unit 118 to Unit 204. From the transfer date, monthly rent is $1,215.00."))
+    assert ch["details"]["changes"][0]["new_rent"] == 1215.0, ch
+    ch = mf.parse_lease_changes(_pages(lease, "LEASE AMENDMENT - ADDITION OF OCCUPANT\nThe parties amend the lease to add "
+                                              "Sloane Whitlock as a resident. Rent and all other terms are unchanged."))
+    assert len(ch["details"]["changes"]) == 1 and "no rent or term change" in ch["value"], ch
+    ch = mf.parse_lease_changes(_pages(lease, "NOTICE OF CHANGE IN TENANT RENT AND HAP\nEffective January 1, 2026 the tenant "
+                                              "rent is $455.00 and the HAP payment is $805.00. The contract rent does not change."))
+    c = ch["details"]["changes"][0]
+    assert (c["new_tenant_rent"], c["new_hap_amount"]) == (455.0, 805.0), c
+    recert = "Annual Recertification - Tenant Data Summary\nHousehold: Bernadette Oyelaran, Apt 4A.\n" \
+             "Total Tenant Payment (new) | $297.00\nAssistance payment (new) | $743.00"
+    pages = _pages("Section 8 Lease\nOwner: Fenwick Green Apartments LLC. Tenant: Bernadette Oyelaran.", recert)
+    assert FieldExtractor().detect_lease_boundaries(pages) == [(1, 2)]
+    c = mf.parse_lease_changes(pages)["details"]["changes"][0]
+    assert (c["new_tenant_rent"], c["new_hap_amount"]) == (297.0, 743.0), c
+    print("✓ Blind-set Section 8 + changes: PHA label, family share, renewal letter, transfer, roommate, notice, recert: PASS")
+
+
+def test_multifamily_failure_never_loses_core_fields():
+    with mock.patch.dict(os.environ, {mf.FLAG_ENV: "1"}), \
+            mock.patch.object(mf, "extract", side_effect=RuntimeError("boom")):
+        f = FieldExtractor().extract_fields(_pages(LEASE))
+    assert f["rent_amount"]["value"] == "$1,450.00"
+    assert all(f[k]["value"] is None for k in mf.MF_FIELDS)
+    print("✓ A multifamily parser error leaves the core fields intact: PASS")
+
+
 if __name__ == "__main__":
     test_flag_off_by_default_adds_no_keys()
     test_flag_on_adds_every_key()
@@ -281,4 +350,7 @@ if __name__ == "__main__":
     test_renewal_running_from_range_sets_new_end()
     test_utility_wording_variants()
     test_pet_and_parking_wording_variants()
+    test_blind_set_charges()
+    test_blind_set_section_8_and_changes()
+    test_multifamily_failure_never_loses_core_fields()
     print("\nAll multifamily charge tests passed.")

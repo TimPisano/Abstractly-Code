@@ -130,6 +130,43 @@ def test_unit_ids_with_letters_and_hyphens():
     print("✓ Unit IDs like 14-C, #11-B, Unit B: PASS")
 
 
+def test_blind_set_party_phrasings():
+    f = _f("Lease Agreement\nNorthgate Commons LLC (Landlord) leases Apt 4 to Ruth Calloway (Tenant).")
+    assert _v(f, "landlord") == "Northgate Commons LLC", f["landlord"]
+    f = _f("RESIDENT LEASE\nRedfern Gate Properties LLC, Landlord. Tobias Nakagawa, Resident. Apt 307, 1900 Redfern Gate.")
+    assert (_v(f, "landlord"), _v(f, "tenant")) == ("Redfern Gate Properties LLC", "Tobias Nakagawa"), f
+    f = _f("Owner: Tulip Row Rentals LLC. Family / Tenant: Delphine A. Marchetti-Owusu.",
+           "HUD Tenancy Addendum\nContract rent to owner | $1,180.00\nFamily (tenant) share | $342.00")
+    assert _v(f, "tenant") == "Delphine A. Marchetti-Owusu", f["tenant"]
+    f = _f("Lease - Voucher Participant\nOwner: Obsidian Lane Properties Inc. Participant: Cornelius B. Fairweather.")
+    assert (_v(f, "landlord"), _v(f, "tenant")) == ("Obsidian Lane Properties Inc.", "Cornelius B. Fairweather"), f
+    f = _f("Landlord/Agent: Tamsin Okafor-Reyes, Community Manager, acting on behalf of the owner, Brookhaven\n"
+           "Glen Investors LLC. Resident: Omar Diallo.")
+    assert _v(f, "landlord") == "Brookhaven Glen Investors LLC", f["landlord"]
+    f = _f("Sandpiper Row Realty Trust, as landlord, rents Apt 11, 2201 Sandpiper Row to Kaveh Mohammadi-Reid.")
+    assert _v(f, "landlord") == "Sandpiper Row Realty Trust", f["landlord"]
+    print("✓ Blind-set parties: title-case titles, 'Landlord.' runs, 'Family (tenant)', role words, on behalf of: PASS")
+
+
+def test_blind_set_dates_and_rent():
+    f = _f("Period: 01/01/2026 to 12/31/2026.")
+    assert (_v(f, "lease_start_date"), _v(f, "lease_end_date")) == ("01/01/2026", "12/31/2026"), f
+    f = _f("The lease runs September 1, 2025 to August 31, 2026 at $1,575.00 per month.")
+    assert (_v(f, "lease_start_date"), _v(f, "lease_end_date")) == ("September 1, 2025", "August 31, 2026"), f
+    assert _v(_f("RENTAL: Lessee(s) agree to pay Lessor $1,095.00 monthly, in advance."), "rent_amount") == "$1,095.00"
+    print("✓ 'Period:' and 'lease runs' ranges; 'agree to pay Lessor $X monthly': PASS")
+
+
+def test_blind_set_units():
+    unit = lambda t: mf.parse_unit_number(mf._Doc([{"page": 1, "text": t}]))["value"]  # noqa: E731
+    assert unit("OWNER: Larkspur Court Holdings LP, c/o Brightline Residential Management, 400 Commerce Way, Suite\n"
+                "120, Eastmere, OH.\nRESIDENT: Nadia Kowalczyk\nRESIDENCE: Apt 18, 1313 Larkspur Court") == "18"
+    assert unit('located at 4500 Maple Ridge Trail, Dallas, TX 75248, Suite A104 (the "Premises")') == "A104"
+    assert unit("PREMISES: 1415 Pinecrest Terrace, No. 7, Marlow Heights, TX") == "7"
+    assert unit("Resident: Yevgenia Sokolovsky. Loft 3B, 2 Barley Mill Lane") == "3B"
+    print("✓ Units: a management office's Suite skipped, an apartment Suite kept, 'No. 7', 'Loft 3B': PASS")
+
+
 if __name__ == "__main__":
     with mock.patch.dict(os.environ, {"LEASE_MULTIFAMILY_FIELDS": ""}):
         test_term_ranges_and_day_first_dates()
@@ -138,4 +175,7 @@ if __name__ == "__main__":
         test_party_phrasings()
         test_street_address_without_located_at()
         test_unit_ids_with_letters_and_hyphens()
+        test_blind_set_party_phrasings()
+        test_blind_set_dates_and_rent()
+        test_blind_set_units()
     print("\nAll residential phrasing tests passed.")

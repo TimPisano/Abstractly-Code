@@ -174,21 +174,31 @@ _UNIT_PATTERNS = [
     # Labels: "Unit: 3B", "Apartment No. 204", "Unit # 111", "Apt. 12"
     rf"(?m)^\s*(?:Apartment\s+Unit|Apartment|Apt\.?|Unit)\s*(?:No\.?|Number|#)?\s*[:#]?\s*{_UNIT_ID}",
     # Inside an address: "1250 Cedar Bend Lane, Apt. 204, Columbus"
-    rf"\d+\s+[A-Za-z0-9 .'\-]+?,\s*(?:Apartment|Apt\.?|Unit|Suite|Ste\.?)\s*(?:No\.?|Number|#)?\s*#?\s*{_UNIT_ID}\b",
+    rf"\d+\s+[A-Za-z0-9 .'\-]+?,\s*(?:Apartment|Apt\.?|Unit)\s*(?:No\.?|Number|#)?\s*#?\s*{_UNIT_ID}\b",
     # Comma-delimited unit inside a wrapped address line: "...Parkway, Apt. 412, Kansas City"
-    rf",\s*(?:Apartment|Apt\.?|Unit|Suite|Ste\.?)\s*(?:No\.?|Number|#)?\s*#?\s*{_UNIT_ID}\s*,",
+    rf",\s*(?:Apartment|Apt\.?|Unit|No\.)\s*(?:No\.?|Number|#)?\s*#?\s*{_UNIT_ID}\s*,",
     rf"\b(?:Apartment|Apt\.?|Unit)\s*(?:No\.?|Number|#)\s*#?\s*{_UNIT_ID}",
     # "...Way, #204." / "Road, #11-B to"
     rf",\s*#\s*{_UNIT_ID}",
     # Any explicit unit label followed by an ID: "Unit 418, 1015 Mariner Walk", "Apartment Unit 14-C"
-    rf"\b(?:Apartment\s+Unit|Apartment|Apt\.?|Unit)\s+{_UNIT_ID}",
+    rf"\b(?:Apartment\s+Unit|Apartment|Apt\.?|Unit|Loft|Townhome|Villa)\s+{_UNIT_ID}",
+    # A "Suite" only last: in an apartment lease it's usually the management
+    # office's address ("c/o ... 400 Commerce Way, Suite 120").
+    rf"(?:,|\bat)\s*(?:Suite|Ste\.?)\s*#?\s*{_UNIT_ID}(?=\s*[,(.]|\s*$)",
 ]
+# Context that makes a "Suite" an office, not the apartment.
+_OFFICE_CONTEXT = re.compile(r"\bc/o\b|management|notices?\b|office|remit|payments?\s+to|mail", re.IGNORECASE)
 
 
 def parse_unit_number(doc: _Doc) -> Entry:
-    m = doc.first(_UNIT_PATTERNS, flags=0)
+    def not_an_office(m: "re.Match") -> bool:
+        if not re.search(r"\b(?:Suite|Ste)\b", m.group(0), re.IGNORECASE):
+            return True
+        return not _OFFICE_CONTEXT.search(doc.text[max(0, m.start() - 120):m.start()])
+
+    m = doc.first(_UNIT_PATTERNS, flags=0, accept=not_an_office)
     if not m:
-        m = doc.first(_UNIT_PATTERNS)
+        m = doc.first(_UNIT_PATTERNS, accept=not_an_office)
     if not m:
         return _not_found()
     return {"value": m.group(1), "source": doc.source([m]), "confidence": "high", "details": {}}
@@ -237,7 +247,7 @@ def parse_pet_charges(doc: _Doc) -> Entry:
 # Parking
 # ----------------------------------------------------------------------
 
-_PARK = r"(?:parking|garage|carport|covered\s+parking|reserved\s+parking|parking\s+space)"
+_PARK = r"(?:parking|garage|carport|covered\s+parking|reserved\s+parking|parking\s+space|(?:reserved|covered|assigned)(?:\s+covered)?\s+space)"
 
 
 def parse_parking_charges(doc: _Doc) -> Entry:
@@ -283,9 +293,9 @@ _RUBS_CUE = re.compile(
     r"share\s+of\s+the\s+(?:community|property|building)'?s?",
     re.IGNORECASE,
 )
-_FLAT_SERVICE = (r"(?:valet\s+trash|trash(?:\s+removal)?|pest\s+control|cable(?:\s+and\s+internet)?(?:\s+package)?|"
-                 r"internet|technology\s+package|water(?:\s+and\s+sewer)?|sewer|gas|electric(?:ity)?|"
-                 r"stormwater|utility|utilities|package\s+locker)")
+_FLAT_SERVICE = (r"(?:valet[\s-]+trash|trash[\s-]+valet|trash(?:[\s-]+(?:removal|service))?|pest[\s-]+control|"
+                 r"cable(?:\s+and\s+internet)?(?:\s+package)?|internet|technology\s+package|water(?:\s+and\s+sewer)?|"
+                 r"sewer|gas|electric(?:ity)?|stormwater|utility|utilities|package[\s-]+locker)")
 
 
 def _sentence_around(text: str, a: int, b: int) -> str:
@@ -299,11 +309,26 @@ def _sentence_around(text: str, a: int, b: int) -> str:
     return text[start:end]
 
 
+def _rubs_clause(text: str, a: int, b: int) -> str:
+    """
+    The sentence around a bill-back cue, cut at any dollar amount on either
+    side: in a charges table ("Trash service | $15.00 | Pest control | $5.00 |
+    Water / Sewer / Stormwater - RUBS estimate | $45.00") only the cue's own
+    row names the RUBS-billed utilities -- trash there is a flat fee.
+    """
+    sentence = _sentence_around(text, a, b)
+    start = max(text.rfind(". ", max(0, a - 300), a) + 1, a - 300, 0)
+    offset_a, offset_b = a - start, b - start
+    before = re.split(r"\$\s?[\d,]+(?:\.\d{2})?", sentence[:offset_a])[-1]
+    after = re.split(r"\$\s?[\d,]+(?:\.\d{2})?", sentence[offset_b:])[0]
+    return before + sentence[offset_a:offset_b] + after
+
+
 def parse_utility_charges(doc: _Doc) -> Entry:
     matches: List["re.Match"] = []
     rubs_utils: List[str] = []
     for m in _RUBS_CUE.finditer(doc.text):
-        sentence = _sentence_around(doc.text, m.start(), m.end())
+        sentence = _rubs_clause(doc.text, m.start(), m.end())
         found = [name for name, pat in _UTILITY_WORDS if re.search(pat, sentence, re.IGNORECASE)]
         # A bill-back cue with no utility named in its sentence (e.g. "pro
         # rata share of operating expenses") isn't a utility bill-back.
@@ -317,13 +342,18 @@ def parse_utility_charges(doc: _Doc) -> Entry:
     # control, $3.00", a "Monthly Charges" table row "Valet Trash\n$28.00".
     # Counted only when "monthly"/"per month" is stated for them.
     for m in re.finditer(
-        rf"({_FLAT_SERVICE})(?:\s+(?:collection|service|services|fee|charge))?\s*[,:\-]?\s*\n?\s*{CUR}(\s*{PER_MONTH})?",
+        rf"({_FLAT_SERVICE})(?:\s+(?:collection|service|services|pickup|fee|charge))?(?:\s+of)?\s*[,:\-|]?\s*\n?\s*{CUR}(\s*{PER_MONTH})?|"
+        # "Valet trash pickup is mandatory for a flat fee of $28.00",
+        # "Trash valet service is a flat $12.00 per month"
+        rf"({_FLAT_SERVICE})[^.$]{{0,50}}?\bflat\s+(?:monthly\s+)?(?:fee\s+|charge\s+|rate\s+)?(?:of\s+)?{CUR}()",
         doc.text, re.IGNORECASE,
     ):
-        context = doc.text[max(0, m.start() - 200):m.start()]
-        if m.group(3) or re.search(r"\bmonthly\b|per\s+month", context, re.IGNORECASE):
-            amount = _num(m.group(2))
-            name = re.sub(r"\s+", " ", m.group(1)).strip().title()
+        context = doc.text[max(0, m.start() - 200):m.end() + 20]
+        flat_wording = m.group(4) is not None
+        if m.group(3) or flat_wording or re.search(
+                r"\bmonthly\b|per\s+month|\brecurring\b|billed\s+with\s+(?:the\s+)?rent|each\s+month", context, re.IGNORECASE):
+            amount = _num(m.group(2) if m.group(1) else m.group(5))
+            name = re.sub(r"[\s-]+", " ", m.group(1) or m.group(4)).strip().title()
             if amount and name not in flat:
                 flat[name] = amount
                 matches.append(m)
@@ -387,7 +417,12 @@ def parse_section_8(doc: _Doc, base_rent: Optional[float] = None, require_cue: b
     doc = doc.without_changes()
     pha_m = None
     pha = None
-    for m in _PHA_RE.finditer(doc.text):
+    # A specific authority name beats the generic phrase "... Public Housing
+    # Agency" that HUD forms use as a label ("Tenant-Based Assistance Public
+    # Housing Agency: Greater Linden County Housing Authority").
+    candidates = sorted(_PHA_RE.finditer(doc.text),
+                        key=lambda m: bool(re.search(r"Public\s+Housing\s+Agency$", m.group(1))))
+    for m in candidates:
         raw = m.group(1).strip()
         # A name may wrap ("...HAP contract with Granite\nValley Public Housing
         # Agency"), but a whole line of its own before the wrap is a label
@@ -407,6 +442,7 @@ def parse_section_8(doc: _Doc, base_rent: Optional[float] = None, require_cue: b
         rf"(?:tenant\s+rent|tenant'?s?\s+(?:portion|share)(?:\s+of\s+(?:the\s+)?rent)?|family\s+(?:share|portion|rent\s+to\s+owner)|"
         rf"resident\s+(?:portion|share))(?:\s+to\s+owner)?(?:\s+(?:is|shall\s+be))?[:\s]+{CUR}",
         rf"total\s+tenant\s+payment(?:\s+(?:is|of))?[:\s]+{CUR}",
+        rf"family\s*(?:\(\s*tenant\s*\)\s*)?(?:share|portion)(?:\s+of\s+rent)?[:\s]+{CUR}",
         # "...of which the PHA pays $1,050.00 and Resident pays $350.00"
         rf"\b(?:tenant|resident|family)\s+(?:pays|will\s+pay|shall\s+pay)\s+{CUR}",
     ])
@@ -415,6 +451,7 @@ def parse_section_8(doc: _Doc, base_rent: Optional[float] = None, require_cue: b
         # and the tenant pays $300.00" -- the payer-first form goes first, or
         # the phrase-first pattern below would reach on to the tenant's $300.
         rf"\b(?:PHA|Housing\s+Authority|Contract\s+Administrator|agency)\s+(?:pays|will\s+pay)\s+{CUR}",
+        rf"\bHAP\s+paid\s+by[^$]{{0,80}}?{CUR}",
         rf"(?:housing\s+)?assistance\s+payment\s*[:\-]?\s*\n\s*{CUR}",
         # "The assistance payment made by the Contract Administrator on behalf
         # of the Tenant is $853.00" -- a longer reach than NEAR.
@@ -470,7 +507,8 @@ def parse_section_8(doc: _Doc, base_rent: Optional[float] = None, require_cue: b
 
 _CHANGE_TITLE = re.compile(
     r"\b(?:(?P<renewal>renewal|extension)\b|(?P<amend>amendment|lease\s+modification|notice\s+of\s+rent\s+(?:change|increase)|"
-    r"rent\s+(?:change|increase|adjustment)\s+notice|notice\s+of\s+(?:change|adjustment)))",
+    r"rent\s+(?:change|increase|adjustment)\s+notice|notice\s+of\s+(?:change|adjustment)|recertification|"
+    r"transfer\s+to\s+(?:unit|apartment|apt)|addition\s+of\s+(?:occupant|resident|roommate)))",
     re.IGNORECASE,
 )
 
@@ -482,9 +520,25 @@ def _change_docs(pages: List[Dict[str, Any]]) -> List[Tuple[str, List[Dict[str, 
     for i, p in enumerate(pages):
         head = re.sub(r"\s+", " ", (p.get("text") or "").strip())[:160]
         m = _CHANGE_TITLE.search(head) if i > 0 else None
+        # A renewal offer or rent notice written as a LETTER ("March 20, 2026
+        # Dear Mr. Rutherford, Your lease ... If you renew, your new monthly
+        # rent will be ...") has no title -- its subject is in the body.
+        letter = i > 0 and re.search(r"\bdear\b", head[:80], re.IGNORECASE)
+        if letter and not (m and m.start() < 60):
+            body = re.sub(r"\s+", " ", (p.get("text") or ""))[:400]
+            if re.search(r"\brenew", body, re.IGNORECASE):
+                m = re.search(r"(?P<renewal>renew)(?P<amend>)?", body, re.IGNORECASE)
+            elif re.search(r"\brent\b.{0,80}\b(?:change|increase|adjust)", body, re.IGNORECASE):
+                m = re.search(r"(?P<renewal>(?!))?(?P<amend>rent)", body, re.IGNORECASE)
+            if m:
+                current = ("renewal" if m.group("renewal") else "amendment", [p])
+                out.append(current)
+                continue
         # Only a page whose OPENING names it (the document title), and not
-        # a lease page that merely mentions "renewal options".
-        if m and m.start() < 60:
+        # a lease page that merely mentions "renewal options" -- or opens with
+        # a numbered lease clause ("12. RENEWAL. Resident may renew ...").
+        numbered_clause = re.match(r"\s*(?:\d{1,3}|[A-Z])[.)]\s", head)
+        if m and m.start() < 60 and not numbered_clause:
             current = ("renewal" if m.group("renewal") else "amendment", [p])
             out.append(current)
         elif current is not None and not _is_other_attachment(head):
@@ -495,7 +549,7 @@ def _change_docs(pages: List[Dict[str, Any]]) -> List[Tuple[str, List[Dict[str, 
 
 
 def _is_other_attachment(head: str) -> bool:
-    return bool(re.search(r"\b(?:addendum|exhibit|rider|hap\s+contract|housing\s+assistance)\b", head[:80], re.IGNORECASE))
+    return bool(re.search(r"\b(?:addendum|exhibit|rider|hap\s+contract|housing\s+assistance|dear)\b", head[:80], re.IGNORECASE))
 
 
 def parse_lease_changes(pages: List[Dict[str, Any]]) -> Entry:
@@ -511,21 +565,36 @@ def parse_lease_changes(pages: List[Dict[str, Any]]) -> Entry:
             rf"(?:monthly\s+)?rent\s+(?:shall\s+be|will\s+be|is\s+(?:changed|increased|decreased|reduced|adjusted)\s+to|"
             rf"is|of)[:\s]*{CUR}",
             rf"new\s+(?:monthly\s+)?rent[:\s]+{CUR}",
+            rf"new\s+(?:monthly\s+)?rent\s+(?:will\s+be|is|of)\s+{CUR}",
             rf"(?:monthly\s+)?rent[:\s]+{CUR}",
         ], accept=lambda m: not re.search(r"\b(?:pet|parking|garage|tenant\s+rent|tenant\s+portion)\b",
                                           d.text[max(0, m.start() - 25):m.end()], re.IGNORECASE))
         tenant_rent, m_tr = d.amount([
             rf"new\s+tenant\s+(?:rent|portion|share)[:\s]+{CUR}",
             rf"your\s+(?:portion|share)\s+of\s+(?:the\s+)?rent\s+will\s+be\s+{CUR}",
+            rf"tenant\s+rent\s+(?:is|will\s+be|becomes)\s+{CUR}",
+            rf"total\s+tenant\s+payment\s*(?:\(\s*new\s*\))?[:\s|]+{CUR}",
         ])
         hap, m_hap = d.amount([
             rf"new\s+(?:housing\s+)?assistance\s+payment[:\s]+{CUR}",
             rf"our\s+payment\s+to\s+(?:your\s+)?(?:landlord|owner)\s+will\s+be\s+{CUR}",
+            rf"\b(?:HAP|assistance)\s+payment\s+(?:is|will\s+be|becomes)\s+{CUR}",
+            rf"assistance\s+payment\s*(?:\(\s*new\s*\))?[:\s|]+{CUR}",
         ])
         end = d.first([rf"{DATE_NC}{RANGE_SEP}{DATE}", rf"and\s+ending\s+(?:on\s+)?{DATE}", rf"expiration\s+date[^.$]{{0,40}}?(?:extended\s+to|is|shall\s+be)\s+{DATE}",
                        rf"(?:new\s+)?(?:lease\s+)?end(?:ing)?\s+date[:\s]+{DATE}", rf"\bthrough\s+{DATE}",
                        rf"\bends?\s+(?:on\s+)?{DATE}"])
-        if rent is None and end is None and tenant_rent is None and hap is None:
+        # A change document with no new figures (a roommate added, "the
+        # contract rent does not change") is still a change to the lease --
+        # recorded with no figures rather than dropped. Only when its title
+        # says so explicitly, though: a page merely headed "Renewal" with no
+        # new term or rent isn't evidence of a change.
+        no_figures = rent is None and end is None and tenant_rent is None and hap is None
+        title = re.sub(r"\s+", " ", (doc_pages[0].get("text") or ""))[:120]
+        if no_figures and not re.search(
+            r"amendment|modification|addition\s+of|transfer|recertification|notice\s+of\s+change|rent\s+change",
+            title, re.IGNORECASE,
+        ):
             continue
         changes.append({
             "kind": kind,
@@ -536,11 +605,18 @@ def parse_lease_changes(pages: List[Dict[str, Any]]) -> Entry:
             "new_hap_amount": hap,
             "page": doc_pages[0]["page"],
         })
-        sources.append(d.source([eff, m_rent, end, m_tr, m_hap]))
+        # No figures to quote (e.g. "add Sloane Whitlock as a resident") --
+        # cite the change document's own opening instead.
+        sources.append(d.source([eff, m_rent, end, m_tr, m_hap]) or {
+            "page": doc_pages[0]["page"],
+            "quote": re.sub(r"\s+", " ", (doc_pages[0].get("text") or "").strip())[:200],
+        })
     if not changes:
         return _not_found()
     value = "; ".join(
         f"{c['kind'].capitalize()}" + (f" effective {c['effective_date']}" if c["effective_date"] else "")
+        + ("" if any(c[k] is not None for k in ("new_rent", "new_end_date", "new_tenant_rent", "new_hap_amount"))
+           else " (no rent or term change stated)")
         + (f": rent {_money(c['new_rent'])}" if c["new_rent"] is not None else "")
         + (f", ends {c['new_end_date']}" if c["new_end_date"] else "")
         + (f", tenant rent {_money(c['new_tenant_rent'])}" if c["new_tenant_rent"] is not None else "")

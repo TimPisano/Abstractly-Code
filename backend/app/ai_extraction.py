@@ -427,7 +427,13 @@ def _parse_tool_payload(payload: Dict[str, Any], pages: List[Dict[str, Any]]) ->
         result[name] = _coerce_field_entry(payload.get(name), pages)
     result["concessions"] = _attach_concession_items(result["concessions"], pages)
     if multifamily_charges.enabled():
-        result.update(multifamily_charges.attach_ai_details(result, pages))
+        try:
+            result.update(multifamily_charges.attach_ai_details(result, pages))
+        except Exception:
+            # Same rule as the regex engine: never lose the core fields.
+            logger.exception("Multifamily details for AI extraction failed")
+            for name in multifamily_charges.MF_FIELDS:
+                result.setdefault(name, _not_found_entry())
     return result
 
 

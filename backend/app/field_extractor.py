@@ -62,7 +62,8 @@ DATE_NC = "(?:" + DATE_REGEX[1:]
 # "April 1, 2026 to March 31, 2027" / "... through ..." / "... until ..." / "... - ..."
 RANGE_SEP = r"\s*(?:to|through|thru|until|till|[-\u2013\u2014])\s*"
 # A term/period label a date range follows: "Term:", "3. Term.", "Lease term:"
-TERM_CUE = r"\b(?:lease\s+term|term\s+of\s+(?:this\s+)?lease|term|tenancy|lease\s+period|rental\s+period)\b\.?"
+TERM_CUE = (r"\b(?:lease\s+term|term\s+of\s+(?:this\s+)?lease|term|tenancy|lease\s+period|rental\s+period|period|"
+            r"(?:lease|tenancy|term)\s+(?:runs|will\s+run|is))\b\.?")
 
 # Matches "$2,500.00", "$2,500", "$ 2,500.00"
 CURRENCY_REGEX = r"\$\s?([\d,]+(?:\.\d{2})?)"
@@ -85,7 +86,7 @@ CONFIDENCE_LEVELS = ("high", "medium", "low")
 # Label-style party keywords ("Resident(s): Jordan Ellis", "Owner: Cedar
 # Bend Apartments, LLC"). "resident"/"owner" are the multifamily words for
 # tenant/landlord (NAA/TAA-style apartment leases use them throughout).
-TENANT_LABEL_KEYWORDS = ("tenant", "lessee", "renter", "resident")
+TENANT_LABEL_KEYWORDS = ("tenant", "lessee", "renter", "resident", "participant")
 LANDLORD_LABEL_KEYWORDS = ("landlord", "lessor", "owner")
 
 
@@ -163,7 +164,8 @@ def looks_like_rent_roll_table(pages: List[Dict[str, Any]]) -> bool:
 _ATTACHMENT_TITLE_RE = re.compile(
     r"\b(?:addendum|addenda|amendment|renewal|extension\s+agreement|rider|exhibit|schedule\s+[A-Z0-9]\b|"
     r"attachment|housing\s+assistance\s+payments?\s+contract|hap\s+contract|tenancy\s+addendum|"
-    r"notice\s+of\s+rent\s+(?:change|increase)|lease\s+modification|move[- ]in\s+(?:inspection|checklist))\b",
+    r"notice\s+of\s+rent\s+(?:change|increase)|lease\s+modification|move[- ]in\s+(?:inspection|checklist)|"
+    r"recertification|notice\s+of\s+change|rent\s+change\s+notice|dear)\b",
     re.IGNORECASE,
 )
 _ATTACHMENT_TITLE_WINDOW = 160
@@ -319,7 +321,13 @@ class FieldExtractor:
         # LEASE_MULTIFAMILY_FIELDS, see multifamily_charges.py. Absent keys
         # when off, so existing behavior is unchanged.
         if _multifamily.enabled():
-            result.update(_multifamily.extract(pages, result))
+            try:
+                result.update(_multifamily.extract(pages, result))
+            except Exception:
+                # Flagged, newer code must never take the core fields down
+                # with it: log, and report the multifamily fields as not found.
+                logger.exception("Multifamily field extraction failed%s", f" ({source_label})" if source_label else "")
+                result.update({name: _not_found() for name in _multifamily.MF_FIELDS})
 
         # A lease with no concession is the normal case, not a parsing
         # gap -- left out of the not-found log so it doesn't drown out
@@ -546,6 +554,9 @@ class FieldExtractor:
         "Household", "Certifies", "Default", "Defaults", "Insurance", "Responsibility", "The", "This",
         "Party", "Parties", "Rules", "Handbook", "Policy", "Policies", "Assistance", "Housing",
         "Agreement", "Agreements", "Addendum", "Signature", "Signs", "Initial", "Ledger", "Portal",
+        "Data", "Share", "Summary", "Household", "Head", "Member", "Members", "Program", "Participant",
+        # Another role word is never this party's name ("Voucher Participant\nOwner: ...").
+        "Owner", "Owners", "Landlord", "Landlords", "Tenant", "Tenants", "Resident", "Residents", "Lessor", "Lessee",
     )
     _LABEL_STOPWORDS_LOOKAHEAD = r"(?!(?i:" + "|".join(_LABEL_STOPWORDS) + r")\b)"
 
@@ -580,7 +591,12 @@ class FieldExtractor:
         # trailing period, so entity suffixes aren't truncated.
         # Also a middle initial ("Cornelius P. Ibarra") and hyphenated or
         # apostrophe surnames ("Okafor-Bell", "O'Callaghan-Sato").
-        word = r"(?:[A-Z][a-zA-Z']*[a-z](?:-[A-Z][a-zA-Z']*[a-z])*\.?|[A-Z]{2,}\.?|[A-Z]\.)"
+        # Never continues into the next label's role word ("Owner: Obsidian
+        # Lane Properties Inc. Participant: ...").
+        # Only a role word used AS a label (followed by ":" or a line end) --
+        # "Mossy Oak Flats Owner LLC" keeps its "Owner".
+        word = (r"(?!(?:Participant|Tenant|Resident|Owner|Landlord|Lessee|Lessor|Renter)s?\b[ \t]*(?::|\n|$))"
+                r"(?:[A-Z][a-zA-Z']*[a-z](?:-[A-Z][a-zA-Z']*[a-z])*\.?|[A-Z]{2,}\.?|[A-Z]\.)")
         # ", LLC" / ", Inc." after the name -- the comma used to end the
         # match, so "Owner: Willow Creek Commons Owner, LLC" lost its suffix.
         entity_suffix = r"(?:,?[ \t]+(?:LLC|L\.L\.C\.|Inc\.?|LP|L\.P\.|LLP|Ltd\.?|Corp\.?|Co\.?)(?![A-Za-z]))?"
@@ -656,14 +672,28 @@ class FieldExtractor:
         # follows the last one.
         value = re.split(r"\s+(?:to|from|at|by|for|rents|leases|lets|hereby)\s+", value)[-1]
         # A document title swept in from the line above: "LEASE AGREEMENT
-        # Sparrowhill Apartments LLC" -> "Sparrowhill Apartments LLC".
-        value = re.sub(
-            r"^(?:[A-Z0-9][A-Z0-9.&'\-]*\s+)*?(?:LEASE|AGREEMENT|CONTRACT|ADDENDUM|AMENDMENT|IDENTIFICATION|PROGRAMS?)\b\.?\s+(?=[A-Z][a-z])",
+        # Sparrowhill Apartments LLC", "Lease - Voucher Program Garnet Hill
+        # Rentals LLC" -> the name after the title. Only when a name of at
+        # least two words is left, so "Apex Lease Holdings" style names survive.
+        stripped = re.sub(
+            r"^.*\b(?i:lease|agreement|contract|addendum|amendment|identification|programs?)\b\.?\s*[-:]?\s+(?=[A-Z])",
             "", value)
+        if stripped != value and len(stripped.split()) >= 2:
+            value = stripped
+        # "Redfern Gate Properties LLC, Landlord. Tobias Nakagawa" -- a role
+        # word ending a sentence closes the other party's name.
+        value = re.split(r"\b(?i:landlord|owner|lessor|tenant|resident|lessee)s?\.\s+(?=[A-Z])", value)[-1]
+        # "Family (tenant) share" -- a lone common word isn't a party.
+        if " " not in value.strip() and value.strip().rstrip(".").title() in self._LABEL_STOPWORDS:
+            return ""
         # The capture IS a role label ("... Landlord (Owner)" in a table
         # heading) -- not a name.
         if re.search(r"\b(?:landlord|tenant|owner|resident|lessor|lessee|renter)(?:\(s\)|s)?$", value, re.IGNORECASE):
             return ""
+        # A sentence's own period after "LLC" / "LP" isn't part of the name
+        # (kept after "Inc." / "Co." / "Corp." / "Ltd." and "L.L.C.").
+        if value.endswith(".") and not re.search(r"(?:\b(?:Co|Inc|Corp|Ltd)|[A-Z]\.[A-Z])\.$", value):
+            value = value[:-1]
         if self.split_person_list(value) is None:
             # 'ABC Corp, a Delaware corporation, and XYZ Inc ("Tenant")':
             # the capture ran back over the OTHER party -- keep what
@@ -819,7 +849,7 @@ class FieldExtractor:
             result["value"] = self._clean_label_style_value(result["value"])
             return result
 
-        result = self._search_ordered(pages, self._prose_role_patterns(role_keywords), ["high", "high", "high"], flags=0,
+        result = self._search_ordered(pages, self._prose_role_patterns(role_keywords), ["high"] * 5, flags=0,
                                       accept=cleans_to_name)
         if result:
             result["value"] = self._clean_defined_term_value(result["value"])
@@ -841,7 +871,10 @@ class FieldExtractor:
 
     # A run of capitalized words (a person or company name), commas allowed
     # between them for entity suffixes ("Gannet Point Apartments LP").
-    _NAME_RUN = r"((?:[A-Z][\w&.'\-]*,?\s+){0,6}[A-Z][\w&.'\-]*[\w.])"
+    # Inside the run, only an initial ("P.") or an abbreviation before a
+    # comma ("Inc.,") may end in a period -- otherwise "...Investors LLC.
+    # Resident: ..." would run on into the next sentence.
+    _NAME_RUN = r"((?:(?:[A-Z]\.|[A-Z][\w&'\-]*(?:\.(?=,))?),?\s+){0,6}[A-Z][\w&.'\-]*[\w.])"
 
     def _prose_role_patterns(self, role_keywords: Tuple[str, ...]) -> List[str]:
         """
@@ -855,9 +888,18 @@ class FieldExtractor:
         """
         roles = "|".join(list(role_keywords) + [k.upper() for k in role_keywords])
         pronoun = r"we|us" if "Landlord" in role_keywords else r"you"
+        lower_roles = "|".join(k.lower() for k in role_keywords)
+        behalf = (rf"on\s+behalf\s+of\s+(?:the\s+)?(?i:owner|landlord|lessor)[,:]?\s+{self._NAME_RUN}"
+                  if "Landlord" in role_keywords else r"(?!x)x")
         return [
             rf"{self._NAME_RUN},?\s+(?:hereinafter|hereafter|herein)\s+(?:called|referred\s+to\s+as|known\s+as)\s+(?:the\s+)?{QUOTE_OPEN}?(?:{roles})",
             rf"{self._NAME_RUN},\s+(?:as\s+(?:the\s+)?)?(?:{roles})(?:\(s\))?(?=[,.;)\s])",
+            # "Sandpiper Row Realty Trust, as landlord, rents ..." -- lowercase
+            # is fine after "as": the comma-"as" framing is unambiguous.
+            rf"{self._NAME_RUN},\s+as\s+(?:the\s+)?(?:{lower_roles})(?=[,.;)\s])",
+            # "Landlord/Agent: Jane Doe, Community Manager, acting on behalf of
+            # the owner, Brookhaven Glen Investors LLC" -> the owner.
+            behalf,
             rf"{self._NAME_RUN}\s*\(\s*{QUOTE_OPEN}(?:{pronoun}){QUOTE_CLOSE}\s*\)",
         ]
 
@@ -1264,7 +1306,7 @@ class FieldExtractor:
             # for the Premises the sum of ... ($1,450.00) per month",
             # "TENANT SHALL PAY $1,085.00 PER MONTH", "at $1,240.00 per month".
             rf"\brent\b{GAP}{CURRENCY_REGEX}\s*\)?\s*{per_month}",
-            rf"\b(?:pay|pays)\s+(?:to\s+\w+\s+)?{CURRENCY_REGEX}\s*{per_month}",
+            rf"\b(?:pay|pays)\s+(?:to\s+)?(?:(?:the\s+)?\w+\s+)?{CURRENCY_REGEX}\s*{per_month}",
             rf"\bat\s+{CURRENCY_REGEX}\s*{per_month}",
             rf"rent\s+(?:is|will\s+be|shall\s+be)[:\s]*{CURRENCY_REGEX}",
             rf"\byou\s+will\s+pay\s+{CURRENCY_REGEX}\s+on\s+the\s+first",
