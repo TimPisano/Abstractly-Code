@@ -673,6 +673,16 @@ def test_rent_roll_date_formats_from_pms_exports():
     print("✓ test_rent_roll_date_formats_from_pms_exports: PASS")
 
 
+def test_lease_date_header_synonyms():
+    """'Lease Begin' / 'Term Start' / 'Lease Exp.' / 'Expiration' went unmapped -> no lease dates."""
+    from app.rent_roll_import import _match_columns
+    for start, end in (("Lease Begin", "Lease End"), ("Term Start", "Term End"), ("Begin Date", "Lease Exp."),
+                       ("Lease Start", "Expiration"), ("Start", "Exp Date")):
+        m = _match_columns(["Unit", "Tenant", "Rent", start, end])
+        assert (m.get("lease_start_date"), m.get("lease_end_date")) == (3, 4), (start, end, m)
+    print("✓ test_lease_date_header_synonyms: PASS")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):

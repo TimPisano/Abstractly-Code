@@ -126,10 +126,12 @@ _COLUMN_ALIASES: Dict[str, List[str]] = {
     "lease_start_date": [
         "lease commencement", "commencement date", "commence date", "lease start", "start date", "lease from",
         "rent commencement", "rent commencement date", "rent start", "rent start date", "commence",
+        "lease begin", "lease begins", "begin date", "term start", "lease term start", "start",
     ],
     "lease_end_date": [
         "lease expiration", "expiration date", "lease end", "end date", "expire", "lease to",
         "rent expiration", "rent expiration date", "rent end", "rent end date",
+        "lease exp", "exp date", "expiration", "term end", "lease term end", "lease ends",
     ],
     # Per-row property identifier -- most rent rolls (broker-built or a
     # single-property PMS pull) state the building once, outside the
