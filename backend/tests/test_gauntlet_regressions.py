@@ -916,6 +916,32 @@ def test_rent_roll_reconciliation_also_uses_the_operative_lease():
     print("✓ test_rent_roll_reconciliation_also_uses_the_operative_lease: PASS")
 
 
+def test_reimporting_an_updated_rent_roll_replaces_the_old_one():
+    """
+    AUDIT.md §6.11: importing the seller's UPDATED rent roll kept the old
+    rows too, so every unit was doubled (two rents per unit, duplicated
+    findings, double T-12 total). A re-import for a building now
+    supersedes that building's previous rent-roll rows; another building's
+    rows and another team's rows are untouched.
+    """
+    client, db = _client_with_fresh_db(team_id=1)
+    try:
+        v1 = b"Unit,Tenant,Rent\r\n101,Ann Lee,1000\r\n102,Bo Diaz,900\r\n"
+        v2 = b"Unit,Tenant,Rent\r\n101,Ann Lee,1050\r\n102,Bo Diaz,900\r\n"
+        other = b"Unit,Tenant,Rent\r\n1,Cy Ray,700\r\n"
+        assert _post(client, "/leases/import-rent-roll", "rr_v1.csv", v1, {"property_address": "100 Oak St, Austin, TX 78701"}).status_code == 201
+        assert _post(client, "/leases/import-rent-roll", "other.csv", other, {"property_address": "5 Pine Ave, Austin, TX 78701"}).status_code == 201
+        r = _post(client, "/leases/import-rent-roll", "rr_v2.csv", v2, {"property_address": "100 Oak Street, Austin, TX 78701"})
+        assert r.status_code == 201 and r.get_json().get("replaced_previous_rows") == 2, r.get_json()
+        from app import database
+        rows = database.get_all_effective_leases(1)
+        got = sorted((l["filename"], l["extracted_fields"]["rent_amount"]["value"]) for l in rows)
+        assert got == [("other.csv", "$700.00"), ("rr_v2.csv", "$1,050.00"), ("rr_v2.csv", "$900.00")], got
+    finally:
+        os.unlink(db)
+    print("✓ test_reimporting_an_updated_rent_roll_replaces_the_old_one: PASS")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):

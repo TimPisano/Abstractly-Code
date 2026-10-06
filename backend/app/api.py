@@ -71,6 +71,7 @@ from app.portfolio import (
     FIELD_NAMES,
     field_value,
     _normalize_building_address,
+    _is_rent_roll_import,
     compute_portfolio_metrics,
     compute_expiration_timeline,
     compute_attention_items,
@@ -1433,6 +1434,24 @@ def import_rent_roll():
     except RentRollImportError as e:
         return jsonify({"error": str(e)}), 400
 
+    # Re-importing a building's rent roll (the seller's updated export)
+    # REPLACES that building's previous rent-roll rows instead of adding a
+    # second copy of every unit (AUDIT.md §6.11). Old rows are marked
+    # superseded -- excluded from every report, still retrievable by id --
+    # never deleted. Only this team's rows (team-scoped query), only the
+    # buildings this file covers.
+    new_buildings = {
+        _normalize_building_address(l["extracted_fields"]["property_address"]["value"])
+        for l in parsed["leases"] if l["extracted_fields"]["property_address"]["value"]
+    } - {None}
+    replaced = 0
+    if new_buildings:
+        for old_row in database.get_all_effective_leases(team_id=current_team_id()):
+            if _is_rent_roll_import(old_row) and _normalize_building_address(
+                    field_value(old_row, "property_address")) in new_buildings:
+                if database.supersede_lease(old_row["id"]):
+                    replaced += 1
+
     created = []
     for lease_data in parsed["leases"]:
         lease_id = database.insert_lease(
@@ -1478,6 +1497,7 @@ def import_rent_roll():
         "skipped_rows": parsed["skipped_rows"],
         "column_mapping": parsed["column_mapping"],
         "unit_summary": parsed.get("unit_summary", {}),
+        "replaced_previous_rows": replaced,
         # How the table was obtained ("delimited"/"excel"/"excel_legacy"/
         # "word"/"pdf-text"/"pdf-ocr"/"image-ocr") and any caveats -- the
         # frontend shows `warnings` verbatim after an OCR/heuristic import
