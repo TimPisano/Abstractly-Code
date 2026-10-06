@@ -69,8 +69,13 @@ after every cycle.
   (registered in `run_all_tests.py`), `QA_REPORT.md` (rewritten).
 - Changed as fixes require: `rent_roll_import.py`, `rent_roll_table_extract.py`,
   `t12_import.py`, `t12_statement.py`, `deal_mismatch.py`, `portfolio.py`,
-  `field_extractor.py`, `api.py` (upload/report routes only).
-- Not touched: `render.yaml`, any deploy config, `frontend/`, prod/tester DBs,
+  `concessions.py` (pricing only), `api.py` (rent-roll/T-12/report routes only).
+- Not touched: **lease extraction** (`field_extractor.py`, `ai_extraction.py`,
+  extraction prompts and lease fields), which is owned by the session on
+  `feature/lease-intelligence` (user, 2026-10-05). Lease PDFs here use
+  phrasing the current extractor already reads, so failures isolate rent
+  roll / T-12 / report logic. Extraction misses are logged in QA_REPORT.md
+  for that session, never fixed here. Also not touched: `render.yaml`, any deploy config, `frontend/`, prod/tester DBs,
   the Maple Ridge fixtures' expected answers.
 
 ## Team isolation & roles
