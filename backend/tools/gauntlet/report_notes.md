@@ -1,11 +1,11 @@
 <!-- SUMMARY -->
-**Cycle 5: 156 of 169 cases pass (92%). It was 22 of 132 (17%) at the start.** The gauntlet now runs 86 messy rent rolls, 43 T-12s and 190 leases through the full local pipeline, graded against a manifest of correct answers.
+**Cycle 6: 169 of 182 cases pass (93%). It was 22 of 132 (17%) at the start.** The gauntlet now runs 90 messy rent rolls (plus a two-property portfolio file), 47 T-12s and 203 leases through the full local pipeline, graded against a manifest of correct answers.
 
-- **Planted mismatches caught: 1,932 of 1,932, every one with the right dollar amount.**
+- **Planted mismatches caught: 1,962 of 1,962, every one with the right dollar amount.**
 - **False alarms: 19, down from 337.** All are lease-extraction misreads of accented names (owned by `feature/lease-intelligence`) or character-level OCR misreads on scanned rent rolls.
 - **Scanned rent rolls now import.** Columns are rebuilt from the data rows, sideways and tilted pages are turned upright, and impossible OCR rents are blanked with a warning. Remaining scan failures are character misreads (a lost space, "4201" for 1201) that grid logic can't fix. The heavily degraded sideways fixture still fails with a clear 400.
 - **No crashes and no hangs.**
-- **Fixes:** 50, each its own commit with a regression test. All 83 test files pass.
+- **Fixes:** 54, each its own commit with a regression test. All 83 test files pass.
 
 **AUDIT.md top priority: "the Deal Mismatch Report gets dollar figures wrong on ordinary lease files" (§6.11, §6.1).** It is reproduced with golden fixtures (property `p18` + a re-import case) and fixed at the root:
 
@@ -41,7 +41,8 @@ Still open from the audit's §6.11 list, all owned by lease extraction: everyday
   - Section 8 HAP splits;
   - future-resident rows;
   - semicolon CSVs and cp1252/UTF-16 encodings;
-  - ISO dates and Excel serial dates;
+  - ISO, Excel-serial and European dates, plus comma-decimal amounts;
+  - T-24 statements, which were read from the older year;
   - headers below row 20;
   - "Grand Total" rows and duplicate rows.
 

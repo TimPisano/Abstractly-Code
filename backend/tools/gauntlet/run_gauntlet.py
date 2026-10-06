@@ -490,6 +490,35 @@ def run_reimport_case(m, props, ri):
     return out
 
 
+def run_multiprop_case(m, props, mp):
+    """One rent-roll file covering two properties; each property's report must be exactly its own findings."""
+    env = Env()
+    out = {"problems": [], "metrics": {}}
+    try:
+        c = env.client(team_id=1)
+        lscores = []
+        for pe in mp["properties"]:
+            lf, ls = upload_leases(c, props[pe["id"]])
+            out["problems"] += lf
+            lscores += ls
+        r = post_file(c, "/leases/import-rent-roll", "file", mp["file"], {}, name="portfolio_rent_roll.csv")
+        if r.status_code != 201:
+            out["problems"].append(f"import -> {r.status_code}: {str(r.get_json())[:200]}")
+            return out
+        caught = expected = 0
+        for pe in mp["properties"]:
+            rep = c.post("/portfolio/deal-mismatch-report", data={"property_address": pe["address"]}, content_type="multipart/form-data").get_json()
+            fp, fm = grade_findings(rep["discrepancies"], pe["expected_findings"])
+            out["problems"] += [_tag_extraction(f"[{pe['id']}] {x}", lscores) for x in fp]
+            caught += fm["caught"]
+            expected += fm["expected"]
+        out["metrics"]["findings"] = {"expected": expected, "caught": caught,
+                                      "false": sum(1 for p in out["problems"] if "FALSE ALARM" in p), "wrong_amount": 0}
+    finally:
+        env.close()
+    return out
+
+
 def run_isolation_case(m, props, canonical_rr):
     """Team 2 loads a whole deal; team 1 must see none of it."""
     prop = props["p00"]
@@ -569,6 +598,9 @@ def main():
     if "reimport" not in skip:
         cases += [("reimport", f"reimport:{ri['property']}", "reimport_updated_rent_roll",
                    (lambda ri=ri: run_reimport_case(m, props, ri))) for ri in m.get("reimports", [])]
+    if "multiprop" not in skip:
+        cases += [("multiprop", mp["file"], "multi_property_file", (lambda mp=mp: run_multiprop_case(m, props, mp)))
+                  for mp in m.get("multiprops", [])]
     if "iso" not in skip:
         cases.append(("iso", "isolation:p00", "team_isolation", lambda: run_isolation_case(m, props, canonical["p00"])))
     if args.only:

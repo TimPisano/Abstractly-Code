@@ -810,6 +810,18 @@ def rr_serial_dates_csv(prop, rng):
     return "csv", csv_bytes(rows), {"start", "end"}, "Lease dates as raw Excel serial numbers (46082) -- a CSV saved from cells formatted General"
 
 
+def rr_eu_csv(prop, rng):
+    """European-locale Excel: semicolons, 1.250,00 amounts, dd.mm.yyyy dates."""
+    rows = [["Unit", "Tenant", "Rent", "Lease Start", "Lease End"]]
+    for u in rr_rows_units(prop):
+        if u["status"] == "occupied":
+            amt = f"{u['rr_rent']:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+            rows.append([u["uid"], u["rr_tenant"], amt, d(u["rr_start"]).strftime("%d.%m.%Y"), d(u["rr_end"]).strftime("%d.%m.%Y")])
+        else:
+            rows.append([u["uid"], "VACANT", "", "", ""])
+    return "csv", csv_bytes(rows, delimiter=";"), {"start", "end"}, "European locale: semicolons, 1.250,00 rents, dd.mm.yyyy dates"
+
+
 RR_WRITERS = {
     "appfolio_csv": rr_appfolio_csv, "appfolio_xlsx": rr_appfolio_xlsx, "appfolio_xlsx_dup": rr_appfolio_xlsx_dup,
     "yardi_xlsx": rr_yardi_xlsx, "yardi_charges_xlsx": rr_yardi_charges_xlsx,
@@ -821,6 +833,7 @@ RR_WRITERS = {
     "xls": rr_xls, "docx": rr_docx, "merged_roommates_xlsx": rr_merged_roommates_xlsx,
     "semicolon_csv": rr_semicolon_csv, "deep_header_xlsx": rr_deep_header_xlsx,
     "merged_two_row_xlsx": rr_merged_two_row_xlsx, "serial_dates_csv": rr_serial_dates_csv,
+    "eu_csv": rr_eu_csv,
 }
 
 # Which formats each property is rendered in. Every property also gets
@@ -847,6 +860,9 @@ RR_PLAN = [
     ["semicolon_csv", "deep_header_xlsx", "merged_two_row_xlsx", "serial_dates_csv"],
     # cycle 4 (audit golden cases)
     ["appfolio_csv", "yardi_xlsx", "entrata_csv"],
+    # cycle 6
+    ["eu_csv", "realpage_csv"],
+    ["eu_csv", "appfolio_xlsx"],
 ]
 
 
@@ -1085,6 +1101,20 @@ def t12_csv_prior_year(prop, lines):
     return csv_bytes(rows)
 
 
+def t12_csv_t24(prop, lines):
+    """Two years side by side (Oct 2024 .. Sep 2026); the OLDER year's months come first and differ."""
+    older = [(2024, 10), (2024, 11), (2024, 12)] + [(2025, m) for m in range(1, 10)]
+    hdr = ["Account"] + [f"{MONTHS[m - 1]} {y}" for y, m in older] + [f"{MONTHS[m - 1]} {y}" for y, m in PERIOD] + ["Trailing 12 Total"]
+    rows = [[prop["name"]], ["24 Month Income Statement"], hdr]
+    for label, key, kind in T12_LABELS:
+        if key is None:
+            rows.append([label])
+            continue
+        prev = [round(v * 0.9, 2) for v in lines[key]]
+        rows.append([label] + [f"{v:.2f}" for v in prev + lines[key]] + [f"{round(sum(lines[key]), 2):.2f}"])
+    return csv_bytes(rows)
+
+
 def t12_pdf(prop, lines):
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=landscape(letter), leftMargin=0.3 * inch, rightMargin=0.3 * inch)
@@ -1134,6 +1164,8 @@ T12_PLAN = [
     [("xlsx_monyear", "gap"), ("csv_label_variants", "occ")],
     [("csv_actual_budget_inline", "baddebt"), ("csv_prior_year", "gap")],
     [("xlsx_monyear", "gap"), ("csv_mm_yyyy_nototal", "clean")],
+    [("csv_t24", "gap"), ("csv_t24", "clean")],
+    [("csv_t24", "occ"), ("xlsx_monyear", "clean")],
 ]
 
 
@@ -1161,6 +1193,8 @@ def render_t12(prop, fmt, lines):
         return "csv", t12_csv_actual_budget_inline(prop, lines), "Budget comparison: 'Oct 2025 Actual' / 'Oct 2025 Budget' column pairs -- must read actuals"
     if fmt == "xlsx_actual_budget_tworow":
         return "xlsx", t12_xlsx_actual_budget_tworow(prop, lines), "Month merged over Actual / Budget sub-columns (two-row header) -- must read actuals"
+    if fmt == "csv_t24":
+        return "csv", t12_csv_t24(prop, lines), "T-24: Oct 2024..Sep 2026 side by side -- must read the LATEST 12 months"
     if fmt == "csv_prior_year":
         return "csv", t12_csv_prior_year(prop, lines), "'Prior Year Total' column BEFORE the months, Total + Variance after"
     raise ValueError(fmt)
@@ -1326,6 +1360,24 @@ def main():
         manifest["reimports"].append({"property": prop["id"], "first": rel, "second": canon["file"],
                                       "expected_rent_roll": canon["expected_rent_roll"],
                                       "expected_findings": canon["expected_findings"]})
+    # One file, two properties (per-row Property column), no typed address.
+    pair = [p for p in props if p["name"] in ("Lakeshore Commons", "Pinecrest Villas")]
+    if len(pair) == 2:
+        rows = [["Property", "Unit", "Resident", "Rent", "Lease Start", "Lease End"]]
+        for prop in pair:
+            for u in truth.rr_units(prop):
+                if u["status"] == "occupied":
+                    end = "Month-to-Month" if d(u["rr_end"]) < AS_OF else fdate(u["rr_end"])
+                    rows.append([prop["base_address"], u["uid"], u["rr_tenant"], f"${u['rr_rent']:,.0f}/mo", fdate(u["rr_start"]), end])
+                else:
+                    rows.append([prop["base_address"], u["uid"], "VACANT", "", "", ""])
+        rel = "rent_rolls/multi__two_properties.csv"
+        write(os.path.join(FIX, rel), csv_bytes(rows))
+        manifest["multiprops"] = [{
+            "file": rel, "note": "Portfolio export: two properties in one file (per-row Property), '$1,250/mo' rents, 'Month-to-Month' end dates",
+            "properties": [{"id": prop["id"], "address": prop["base_address"],
+                            "expected_findings": truth.expected_findings(prop, {"start"})} for prop in pair],
+        }]
     for name, data, kw, note in bad_rent_rolls(props):
         rel = f"rent_rolls/bad__{name}"
         write(os.path.join(FIX, rel), data)

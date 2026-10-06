@@ -20972,6 +20972,540 @@
      "rr_tenant": "Jordan Sorensen"
     }
    ]
+  },
+  {
+   "id": "p19",
+   "name": "Lakeshore Commons",
+   "typed_address": "1200 Lakeshore Blvd, Madison, WI 53703",
+   "base_address": "1200 Lakeshore Blvd, Madison, WI 53703",
+   "leases": [
+    {
+     "file": "leases/p19/101.pdf",
+     "unit": "101",
+     "tenant": "Greta Thibodeaux",
+     "rent": 1200.0,
+     "start": "2026-02-01",
+     "end": "2027-01-31",
+     "address": "1200 Lakeshore Blvd, Madison, WI 53703, Suite 101",
+     "concession": null
+    },
+    {
+     "file": "leases/p19/102.pdf",
+     "unit": "102",
+     "tenant": "Rafael Ingram",
+     "rent": 1825.0,
+     "start": "2026-03-01",
+     "end": "2027-02-28",
+     "address": "1200 Lakeshore Blvd, Madison, WI 53703, Suite 102",
+     "concession": null
+    },
+    {
+     "file": "leases/p19/103.pdf",
+     "unit": "103",
+     "tenant": "Malik Bellweather",
+     "rent": 1150.0,
+     "start": "2026-01-01",
+     "end": "2026-12-31",
+     "address": "1200 Lakeshore Blvd, Madison, WI 53703, Suite 103",
+     "concession": null
+    },
+    {
+     "file": "leases/p19/104.pdf",
+     "unit": "104",
+     "tenant": "Maeve Pemberton",
+     "rent": 1200.0,
+     "start": "2025-07-01",
+     "end": "2026-06-30",
+     "address": "1200 Lakeshore Blvd, Madison, WI 53703, Suite 104",
+     "concession": null
+    },
+    {
+     "file": "leases/p19/201.pdf",
+     "unit": "201",
+     "tenant": "Lucia Zeller",
+     "rent": 1150.0,
+     "start": "2026-04-01",
+     "end": "2027-03-31",
+     "address": "1200 Lakeshore Blvd, Madison, WI 53703, Suite 201",
+     "concession": null
+    },
+    {
+     "file": "leases/p19/202.pdf",
+     "unit": "202",
+     "tenant": "Malik Whitlock",
+     "rent": 1875.0,
+     "start": "2026-04-01",
+     "end": "2027-03-31",
+     "address": "1200 Lakeshore Blvd, Madison, WI 53703, Suite 202",
+     "concession": null
+    }
+   ],
+   "units": [
+    {
+     "uid": "101",
+     "beds": 1,
+     "baths": 1,
+     "sqft": 690,
+     "market_rent": 1200.0,
+     "status": "occupied",
+     "tenant": "Greta Thibodeaux",
+     "lease_rent": 1200.0,
+     "rr_rent": 1200.0,
+     "start": "2026-02-01",
+     "end": "2027-01-31",
+     "rr_start": "2026-02-01",
+     "rr_end": "2027-01-31",
+     "has_lease": true,
+     "on_rent_roll": true,
+     "concession": null,
+     "rr_concession": 0.0,
+     "rr_rent_shows_net": false,
+     "s8": null,
+     "issue": null,
+     "trap": null,
+     "rr_tenant": "Greta Thibodeaux"
+    },
+    {
+     "uid": "102",
+     "beds": 3,
+     "baths": 2,
+     "sqft": 1255,
+     "market_rent": 1850.0,
+     "status": "occupied",
+     "tenant": "Rafael Ingram",
+     "lease_rent": 1825.0,
+     "rr_rent": 1975.0,
+     "start": "2026-03-01",
+     "end": "2027-02-28",
+     "rr_start": "2026-03-01",
+     "rr_end": "2027-02-28",
+     "has_lease": true,
+     "on_rent_roll": true,
+     "concession": null,
+     "rr_concession": 0.0,
+     "rr_rent_shows_net": false,
+     "s8": null,
+     "issue": "rent_mismatch_over",
+     "trap": null,
+     "rr_tenant": "Rafael Ingram"
+    },
+    {
+     "uid": "103",
+     "beds": 1,
+     "baths": 1,
+     "sqft": 705,
+     "market_rent": 1200.0,
+     "status": "occupied",
+     "tenant": "Malik Bellweather",
+     "lease_rent": 1150.0,
+     "rr_rent": 1150.0,
+     "start": "2026-01-01",
+     "end": "2026-12-31",
+     "rr_start": "2026-01-01",
+     "rr_end": "2026-12-31",
+     "has_lease": true,
+     "on_rent_roll": true,
+     "concession": null,
+     "rr_concession": 0.0,
+     "rr_rent_shows_net": false,
+     "s8": null,
+     "issue": null,
+     "trap": null,
+     "rr_tenant": "Malik Bellweather"
+    },
+    {
+     "uid": "104",
+     "beds": 1,
+     "baths": 1,
+     "sqft": 720,
+     "market_rent": 1225.0,
+     "status": "occupied",
+     "tenant": "Maeve Pemberton",
+     "lease_rent": 1200.0,
+     "rr_rent": 1200.0,
+     "start": "2025-07-01",
+     "end": "2026-06-30",
+     "rr_start": "2025-07-01",
+     "rr_end": "2026-06-30",
+     "has_lease": true,
+     "on_rent_roll": true,
+     "concession": null,
+     "rr_concession": 0.0,
+     "rr_rent_shows_net": false,
+     "s8": null,
+     "issue": "expired_but_occupied",
+     "trap": null,
+     "rr_tenant": "Maeve Pemberton"
+    },
+    {
+     "uid": "201",
+     "beds": 1,
+     "baths": 1,
+     "sqft": 720,
+     "market_rent": 1150.0,
+     "status": "occupied",
+     "tenant": "Lucia Zeller",
+     "lease_rent": 1150.0,
+     "rr_rent": 1150.0,
+     "start": "2026-04-01",
+     "end": "2027-03-31",
+     "rr_start": "2026-04-01",
+     "rr_end": "2027-03-31",
+     "has_lease": true,
+     "on_rent_roll": true,
+     "concession": null,
+     "rr_concession": 0.0,
+     "rr_rent_shows_net": false,
+     "s8": null,
+     "issue": null,
+     "trap": null,
+     "rr_tenant": "Lucia Zeller"
+    },
+    {
+     "uid": "202",
+     "beds": 3,
+     "baths": 2,
+     "sqft": 1240,
+     "market_rent": 1900.0,
+     "status": "occupied",
+     "tenant": "Malik Whitlock",
+     "lease_rent": 1875.0,
+     "rr_rent": 1875.0,
+     "start": "2026-04-01",
+     "end": "2027-03-31",
+     "rr_start": "2026-04-01",
+     "rr_end": "2027-03-31",
+     "has_lease": true,
+     "on_rent_roll": true,
+     "concession": null,
+     "rr_concession": 0.0,
+     "rr_rent_shows_net": false,
+     "s8": null,
+     "issue": null,
+     "trap": null,
+     "rr_tenant": "Malik Whitlock"
+    },
+    {
+     "uid": "203",
+     "beds": 1,
+     "baths": 1,
+     "sqft": 705,
+     "market_rent": 1150.0,
+     "status": "occupied",
+     "tenant": "Sofia Sorensen",
+     "lease_rent": 1150.0,
+     "rr_rent": 1150.0,
+     "start": "2026-03-01",
+     "end": "2027-02-28",
+     "rr_start": "2026-03-01",
+     "rr_end": "2027-02-28",
+     "has_lease": false,
+     "on_rent_roll": true,
+     "concession": null,
+     "rr_concession": 0.0,
+     "rr_rent_shows_net": false,
+     "s8": null,
+     "issue": "unit_no_lease",
+     "trap": null,
+     "rr_tenant": "Sofia Sorensen"
+    },
+    {
+     "uid": "204",
+     "beds": 3,
+     "baths": 2,
+     "sqft": 1255,
+     "market_rent": 1825.0,
+     "status": "vacant",
+     "tenant": null,
+     "lease_rent": null,
+     "rr_rent": null,
+     "start": null,
+     "end": null,
+     "rr_start": null,
+     "rr_end": null,
+     "has_lease": false,
+     "on_rent_roll": true,
+     "concession": null,
+     "rr_concession": 0.0,
+     "rr_rent_shows_net": false,
+     "s8": null,
+     "issue": null,
+     "trap": null,
+     "rr_tenant": null
+    }
+   ]
+  },
+  {
+   "id": "p20",
+   "name": "Pinecrest Villas",
+   "typed_address": "75 Pinecrest Ln, Spokane, WA 99201",
+   "base_address": "75 Pinecrest Ln, Spokane, WA 99201",
+   "leases": [
+    {
+     "file": "leases/p20/101.pdf",
+     "unit": "101",
+     "tenant": "Desmond Juarez",
+     "rent": 1125.0,
+     "start": "2026-04-01",
+     "end": "2027-03-31",
+     "address": "75 Pinecrest Ln, Spokane, WA 99201, Suite 101",
+     "concession": null
+    },
+    {
+     "file": "leases/p20/102.pdf",
+     "unit": "102",
+     "tenant": "Ines Quintero",
+     "rent": 1225.0,
+     "start": "2026-03-01",
+     "end": "2027-02-28",
+     "address": "75 Pinecrest Ln, Spokane, WA 99201, Suite 102",
+     "concession": null
+    },
+    {
+     "file": "leases/p20/104.pdf",
+     "unit": "104",
+     "tenant": "Odette Drummond",
+     "rent": 1875.0,
+     "start": "2026-02-01",
+     "end": "2027-01-31",
+     "address": "75 Pinecrest Ln, Spokane, WA 99201, Suite 104",
+     "concession": null
+    },
+    {
+     "file": "leases/p20/201.pdf",
+     "unit": "201",
+     "tenant": "Priya Underhill",
+     "rent": 1150.0,
+     "start": "2026-04-01",
+     "end": "2027-03-31",
+     "address": "75 Pinecrest Ln, Spokane, WA 99201, Suite 201",
+     "concession": null
+    },
+    {
+     "file": "leases/p20/202.pdf",
+     "unit": "202",
+     "tenant": "Mateo Zeller",
+     "rent": 1450.0,
+     "start": "2026-04-01",
+     "end": "2027-03-31",
+     "address": "75 Pinecrest Ln, Spokane, WA 99201, Suite 202",
+     "concession": null
+    },
+    {
+     "file": "leases/p20/203.pdf",
+     "unit": "203",
+     "tenant": "Callum Brightwater",
+     "rent": 1175.0,
+     "start": "2026-03-01",
+     "end": "2027-02-28",
+     "address": "75 Pinecrest Ln, Spokane, WA 99201, Suite 203",
+     "concession": null
+    },
+    {
+     "file": "leases/p20/204.pdf",
+     "unit": "204",
+     "tenant": "Noor Quintero",
+     "rent": 1250.0,
+     "start": "2026-03-01",
+     "end": "2027-02-28",
+     "address": "75 Pinecrest Ln, Spokane, WA 99201, Suite 204",
+     "concession": null
+    }
+   ],
+   "units": [
+    {
+     "uid": "101",
+     "beds": 1,
+     "baths": 1,
+     "sqft": 720,
+     "market_rent": 1150.0,
+     "status": "occupied",
+     "tenant": "Desmond Juarez",
+     "lease_rent": 1125.0,
+     "rr_rent": 1125.0,
+     "start": "2026-04-01",
+     "end": "2027-03-31",
+     "rr_start": "2026-04-01",
+     "rr_end": "2027-03-31",
+     "has_lease": true,
+     "on_rent_roll": true,
+     "concession": null,
+     "rr_concession": 0.0,
+     "rr_rent_shows_net": false,
+     "s8": null,
+     "issue": null,
+     "trap": null,
+     "rr_tenant": "Desmond Juarez"
+    },
+    {
+     "uid": "102",
+     "beds": 1,
+     "baths": 1,
+     "sqft": 705,
+     "market_rent": 1250.0,
+     "status": "occupied",
+     "tenant": "Ines Quintero",
+     "lease_rent": 1225.0,
+     "rr_rent": 1225.0,
+     "start": "2026-03-01",
+     "end": "2027-02-28",
+     "rr_start": "2026-03-01",
+     "rr_end": "2027-02-28",
+     "has_lease": true,
+     "on_rent_roll": false,
+     "concession": null,
+     "rr_concession": 0.0,
+     "rr_rent_shows_net": false,
+     "s8": null,
+     "issue": "lease_no_unit",
+     "trap": null,
+     "rr_tenant": "Ines Quintero"
+    },
+    {
+     "uid": "103",
+     "beds": 2,
+     "baths": 2,
+     "sqft": 995,
+     "market_rent": 1525.0,
+     "status": "vacant",
+     "tenant": null,
+     "lease_rent": null,
+     "rr_rent": null,
+     "start": null,
+     "end": null,
+     "rr_start": null,
+     "rr_end": null,
+     "has_lease": false,
+     "on_rent_roll": true,
+     "concession": null,
+     "rr_concession": 0.0,
+     "rr_rent_shows_net": false,
+     "s8": null,
+     "issue": null,
+     "trap": null,
+     "rr_tenant": null
+    },
+    {
+     "uid": "104",
+     "beds": 3,
+     "baths": 2,
+     "sqft": 1270,
+     "market_rent": 1900.0,
+     "status": "occupied",
+     "tenant": "Odette Drummond",
+     "lease_rent": 1875.0,
+     "rr_rent": 1875.0,
+     "start": "2026-02-01",
+     "end": "2027-01-31",
+     "rr_start": "2026-02-01",
+     "rr_end": "2027-01-31",
+     "has_lease": true,
+     "on_rent_roll": true,
+     "concession": null,
+     "rr_concession": 0.0,
+     "rr_rent_shows_net": false,
+     "s8": null,
+     "issue": "tenant_mismatch",
+     "trap": null,
+     "rr_tenant": "Kenji Yarborough"
+    },
+    {
+     "uid": "201",
+     "beds": 1,
+     "baths": 1,
+     "sqft": 720,
+     "market_rent": 1175.0,
+     "status": "occupied",
+     "tenant": "Priya Underhill",
+     "lease_rent": 1150.0,
+     "rr_rent": 1060.0,
+     "start": "2026-04-01",
+     "end": "2027-03-31",
+     "rr_start": "2026-04-01",
+     "rr_end": "2027-03-31",
+     "has_lease": true,
+     "on_rent_roll": true,
+     "concession": null,
+     "rr_concession": 0.0,
+     "rr_rent_shows_net": false,
+     "s8": null,
+     "issue": "rent_mismatch_under",
+     "trap": null,
+     "rr_tenant": "Priya Underhill"
+    },
+    {
+     "uid": "202",
+     "beds": 2,
+     "baths": 2,
+     "sqft": 980,
+     "market_rent": 1475.0,
+     "status": "occupied",
+     "tenant": "Mateo Zeller",
+     "lease_rent": 1450.0,
+     "rr_rent": 1450.0,
+     "start": "2026-04-01",
+     "end": "2027-03-31",
+     "rr_start": "2026-04-01",
+     "rr_end": "2027-03-31",
+     "has_lease": true,
+     "on_rent_roll": true,
+     "concession": null,
+     "rr_concession": 0.0,
+     "rr_rent_shows_net": false,
+     "s8": null,
+     "issue": null,
+     "trap": null,
+     "rr_tenant": "Mateo Zeller"
+    },
+    {
+     "uid": "203",
+     "beds": 1,
+     "baths": 1,
+     "sqft": 705,
+     "market_rent": 1175.0,
+     "status": "occupied",
+     "tenant": "Callum Brightwater",
+     "lease_rent": 1175.0,
+     "rr_rent": 1175.0,
+     "start": "2026-03-01",
+     "end": "2027-02-28",
+     "rr_start": "2026-03-01",
+     "rr_end": "2027-02-28",
+     "has_lease": true,
+     "on_rent_roll": true,
+     "concession": null,
+     "rr_concession": 0.0,
+     "rr_rent_shows_net": false,
+     "s8": null,
+     "issue": null,
+     "trap": null,
+     "rr_tenant": "Callum Brightwater"
+    },
+    {
+     "uid": "204",
+     "beds": 1,
+     "baths": 1,
+     "sqft": 690,
+     "market_rent": 1250.0,
+     "status": "occupied",
+     "tenant": "Noor Quintero",
+     "lease_rent": 1250.0,
+     "rr_rent": 1250.0,
+     "start": "2026-03-01",
+     "end": "2027-02-28",
+     "rr_start": "2026-03-01",
+     "rr_end": "2027-02-28",
+     "has_lease": true,
+     "on_rent_roll": true,
+     "concession": null,
+     "rr_concession": 0.0,
+     "rr_rent_shows_net": false,
+     "s8": null,
+     "issue": null,
+     "trap": null,
+     "rr_tenant": "Noor Quintero"
+    }
+   ]
   }
  ],
  "rent_rolls": [
@@ -42559,6 +43093,486 @@
      "direction": "overstate"
     }
    ]
+  },
+  {
+   "file": "rent_rolls/p19__clean_csv.csv",
+   "property": "p19",
+   "format": "clean_csv",
+   "ext": "csv",
+   "note": "Clean simple CSV (baseline)",
+   "canonical": true,
+   "carries": [
+    "end",
+    "start"
+   ],
+   "expected_rent_roll": {
+    "occupied": {
+     "101": {
+      "tenant": "Greta Thibodeaux",
+      "rent": 1200.0,
+      "start": "2026-02-01",
+      "end": "2027-01-31"
+     },
+     "102": {
+      "tenant": "Rafael Ingram",
+      "rent": 1975.0,
+      "start": "2026-03-01",
+      "end": "2027-02-28"
+     },
+     "103": {
+      "tenant": "Malik Bellweather",
+      "rent": 1150.0,
+      "start": "2026-01-01",
+      "end": "2026-12-31"
+     },
+     "104": {
+      "tenant": "Maeve Pemberton",
+      "rent": 1200.0,
+      "start": "2025-07-01",
+      "end": "2026-06-30"
+     },
+     "201": {
+      "tenant": "Lucia Zeller",
+      "rent": 1150.0,
+      "start": "2026-04-01",
+      "end": "2027-03-31"
+     },
+     "202": {
+      "tenant": "Malik Whitlock",
+      "rent": 1875.0,
+      "start": "2026-04-01",
+      "end": "2027-03-31"
+     },
+     "203": {
+      "tenant": "Sofia Sorensen",
+      "rent": 1150.0,
+      "start": "2026-03-01",
+      "end": "2027-02-28"
+     }
+    },
+    "vacant": [
+     "204"
+    ],
+    "down": [],
+    "total_units": 8
+   },
+   "expected_findings": [
+    {
+     "unit": "102",
+     "type": "rent_mismatch",
+     "annual": 1800.0,
+     "direction": "overstate"
+    },
+    {
+     "unit": "104",
+     "type": "expired_but_occupied",
+     "annual": 14400.0,
+     "direction": "overstate"
+    },
+    {
+     "unit": "203",
+     "type": "unit_no_lease",
+     "annual": 13800.0,
+     "direction": null
+    }
+   ]
+  },
+  {
+   "file": "rent_rolls/p19__eu_csv.csv",
+   "property": "p19",
+   "format": "eu_csv",
+   "ext": "csv",
+   "note": "European locale: semicolons, 1.250,00 rents, dd.mm.yyyy dates",
+   "canonical": false,
+   "carries": [
+    "end",
+    "start"
+   ],
+   "expected_rent_roll": {
+    "occupied": {
+     "101": {
+      "tenant": "Greta Thibodeaux",
+      "rent": 1200.0,
+      "start": "2026-02-01",
+      "end": "2027-01-31"
+     },
+     "102": {
+      "tenant": "Rafael Ingram",
+      "rent": 1975.0,
+      "start": "2026-03-01",
+      "end": "2027-02-28"
+     },
+     "103": {
+      "tenant": "Malik Bellweather",
+      "rent": 1150.0,
+      "start": "2026-01-01",
+      "end": "2026-12-31"
+     },
+     "104": {
+      "tenant": "Maeve Pemberton",
+      "rent": 1200.0,
+      "start": "2025-07-01",
+      "end": "2026-06-30"
+     },
+     "201": {
+      "tenant": "Lucia Zeller",
+      "rent": 1150.0,
+      "start": "2026-04-01",
+      "end": "2027-03-31"
+     },
+     "202": {
+      "tenant": "Malik Whitlock",
+      "rent": 1875.0,
+      "start": "2026-04-01",
+      "end": "2027-03-31"
+     },
+     "203": {
+      "tenant": "Sofia Sorensen",
+      "rent": 1150.0,
+      "start": "2026-03-01",
+      "end": "2027-02-28"
+     }
+    },
+    "vacant": [
+     "204"
+    ],
+    "down": [],
+    "total_units": 8
+   },
+   "expected_findings": [
+    {
+     "unit": "102",
+     "type": "rent_mismatch",
+     "annual": 1800.0,
+     "direction": "overstate"
+    },
+    {
+     "unit": "104",
+     "type": "expired_but_occupied",
+     "annual": 14400.0,
+     "direction": "overstate"
+    },
+    {
+     "unit": "203",
+     "type": "unit_no_lease",
+     "annual": 13800.0,
+     "direction": null
+    }
+   ]
+  },
+  {
+   "file": "rent_rolls/p19__realpage_csv.csv",
+   "property": "p19",
+   "format": "realpage_csv",
+   "ext": "csv",
+   "note": "RealPage CSV: parentheses negatives in Other Charges/Credits",
+   "canonical": false,
+   "carries": [
+    "end",
+    "start"
+   ],
+   "expected_rent_roll": {
+    "occupied": {
+     "101": {
+      "tenant": "Greta Thibodeaux",
+      "rent": 1200.0,
+      "start": "2026-02-01",
+      "end": "2027-01-31"
+     },
+     "102": {
+      "tenant": "Rafael Ingram",
+      "rent": 1975.0,
+      "start": "2026-03-01",
+      "end": "2027-02-28"
+     },
+     "103": {
+      "tenant": "Malik Bellweather",
+      "rent": 1150.0,
+      "start": "2026-01-01",
+      "end": "2026-12-31"
+     },
+     "104": {
+      "tenant": "Maeve Pemberton",
+      "rent": 1200.0,
+      "start": "2025-07-01",
+      "end": "2026-06-30"
+     },
+     "201": {
+      "tenant": "Lucia Zeller",
+      "rent": 1150.0,
+      "start": "2026-04-01",
+      "end": "2027-03-31"
+     },
+     "202": {
+      "tenant": "Malik Whitlock",
+      "rent": 1875.0,
+      "start": "2026-04-01",
+      "end": "2027-03-31"
+     },
+     "203": {
+      "tenant": "Sofia Sorensen",
+      "rent": 1150.0,
+      "start": "2026-03-01",
+      "end": "2027-02-28"
+     }
+    },
+    "vacant": [
+     "204"
+    ],
+    "down": [],
+    "total_units": 8
+   },
+   "expected_findings": [
+    {
+     "unit": "102",
+     "type": "rent_mismatch",
+     "annual": 1800.0,
+     "direction": "overstate"
+    },
+    {
+     "unit": "104",
+     "type": "expired_but_occupied",
+     "annual": 14400.0,
+     "direction": "overstate"
+    },
+    {
+     "unit": "203",
+     "type": "unit_no_lease",
+     "annual": 13800.0,
+     "direction": null
+    }
+   ]
+  },
+  {
+   "file": "rent_rolls/p20__clean_csv.csv",
+   "property": "p20",
+   "format": "clean_csv",
+   "ext": "csv",
+   "note": "Clean simple CSV (baseline)",
+   "canonical": true,
+   "carries": [
+    "end",
+    "start"
+   ],
+   "expected_rent_roll": {
+    "occupied": {
+     "101": {
+      "tenant": "Desmond Juarez",
+      "rent": 1125.0,
+      "start": "2026-04-01",
+      "end": "2027-03-31"
+     },
+     "104": {
+      "tenant": "Kenji Yarborough",
+      "rent": 1875.0,
+      "start": "2026-02-01",
+      "end": "2027-01-31"
+     },
+     "201": {
+      "tenant": "Priya Underhill",
+      "rent": 1060.0,
+      "start": "2026-04-01",
+      "end": "2027-03-31"
+     },
+     "202": {
+      "tenant": "Mateo Zeller",
+      "rent": 1450.0,
+      "start": "2026-04-01",
+      "end": "2027-03-31"
+     },
+     "203": {
+      "tenant": "Callum Brightwater",
+      "rent": 1175.0,
+      "start": "2026-03-01",
+      "end": "2027-02-28"
+     },
+     "204": {
+      "tenant": "Noor Quintero",
+      "rent": 1250.0,
+      "start": "2026-03-01",
+      "end": "2027-02-28"
+     }
+    },
+    "vacant": [
+     "103"
+    ],
+    "down": [],
+    "total_units": 7
+   },
+   "expected_findings": [
+    {
+     "unit": "102",
+     "type": "lease_no_unit",
+     "annual": 14700.0,
+     "direction": "understate"
+    },
+    {
+     "unit": "104",
+     "type": "tenant_mismatch",
+     "annual": null,
+     "direction": null
+    },
+    {
+     "unit": "201",
+     "type": "rent_mismatch",
+     "annual": 1080.0,
+     "direction": "understate"
+    }
+   ]
+  },
+  {
+   "file": "rent_rolls/p20__eu_csv.csv",
+   "property": "p20",
+   "format": "eu_csv",
+   "ext": "csv",
+   "note": "European locale: semicolons, 1.250,00 rents, dd.mm.yyyy dates",
+   "canonical": false,
+   "carries": [
+    "end",
+    "start"
+   ],
+   "expected_rent_roll": {
+    "occupied": {
+     "101": {
+      "tenant": "Desmond Juarez",
+      "rent": 1125.0,
+      "start": "2026-04-01",
+      "end": "2027-03-31"
+     },
+     "104": {
+      "tenant": "Kenji Yarborough",
+      "rent": 1875.0,
+      "start": "2026-02-01",
+      "end": "2027-01-31"
+     },
+     "201": {
+      "tenant": "Priya Underhill",
+      "rent": 1060.0,
+      "start": "2026-04-01",
+      "end": "2027-03-31"
+     },
+     "202": {
+      "tenant": "Mateo Zeller",
+      "rent": 1450.0,
+      "start": "2026-04-01",
+      "end": "2027-03-31"
+     },
+     "203": {
+      "tenant": "Callum Brightwater",
+      "rent": 1175.0,
+      "start": "2026-03-01",
+      "end": "2027-02-28"
+     },
+     "204": {
+      "tenant": "Noor Quintero",
+      "rent": 1250.0,
+      "start": "2026-03-01",
+      "end": "2027-02-28"
+     }
+    },
+    "vacant": [
+     "103"
+    ],
+    "down": [],
+    "total_units": 7
+   },
+   "expected_findings": [
+    {
+     "unit": "102",
+     "type": "lease_no_unit",
+     "annual": 14700.0,
+     "direction": "understate"
+    },
+    {
+     "unit": "104",
+     "type": "tenant_mismatch",
+     "annual": null,
+     "direction": null
+    },
+    {
+     "unit": "201",
+     "type": "rent_mismatch",
+     "annual": 1080.0,
+     "direction": "understate"
+    }
+   ]
+  },
+  {
+   "file": "rent_rolls/p20__appfolio_xlsx.xlsx",
+   "property": "p20",
+   "format": "appfolio_xlsx",
+   "ext": "xlsx",
+   "note": "AppFolio xlsx: real date cells, $ formats",
+   "canonical": false,
+   "carries": [
+    "end",
+    "start"
+   ],
+   "expected_rent_roll": {
+    "occupied": {
+     "101": {
+      "tenant": "Desmond Juarez",
+      "rent": 1125.0,
+      "start": "2026-04-01",
+      "end": "2027-03-31"
+     },
+     "104": {
+      "tenant": "Kenji Yarborough",
+      "rent": 1875.0,
+      "start": "2026-02-01",
+      "end": "2027-01-31"
+     },
+     "201": {
+      "tenant": "Priya Underhill",
+      "rent": 1060.0,
+      "start": "2026-04-01",
+      "end": "2027-03-31"
+     },
+     "202": {
+      "tenant": "Mateo Zeller",
+      "rent": 1450.0,
+      "start": "2026-04-01",
+      "end": "2027-03-31"
+     },
+     "203": {
+      "tenant": "Callum Brightwater",
+      "rent": 1175.0,
+      "start": "2026-03-01",
+      "end": "2027-02-28"
+     },
+     "204": {
+      "tenant": "Noor Quintero",
+      "rent": 1250.0,
+      "start": "2026-03-01",
+      "end": "2027-02-28"
+     }
+    },
+    "vacant": [
+     "103"
+    ],
+    "down": [],
+    "total_units": 7
+   },
+   "expected_findings": [
+    {
+     "unit": "102",
+     "type": "lease_no_unit",
+     "annual": 14700.0,
+     "direction": "understate"
+    },
+    {
+     "unit": "104",
+     "type": "tenant_mismatch",
+     "annual": null,
+     "direction": null
+    },
+    {
+     "unit": "201",
+     "type": "rent_mismatch",
+     "annual": 1080.0,
+     "direction": "understate"
+    }
+   ]
   }
  ],
  "t12s": [
@@ -43439,6 +44453,88 @@
     }
    ],
    "rent_roll_annual": 169080.0
+  },
+  {
+   "file": "t12/p19__csv_t24__gap.csv",
+   "property": "p19",
+   "format": "csv_t24",
+   "scenario": "gap",
+   "ext": "csv",
+   "note": "T-24: Oct 2024..Sep 2026 side by side -- must read the LATEST 12 months",
+   "expected_parse": {
+    "gross_potential_rent": 138000.0,
+    "vacancy_loss": 17250.0,
+    "concessions": 0.0,
+    "bad_debt": 1529.44,
+    "rental_income_collected": 100175.19,
+    "other_income": 6400.44
+   },
+   "expected_t12_rows": [
+    {
+     "type": "t12_income_gap",
+     "annual": 16224.81
+    }
+   ],
+   "rent_roll_annual": 116400.0
+  },
+  {
+   "file": "t12/p19__csv_t24__clean.csv",
+   "property": "p19",
+   "format": "csv_t24",
+   "scenario": "clean",
+   "ext": "csv",
+   "note": "T-24: Oct 2024..Sep 2026 side by side -- must read the LATEST 12 months",
+   "expected_parse": {
+    "gross_potential_rent": 138000.0,
+    "vacancy_loss": 17250.0,
+    "concessions": 0.0,
+    "bad_debt": 1277.69,
+    "rental_income_collected": 115439.67,
+    "other_income": 6117.25
+   },
+   "expected_t12_rows": [],
+   "rent_roll_annual": 116400.0
+  },
+  {
+   "file": "t12/p20__csv_t24__occ.csv",
+   "property": "p20",
+   "format": "csv_t24",
+   "scenario": "occ",
+   "ext": "csv",
+   "note": "T-24: Oct 2024..Sep 2026 side by side -- must read the LATEST 12 months",
+   "expected_parse": {
+    "gross_potential_rent": 115800.0,
+    "vacancy_loss": 2316.0,
+    "concessions": 0.0,
+    "bad_debt": 1239.48,
+    "rental_income_collected": 94473.5,
+    "other_income": 5660.38
+   },
+   "expected_t12_rows": [
+    {
+     "type": "t12_occupancy_mismatch",
+     "annual": null
+    }
+   ],
+   "rent_roll_annual": 95220.0
+  },
+  {
+   "file": "t12/p20__xlsx_monyear__clean.xlsx",
+   "property": "p20",
+   "format": "xlsx_monyear",
+   "scenario": "clean",
+   "ext": "xlsx",
+   "note": "xlsx, 'Oct 2025' month headers, section header rows, accounting negatives",
+   "expected_parse": {
+    "gross_potential_rent": 115800.0,
+    "vacancy_loss": 16542.84,
+    "concessions": 0.0,
+    "bad_debt": 1262.68,
+    "rental_income_collected": 94486.66,
+    "other_income": 5592.03
+   },
+   "expected_t12_rows": [],
+   "rent_roll_annual": 95220.0
   }
  ],
  "bad_rent_rolls": [
@@ -43689,6 +44785,62 @@
      "type": "concession_missing",
      "annual": 912.5,
      "direction": "overstate"
+    }
+   ]
+  }
+ ],
+ "multiprops": [
+  {
+   "file": "rent_rolls/multi__two_properties.csv",
+   "note": "Portfolio export: two properties in one file (per-row Property), '$1,250/mo' rents, 'Month-to-Month' end dates",
+   "properties": [
+    {
+     "id": "p19",
+     "address": "1200 Lakeshore Blvd, Madison, WI 53703",
+     "expected_findings": [
+      {
+       "unit": "102",
+       "type": "rent_mismatch",
+       "annual": 1800.0,
+       "direction": "overstate"
+      },
+      {
+       "unit": "104",
+       "type": "expired_but_occupied",
+       "annual": 14400.0,
+       "direction": "overstate"
+      },
+      {
+       "unit": "203",
+       "type": "unit_no_lease",
+       "annual": 13800.0,
+       "direction": null
+      }
+     ]
+    },
+    {
+     "id": "p20",
+     "address": "75 Pinecrest Ln, Spokane, WA 99201",
+     "expected_findings": [
+      {
+       "unit": "102",
+       "type": "lease_no_unit",
+       "annual": 14700.0,
+       "direction": "understate"
+      },
+      {
+       "unit": "104",
+       "type": "tenant_mismatch",
+       "annual": null,
+       "direction": null
+      },
+      {
+       "unit": "201",
+       "type": "rent_mismatch",
+       "annual": 1080.0,
+       "direction": "understate"
+      }
+     ]
     }
    ]
   }

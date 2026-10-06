@@ -50,6 +50,9 @@ PROPERTIES = [
     ("Cobalt Flats", "19 Cobalt St", "Boise", "ID", "83702", "Street"),
     # Cycle 4 (AUDIT.md §6.11 golden cases): renewal chains, step-ups, first-month % off, name-prefixed addresses.
     ("Fox Run Apartments", "400 Fox Run Dr", "Lexington", "KY", "40509", "Drive"),
+    # Cycle 6: one rent-roll file covering two properties (per-row Property column), T-24s, European locale.
+    ("Lakeshore Commons", "1200 Lakeshore Blvd", "Madison", "WI", "53703", "Boulevard"),
+    ("Pinecrest Villas", "75 Pinecrest Ln", "Spokane", "WA", "99201", "Lane"),
 ]
 
 # Unit-id styles: function(building_idx, floor, n) -> canonical id
@@ -401,6 +404,12 @@ CONFIGS += [
 CONFIGS += [
     dict(n_units=10, unit_style="plain", issues=["rent_mismatch_over", "expired_but_occupied"], vacant=1,
          renewals=3, step_ups=2, pct_first_month=1, lease_address_style="name_prefix"),
+]
+
+
+CONFIGS += [
+    dict(n_units=8, unit_style="plain", issues=["rent_mismatch_over", "expired_but_occupied", "unit_no_lease"], vacant=1),
+    dict(n_units=8, unit_style="plain", issues=["rent_mismatch_under", "tenant_mismatch", "lease_no_unit"], vacant=1),
 ]
 
 

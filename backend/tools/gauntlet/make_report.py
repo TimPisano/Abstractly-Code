@@ -54,7 +54,7 @@ def tables(latest):
     kinds = {"rr": "Rent roll (upload → parse → report → exports)", "bad_rr": "Bad rent-roll files (clear 400 expected)",
              "t12": "T-12 (parse → report T-12 rows → cross-check route → exports)", "bad_t12": "Bad T-12 files (clear 400 expected)",
              "deal": "Full deal (leases + rent roll + T-12)", "iso": "Team isolation",
-             "reimport": "Re-import of an updated rent roll"}
+             "reimport": "Re-import of an updated rent roll", "multiprop": "One rent-roll file covering two properties"}
     out.append("### Pass rate by case type\n\n| Case type | Passed |\n|---|---|")
     for k, v in s["by_kind"].items():
         out.append(f"| {kinds.get(k, k)} | {_pct(v['pass'], v['total'])} |")
