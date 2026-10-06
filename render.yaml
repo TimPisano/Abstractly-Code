@@ -95,6 +95,12 @@ services:
         sync: false
       - key: EMAIL_APP_PASSWORD
         sync: false
+      # Founder's booking page: the link in the requester's confirmation
+      # email and the target of every "Book a call" link (served by GET
+      # /public-config). No fallback in code -- unset logs an ERROR on
+      # every demo request and the links stay on the demo form.
+      - key: CALENDLY_URL
+        sync: false
       # Optional -- the app degrades gracefully (clear error/skip,
       # never a crash) if any of these are left unset. Uncomment and
       # fill in via the dashboard only for the features you want live
