@@ -1,33 +1,39 @@
 <!-- SUMMARY -->
-**Cycle 2: 119 of 132 cases pass (90%), up from 22 of 132 (17%) at the start.** The gauntlet ran 70 messy rent rolls, 33 T-12s and 117 leases through the full local pipeline, graded against a manifest of correct answers.
+**Cycle 3: 148 of 161 cases pass (92%). It was 22 of 132 (17%) at the start.** Cycle 3 added nastier files aimed at the weak spots. The gauntlet now runs 83 messy rent rolls, 41 T-12s and 178 leases through the full local pipeline, graded against a manifest of correct answers.
 
-- **Planted mismatches caught: 257 of 257, every one with the right dollar amount.** At baseline it was 108 of 193, and that denominator was smaller because many files never got past import.
-- **False alarms: 15, down from 337.** All 15 come from the *lease extraction* misreading three accented tenant names (for example, it reads "Søren Ågård"'s lease as tenant "Bluebonnet Commons Owner LLC"). Lease extraction belongs to the `feature/lease-intelligence` session, so I logged these and did not fix them.
-- **No crashes and no hangs**, down from 1 crash at baseline.
-- **Fixes:** 28 so far, each its own commit with a regression test. All 83 test files pass.
+- **Planted mismatches caught: 1,907 of 1,907, every one with the right dollar amount.** The count is large because the 600-unit stress file plants ~530 of them. At baseline it was 108 of 193, and that denominator was smaller because many files never got past import.
+- **False alarms: 15, down from 337.** All 15 come from *lease extraction* misreading three accented tenant names, which is owned by the `feature/lease-intelligence` session. Logged, not fixed.
+- **The only failures still on my side are 3 scanned/rotated PDF rent rolls.** They fail with a clear 400, never with wrong numbers.
+- **No crashes and no hangs.** The 600-unit rent roll imports and reports in about 2 seconds.
+- **Fixes:** 37, each its own commit with a regression test. All 83 test files pass.
 
 **What was broken, in plain terms:**
 
-- The **report could not pair a lease with its rent-roll row** whenever the wording differed: "Apt 101" vs "Suite 101", "Drive" vs "Dr". Every unit then showed up as two false findings.
-- **Rent rolls from PDF, Word, .xls or .txt were treated as leases**, so they were never checked at all.
+- The **report could not pair a lease with its rent-roll row** whenever the wording differed: "Apt 101" vs "Suite 101", "Drive" vs "Dr", or "Building A, Apartment 101" vs "A-101". Every unit then showed up as two false findings.
+- **Rent rolls from PDF, Word, .xls or .txt were treated as leases**, so they were never checked.
 - **The T-12 cross-check could essentially never work.** The causes:
   - it compared monthly rent to annual collections;
   - vacancy came out as 110% occupancy;
-  - vacant units were never counted, so every rent roll looked 100% occupied;
+  - vacant units were never counted;
   - section headers hid the real income line;
-  - month headers like "Oct 2025" weren't recognized;
-  - the "last 3 months" of a trailing T-12 were read as Oct–Dec.
+  - month headers like "Oct 2025" and "Oct 2025 Actual" weren't recognized;
+  - "last 3 months" was read as Oct–Dec;
+  - negative amounts lost their sign;
+  - lease PDFs were double-counted in the rent total.
 - **Most real PMS layouts were rejected or misread:**
-  - Yardi two-row headers and its charge-code layout;
+  - Yardi two-row headers, merged group titles and its charge-code layout;
   - RealPage's "Name" column;
   - Entrata's "Bldg-Unit" column;
-  - Section 8 tenant-portion/HAP splits;
-  - ISO dates;
-  - cp1252/UTF-16 CSVs.
+  - Section 8 HAP splits;
+  - future-resident rows;
+  - semicolon CSVs and cp1252/UTF-16 encodings;
+  - ISO dates and Excel serial dates;
+  - headers below row 20;
+  - "Grand Total" rows and duplicate rows.
 
 All of these are fixed and covered by tests. **Two decisions are yours, before merge:**
 
-- **Unit-wording matching (Suite = Apt = Unit).** This reverses a stance a previous QA pass wrote into a test docstring. The reasoning is in `docs/DECISIONS.md`.
+- **Unit-wording matching (Suite = Apt = Unit, Building A + Apt 101 = A-101).** This reverses a stance a previous QA pass wrote into a test docstring. The reasoning is in `docs/DECISIONS.md`.
 - **A new table, `rent_roll_unit_summaries`.** It is team-scoped and stores the vacant/down unit counts.
 <!-- OPEN -->
 1. **Lease extraction misreads (not mine to fix; owned by `feature/lease-intelligence`).** These cause 10 of the 13 remaining failures.

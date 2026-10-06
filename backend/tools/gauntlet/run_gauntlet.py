@@ -113,13 +113,21 @@ def post_file(client, url, field, rel, form=None, name=None):
 _UNIT_RE = re.compile(r"(?:suite|ste\.?|unit|apt\.?|apartment|#)\s*(?:no\.?\s*)?([A-Za-z0-9][\w-]*)", re.I)
 
 
+_BLDG_RE = re.compile(r"\b(?:building|bldg)\.?\s*([A-Za-z0-9]+)\b", re.I)
+
+
 def unit_of(address):
+    """Unit id as the manifest writes it ("101", "A-101"); "Building A, Apartment 101" -> "A-101"."""
     if not address:
         return None
     m = _UNIT_RE.search(address)
-    if m:
-        return m.group(1).upper()
-    return None
+    if not m:
+        return None
+    unit = m.group(1).upper()
+    b = _BLDG_RE.search(address)
+    if b and "-" not in unit:
+        unit = f"{b.group(1).upper()}-{unit}"
+    return unit
 
 
 def norm_name(s):

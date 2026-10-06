@@ -43,6 +43,11 @@ PROPERTIES = [
     ("Silverleaf", "1290 Silverleaf Pkwy", "Dallas", "TX", "75252", "Parkway"),
     ("Aspen Hollow", "402 Aspen Hollow Cir", "Denver", "CO", "80219", "Circle"),
     ("Tidewater", "77 Tidewater Dr", "Norfolk", "VA", "23510", "Drive"),
+    # Cycle 3 (nastier): garden community, future residents, large file, odd encodings.
+    ("Willow Creek Gardens", "3600 Willow Creek Rd", "Houston", "TX", "77064", "Road"),
+    ("Brookstone Village", "880 Brookstone Pkwy", "Kansas City", "MO", "64151", "Parkway"),
+    ("Highland Crossing", "2500 Highland Ave", "Birmingham", "AL", "35205", "Avenue"),
+    ("Cobalt Flats", "19 Cobalt St", "Boise", "ID", "83702", "Street"),
 ]
 
 # Unit-id styles: function(building_idx, floor, n) -> canonical id
@@ -233,6 +238,18 @@ def build_property(idx, cfg):
         u["rr_tenant"] = nm
         u["trap"] = "accented_name"
 
+    for _ in range(cfg.get("future_residents", 0)):
+        # A pre-leased applicant shown on a unit that is still occupied by
+        # its current resident: the future lease is not current rent.
+        u = next(x for x in units if x["status"] == "occupied" and x["issue"] is None and x["trap"] is None)
+        u["future_resident"] = {"tenant": person(), "rent": u["rr_rent"] + 50.0, "start": "2026-11-01", "end": "2027-10-31"}
+        u["trap"] = "future_resident"
+    keep = cfg.get("lease_only_for")
+    if keep is not None:
+        # Big file: only the issue units plus `keep` clean units have lease PDFs.
+        clean = [u for u in units if u["status"] == "occupied" and u["issue"] is None and u["has_lease"]]
+        for u in clean[keep:]:
+            u["has_lease"] = False
     prop["units"] = units
     return prop
 
@@ -336,6 +353,21 @@ CONFIGS = [
     dict(n_units=12, unit_style="plain", issues=["rent_mismatch_over", "rent_mismatch_over", "unit_no_lease", "dates_mismatch"], vacant=3, s8=2),
     dict(n_units=9, unit_style="plain", issues=["lease_no_unit", "rent_mismatch_under"], vacant=1, co_tenants=1, reflected_concessions=1),
     dict(n_units=10, unit_style="four", issues=["rent_mismatch_over", "expired_but_occupied", "concession_missing"], vacant=0, name_order_traps=1),
+]
+
+
+# Cycle 3 configs (appended to CONFIGS below):
+#  p14 garden community: rent roll "A-101", leases "Building A, Apartment 101"
+#  p15 rent roll with FUTURE residents listed on occupied units (must not import)
+#  p16 600-unit property, leases for 30 units only (performance + unit_no_lease volume)
+#  p17 semicolon CSV / deep header / merged two-row header / Excel serial dates
+CONFIGS += [
+    dict(n_units=12, unit_style="bldg_dash", issues=["rent_mismatch_over", "expired_but_occupied", "tenant_mismatch"], vacant=1,
+         lease_address_style="bldg_apt"),
+    dict(n_units=10, unit_style="plain", issues=["rent_mismatch_under", "dates_mismatch"], vacant=1, future_residents=2),
+    dict(n_units=600, unit_style="four", issues=["rent_mismatch_over", "rent_mismatch_under", "expired_but_occupied", "lease_no_unit"],
+         vacant=30, down=6, lease_only_for=30),
+    dict(n_units=10, unit_style="plain", issues=["rent_mismatch_over", "dates_mismatch", "unit_no_lease"], vacant=1, down=1),
 ]
 
 

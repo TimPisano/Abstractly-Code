@@ -169,6 +169,9 @@ def lease_address(prop, u):
         return f"{prop['street']}, Apt {u['uid']}, {prop['city']}, {prop['state']} {prop['zip']}"
     if st == "unit_inline":
         return f"{prop['street']}, Unit {u['uid']}, {prop['city']}, {prop['state']} {prop['zip']}"
+    if st == "bldg_apt":
+        bldg, num = u["uid"].split("-", 1)
+        return f"{prop['street']}, Building {bldg}, Apartment {num}, {prop['city']}, {prop['state']} {prop['zip']}"
     return f"{prop['base_address']}, Suite {u['uid']}"
 
 
@@ -311,6 +314,10 @@ def rr_appfolio_csv(prop, rng):
             rows.append([u["uid"], bed_bath(u), u["rr_tenant"], "Current", u["sqft"], money(u["market_rent"]),
                          money(u["rr_rent"]), "$500.00", fdate(u["rr_start"]), fdate(u["rr_end"]),
                          fdate(u["rr_start"]), "", "$0.00"])
+            if u.get("future_resident"):
+                fr = u["future_resident"]
+                rows.append([u["uid"], bed_bath(u), fr["tenant"], "Future", u["sqft"], money(u["market_rent"]),
+                             money(fr["rent"]), "$500.00", fdate(fr["start"]), fdate(fr["end"]), fdate(fr["start"]), "", "$0.00"])
         else:
             rows.append([u["uid"], bed_bath(u), "VACANT" if u["status"] == "vacant" else "",
                          "Vacant-Unrented" if u["status"] == "vacant" else "Down", u["sqft"],
@@ -337,6 +344,10 @@ def _appfolio_wb(prop, dup=False):
             ws.append(r)
             if dup and u is [x for x in units if x["status"] == "occupied"][1]:
                 ws.append(r)  # export glitch: exact duplicate row
+            if u.get("future_resident"):
+                fr = u["future_resident"]
+                ws.append([u["uid"], bed_bath(u), fr["tenant"], "Future", u["sqft"], u["market_rent"], fr["rent"], 500.0,
+                           d(fr["start"]), d(fr["end"]), d(fr["start"]), None, 0.0])
         else:
             ws.append([u["uid"], bed_bath(u), "VACANT" if u["status"] == "vacant" else None,
                        "Vacant-Unrented" if u["status"] == "vacant" else "Down", u["sqft"], u["market_rent"],
@@ -470,6 +481,10 @@ def rr_entrata_csv(prop, rng):
             rows.append([u["uid"], f"{u['beds']}x{u['baths']}", u["rr_tenant"], "Current", fdate(u["rr_start"], ds),
                          fdate(u["rr_end"], ds), money(u["market_rent"], "comma"), money(u["rr_rent"], "comma"),
                          money(-u["rr_concession"], "paren") if u["rr_concession"] else "0.00", "0.00"])
+            if u.get("future_resident"):
+                fr = u["future_resident"]
+                rows.append([u["uid"], f"{u['beds']}x{u['baths']}", fr["tenant"], "Applicant", fdate(fr["start"], ds),
+                             fdate(fr["end"], ds), money(u["market_rent"], "comma"), money(fr["rent"], "comma"), "0.00", "0.00"])
         else:
             rows.append([u["uid"], f"{u['beds']}x{u['baths']}", "", "Vacant" if u["status"] == "vacant" else "Down/Model",
                          "", "", money(u["market_rent"], "comma"), "", "", ""])
@@ -589,8 +604,8 @@ def _simple_rows(prop, money_style="dollar", date_style="mdy"):
     rows = [["Unit", "Tenant", "Rent", "Lease Start", "Lease End"]]
     for u in rr_rows_units(prop):
         if u["status"] == "occupied":
-            rows.append([u["uid"], u["rr_tenant"], money(u["rr_rent"], money_style), fdate(u["rr_start"], date_style),
-                         fdate(u["rr_end"], date_style)])
+            rows.append([u["uid"], u["rr_tenant"], money(u["rr_rent"], money_style) if money_style else u["rr_rent"],
+                         fdate(u["rr_start"], date_style), fdate(u["rr_end"], date_style)])
         else:
             rows.append([u["uid"], "VACANT", "", "", ""])
     return rows
@@ -733,6 +748,53 @@ def rr_merged_roommates_xlsx(prop, rng):
     return "xlsx", xlsx_bytes(wb), {"start", "end"}, "Merged Unit/Rent cells spanning a roommate row -- roommate is not a second lease"
 
 
+def rr_semicolon_csv(prop, rng):
+    rows = _simple_rows(prop, "comma")
+    return "csv", csv_bytes(rows, delimiter=";"), {"start", "end"}, "Semicolon-delimited CSV (European-locale Excel) with comma thousands"
+
+
+def rr_deep_header_xlsx(prop, rng):
+    """24 rows of report parameters before the real header (beyond a 20-row scan window)."""
+    wb = Workbook()
+    ws = wb.active
+    ws.append([f"{prop['name']} -- Rent Roll"])
+    for i in range(23):
+        ws.append([f"Parameter {i + 1}", f"value {i + 1}"])
+    for r in _simple_rows(prop, None, "mdy"):
+        ws.append(r)
+    return "xlsx", xlsx_bytes(wb), {"start", "end"}, "Header row on row 25, after a long report-parameter block"
+
+
+def rr_merged_two_row_xlsx(prop, rng):
+    """'Lease' merged across Start/End in the top header row; sub-headers below."""
+    wb = Workbook()
+    ws = wb.active
+    ws.append([f"{prop['name']}"])
+    ws.append(["Unit", "Resident", "Monthly", "Lease", None])
+    ws.append([None, None, "Rent", "Start", "End"])
+    ws.merge_cells("D2:E2")
+    for u in rr_rows_units(prop):
+        if u["status"] == "occupied":
+            ws.append([u["uid"], u["rr_tenant"], u["rr_rent"], d(u["rr_start"]), d(u["rr_end"])])
+        else:
+            ws.append([u["uid"], "VACANT" if u["status"] == "vacant" else "DOWN", None, None, None])
+    return "xlsx", xlsx_bytes(wb), {"start", "end"}, "Two-row header with 'Lease' merged across 'Start' / 'End'"
+
+
+def _excel_serial(iso):
+    return (d(iso) - date(1899, 12, 30)).days
+
+
+def rr_serial_dates_csv(prop, rng):
+    rows = [["Unit", "Tenant", "Rent", "Lease Start", "Lease End"]]
+    for u in rr_rows_units(prop):
+        if u["status"] == "occupied":
+            rows.append([u["uid"], u["rr_tenant"], f"{u['rr_rent']:.2f}", _excel_serial(u["rr_start"]), _excel_serial(u["rr_end"])])
+        else:
+            rows.append([u["uid"], "VACANT", "", "", ""])
+    return "csv", csv_bytes(rows), {"start", "end"}, "Lease dates as raw Excel serial numbers (46082) -- a CSV saved from cells formatted General"
+
+
 RR_WRITERS = {
     "appfolio_csv": rr_appfolio_csv, "appfolio_xlsx": rr_appfolio_xlsx, "appfolio_xlsx_dup": rr_appfolio_xlsx_dup,
     "yardi_xlsx": rr_yardi_xlsx, "yardi_charges_xlsx": rr_yardi_charges_xlsx,
@@ -742,6 +804,8 @@ RR_WRITERS = {
     "clean_csv": rr_clean_csv, "cp1252_csv": rr_cp1252_csv, "utf16_txt": rr_utf16_txt,
     "pdf_text": rr_pdf_text, "pdf_scanned": rr_pdf_scanned, "pdf_scanned_rotated": rr_pdf_scanned_rotated,
     "xls": rr_xls, "docx": rr_docx, "merged_roommates_xlsx": rr_merged_roommates_xlsx,
+    "semicolon_csv": rr_semicolon_csv, "deep_header_xlsx": rr_deep_header_xlsx,
+    "merged_two_row_xlsx": rr_merged_two_row_xlsx, "serial_dates_csv": rr_serial_dates_csv,
 }
 
 # Which formats each property is rendered in. Every property also gets
@@ -761,6 +825,11 @@ RR_PLAN = [
     ["s8_split_csv", "s8_xlsx", "entrata_csv", "pdf_text"],
     ["appfolio_csv", "realpage_csv", "merged_roommates_xlsx", "yardi_charges_xlsx"],
     ["broker_xlsx", "appfolio_xlsx", "entrata_csv", "pdf_scanned"],
+    # cycle 3
+    ["realpage_xlsx", "entrata_csv", "yardi_xlsx", "broker_xlsx"],
+    ["appfolio_csv", "entrata_csv", "appfolio_xlsx", "yardi_charges_xlsx"],
+    ["appfolio_csv"],
+    ["semicolon_csv", "deep_header_xlsx", "merged_two_row_xlsx", "serial_dates_csv"],
 ]
 
 
@@ -862,6 +931,17 @@ T12_LABELS = [
 ]
 
 
+T12_LABELS_VARIANT = {
+    "Gross Potential Rent": "Gross Rent Potential",
+    "Loss to Lease": "Less: Loss/Gain to Lease",
+    "Vacancy Loss": "Less: Vacancy",
+    "Concessions": "Less: Concessions",
+    "Bad Debt": "Less: Bad Debt / Write-offs",
+    "Net Rental Income": "Net Rental Revenue",
+    "Total Other Income": "Total Other Revenue",
+}
+
+
 def month_headers(style):
     out = []
     for y, m in PERIOD:
@@ -924,6 +1004,70 @@ def t12_csv(prop, lines, mstyle, money_style, total_col=True, encoding="utf-8"):
     return csv_bytes(rows, encoding=encoding)
 
 
+def t12_csv_label_variants(prop, lines):
+    rows = [[prop["name"]], ["Income Statement - 12 Months"], []]
+    for r in _t12_table(prop, lines, "mon_year", "paren"):
+        r = list(r)
+        r[0] = T12_LABELS_VARIANT.get(r[0], r[0])
+        rows.append(r)
+    return csv_bytes(rows)
+
+
+def t12_csv_actual_budget_inline(prop, lines):
+    hdr = ["Account"]
+    for m in month_headers("mon_year"):
+        hdr += [f"{m} Actual", f"{m} Budget"]
+    hdr += ["Total Actual", "Total Budget"]
+    rows = [[prop["name"]], ["Budget Comparison - Trailing 12"], hdr]
+    for label, key, kind in T12_LABELS:
+        if key is None:
+            rows.append([label])
+            continue
+        r = [label]
+        for v in lines[key]:
+            r += [f"{v:.2f}", f"{round(v * 1.03, 2):.2f}"]
+        tot = round(sum(lines[key]), 2)
+        r += [f"{tot:.2f}", f"{round(tot * 1.03, 2):.2f}"]
+        rows.append(r)
+    return csv_bytes(rows)
+
+
+def t12_xlsx_actual_budget_tworow(prop, lines):
+    wb = Workbook()
+    ws = wb.active
+    ws.append([prop["name"]])
+    top, sub = ["Account"], [None]
+    for m in month_headers("mon_year") + ["Total"]:
+        top += [m, None]
+        sub += ["Actual", "Budget"]
+    ws.append(top)
+    ws.append(sub)
+    for c in range(2, len(top) + 1, 2):
+        ws.merge_cells(start_row=2, start_column=c, end_row=2, end_column=c + 1)
+    for label, key, kind in T12_LABELS:
+        if key is None:
+            ws.append([label])
+            continue
+        r = [label]
+        for v in lines[key] + [round(sum(lines[key]), 2)]:
+            r += [v, round(v * 1.03, 2)]
+        ws.append(r)
+    return xlsx_bytes(wb)
+
+
+def t12_csv_prior_year(prop, lines):
+    rows = [[prop["name"]], ["T12 with prior year"], []]
+    table = _t12_table(prop, lines, "mon", "comma")
+    rows.append(["Account", "Prior Year Total"] + table[0][1:] + ["Variance"])
+    for r in table[1:]:
+        if r[1] is None:
+            rows.append([r[0]])
+            continue
+        tot = float(r[-1].replace(",", ""))
+        rows.append([r[0], money(round(tot * 0.95, 2), "comma")] + r[1:] + [money(round(tot * 0.05, 2), "comma")])
+    return csv_bytes(rows)
+
+
 def t12_pdf(prop, lines):
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=landscape(letter), leftMargin=0.3 * inch, rightMargin=0.3 * inch)
@@ -967,6 +1111,11 @@ T12_PLAN = [
     [("pdf_text", "gap"), ("xlsx_monyear", "clean")],
     [("csv_long_year", "occ"), ("xlsx_mon", "clean")],
     [("xlsx_monyear", "gap"), ("csv_dollar_mondash", "baddebt")],
+    # cycle 3
+    [("csv_label_variants", "clean"), ("csv_actual_budget_inline", "gap")],
+    [("xlsx_actual_budget_tworow", "occ"), ("csv_prior_year", "clean")],
+    [("xlsx_monyear", "gap"), ("csv_label_variants", "occ")],
+    [("csv_actual_budget_inline", "baddebt"), ("csv_prior_year", "gap")],
 ]
 
 
@@ -988,6 +1137,14 @@ def render_t12(prop, fmt, lines):
     if fmt == "xls":
         b = t12_xls(prop, lines)
         return ("xls", b, "Legacy .xls T-12") if b else None
+    if fmt == "csv_label_variants":
+        return "csv", t12_csv_label_variants(prop, lines), "CSV with 'Less: Vacancy' / 'Gross Rent Potential' / 'Net Rental Revenue' label wording"
+    if fmt == "csv_actual_budget_inline":
+        return "csv", t12_csv_actual_budget_inline(prop, lines), "Budget comparison: 'Oct 2025 Actual' / 'Oct 2025 Budget' column pairs -- must read actuals"
+    if fmt == "xlsx_actual_budget_tworow":
+        return "xlsx", t12_xlsx_actual_budget_tworow(prop, lines), "Month merged over Actual / Budget sub-columns (two-row header) -- must read actuals"
+    if fmt == "csv_prior_year":
+        return "csv", t12_csv_prior_year(prop, lines), "'Prior Year Total' column BEFORE the months, Total + Variance after"
     raise ValueError(fmt)
 
 
