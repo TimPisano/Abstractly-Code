@@ -27,6 +27,11 @@ _PUBLIC_MUTATING = {
     # -- the 7-day setup token itself is the proof of identity, same
     # "unauthenticated by design" category as /auth/reset-password.
     "/auth/team-setup",
+    # Self-serve signup (feature/auth-flow): the person has no session
+    # yet by definition -- the emailed link's token is the proof of
+    # identity, same category as /auth/reset-password. Each has its own
+    # rate limit; see api.py's "Self-serve signup" section.
+    "/auth/signup", "/auth/complete-signup", "/auth/resend-link",
     "/waitlist", "/waitlist/check",
     # Fired by anonymous visitors on the public marketing site itself
     # (frontend/landing.js) -- same "public by design" category as
