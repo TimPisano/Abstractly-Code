@@ -824,6 +824,10 @@ def parse_rent_roll_file(
     """
     ext = _extension_of(filename)
 
+    from app.t12_import import PASSWORD_PROTECTED_MESSAGE, is_password_protected_office_file
+    if is_password_protected_office_file(file_bytes):
+        raise RentRollImportError(PASSWORD_PROTECTED_MESSAGE)
+
     if ext in ("csv", "tsv", "txt"):
         result = parse_csv_rent_roll(
             file_bytes, filename, base_property_address,

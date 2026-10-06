@@ -422,6 +422,20 @@ def test_t12_workbooks_any_sheet_legacy_xls_and_password():
     print("✓ test_t12_workbooks_any_sheet_legacy_xls_and_password: PASS")
 
 
+def test_password_protected_rent_roll_workbook_says_so():
+    """An encrypted rent-roll .xlsx got "Couldn't read this file as an Excel workbook: File is not a zip file"."""
+    from app.rent_roll_import import parse_rent_roll_file, RentRollImportError
+    with open(os.path.join(_GAUNTLET_FIX, "rent_rolls", "bad__password.xlsx"), "rb") as f:
+        locked = f.read()
+    for name in ("rr.xlsx", "rr.xls"):
+        try:
+            parse_rent_roll_file(locked, name, "1 A St")
+            raise AssertionError("encrypted workbook parsed")
+        except RentRollImportError as e:
+            assert "password" in str(e).lower(), str(e)
+    print("✓ test_password_protected_rent_roll_workbook_says_so: PASS")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):
