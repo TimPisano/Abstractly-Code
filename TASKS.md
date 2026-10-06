@@ -100,11 +100,21 @@ those by taking **main's** TASKS.md, not the branch's.
 
 | `qa/overnight-gauntlet` | `~/dev/projects/abstractly-gauntlet` | — | Branched off `main` `3f1d3aa` 2026-10-05. Overnight reliability gauntlet: 60+ synthetic messy rent rolls, 30+ T-12s, matching leases with planted mismatches + manifest; full local pipeline graded each cycle; root-cause fixes with regression tests; `QA_REPORT.md` updated per cycle. User's prompt is the approved scope (autonomous, no questions). Never merges/deploys. |
 | `audit/production-readiness` | `~/dev/projects/abstractly-audit` | 0 | Started 2026-10-05 off `origin/main` `3f1d3aa`. **Read-only** production readiness audit (DB, security, reliability, cost, Section 8 trust) → `AUDIT.md` at the worktree root, **uncommitted by user instruction** (no code edits, commits, pushes, or Render changes). Overnight deep pass: every route + job traced, bugs added ranked by severity. |
-| `feature/auth-flow` | `~/dev/projects/abstractly-auth-flow` | — | Branched off `main` 2026-10-05. Self-serve email-link signup, polished forgot-password, "Keep me signed in", sign-out-other-sessions on reset, rate limits. Builds on main's existing `/auth/forgot-password`, `/auth/reset-password`, `password_reset_tokens`, `RateLimiter`. **Pushed `1ae353b`**, in review + overnight hardening. Signup behind `SELF_SERVE_SIGNUP_ENABLED` (on for tester only). See `AUTH_NOTES.md` on the branch. |
+| `feature/auth-flow` | `~/dev/projects/abstractly-auth-flow` | — | Branched off `main` 2026-10-05. Self-serve email-link signup, polished forgot-password, "Keep me signed in", sign-out-other-sessions on reset, rate limits. Builds on main's existing `/auth/forgot-password`, `/auth/reset-password`, `password_reset_tokens`, `RateLimiter`. **Pushed `4a2b10f`** (round 2), in re-review + overnight hardening. Signup behind `SELF_SERVE_SIGNUP_ENABLED` (on for tester only). See `AUTH_NOTES.md` on the branch. |
 | `chore/repo-layout` | `~/dev/projects/abstractly-repo-layout` | — | Branched off `main` `1d203d2` 2026-10-05. Repo tidy-up: move stray root reports/plans into `docs/`, fill `.gitignore` gaps, README project-layout section. File moves + doc-comment path fixes only, no code behavior change. **Plan written, awaiting user approval** — `docs/plans/chore-repo-layout.md`. |
 | `feature/lease-intelligence` | `~/dev/projects/abstractly-lease-intel` | — | Branched off `main` `5115b50` 2026-10-05. Overnight lease-extraction accuracy push for multifamily + Section 8 (synthetic leases only: standard MF, S8 with HAP contract + tenancy addendum, concessions, pet/parking fees, utility reimbursements, renewals/amendments, scanned). Owns `field_extractor.py`, `ai_extraction.py`, extraction prompts/fields. Does **not** touch rent roll/T-12 parsing (`qa/overnight-gauntlet`) or accounts (`feature/auth-flow`). User's prompt = approved scope (autonomous overnight). Never merges/deploys. |
 
 ### Handoff blocks
+
+#### feature/auth-flow
+- Worktree: `~/dev/projects/abstractly-auth-flow`
+- Goal: the simplest, smoothest account experience: email-link signup, forgot password, keep me signed in, hardened links and rate limits.
+- Loop step: 9 — round 2 pushed `4a2b10f` (all reviewer FIX FIRST + auditor medium items fixed, each with a failing-first test); re-review running; hardening continues (log: `AUTH_NOTES.md` on the branch)
+- Last update: 2026-10-05 by the auth-flow session
+- Suite: 83/83 files; `test_auth_flow.py` 42 tests; headless E2E 41/41 on Chromium desktop/tablet/Android + WebKit iPhone/desktop; round-2 checks 6/6 both engines
+- Real email: 4 sends to timmypisano24@gmail.com accepted by Gmail SMTP (inbox rendering not seen)
+- **Needs you before signup works on tester:** set `EMAIL_USER`/`EMAIL_APP_PASSWORD` on `abstractly-tester-api` in the Render dashboard; tester has no disk, so a restart/15-min spindown wipes pending links + new accounts
+- Next action: act on re-review; more hardening rounds; never merge
 
 #### qa/overnight-gauntlet
 - Worktree: ~/dev/projects/abstractly-gauntlet
