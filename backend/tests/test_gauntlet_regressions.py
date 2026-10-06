@@ -802,6 +802,20 @@ def test_excel_serial_number_dates_in_rent_roll():
     print("✓ test_excel_serial_number_dates_in_rent_roll: PASS")
 
 
+def test_t12_label_wording_variants():
+    """"Gross Rent Potential", "Net Rental Revenue", "Total Other Revenue" weren't recognized -> no GPR, no collections."""
+    from app.t12_statement import parse_csv_t12_statement
+    from app.t12_import import parse_csv_t12
+    data = _t12_csv([("Gross Rent Potential", [1000.0] * 12), ("Less: Vacancy", [-100.0] * 12),
+                     ("Net Rental Revenue", [900.0] * 12), ("Total Other Revenue", [50.0] * 12)])
+    got = parse_csv_t12_statement(data, "t12.csv")
+    assert got["gross_potential_rent"]["annual"] == 12000.0, got["gross_potential_rent"]
+    assert got["rental_income_collected"]["annual"] == 10800.0, got["rental_income_collected"]
+    assert got["other_income"]["annual"] == 600.0, got["other_income"]
+    assert parse_csv_t12(data, "t12.csv")["annual_rental_income"] == 10800.0
+    print("✓ test_t12_label_wording_variants: PASS")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):

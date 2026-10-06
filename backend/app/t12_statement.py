@@ -34,11 +34,13 @@ _CATEGORY_ALIASES = {
     "gross_potential_rent": [
         "gross potential rent", "potential rent", "potential income",
         "scheduled gross income", "market rent income",
+        "gross rent potential", "potential gross rent", "gross scheduled rent", "gpr",
     ],
     "rental_income_collected": [
         "total rental income", "rental income", "gross rental income",
         "base rental income", "total rent income", "rent revenue",
         "scheduled rent income", "total rent revenue",
+        "rental revenue", "net rental revenue", "net rent revenue", "net rents", "rent collected",
     ],
     "concessions": [
         "concessions", "rent concessions", "loss to lease - concessions",
@@ -51,7 +53,7 @@ _CATEGORY_ALIASES = {
         "bad debt", "bad debt expense", "collection loss", "uncollectible rent",
     ],
     "other_income": [
-        "other income", "miscellaneous income", "ancillary income",
+        "other income", "miscellaneous income", "ancillary income", "other revenue", "total other revenue",
     ],
 }
 

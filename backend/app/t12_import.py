@@ -78,6 +78,7 @@ _RENTAL_INCOME_LABEL_ALIASES = [
     "total rental income", "rental income", "gross rental income",
     "base rental income", "total rent income", "rent revenue",
     "scheduled rent income", "total rent revenue",
+    "rental revenue", "net rental revenue", "net rent revenue", "net rents", "rent collected",
 ]
 
 # Label words that mean a rent-like line item is the THEORETICAL,
