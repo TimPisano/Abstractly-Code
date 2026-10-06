@@ -477,7 +477,7 @@ def _one_typo_apart(a: str, b: str) -> bool:
     return False
 
 
-_HEADER_SCAN_WINDOW = 20  # generous bound for decorative title/date rows before the real header
+_HEADER_SCAN_WINDOW = 50  # decorative title/date/parameter rows before the real header (canned PMS reports can run 20+; raised from 20 by the overnight gauntlet)
 
 
 def _find_header_row(all_rows: List[List[Any]]) -> int:

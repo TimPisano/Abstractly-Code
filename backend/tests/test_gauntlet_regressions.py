@@ -754,6 +754,17 @@ def test_semicolon_delimited_csv_rent_roll():
     print("✓ test_semicolon_delimited_csv_rent_roll: PASS")
 
 
+def test_rent_roll_header_after_a_long_parameter_block():
+    """
+    Canned PMS reports can open with 20+ rows of report parameters. The
+    header search stopped at row 20 and the file was rejected.
+    """
+    lines = ["Rent Roll Report"] + [f"Parameter {i},value {i}" for i in range(28)] + ["Unit,Tenant,Rent", "101,Ann Lee,1000"]
+    got = _parse_csv_text("\n".join(lines) + "\n")
+    assert [t for _, t in _units_of(got)] == ["Ann Lee"], got
+    print("✓ test_rent_roll_header_after_a_long_parameter_block: PASS")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):
