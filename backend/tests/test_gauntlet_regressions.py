@@ -218,6 +218,41 @@ def test_excel_unicode_text_txt_rent_roll_imports():
     print("✓ test_excel_unicode_text_txt_rent_roll_imports: PASS")
 
 
+# ---------------------------------------------------------------- T-12 parsing
+_T12_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+
+def _t12_csv(rows, months=None):
+    import csv, io
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["Account"] + (months or _T12_MONTHS) + ["Total"])
+    for label, monthly in rows:
+        if monthly is None:
+            w.writerow([label] + [""] * 13)
+        else:
+            w.writerow([label] + [f"{v:.2f}" for v in monthly] + [f"{sum(monthly):.2f}"])
+    return buf.getvalue().encode()
+
+
+def test_t12_section_header_rows_do_not_hide_the_real_line():
+    """
+    A T-12's "Rental Income" / "Other Income" SECTION HEADERS (label, no
+    numbers) claimed those categories first, so the real "Net Rental
+    Income" / "Total Other Income" lines below were never read and the
+    T-12 cross-check had no collections figure at all.
+    """
+    from app.t12_statement import parse_csv_t12_statement
+    data = _t12_csv([("INCOME", None), ("Rental Income", None), ("Gross Potential Rent", [10000.0] * 12),
+                     ("Vacancy Loss", [-500.0] * 12), ("Net Rental Income", [9500.0] * 12),
+                     ("Other Income", None), ("Utility Reimbursement", [300.0] * 12), ("Total Other Income", [300.0] * 12)])
+    got = parse_csv_t12_statement(data, "t12.csv")
+    assert got["rental_income_collected"] and got["rental_income_collected"]["annual"] == 114000.0, got["rental_income_collected"]
+    assert got["other_income"] and got["other_income"]["annual"] == 3600.0, got["other_income"]
+    assert got["gross_potential_rent"]["annual"] == 120000.0
+    print("✓ test_t12_section_header_rows_do_not_hide_the_real_line: PASS")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):

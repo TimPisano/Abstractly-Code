@@ -98,6 +98,14 @@ def _row_annual_total(row: List[Any], column_mapping: Dict[str, Any]) -> Optiona
     return total
 
 
+def _row_has_any_amount(row: List[Any], column_mapping: Dict[str, Any]) -> bool:
+    """True if any month or total cell in this row holds a number."""
+    indexes = list(column_mapping.get("months", {}).values())
+    if "total" in column_mapping:
+        indexes.append(column_mapping["total"])
+    return any(i < len(row) and _parse_t12_currency(row[i]) is not None for i in indexes)
+
+
 def parse_t12_statement_rows(
     headers: List[Any],
     rows: List[List[Any]],
@@ -168,6 +176,11 @@ def parse_t12_statement_rows(
             # Found a match for this category
             monthly = _row_monthly_values(row, column_mapping)
             annual = _row_annual_total(row, column_mapping)
+            if not _row_has_any_amount(row, column_mapping):
+                # A SECTION HEADER ("Rental Income", "Other Income") with
+                # no numbers -- it must not claim the category, or the
+                # real line below it ("Net Rental Income") is never read.
+                continue
 
             if row_numbers is not None:
                 row_num = row_numbers[row_index]
