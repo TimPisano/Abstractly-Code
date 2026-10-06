@@ -35,6 +35,7 @@ _POTENTIAL_INCOME_WORDS.
 import csv
 import io
 import re
+from datetime import date, datetime
 from typing import Any, Dict, List, Optional
 
 from openpyxl import load_workbook
@@ -116,11 +117,55 @@ def _match_t12_columns(headers: List[Any]) -> Dict[str, Any]:
         if h in total_norms and "total" not in mapping:
             mapping["total"] = i
             continue
-        for month, norms in month_norms.items():
-            if h in norms and month not in mapping["months"]:
-                mapping["months"][month] = i
+        month = None
+        for candidate, norms in month_norms.items():
+            if h in norms:
+                month = candidate
                 break
+        if month is None:
+            month = _month_of_header(headers[i])
+        if month is not None and month not in mapping["months"]:
+            mapping["months"][month] = i
     return mapping
+
+
+_MONTH_PREFIX = {name[:3]: month for month, names in _MONTH_COLUMN_ALIASES.items() for name in names}
+_MONTH_WORD_YEAR_RE = re.compile(r"^([a-z]{3,9})\.?(?:[\s\-/'’]*(\d{4}|\d{2}))?$")
+_MONTH_NUM_YEAR_RE = re.compile(r"^(\d{1,2})\s*[/\-.]\s*(\d{4}|\d{2})$")
+_YEAR_MONTH_NUM_RE = re.compile(r"^(\d{4})\s*[/\-.]\s*(\d{1,2})$")
+
+
+def _month_of_header(raw: Any) -> Optional[str]:
+    """
+    A month column header as real T-12 exports write it, read from the RAW
+    cell (normalize_header strips the punctuation that separates "Oct-25"
+    or "10/2025"): "Oct 2025", "Oct-25", "Sept. '25", "October 2025",
+    "10/2025", "2025-10", or a real Excel date cell. Only bare "Oct"/
+    "October" used to be recognized, so most exports failed outright
+    (overnight gauntlet, 2026-10-05). A whole-cell match only: "Mayfield
+    Rd" or "Decor" are not months.
+    """
+    if isinstance(raw, (datetime, date)):
+        return _MONTH_IDS_IN_ORDER[raw.month - 1]
+    if raw is None:
+        return None
+    text = str(raw).strip().lower()
+    m = _MONTH_WORD_YEAR_RE.match(text)
+    if m:
+        word = m.group(1)
+        month = _MONTH_PREFIX.get(word[:3])
+        full_names = _MONTH_COLUMN_ALIASES.get(month, []) if month else []
+        if month and any(name.startswith(word) for name in full_names + ["sept"]) and (m.group(2) or word in full_names):
+            return month
+        return None
+    for regex, month_group in ((_MONTH_NUM_YEAR_RE, 1), (_YEAR_MONTH_NUM_RE, 2)):
+        m = regex.match(text)
+        if m and 1 <= int(m.group(month_group)) <= 12:
+            return _MONTH_IDS_IN_ORDER[int(m.group(month_group)) - 1]
+    return None
+
+
+_MONTH_IDS_IN_ORDER = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
 
 
 def _find_t12_header_row(all_rows: List[List[Any]]) -> int:

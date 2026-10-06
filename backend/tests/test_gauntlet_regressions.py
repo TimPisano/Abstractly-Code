@@ -253,6 +253,49 @@ def test_t12_section_header_rows_do_not_hide_the_real_line():
     print("✓ test_t12_section_header_rows_do_not_hide_the_real_line: PASS")
 
 
+def test_t12_month_headers_with_years_and_numeric_months():
+    """
+    Real T-12 exports label months "Oct 2025", "Oct-25", "10/2025",
+    "October 2025", or put real Excel dates in the header row. Only bare
+    "Oct"/"October" were recognized, so every one of these failed with
+    "Couldn't find any month columns".
+    """
+    from datetime import datetime
+    from io import BytesIO
+    from openpyxl import Workbook
+    from app.t12_statement import parse_csv_t12_statement, parse_xlsx_t12_statement
+    from app.t12_import import parse_csv_t12
+    period = [(2025, 10), (2025, 11), (2025, 12)] + [(2026, m) for m in range(1, 10)]
+    names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    longs = ["January", "February", "March", "April", "May", "June", "July", "August", "September",
+             "October", "November", "December"]
+    styles = {
+        "mon_year": [f"{names[m - 1]} {y}" for y, m in period],
+        "mon_dash_yy": [f"{names[m - 1]}-{str(y)[2:]}" for y, m in period],
+        "mm_yyyy": [f"{m:02d}/{y}" for y, m in period],
+        "long_year": [f"{longs[m - 1]} {y}" for y, m in period],
+        "yyyy_mm": [f"{y}-{m:02d}" for y, m in period],
+    }
+    rows = [("Gross Potential Rent", [1000.0] * 12), ("Net Rental Income", [900.0] * 12)]
+    for style, months in styles.items():
+        got = parse_csv_t12_statement(_t12_csv(rows, months), "t12.csv")
+        assert got["gross_potential_rent"] and got["gross_potential_rent"]["annual"] == 12000.0, (style, got["gross_potential_rent"])
+        assert sum(v is not None for v in got["gross_potential_rent"]["monthly"].values()) == 12, style
+        assert parse_csv_t12(_t12_csv(rows, months), "t12.csv")["annual_rental_income"] == 10800.0, style
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["Account"] + [datetime(y, m, 1) for y, m in period] + ["Total"])
+    ws.append(["Gross Potential Rent"] + [1000.0] * 12 + [12000.0])
+    buf = BytesIO()
+    wb.save(buf)
+    got = parse_xlsx_t12_statement(buf.getvalue(), "t12.xlsx")
+    assert sum(v is not None for v in got["gross_potential_rent"]["monthly"].values()) == 12, got["gross_potential_rent"]
+    # Words that merely contain a month name are still not month columns.
+    from app.t12_import import _match_t12_columns
+    assert _match_t12_columns(["Account", "Mayfield Rd", "Decor", "Marketing", "Total"])["months"] == {}
+    print("✓ test_t12_month_headers_with_years_and_numeric_months: PASS")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):
