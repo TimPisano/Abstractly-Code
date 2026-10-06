@@ -71,6 +71,7 @@ from app.portfolio import (
     FIELD_NAMES,
     field_value,
     _normalize_building_address,
+    _normalize_address,
     _is_rent_roll_import,
     compute_portfolio_metrics,
     compute_expiration_timeline,
@@ -1469,11 +1470,22 @@ def import_rent_roll():
     } - {None}
     replaced = 0
     if new_buildings:
+        # Only an earlier file that covers the SAME units is replaced (at
+        # least half its units reappear here). A property delivered as
+        # several files -- Building A units, Building B units, same street
+        # address -- keeps every file (review finding).
+        new_units = {_normalize_address(l["extracted_fields"]["property_address"]["value"]) for l in parsed["leases"]}
+        old_by_file = {}
         for old_row in database.get_all_effective_leases(team_id=current_team_id()):
             if old_row["id"] not in new_ids and _is_rent_roll_import(old_row) and _normalize_building_address(
                     field_value(old_row, "property_address")) in new_buildings:
-                if database.supersede_lease(old_row["id"]):
-                    replaced += 1
+                old_by_file.setdefault(old_row.get("filename"), []).append(old_row)
+        for old_rows in old_by_file.values():
+            old_units = {_normalize_address(field_value(r, "property_address")) for r in old_rows}
+            if old_units and len(old_units & new_units) * 2 >= len(old_units):
+                for old_row in old_rows:
+                    if database.supersede_lease(old_row["id"]):
+                        replaced += 1
 
     for building, counts in (parsed.get("unit_summary") or {}).items():
         database.insert_rent_roll_unit_summary(

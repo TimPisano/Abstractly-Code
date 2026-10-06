@@ -810,12 +810,16 @@ def _rent_roll_unit_counts(team_id: int, leases: List[Dict[str, Any]]) -> Option
                 files_by_building.setdefault(key, set()).add(lease.get("filename"))
     if not files_by_building:
         return None
+    # Newest summary per (building, file), summed over every rent-roll file
+    # on record for the building -- a property delivered as several files
+    # (one per building) counts all of them (review finding).
     occupied = total = 0
     used = set()
     for summary in get_rent_roll_unit_summaries(team_id):
         key = _normalize_building_address(summary["property_address"])
-        if key in files_by_building and key not in used and summary["filename"] in files_by_building[key]:
-            used.add(key)
+        pair = (key, summary["filename"])
+        if key in files_by_building and pair not in used and summary["filename"] in files_by_building[key]:
+            used.add(pair)
             occupied += summary["occupied_units"]
             total += summary["occupied_units"] + len(summary["vacant_units"]) + len(summary["down_units"])
     if not used:

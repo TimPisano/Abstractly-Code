@@ -1372,6 +1372,39 @@ def test_review_tenant_match_is_not_too_permissive():
     print("✓ test_review_tenant_match_is_not_too_permissive: PASS")
 
 
+def test_review_split_rent_roll_files_do_not_replace_each_other():
+    """
+    Reviewer FIX FIRST #3: a property's rent roll delivered as two files
+    (Building A units, Building B units -- same street address) was treated
+    as a re-import: the second file silently superseded the first, losing
+    half the units. A file only replaces an earlier one that covers the
+    same units; occupancy adds up across the files on record.
+    """
+    from app import database
+    from app.deal_mismatch import _rent_roll_unit_counts
+    client, db = _client_with_fresh_db(team_id=1)
+    try:
+        addr = {"property_address": "100 Oak St, Austin, TX 78701"}
+        a = b"Unit,Tenant,Rent\r\nA-101,Ann Lee,1000\r\nA-102,Bo Diaz,900\r\nA-103,VACANT,\r\n"
+        b = b"Unit,Tenant,Rent\r\nB-101,Cy Ray,950\r\nB-102,Di Fox,975\r\n"
+        assert _post(client, "/leases/import-rent-roll", "bldg_a.csv", a, addr).status_code == 201
+        r = _post(client, "/leases/import-rent-roll", "bldg_b.csv", b, addr)
+        assert r.status_code == 201 and r.get_json()["replaced_previous_rows"] == 0, r.get_json()
+        rows = database.get_all_effective_leases(1)
+        assert sorted(l["filename"] for l in rows) == ["bldg_a.csv", "bldg_a.csv", "bldg_b.csv", "bldg_b.csv"]
+        assert _rent_roll_unit_counts(1, rows) == {"occupied": 4, "total": 5}
+        # An updated Building A file replaces Building A only.
+        a2 = b"Unit,Tenant,Rent\r\nA-101,Ann Lee,1050\r\nA-102,Bo Diaz,900\r\nA-103,VACANT,\r\n"
+        r = _post(client, "/leases/import-rent-roll", "bldg_a_oct.csv", a2, addr)
+        assert r.get_json()["replaced_previous_rows"] == 2, r.get_json()
+        rows = database.get_all_effective_leases(1)
+        assert sorted(l["filename"] for l in rows) == ["bldg_a_oct.csv", "bldg_a_oct.csv", "bldg_b.csv", "bldg_b.csv"]
+        assert _rent_roll_unit_counts(1, rows) == {"occupied": 4, "total": 5}
+    finally:
+        os.unlink(db)
+    print("✓ test_review_split_rent_roll_files_do_not_replace_each_other: PASS")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):
