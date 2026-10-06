@@ -723,6 +723,53 @@ def detect_tenant_mismatch(leases: List[Dict[str, Any]]) -> List[Dict[str, Any]]
     return rows
 
 
+def _occupied_and_total(leases: List[Dict[str, Any]], unit_counts: Optional[Dict[str, int]]):
+    """
+    (occupied units, total units) on the rent roll. Prefers the import's
+    own unit counts (which include the vacant and down units the importer
+    skips as leases -- see _rent_roll_unit_counts); without them every
+    imported row is occupied by construction, so this degrades to the old
+    "N of N" count.
+    """
+    if unit_counts and unit_counts.get("total"):
+        return unit_counts["occupied"], unit_counts["total"]
+    occupied = sum(1 for l in leases if _is_rent_roll_import(l) and field_value(l, "tenant"))
+    total = sum(1 for l in leases if _is_rent_roll_import(l))
+    return occupied, total
+
+
+def _rent_roll_unit_counts(team_id: int, leases: List[Dict[str, Any]]) -> Optional[Dict[str, int]]:
+    """
+    Occupied/total units for the rent-roll rows in scope, from the team's
+    stored import summaries (database.get_rent_roll_unit_summaries -- team-
+    scoped). For each building in scope, the newest summary whose file is
+    one of the rent-roll files actually on file for that building; None if
+    there is none (e.g. rows imported before summaries existed).
+    """
+    from .database import get_rent_roll_unit_summaries
+    from .portfolio import _normalize_building_address
+
+    files_by_building: Dict[str, set] = {}
+    for lease in leases:
+        if _is_rent_roll_import(lease):
+            key = _normalize_building_address(field_value(lease, "property_address"))
+            if key:
+                files_by_building.setdefault(key, set()).add(lease.get("filename"))
+    if not files_by_building:
+        return None
+    occupied = total = 0
+    used = set()
+    for summary in get_rent_roll_unit_summaries(team_id):
+        key = _normalize_building_address(summary["property_address"])
+        if key in files_by_building and key not in used and summary["filename"] in files_by_building[key]:
+            used.add(key)
+            occupied += summary["occupied_units"]
+            total += summary["occupied_units"] + len(summary["vacant_units"]) + len(summary["down_units"])
+    if not used:
+        return None
+    return {"occupied": occupied, "total": total}
+
+
 def detect_t12_income_gap(
     leases: List[Dict[str, Any]], t12_data: Optional[Dict[str, Any]] = None,
     materiality_pct: float = _T12_MATERIALITY_THRESHOLD_PCT_DEFAULT
@@ -794,7 +841,8 @@ def detect_t12_income_gap(
 
 def detect_t12_occupancy_mismatch(
     leases: List[Dict[str, Any]], t12_data: Optional[Dict[str, Any]] = None,
-    materiality_pct: float = _T12_MATERIALITY_THRESHOLD_PCT_DEFAULT
+    materiality_pct: float = _T12_MATERIALITY_THRESHOLD_PCT_DEFAULT,
+    unit_counts: Optional[Dict[str, int]] = None,
 ) -> List[Dict[str, Any]]:
     """
     Rent-roll-implied occupancy vs. T-12-implied occupancy.
@@ -820,9 +868,7 @@ def detect_t12_occupancy_mismatch(
 
     t12_occupancy = (1.0 - vl_annual / gpr_annual) * 100
 
-    # Rent roll occupancy: count occupied vs. total
-    occupied = sum(1 for l in leases if _is_rent_roll_import(l) and field_value(l, "tenant"))
-    total = sum(1 for l in leases if _is_rent_roll_import(l))
+    occupied, total = _occupied_and_total(leases, unit_counts)
 
     if total == 0:
         return []
@@ -891,7 +937,8 @@ def detect_t12_concession_gap(
 
 def detect_t12_bad_debt_trend(
     leases: List[Dict[str, Any]], t12_data: Optional[Dict[str, Any]] = None,
-    materiality_pct: float = _T12_MATERIALITY_THRESHOLD_PCT_DEFAULT
+    materiality_pct: float = _T12_MATERIALITY_THRESHOLD_PCT_DEFAULT,
+    unit_counts: Optional[Dict[str, int]] = None,
 ) -> List[Dict[str, Any]]:
     """
     Building-level bad debt trend: flags sustained upward trend
@@ -931,8 +978,7 @@ def detect_t12_bad_debt_trend(
         return []
 
     # Check rent roll for vacancies/non-current units
-    occupied = sum(1 for l in leases if _is_rent_roll_import(l) and field_value(l, "tenant"))
-    total = sum(1 for l in leases if _is_rent_roll_import(l))
+    occupied, total = _occupied_and_total(leases, unit_counts)
 
     if total == 0 or occupied < total:
         return []  # There are actual vacancies, so the pattern is less anomalous
@@ -1058,8 +1104,12 @@ def build_deal_mismatch_report_data(
     # T12 detectors
     t12_rows: List[Dict[str, Any]] = []
     if t12_data:
+        unit_counts = _rent_roll_unit_counts(team_id, leases)
         for detector in _T12_DETECTORS:
-            t12_rows.extend(detector(leases, t12_data, materiality_threshold_pct))
+            if detector in (detect_t12_occupancy_mismatch, detect_t12_bad_debt_trend):
+                t12_rows.extend(detector(leases, t12_data, materiality_threshold_pct, unit_counts=unit_counts))
+            else:
+                t12_rows.extend(detector(leases, t12_data, materiality_threshold_pct))
 
     signed_annual_impacts = [
         row["annual_dollar_impact"] if row["income_direction"] == "overstate" else -row["annual_dollar_impact"]

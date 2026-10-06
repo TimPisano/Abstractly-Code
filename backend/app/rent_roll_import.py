@@ -132,6 +132,10 @@ _COLUMN_ALIASES: Dict[str, List[str]] = {
     # assuming every rent roll omits concessions (see deal_mismatch.py's
     # detect_concession_mismatch). Never eligible for rent_amount, see
     # _is_concession_header.
+    # Unit/lease status ("Current", "Vacant-Unrented", "Down", "Notice-
+    # Rented"...). Not a lease field -- read only to tell an occupied unit
+    # from a vacant/down one (see _unit_status_of_skipped_row).
+    "status": ["unit/lease status", "unit lease status", "lease status", "unit status", "status"],
     "concessions": ["concession", "concessions", "rent concession", "monthly concession", "concession amount", "rent discount", "concession/month", "concession/mo", "concessions/month", "concessions/mo"],
 }
 
@@ -447,6 +451,58 @@ def _is_real_tenant_name(tenant_raw: Optional[str]) -> bool:
     return not any(normalized.startswith(keyword + " ") for keyword in _NON_TENANT_KEYWORDS)
 
 
+_VACANT_WORDS = {"vacant", "vacancy", "available", "unrented", "unoccupied", "empty"}
+_DOWN_WORDS = {"down", "model", "offline", "renovation", "reno", "uninhabitable", "nonrevenue", "non revenue", "unavailable"}
+# Whole-cell placeholders some exports put in the tenant column of an
+# empty unit ("DOWN UNIT", "MODEL") -- whole-cell only, so a real tenant
+# like "Model Unit Corp" is never mistaken for one. Sorted-word form.
+_PLACEHOLDER_TENANT_CELLS = {"down", "down unit", "model", "model unit", "offline", "admin unit", "unavailable",
+                             "renovation", "down renovation"}
+_UNIT_ID_RE = re.compile(r"^[A-Za-z]{0,3}[\s#-]*\d[\w-]{0,8}$")
+
+
+def _unit_status_of_skipped_row(row: List[Any], column_mapping: Dict[str, int], tenant_raw: Optional[str]) -> Optional[str]:
+    """
+    "vacant" or "down" when this row is a real unit with no current
+    resident, else None (an occupied unit, or a total/subtotal/note row).
+
+    A unit counts only if its Unit cell looks like a unit id ("101",
+    "A-204", "#3B") -- a "Total"/"Floor 1" row never does. Vacant vs down:
+    the status column (or, without one, the tenant cell) says vacant /
+    down / model / offline. A status of vacant/down wins even when a name
+    is present: "Vacant-Leased" is a future resident in an empty unit, not
+    current rent. With no status column, a blank or "VACANT" tenant cell
+    on a unit row is vacant.
+    """
+    def cell(field_name):
+        idx = column_mapping.get(field_name)
+        return _cell_to_str(row[idx]) if idx is not None and idx < len(row) else None
+
+    unit = cell("unit")
+    if not unit or not _UNIT_ID_RE.match(unit.strip()):
+        return None
+
+    def words(text):
+        return set(re.sub(r"[^a-z\s]", " ", (text or "").lower()).split())
+
+    status_words = words(cell("status"))
+    whole_cell = " ".join(sorted(words(tenant_raw)))
+    real_tenant = _is_real_tenant_name(tenant_raw) and whole_cell not in _PLACEHOLDER_TENANT_CELLS
+    no_rent = _parse_import_currency(cell("rent_amount")) in (None, 0.0)
+    if status_words & _VACANT_WORDS:
+        return "vacant"
+    if status_words & _DOWN_WORDS and (no_rent or not real_tenant):
+        return "down"  # a model unit actually rented to a named tenant is still revenue
+    if real_tenant:
+        return None
+    tenant_words = words(tenant_raw)
+    if tenant_words & _DOWN_WORDS:
+        return "down"
+    if (tenant_words & _VACANT_WORDS or not tenant_raw) and no_rent:
+        return "vacant"
+    return None
+
+
 def parse_rent_roll_rows(
     headers: List[Any],
     rows: List[List[Any]],
@@ -531,6 +587,13 @@ def parse_rent_roll_rows(
 
     parsed_leases = []
     skipped_rows = []
+    # Per building (effective base address): occupied count + vacant/down
+    # unit ids, so occupancy can be computed later -- vacant rows are not
+    # imported as leases, which made every rent roll look 100% occupied.
+    unit_summary: Dict[str, Dict[str, Any]] = {}
+
+    def _summary_for(base):
+        return unit_summary.setdefault(base, {"occupied_units": 0, "vacant_units": [], "down_units": []})
 
     for row_index, row in enumerate(rows):
         if row_numbers is not None:
@@ -545,6 +608,17 @@ def parse_rent_roll_rows(
             return row[idx]
 
         tenant_raw = _cell_to_str(cell("tenant"))
+        non_occupied = _unit_status_of_skipped_row(row, column_mapping, tenant_raw)
+        if non_occupied:
+            unit_id = _cell_to_str(cell("unit"))
+            base = _cell_to_str(cell("property")) or base_property_address
+            if base:
+                _summary_for(base)[f"{non_occupied}_units"].append(unit_id)
+            skipped_rows.append({
+                "row": row_num,
+                "reason": f"{non_occupied} unit (no current resident) -- counted for occupancy, not imported as a lease",
+            })
+            continue
         if not _is_real_tenant_name(tenant_raw):
             skipped_rows.append({
                 "row": row_num,
@@ -643,10 +717,13 @@ def parse_rent_roll_rows(
 
         display_name = f"{tenant_raw} - {address}" if address else tenant_raw
         parsed_leases.append({"extracted_fields": fields, "display_name": display_name})
+        if effective_base:
+            _summary_for(effective_base)["occupied_units"] += 1
 
     return {
         "leases": parsed_leases,
         "skipped_rows": skipped_rows,
+        "unit_summary": unit_summary,
         "column_mapping": column_mapping,
     }
 

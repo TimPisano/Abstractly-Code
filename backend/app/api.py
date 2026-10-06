@@ -1447,6 +1447,12 @@ def import_rent_roll():
         lease["tags"] = []
         created.append(_lease_summary(lease))
 
+    for building, counts in (parsed.get("unit_summary") or {}).items():
+        database.insert_rent_roll_unit_summary(
+            current_team_id(), filename, building, counts["occupied_units"],
+            counts["vacant_units"], counts["down_units"],
+        )
+
     if created:
         _invalidate_lease_derived_caches()
         # Auto-reconcile the newly imported rows against whatever lease
@@ -1471,6 +1477,7 @@ def import_rent_roll():
         "imported_count": len(created),
         "skipped_rows": parsed["skipped_rows"],
         "column_mapping": parsed["column_mapping"],
+        "unit_summary": parsed.get("unit_summary", {}),
         # How the table was obtained ("delimited"/"excel"/"excel_legacy"/
         # "word"/"pdf-text"/"pdf-ocr"/"image-ocr") and any caveats -- the
         # frontend shows `warnings` verbatim after an OCR/heuristic import

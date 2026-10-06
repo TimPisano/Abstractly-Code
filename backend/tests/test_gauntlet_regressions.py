@@ -451,6 +451,74 @@ def test_t12_reconciliation_counts_rent_roll_rows_not_lease_pdfs_too():
     print("✓ test_t12_reconciliation_counts_rent_roll_rows_not_lease_pdfs_too: PASS")
 
 
+# ---------------------------------------------------------------- occupancy (vacant/down units)
+def _rr_with_vacancies_csv():
+    rows = ["Unit,Tenant,Status,Rent"]
+    for i in range(1, 9):
+        rows.append(f"10{i},Resident {chr(64 + i)} Person,Current,1000.00")
+    rows.append("109,VACANT,Vacant-Unrented,")
+    rows.append("110,,Down,")
+    rows.append("Total,,,8000.00")
+    return ("\r\n".join(rows) + "\r\n").encode()
+
+
+def test_vacant_and_down_units_count_toward_rent_roll_occupancy():
+    """
+    Vacant rows were never imported, so the rent roll always looked 100%
+    occupied: the T-12 occupancy check false-alarmed on every property with
+    a vacancy and the bad-debt check's "full occupancy" condition was always
+    true (tester-pack OVERNIGHT_REPORT bug #4). The import now records each
+    building's vacant/down units (team-scoped) and the T-12 checks use them.
+    """
+    import io
+    from app.rent_roll_import import parse_rent_roll_file
+    parsed = parse_rent_roll_file(_rr_with_vacancies_csv(), "rr.csv", "9 Elm St, Austin, TX 78701")
+    summary = parsed["unit_summary"]["9 Elm St, Austin, TX 78701"]
+    assert (summary["occupied_units"], sorted(summary["vacant_units"]), sorted(summary["down_units"])) == (8, ["109"], ["110"]), summary
+    # Placeholder tenant cells are down units, not tenants; a real tenant
+    # whose name merely contains "Model" is still a tenant.
+    csv = b"Unit,Tenant,Rent\r\n101,Ann Lee,1000\r\n102,DOWN UNIT,\r\n103,Down - renovation,\r\n104,MODEL,\r\n105,Model Unit Corp,1500\r\n"
+    p2 = parse_rent_roll_file(csv, "r.csv", "9 Elm St")
+    assert sorted(p2["unit_summary"]["9 Elm St"]["down_units"]) == ["102", "103", "104"], p2["unit_summary"]
+    assert [l["extracted_fields"]["tenant"]["value"] for l in p2["leases"]] == ["Ann Lee", "Model Unit Corp"]
+
+    def t12_csv(vacancy_monthly):
+        months = ",".join(_T12_MONTHS)
+        lines = [f"Account,{months},Total",
+                 "Gross Potential Rent," + ",".join(["10000"] * 12) + ",120000",
+                 "Vacancy Loss," + ",".join([str(-vacancy_monthly)] * 12) + f",{-vacancy_monthly * 12}",
+                 "Net Rental Income," + ",".join(["7900"] * 12) + ",94800"]
+        return ("\r\n".join(lines) + "\r\n").encode()
+
+    client, db = _client_with_fresh_db(team_id=1)
+    try:
+        r = _post(client, "/leases/import-rent-roll", "rr.csv", _rr_with_vacancies_csv(), {"property_address": "9 Elm St, Austin, TX 78701"})
+        assert r.status_code == 201, r.get_json()
+        for vacancy, want_rows in ((2000, []), (200, ["t12_occupancy_mismatch"])):  # T-12 at 80% (agrees) / 98% (disagrees)
+            data = {"property_address": "9 Elm St, Austin, TX 78701", "t12_file": (io.BytesIO(t12_csv(vacancy)), "t12.csv")}
+            rep = client.post("/portfolio/deal-mismatch-report", data=data, content_type="multipart/form-data").get_json()
+            got = sorted(row["discrepancy_type"] for row in rep["rent_roll_vs_actual_collections"]
+                         if row["discrepancy_type"] == "t12_occupancy_mismatch")
+            assert got == want_rows, (vacancy, rep["rent_roll_vs_actual_collections"])
+            if got:
+                assert rep["rent_roll_vs_actual_collections"][0]["rent_roll_value"].startswith("80.0%"), rep
+        # Another team's import of the same address never feeds this team's numbers.
+        from app.api import app
+        from _session_users import sync_session_user
+        other = app.test_client()
+        with other.session_transaction() as s:
+            s.update(user_id=8, team_id=2, email="other@abstractly.test", name="Other", role="analyst")
+            sync_session_user(s)
+        full = "Unit,Tenant,Rent\r\n" + "".join(f"10{i},Other {chr(64 + i)} Resident,1000\r\n" for i in range(1, 9))
+        _post(other, "/leases/import-rent-roll", "rr2.csv", full.encode(), {"property_address": "9 Elm St, Austin, TX 78701"})
+        data = {"property_address": "9 Elm St, Austin, TX 78701", "t12_file": (io.BytesIO(t12_csv(2000)), "t12.csv")}
+        rep = client.post("/portfolio/deal-mismatch-report", data=data, content_type="multipart/form-data").get_json()
+        assert not [x for x in rep["rent_roll_vs_actual_collections"] if x["discrepancy_type"] == "t12_occupancy_mismatch"], rep
+    finally:
+        os.unlink(db)
+    print("✓ test_vacant_and_down_units_count_toward_rent_roll_occupancy: PASS")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):

@@ -983,6 +983,18 @@ def init_db() -> None:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_ai_extraction_runs_lease_id ON ai_extraction_runs(lease_id)")
         _migrate_add_team_id_column(conn, "ai_extraction_runs", legacy_team_id)
         conn.execute("""
+            CREATE TABLE IF NOT EXISTS rent_roll_unit_summaries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                team_id INTEGER,
+                filename TEXT NOT NULL,
+                property_address TEXT NOT NULL,
+                occupied_units INTEGER NOT NULL,
+                vacant_units TEXT NOT NULL,
+                down_units TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+        """)
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS training_rounds (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 created_at TEXT NOT NULL,
@@ -4456,3 +4468,44 @@ def list_ai_extraction_runs(limit: int = 500, kind: Optional[str] = None) -> Lis
         return out
     finally:
         conn.close()
+
+
+def insert_rent_roll_unit_summary(team_id: int, filename: str, property_address: str, occupied_units: int,
+                                  vacant_units: List[str], down_units: List[str]) -> int:
+    """
+    One building's unit counts from one rent-roll import: how many units
+    had a current resident, and which were vacant / down. Vacant and down
+    units are deliberately not stored as lease records (they would distort
+    tenant concentration, WALT, etc.), but occupancy needs them -- see
+    deal_mismatch._rent_roll_unit_counts.
+    """
+    conn = get_connection()
+    try:
+        cur = conn.execute(
+            "INSERT INTO rent_roll_unit_summaries (team_id, filename, property_address, occupied_units, vacant_units, "
+            "down_units, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (team_id, filename, property_address, occupied_units, json.dumps(vacant_units), json.dumps(down_units),
+             datetime.now(timezone.utc).isoformat()),
+        )
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def get_rent_roll_unit_summaries(team_id: int) -> List[Dict[str, Any]]:
+    """This team's rent-roll unit summaries, newest first. Team-scoped: never another firm's counts."""
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM rent_roll_unit_summaries WHERE team_id IS ? ORDER BY id DESC", (team_id,)
+        ).fetchall()
+    finally:
+        conn.close()
+    out = []
+    for r in rows:
+        d = dict(r)
+        d["vacant_units"] = json.loads(d["vacant_units"])
+        d["down_units"] = json.loads(d["down_units"])
+        out.append(d)
+    return out
