@@ -87,6 +87,27 @@
        that same "something is wrong" signal, tuned to stay legible on
        --lux-charcoal instead. Landing page only, for now. */
     --lux-error-on-dark: #e5a5a0;
+    /* Same idea for the "medium / watch this" amber: --warning-color is
+       tuned for ivory and goes muddy on the dark landing page, so the
+       landing sample report uses this lighter step instead. */
+    --lux-warning-on-dark: #e0b374;
+
+    /* ---- Shared dark-surface + translucent tokens. Each of these was
+       a literal repeated across stylesheets (landing.css, app/auth.css,
+       app/styles.css, admin.css, owner.css); centralized with the exact
+       same values, so nothing renders differently. ---- */
+    /* Same color as --lux-accent (#b68a4e), as a bare "r, g, b" triplet
+       for canvas/rgba() contexts (landing.js's cursor-reactive light
+       bands) and CSS translucent fills alike. Keep in sync with
+       --lux-accent by hand. */
+    --lux-accent-rgb: 182, 138, 78;
+    /* Soft brass focus ring (box-shadow color) on inputs and selects. */
+    --lux-accent-ring: rgba(var(--lux-accent-rgb), 0.18);
+    /* Hairline borders on dark surfaces (landing page, auth pages). */
+    --lux-line-dark: rgba(246, 243, 236, 0.14);
+    --lux-line-dark-faint: rgba(246, 243, 236, 0.08);
+    /* Dimmed backdrop behind modals and dialogs. */
+    --overlay-backdrop: rgba(10, 10, 11, 0.45);
 
     /* ---- Neutral scale: warm charcoal/ivory, replacing the cool slate
        scale this app used before the landing redesign. Kept as a named
@@ -375,7 +396,7 @@ a {
     align-items: center;
     justify-content: center;
     padding: 1.5rem;
-    background-color: rgba(10, 10, 11, 0.45);
+    background-color: var(--overlay-backdrop);
     opacity: 0;
     transition: opacity 0.16s ease;
 }

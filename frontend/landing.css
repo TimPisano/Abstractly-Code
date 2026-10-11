@@ -29,14 +29,8 @@
     --radius-lg: 4px;
     --radius-xl: 6px;
 
-    --lux-line-dark: rgba(246, 243, 236, 0.14);
-    --lux-line-dark-faint: rgba(246, 243, 236, 0.08);
-
-    /* Same color as --lux-accent (#b68a4e), as a bare "r, g, b" triplet
-       for canvas/rgba() contexts (landing.js's cursor-reactive light
-       bands) and CSS translucent fills alike. Keep in sync with
-       design-system.css's --lux-accent by hand. */
-    --lux-accent-rgb: 182, 138, 78;
+    /* --lux-line-dark, --lux-line-dark-faint and --lux-accent-rgb live in
+       design-system.css (shared with app/auth.css). */
 
     /* System monospace only — no font request, no new network cost.
        Used sparingly (ticker labels, timestamps, capability chips) for
@@ -772,8 +766,8 @@ body.scrolled .site-header {
     font-weight: 700;
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    color: #e0b374;
-    border: 1px solid #e0b374;
+    color: var(--lux-warning-on-dark);
+    border: 1px solid var(--lux-warning-on-dark);
     border-radius: var(--radius-full);
     padding: 0.1875rem 0.5rem;
 }
@@ -805,7 +799,7 @@ body.scrolled .site-header {
 }
 
 .sample-disc-high { border-left-color: var(--lux-error-on-dark); }
-.sample-disc-medium { border-left-color: #e0b374; }
+.sample-disc-medium { border-left-color: var(--lux-warning-on-dark); }
 
 .sample-disc-head {
     display: flex;
@@ -825,7 +819,7 @@ body.scrolled .site-header {
 }
 
 .sample-sev-high { color: var(--lux-error-on-dark); background: rgba(154, 59, 59, 0.22); }
-.sample-sev-medium { color: #e0b374; background: rgba(166, 116, 31, 0.22); }
+.sample-sev-medium { color: var(--lux-warning-on-dark); background: rgba(166, 116, 31, 0.22); }
 
 .sample-disc-type {
     font-size: 0.8125rem;
