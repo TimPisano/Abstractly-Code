@@ -105,7 +105,7 @@ those by taking **main's** TASKS.md, not the branch's.
 | `docs/design-tokens` | `~/dev/projects/abstractly-design-tokens` | — | Branched off `main` 2026-10-11. Document every color/font/spacing/radius/shadow/logo asset in `DESIGN_TOKENS.md`; centralize duplicated hardcoded colors into CSS variables with **zero rendered change**; before/after headless screenshots (home, dashboard, login). **Plan approved, building** — `docs/plans/docs-design-tokens.md`. |
 | `chore/repo-layout` | `~/dev/projects/abstractly-repo-layout` | — | Branched off `main` `1d203d2` 2026-10-05. Repo tidy-up: move stray root reports/plans into `docs/`, fill `.gitignore` gaps, README project-layout section. File moves + doc-comment path fixes only, no code behavior change. **Plan written, awaiting user approval** — `docs/plans/chore-repo-layout.md`. |
 
-| `qa/section8-fixtures` | `~/dev/projects/abstractly-s8-fixtures` | — | Branched off `main` `54a9499` 2026-10-11. Synthetic Section 8 test set (fixtures only, no app code): 10 voucher leases + HUD tenancy addenda, 5 HAP contracts (HCV + project-based), 5 rent rolls (CSV/XLSX, contract/tenant/HAP split), 3 PHA HAP registers, 3 HQS/NSPIRE inspections, planted errors + `ANSWER_KEY.md`. **Plan written, awaiting user approval** — `docs/plans/qa-section8-fixtures.md`. |
+| `qa/section8-fixtures` | `~/dev/projects/abstractly-s8-fixtures` | — | Branched off `main` `54a9499` 2026-10-11. Synthetic Section 8 test set (fixtures only, no app code): 10 voucher leases + HUD tenancy addenda, 5 HAP contracts (HCV + project-based), 5 rent rolls (CSV/XLSX, contract/tenant/HAP split), 3 PHA HAP registers, 3 HQS/NSPIRE inspections, planted errors + `ANSWER_KEY.md`. **Plan approved, building** — `docs/plans/qa-section8-fixtures.md`. |
 | `fix/section8-tenant-share` | `~/dev/projects/abstractly-s8-tenant-share` | — | Branched off `qa/overnight-gauntlet` `906eaab` 2026-10-11 (builds on its `a1cff89` tenant-portion/HAP parsing). Rent roll parsing + validation only: contract rent = tenant share + HAP, check it per row, flag mismatches as import warnings, never use tenant share alone as rent. Regression tests: voucher, market, mixed rolls. **Plan written, awaiting user approval** — `docs/plans/fix-section8-tenant-share.md`. |
 
 ### Handoff blocks
@@ -120,9 +120,9 @@ those by taking **main's** TASKS.md, not the branch's.
 #### qa/section8-fixtures
 - Worktree: ~/dev/projects/abstractly-s8-fixtures
 - Goal: a realistic, fictional Section 8 fixture set with every planted error documented with its expected flag in ANSWER_KEY.md.
-- Loop step: 3 — plan written, waiting for user approval
-- Last update: 2026-10-11 by start-task
-- Next action: user reviews docs/plans/qa-section8-fixtures.md
+- Loop step: 4 — building (plan approved 2026-10-11; location backend/tests/fixtures/section8/, one-line run_all_tests.py registration OK)
+- Last update: 2026-10-11 by the s8-fixtures session
+- Next action: build generator + fixtures + ANSWER_KEY.md + self-check test
 
 #### docs/design-tokens
 - Worktree: ~/dev/projects/abstractly-design-tokens
