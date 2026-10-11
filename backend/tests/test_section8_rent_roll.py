@@ -131,6 +131,16 @@ def test_unreadable_hap_cell_is_flagged_not_treated_as_zero():
     print("✓ test_unreadable_hap_cell_is_flagged_not_treated_as_zero: PASS")
 
 
+def test_dash_or_na_hap_on_market_unit_is_zero_not_unreadable():
+    # Excel accounting format / PMS exports show "-" or "N/A" for no HAP.
+    got = _csv("Unit,Resident,Contract Rent,Tenant Rent,HAP\n101,Ann Lee,1250.00,1250.00,-\n"
+               "102,Bo Diaz,1310.00,1310.00,N/A\n103,Cy Park,1275.00,1275.00,—\n")
+    assert _rents(got) == ["$1,250.00", "$1,310.00", "$1,275.00"], got
+    assert not _checks(got) and not got.get("warnings"), got
+    assert {l["extracted_fields"]["rent_amount"]["confidence"] for l in got["leases"]} == {"high"}
+    print("✓ test_dash_or_na_hap_on_market_unit_is_zero_not_unreadable: PASS")
+
+
 def test_subsidy_type_column_is_not_a_hap_amount():
     # "Subsidy Type" holds text ("HCV"), not dollars. Read as the HAP
     # column, every voucher unit got rent = tenant share + 0.
@@ -167,6 +177,17 @@ def test_bare_tenant_rent_with_unit_level_voucher_indicator_is_ambiguous_for_tha
     [c] = _checks(got, "ambiguous_tenant_rent")
     assert c["unit"] == "101" and c["tenant_share"] == 412.0, c
     print("✓ test_bare_tenant_rent_with_unit_level_voucher_indicator_is_ambiguous_for_that_unit_only: PASS")
+
+
+def test_unit_ids_and_addresses_are_not_voucher_indicators():
+    # "S8"/"Sec8-2" are unit numbers and "Pha St" is a street -- none of them
+    # says the household has a voucher.
+    got = _csv("Unit,Resident,Tenant Rent,Address\n"
+               "S8,Ann Lee,1250.00,12 Oak Ave\nSec8-2,Bo Diaz,1310.00,40 Pha St\n"
+               "103,Cy Park,1275.00,9 Housing Authority Rd\n")
+    assert _rents(got) == ["$1,250.00", "$1,310.00", "$1,275.00"], got
+    assert not _checks(got), _checks(got)
+    print("✓ test_unit_ids_and_addresses_are_not_voucher_indicators: PASS")
 
 
 # ---------------------------------------------------------------- market units

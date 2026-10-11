@@ -325,6 +325,11 @@ _VOUCHER_INDICATOR_RE = re.compile(
 )
 
 
+# What a PMS export puts in a HAP cell for "no HAP" (Excel accounting
+# format shows $0 as a dash). These are $0, not an unreadable amount.
+_NO_HAP_PLACEHOLDERS = {"-", "--", "\u2013", "\u2014", "n/a", "na", "none", "nil"}
+
+
 def _is_hap_non_amount_header(normalized_header: str) -> bool:
     return bool(set(normalized_header.split()) & _HAP_NON_AMOUNT_WORDS)
 
@@ -353,6 +358,8 @@ def _resolve_section8_rent(column_mapping, headers, row, cell):
     share_raw = _cell_to_str(cell("tenant_portion")) if has_share else None
     hap_raw = _cell_to_str(cell("hap")) if has_hap else None
     share = _parse_import_currency(share_raw)
+    if hap_raw is not None and hap_raw.strip().lower() in _NO_HAP_PLACEHOLDERS:
+        hap_raw = None  # same as a blank cell: a market unit
     hap = _parse_import_currency(hap_raw)
     stated = rent  # the rent column's own figure, kept for the check record
     check = {"rent_column": stated, "tenant_share": share, "hap": hap}
@@ -403,7 +410,11 @@ def _voucher_indicator(column_mapping, headers, row) -> Optional[str]:
         text = _cell_to_str(h)
         if text and _VOUCHER_INDICATOR_RE.search(text):
             return f'column "{text}"'
-    skip = {column_mapping.get("tenant")}  # "Hap Nguyen" is a person, not a HAP
+    # Names, unit ids and addresses aren't about the household's rent:
+    # "Hap Nguyen" is a person, "S8" a unit, "Pha St" a street.
+    skip = {column_mapping.get(f) for f in ("tenant", "unit", "property")}
+    skip |= {i for i, h in enumerate(headers)
+             if re.search(r"\b(?:address|street|city|building|bldg|property)\b", _normalize_header(h))}
     for i, value in enumerate(row):
         text = _cell_to_str(value)
         if i not in skip and text and _VOUCHER_INDICATOR_RE.search(text):
