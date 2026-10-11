@@ -42,6 +42,7 @@ UNIT_TESTS = [
     "test_report.py",
     "test_dashboard_features.py",
     "test_waitlist_email.py",
+    "test_public_contact.py",
     "test_access_gate.py",
     "test_admin_auth.py",
     "test_security_middleware.py",
@@ -49,6 +50,8 @@ UNIT_TESTS = [
     "test_route_authorization.py",
     "test_upload_validation.py",
     "test_password_reset.py",
+    # Self-serve signup, keep-me-signed-in, sign-out-everywhere (feature/auth-flow).
+    "test_auth_flow.py",
     "test_multi_lease_detection.py",
     "test_multi_lease_structural_variation.py",
     "test_sheets_export.py",
