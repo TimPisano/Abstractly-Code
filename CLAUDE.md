@@ -52,7 +52,7 @@ flat monthly fee per team: Starter $499 ($399/mo annual), Growth $1,250
   `test_team_isolation_fixes.py` are the regression suite; add a case
   there for any new document table or route. Never introduce a second
   `accounts`/`account_id` schema. Multiple firms can now share a
-  deployment, though each still has its own in practice.
+  deployment; each firm still has its own deployment today.
 - **Render** (`render.yaml`, free plan, no `branch:` → all deploy from
   `main`): `abstractly-api` + `abstractly` (prod),
   `abstractly-tester-api` + `abstractly-tester` (beta, own DB),

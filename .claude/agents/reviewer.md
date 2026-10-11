@@ -36,9 +36,10 @@ Read the full diff, not just the stat, and the branch's plan in
    touches** (CLAUDE.md rule 3). Every route needs an explicit
    `@require_role(...)`. Every query on `leases`, `discrepancies`,
    `alerts`, `tasks` or other per-firm data must filter by the
-   *authenticated* caller's `team_id`. On `main` today `team_id` only
-   scopes billing/quota, so an unscoped document route is a real gap
-   unless the branch predates `feature/team-isolation` — say which.
+   *authenticated* caller's `team_id`. `main` scopes document tables by
+   `team_id` (merged as `3cff20b`), so an unscoped document route or
+   query is a real gap unless the branch was cut before `3cff20b` — say
+   which.
 3. **Scope** — does the diff match its plan? Flag anything that wasn't
    in the plan (new tables, refactors, "while I was here" changes), and
    anything that duplicates work on another branch (e.g. a second teams/
