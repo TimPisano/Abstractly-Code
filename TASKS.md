@@ -102,7 +102,7 @@ those by taking **main's** TASKS.md, not the branch's.
 | `qa/overnight-gauntlet` | `~/dev/projects/abstractly-gauntlet` | — | **Reviewed: MERGE (reviewer + security-auditor).** Branched off `main` `3f1d3aa` 2026-10-05. Overnight reliability gauntlet: 60+ synthetic messy rent rolls, 30+ T-12s, matching leases with planted mismatches + manifest; full local pipeline graded each cycle; root-cause fixes with regression tests; `QA_REPORT.md` updated per cycle. User's prompt is the approved scope (autonomous, no questions). Never merges/deploys. |
 | `audit/production-readiness` | `~/dev/projects/abstractly-audit` | 0 | Started 2026-10-05 off `origin/main` `3f1d3aa`. **Read-only** production readiness audit (DB, security, reliability, cost, Section 8 trust) → `AUDIT.md` at the worktree root, **uncommitted by user instruction** (no code edits, commits, pushes, or Render changes). Overnight deep pass: every route + job traced, bugs added ranked by severity. |
 | `pivot/section8` | `~/dev/projects/abstractly-pivot-section8` | — | Branched off `main` `323d85f` 2026-10-11. **Plan only, no code:** `PIVOT_PLAN.md` — audit (KEEP/ADAPT/REMOVE), Section 8 feature set, copy/positioning, parallel build order for pivoting Abstractly to Section 8 landlords/PMs. Builds on `research/section8`, `feature/lease-intelligence`, `feature/s8-hud-data`, `feature/s8-demo-files`. |
-| `docs/design-tokens` | `~/dev/projects/abstractly-design-tokens` | — | Branched off `main` 2026-10-11. Document every color/font/spacing/radius/shadow/logo asset in `DESIGN_TOKENS.md`; centralize duplicated hardcoded colors into CSS variables with **zero rendered change**; before/after headless screenshots (home, dashboard, login). **Plan written, awaiting approval** — `docs/plans/docs-design-tokens.md`. |
+| `docs/design-tokens` | `~/dev/projects/abstractly-design-tokens` | — | Branched off `main` 2026-10-11. Document every color/font/spacing/radius/shadow/logo asset in `DESIGN_TOKENS.md`; centralize duplicated hardcoded colors into CSS variables with **zero rendered change**; before/after headless screenshots (home, dashboard, login). **Plan approved, building** — `docs/plans/docs-design-tokens.md`. |
 | `chore/repo-layout` | `~/dev/projects/abstractly-repo-layout` | — | Branched off `main` `1d203d2` 2026-10-05. Repo tidy-up: move stray root reports/plans into `docs/`, fill `.gitignore` gaps, README project-layout section. File moves + doc-comment path fixes only, no code behavior change. **Plan written, awaiting user approval** — `docs/plans/chore-repo-layout.md`. |
 
 | `qa/section8-fixtures` | `~/dev/projects/abstractly-s8-fixtures` | — | Branched off `main` `54a9499` 2026-10-11. Synthetic Section 8 test set (fixtures only, no app code): 10 voucher leases + HUD tenancy addenda, 5 HAP contracts (HCV + project-based), 5 rent rolls (CSV/XLSX, contract/tenant/HAP split), 3 PHA HAP registers, 3 HQS/NSPIRE inspections, planted errors + `ANSWER_KEY.md`. **Plan written, awaiting user approval** — `docs/plans/qa-section8-fixtures.md`. |
@@ -127,9 +127,9 @@ those by taking **main's** TASKS.md, not the branch's.
 #### docs/design-tokens
 - Worktree: ~/dev/projects/abstractly-design-tokens
 - Goal: DESIGN_TOKENS.md inventory + centralize duplicated hardcoded colors into CSS variables, no visual or behavior change (proved by before/after pixel diffs).
-- Loop step: 3 — plan written, waiting for user approval
-- Last update: 2026-10-11 by start-task
-- Next action: user reviews docs/plans/docs-design-tokens.md
+- Loop step: 4 — building (plan approved 2026-10-11: root DESIGN_TOKENS.md; mask hero canvas in diffs)
+- Last update: 2026-10-11 by the design-tokens session
+- Next action: before screenshots, DESIGN_TOKENS.md, centralize, after screenshots + diff
 
 #### pivot/section8
 - Worktree: ~/dev/projects/abstractly-pivot-section8
