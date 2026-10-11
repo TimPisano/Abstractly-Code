@@ -696,6 +696,140 @@ def test_sample_deal_load_isolated_to_calling_team_only():
     print("✓ test_sample_deal_load_isolated_to_calling_team_only: PASS")
 
 
+# ------------------------------------------------------------------
+# Section 8 records (feature/s8-data-model), run with SECTION8_MODE on
+# ------------------------------------------------------------------
+
+def _with_section8_mode(fn):
+    def run():
+        old = os.environ.get("SECTION8_MODE")
+        os.environ["SECTION8_MODE"] = "true"
+        try:
+            fn()
+        finally:
+            if old is None:
+                os.environ.pop("SECTION8_MODE", None)
+            else:
+                os.environ["SECTION8_MODE"] = old
+    run.__name__ = fn.__name__
+    return run
+
+
+def _s8_post(client, path, body):
+    resp = client.post(path, data=__import__("json").dumps(body), content_type="application/json")
+    return resp
+
+
+def _s8_patch(client, path, body):
+    return client.patch(path, data=__import__("json").dumps(body), content_type="application/json")
+
+
+def _s8_seed_team_a(client_a):
+    """Team A's full chain: PHA, property, unit, tenancy, HAP contract, uploaded lease + its link."""
+    ids = {}
+    ids["pha"] = _s8_post(client_a, "/section8/phas", {"name": "Harrow County Housing Authority"}).get_json()["id"]
+    ids["property"] = _s8_post(client_a, "/section8/properties", {"name": "Juniper Row", "address": "400 Juniper Row, Harrow, OH"}).get_json()["id"]
+    ids["unit"] = _s8_post(client_a, "/section8/units", {"property_id": ids["property"], "unit_label": "101"}).get_json()["id"]
+    ids["tenancy"] = _s8_post(client_a, "/section8/tenancies", {"unit_id": ids["unit"], "pha_id": ids["pha"], "hap": "988"}).get_json()["id"]
+    ids["hap_contract"] = _s8_post(client_a, "/section8/hap-contracts", {"contract_type": "HCV", "unit_id": ids["unit"], "pha_id": ids["pha"]}).get_json()["id"]
+    ids["lease"] = _upload_lease(client_a)
+    ids["link"] = _s8_post(client_a, f"/section8/units/{ids['unit']}/documents", {"lease_id": ids["lease"], "doc_kind": "lease"}).get_json()["id"]
+    return ids
+
+
+@_with_section8_mode
+def test_section8_records_isolated_between_teams():
+    db_path = _fresh_temp_db()
+    try:
+        client_a, _, _, client_b, _, _ = _setup_two_teams()
+        ids = _s8_seed_team_a(client_a)
+        by_path = {
+            "phas": ids["pha"], "properties": ids["property"], "units": ids["unit"],
+            "tenancies": ids["tenancy"], "hap-contracts": ids["hap_contract"],
+        }
+        for path, record_id in by_path.items():
+            assert client_a.get(f"/section8/{path}/{record_id}").status_code == 200
+            assert client_b.get(f"/section8/{path}/{record_id}").status_code == 404, f"Team B read Team A's {path}"
+            assert _s8_patch(client_b, f"/section8/{path}/{record_id}", {"archived": True}).status_code == 404, f"Team B changed Team A's {path}"
+            assert client_b.get(f"/section8/{path}").get_json() == [], f"Team B's {path} list shows Team A rows"
+            assert client_b.get(f"/section8/{path}?include_archived=1").get_json() == []
+        assert _s8_patch(client_b, f"/section8/unit-documents/{ids['link']}", {"doc_kind": "other"}).status_code == 404
+        # Nothing Team B tried landed on Team A's rows.
+        assert client_a.get(f"/section8/phas/{ids['pha']}").get_json()["archived"] is False
+        detail = client_a.get(f"/section8/units/{ids['unit']}").get_json()
+        assert detail["documents"][0]["doc_kind"] == "lease"
+    finally:
+        os.unlink(db_path)
+    print("✓ test_section8_records_isolated_between_teams: PASS")
+
+
+@_with_section8_mode
+def test_section8_cannot_reference_another_teams_records():
+    db_path = _fresh_temp_db()
+    try:
+        client_a, team_a, _, client_b, team_b, _ = _setup_two_teams()
+        ids = _s8_seed_team_a(client_a)
+        own_prop = _s8_post(client_b, "/section8/properties", {"name": "B Prop"}).get_json()["id"]
+        own_unit = _s8_post(client_b, "/section8/units", {"property_id": own_prop, "unit_label": "1"}).get_json()["id"]
+        attempts = [
+            ("/section8/units", {"property_id": ids["property"], "unit_label": "X"}),
+            ("/section8/properties", {"name": "B2", "default_pha_id": ids["pha"]}),
+            ("/section8/tenancies", {"unit_id": ids["unit"]}),
+            ("/section8/tenancies", {"unit_id": own_unit, "pha_id": ids["pha"]}),
+            ("/section8/tenancies", {"unit_id": own_unit, "source_lease_id": ids["lease"]}),
+            ("/section8/hap-contracts", {"contract_type": "HCV", "pha_id": ids["pha"]}),
+            ("/section8/hap-contracts", {"contract_type": "HCV", "unit_id": ids["unit"]}),
+            ("/section8/hap-contracts", {"contract_type": "HCV", "tenancy_id": ids["tenancy"]}),
+            ("/section8/hap-contracts", {"contract_type": "PBV", "property_id": ids["property"]}),
+            (f"/section8/units/{own_unit}/documents", {"lease_id": ids["lease"], "doc_kind": "lease"}),
+            (f"/section8/units/{ids['unit']}/documents", {"lease_id": ids["lease"], "doc_kind": "lease"}),
+        ]
+        for path, body in attempts:
+            resp = _s8_post(client_b, path, body)
+            assert resp.status_code == 404, f"{path} {body} must 404 for Team B, got {resp.status_code} {resp.get_json()}"
+        # Same refs via PATCH on Team B's own rows.
+        own_tenancy = _s8_post(client_b, "/section8/tenancies", {"unit_id": own_unit}).get_json()["id"]
+        assert _s8_patch(client_b, f"/section8/tenancies/{own_tenancy}", {"pha_id": ids["pha"]}).status_code == 404
+        assert _s8_patch(client_b, f"/section8/properties/{own_prop}", {"default_pha_id": ids["pha"]}).status_code == 404
+
+        # Nothing was written anywhere that points at Team A's rows.
+        conn = database.get_connection()
+        try:
+            for table, column in [("units", "property_id"), ("tenancies", "pha_id"), ("hap_contracts", "pha_id"),
+                                  ("unit_documents", "lease_id"), ("properties", "default_pha_id")]:
+                rows = conn.execute(f"SELECT COUNT(*) FROM {table} WHERE team_id = ? AND {column} IN (?, ?, ?)",
+                                    (team_b, ids["property"], ids["pha"], ids["lease"])).fetchone()[0]
+                assert rows == 0, f"{table}.{column} on Team B points at a Team A record"
+        finally:
+            conn.close()
+    finally:
+        os.unlink(db_path)
+    print("✓ test_section8_cannot_reference_another_teams_records: PASS")
+
+
+@_with_section8_mode
+def test_section8_backfill_only_reads_callers_team():
+    db_path = _fresh_temp_db()
+    try:
+        client_a, team_a, _, client_b, team_b, _ = _setup_two_teams()
+        database.insert_lease("a_roll.csv", {"property_address": {"value": "1 Alpha St Unit 1, Harrow, OH"}}, team_id=team_a)
+        database.insert_lease("a_roll.csv", {"property_address": {"value": "1 Alpha St Unit 2, Harrow, OH"}}, team_id=team_a)
+        database.insert_lease("b_lease.pdf", {"property_address": {"value": "9 Beta Ave Apt 3, Harrow, OH"}}, team_id=team_b)
+
+        result_b = _s8_post(client_b, "/section8/backfill", {"apply": True}).get_json()
+        assert result_b["created"] == {"properties": 1, "units": 1, "links": 1}, result_b
+        assert database.list_section8_records("units", team_a) == [], "Team B's backfill created rows on Team A"
+        b_units = database.list_section8_records("units", team_b)
+        assert len(b_units) == 1 and "beta" in b_units[0]["normalized_address"]
+
+        result_a = _s8_post(client_a, "/section8/backfill", {"apply": True}).get_json()
+        assert result_a["created"] == {"properties": 1, "units": 2, "links": 2}, result_a
+        assert len(database.list_section8_records("units", team_b)) == 1
+    finally:
+        os.unlink(db_path)
+    print("✓ test_section8_backfill_only_reads_callers_team: PASS")
+
+
 if __name__ == "__main__":
     test_lease_list_excludes_other_team()
     test_lease_get_by_id_404s_for_other_team()
@@ -723,4 +857,7 @@ if __name__ == "__main__":
     test_assignment_status_update_cannot_touch_other_team()
     test_sample_deal_load_never_calls_extraction_pipeline()
     test_sample_deal_load_isolated_to_calling_team_only()
+    test_section8_records_isolated_between_teams()
+    test_section8_cannot_reference_another_teams_records()
+    test_section8_backfill_only_reads_callers_team()
     print("\nAll team isolation tests passed.")
