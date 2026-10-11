@@ -81,6 +81,7 @@ Source: `PIVOT_PLAN.md` Step 4, T1 (branch `pivot/section8`, approved 2026-10-11
    - **Unit label:** the `unit_number` field (lease-intelligence, once merged), else the suite/unit designator matched in the address, else the full address.
    - **Rent roll vs lease:** decided by `portfolio._is_rent_roll_import` (doc_kind `rent_roll_row` vs `lease`).
    - **Dry run** returns `{properties: [...], units: [...], links: N, skipped: [{lease_id, reason}]}` and writes nothing.
+   - **Unit status:** every backfilled unit is created with status **`unknown`**, never `occupied`. main's importer skips vacant rows, so a rent-roll row isn't proof of occupancy. This holds until `fix/section8-tenant-share` (which records vacant/down units) merges. *(User decision 2026-10-11.)*
    - **`apply: true`** creates only what's missing (idempotent: a second run creates nothing), links documents with `linked_by='backfill'`, and **never modifies `leases` rows**. It creates no PHAs, tenancies or HAP contracts; those need extraction (T2/T3).
    - Rows with no address are skipped with a reason.
    - Logged to `activity_log` under the caller's team.
@@ -163,4 +164,6 @@ Later tasks reuse the same helper. The flag is not added to `render.yaml`. The u
 
 1. **Route prefix** `/section8/…`: fine, or prefer something shorter? (Doesn't affect anything user-visible yet.)
 2. **Backfill role:** admin-only (proposed, since it creates many rows at once), or analyst too?
-3. **Unit status from rent-roll vacancy:** main's importer skips vacant units, so backfilled units are all `unknown`/`occupied`. Accept that until `fix/section8-tenant-share` (which records vacant/down units) merges? Proposed: yes.
+3. ~~Unit status from rent-roll vacancy~~ **Decided 2026-10-11:** backfilled units are always `unknown` until the tenant-share fix lands.
+
+Q1 (prefix `/section8/`) and Q2 (backfill admin-only) were approved as proposed.
