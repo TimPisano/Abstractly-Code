@@ -48,10 +48,7 @@ Source: `PIVOT_PLAN.md` Step 4, T1 (branch `pivot/section8`, approved 2026-10-11
 
    Indexes on `team_id` and every foreign-key column.
 3. **Cross-team reference guard.** SQLite FKs prove a referenced row *exists*, not that it's the *same team's*. Every create/update validates each referenced id (pha_id, property_id, unit_id, tenancy_id, hap_contract_id, lease_id) with a team-scoped lookup first. A foreign id gets **404**, matching how `POST /tasks` treats a foreign `lease_id`. One helper, `_require_own(kind, id, team_id)`, so no route can skip it.
-4. **Data access** (`database.py`, house style, `team_id` a required argument everywhere):
-   - `create_*`, `get_*(id, team_id)`, `list_*(team_id, filters, include_archived=False)` and `update_*(id, team_id, fields)` for each table.
-   - Updates use an explicit allow-list of columns, never `**body`.
-   - No hard deletes. Archiving sets `archived_at`; un-archiving clears it.
+4. **Data access** (`database.py`, house style, `team_id` a required argument everywhere). *Built as one shared set rather than per-table functions:* `create_section8_record(table, team_id, values)`, `get_section8_record(table, id, team_id)`, `list_section8_records(table, team_id, filters, include_archived)` and `update_section8_record(table, id, team_id, values, archived)`. `SECTION8_COLUMNS` / `SECTION8_LIST_FILTERS` are fixed allow-lists, so a table or column name never comes from a request. Updates use that column allow-list, never `**body`. No hard deletes: archiving sets `archived_at` and un-archiving clears it.
 5. **Domain helpers** (`app/section8_records.py`):
    - Input validation: enums, ISO dates, dollars to cents (rejects negatives, NaN and more than 2 decimals), payment_day range.
    - JSON shaping for API responses: cents → dollars as strings `"1400.00"`.
