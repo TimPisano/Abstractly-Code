@@ -5,7 +5,8 @@
 > `backend/tests/test_section8_fixtures.py`).
 
 **Review as-of date: 10/01/2026.** All "overdue", "expired" and "to date" figures are measured
-against this fixed date, so the set never goes stale. Everything here is fictional; rule references are
+against this fixed date, so the set never goes stale. **"To date" counts every monthly charge or payment due
+on or before 10/01/2026**, so the October 1 rent charge and HAP payment are included. Everything here is fictional; rule references are
 paraphrased and **not practitioner-checked**. Flag codes are *proposals* for a future checker - nothing in
 the app emits them yet.
 
@@ -60,8 +61,8 @@ or a compliance breach, **low** = minor / one-time.
 | S8-03 | HAP mismatch (rent roll vs PHA register) | Juniper Row 206 | `s8_hap_mismatch_register` | medium | $138.00 | $276.00 |
 | S8-04 | HAP mismatch (rent roll vs PHA register) | Juniper Row 105 | `s8_hap_mismatch_register` | medium | $100.00 | $300.00 |
 | S8-05 | Rent split does not sum | Juniper Row 210 | `s8_rent_split_does_not_sum` | low | $30.00 |  |
-| S8-06 | Lease rent differs from HAP contract rent | Juniper Row 104 | `s8_lease_rent_ne_hap_contract_rent` | high | $45.00 | $315.00 |
-| S8-07 | Prohibited side payment | Juniper Row 108 | `s8_side_payment` | high | $75.00 | $675.00 |
+| S8-06 | Lease rent differs from HAP contract rent | Juniper Row 104 | `s8_lease_rent_ne_hap_contract_rent` | high | $45.00 | $360.00 |
+| S8-07 | Prohibited side payment | Juniper Row 108 | `s8_side_payment` | high | $75.00 | $750.00 |
 | S8-08 | Expired HAP contract | Bellmont Terrace 1A, Bellmont Terrace 1B, Bellmont Terrace 1C, Bellmont Terrace 1D | `s8_hap_contract_expired` | high | $3,517.00 | $7,034.00 |
 | S8-09 | Lease begins before HAP contract effective date | Juniper Row 203 | `s8_lease_precedes_hap_contract` | low |  | $284.46 |
 | S8-10 | Missed recertification | Bellmont Terrace 2A | `s8_recert_overdue` + `s8_hap_suspended_but_booked` | high | $920.00 |  |
@@ -105,7 +106,7 @@ or a compliance breach, **low** = minor / one-time.
   - `rent_rolls/bellmont_terrace_rent_roll_2026-10-01_realpage.csv` unit 3B, column "Subsidy Amount" = 0
   - `rent_rolls/bellmont_terrace_rent_roll_2026-09-01_buildium.csv` unit 3B, column "Rent" = 1240
   - `hap_registers/hcha_hap_register_2026-10.csv` unit 3B, column "HAP Amount" = 953
-  - `hap_contracts/hap_contract_pbv_bellmont_terrace.pdf` page 1: "3B"
+  - `hap_contracts/hap_contract_pbv_bellmont_terrace.pdf` page 1: "3B 3BR/2BA $1,240.00"
 
 ### S8-03 - HAP mismatch (rent roll vs PHA register)
 
@@ -151,7 +152,7 @@ or a compliance breach, **low** = minor / one-time.
 - **Unit(s):** Juniper Row 104
 - **Expected flag:** `s8_lease_rent_ne_hap_contract_rent` (severity high)
 - **What's wrong:** Lease says monthly rent $1,295 (tenant $355 + HAP $940). HAP contract Part A rent to owner is $1,250 (tenant $310 + HAP $940). Rent rolls bill the tenant $355, i.e. $45/mo above the approved rent.
-- **Dollar impact:** $45.00/mo; $315.00 to date - Tenant overcharged $45/mo since 03/2026 (7 months to 09/30/2026) - refundable to the family.
+- **Dollar impact:** $45.00/mo; $360.00 to date - Tenant overcharged $45/mo for Mar-Oct 2026 (8 monthly charges through 10/01/2026) - refundable to the family.
 - **Rule:** Owner may not charge more than the PHA-approved rent to owner; the HAP contract and tenancy addendum prevail over the lease.
 - **Evidence:**
   - `leases/lease_juniper_row_104_fenmore.pdf` page 1: "Monthly Rent: $1,295.00"
@@ -164,7 +165,7 @@ or a compliance breach, **low** = minor / one-time.
 - **Unit(s):** Juniper Row 108
 - **Expected flag:** `s8_side_payment` (severity high)
 - **What's wrong:** Lease section 6 requires a $75/mo 'Supplemental Rent' paid directly to the landlord and 'not reported to the Housing Authority', on top of the $412 tenant share.
-- **Dollar impact:** $75.00/mo; $675.00 to date - $75/mo since 01/2026 (9 months to 09/30/2026) - must be repaid; PHA may terminate the HAP contract.
+- **Dollar impact:** $75.00/mo; $750.00 to date - $75/mo for Jan-Oct 2026 (10 monthly charges through 10/01/2026) - must be repaid; PHA may terminate the HAP contract.
 - **Rule:** Owner may not demand or accept any payment from the family beyond the family share (HAP contract Part B; 24 CFR 982.451(b)(4), paraphrased).
 - **Evidence:**
   - `leases/lease_juniper_row_108_marrowby.pdf` page 2: "Supplemental Rent of $75.00 per month"
@@ -327,6 +328,8 @@ or a compliance breach, **low** = minor / one-time.
   - `rent_rolls/bellmont_terrace_rent_roll_2026-10-01_realpage.csv` unit 3A, column "Subsidy Amount" = 840
   - `rent_rolls/bellmont_terrace_rent_roll_2026-09-01_buildium.csv` unit 3A, column "Housing Assistance Payment" = 840
   - `hap_registers/hcha_hap_register_2026-10.csv` has no row for unit 3A
+  - `hap_contracts/hap_contract_pbv_bellmont_terrace.pdf` page 1: "3C 3BR/2BA $1,240.00"
+  - `hap_contracts/hap_contract_pbv_bellmont_terrace.pdf` page 1 does NOT contain "3A 3BR/2BA"
 
 ### S8-21 - Tenancy addendum not signed
 
@@ -362,7 +365,7 @@ or a compliance breach, **low** = minor / one-time.
 
 ## Clean controls (must raise NO flag)
 
-- **Juniper Row Apartments 101** - Fully documented (lease, addendum, HCV HAP contract, 3 registers, 3 rent rolls). Trap: August register has a coded +$45 RTA retro adjustment - legitimate, must not flag.
+- **Juniper Row Apartments 101** - Fully documented (lease, addendum, HCV HAP contract, 3 registers, 3 rent rolls). Trap: August register has a coded +$45 RTA one-time correction of a July short-pay; HAP stays $905 - must not flag.
 - **Juniper Row Apartments 214** - Fully documented HCV unit (lease, addendum, registers, rent rolls); everything agrees.
 - **Bellmont Terrace 2C** - Fully documented PBV unit. Trap: NSPIRE-V cited a moderate deficiency that was corrected inside 30 days and passed reinspection - must not flag. Lease has a scanned-image signature page.
 
@@ -372,7 +375,8 @@ payments), so its absence from the registers is correct.
 
 ## Not errors (traps)
 
-- Juniper Row 101, Aug register: `RTA` +$45 retro adjustment with a memo - a coded, explained adjustment.
+- Juniper Row 101, Aug register: `RTA` +$45 one-time correction of a July short-pay, with a memo; the ongoing
+  HAP stays $905 in every month and document - a coded, explained adjustment.
 - Juniper Row 206, Sep register: `INT` memo line - the PHA's notice of the new split (the error is the rent
   roll not following it, S8-03).
 - Juniper Row 104 HQS item 1 (smoke detector, 24-hour) was corrected within 24 hours.
@@ -380,8 +384,18 @@ payments), so its absence from the registers is correct.
   within 30 days.
 - Bellmont 1D Severe GFCI item corrected on its 24-hour deadline.
 - PBRA units are absent from the PHA registers by design (paid via TRACS by the contract administrator).
+- No HAP for vacant PBV unit 3C: this fixture's PBV contract says no vacancy payments. That is a term of
+  *this* contract, not a general rule; real PBV contracts may allow limited vacancy payments.
 - Juniper Row 210 and Bellmont 2A show lease end dates before the as-of date: both continue month to month
   under their lease terms. Their real problems are the missed recerts (S8-11, S8-10), not lease expiry.
+
+## Modelling caveats
+
+- Juniper Row 104 is inspected under legacy **HQS** while the PBV project uses **NSPIRE-V**. That models a PHA
+  still inside HUD's NSPIRE-V transition window for its HCV program; check the current compliance date before
+  treating either standard as the only valid one in 2026.
+- Cure periods used: Life-Threatening 24 hours, other deficiencies 30 days (HCV/PBV); Severe 24 hours and
+  Moderate 30 days (multifamily NSPIRE). Paraphrased, not practitioner-checked.
 
 ## Regenerating
 

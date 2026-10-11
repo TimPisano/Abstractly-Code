@@ -119,7 +119,7 @@ UNITS = [
     {"prop": "JR", "unit": "101", "type": "2BR/1BA", "program": "HCV", "tenant": "Talia Brennaway",
      "members": ["Talia Brennaway (Head)", "Jonah Brennaway (Child)"],
      "contract": 1325, "ttp": 420, "hap": 905, "lease": ("2025-11-01", "2026-10-31"), "move_in": "2025-11-01",
-     "recert": "2026-11-01", "client": "C-104417", "hap_contract": "HCHA-HCV-25-1101", "deposit": 500},
+     "recert": "2026-11-01", "client": "C-104417", "deposit": 500},
     {"prop": "JR", "unit": "102", "type": "1BR/1BA", "program": "Market", "tenant": "Corwin Ashgrove",
      "contract": 1195, "lease": ("2026-04-01", "2027-03-31"), "move_in": "2024-04-01"},
     {"prop": "JR", "unit": "103", "type": "1BR/1BA", "program": "Market", "tenant": "Imelda Rostvik",
@@ -127,7 +127,7 @@ UNITS = [
     {"prop": "JR", "unit": "104", "type": "2BR/1BA", "program": "HCV", "tenant": "Osric Fenmore",
      "members": ["Osric Fenmore (Head)", "Lisette Fenmore (Spouse)", "Pim Fenmore (Child)"],
      "contract": 1250, "ttp": 310, "hap": 940, "lease": ("2026-03-01", "2027-02-28"), "move_in": "2026-03-01",
-     "recert": "2027-03-01", "client": "C-104562", "hap_contract": "HCHA-HCV-26-0304", "deposit": 500,
+     "recert": "2027-03-01", "client": "C-104562", "deposit": 500,
      "lease_rent": 1295, "lease_ttp": 355, "lease_util": {"Gas - heating": "Tenant", "Gas - cooking": "Tenant"}},
     {"prop": "JR", "unit": "105", "type": "2BR/1BA", "program": "HCV", "tenant": "Wren Halloway-Quist",
      "contract": 1240, "ttp": 335, "hap": 905, "lease": ("2026-01-01", "2026-12-31"), "move_in": "2024-01-01",
@@ -150,7 +150,7 @@ UNITS = [
     {"prop": "JR", "unit": "203", "type": "2BR/1BA", "program": "HCV", "tenant": "Rosalind Achterberg",
      "members": ["Rosalind Achterberg (Head)", "Matthias Achterberg (Child)"],
      "contract": 1295, "ttp": 410, "hap": 885, "lease": ("2026-02-01", "2027-01-31"), "move_in": "2026-02-01",
-     "recert": "2027-02-01", "client": "C-104475", "hap_contract": "HCHA-HCV-26-0203", "deposit": 500,
+     "recert": "2027-02-01", "client": "C-104475", "deposit": 500,
      "hap_effective": "2026-02-10", "increase": {"notice": "2026-08-20", "effective": "2026-09-01", "to": 1350}},
     {"prop": "JR", "unit": "204", "type": "2BR/1BA", "program": "Market", "tenant": "Thaddeus Vinmore",
      "contract": 1440, "lease": ("2025-12-01", "2026-11-30"), "move_in": "2023-12-01"},
@@ -213,6 +213,11 @@ UNITS = [
      "contract": 1495, "lease": ("2026-09-01", "2027-08-31"), "move_in": "2026-09-01"},
 ]
 U = {(u["prop"], u["unit"]): u for u in UNITS}
+
+
+def hcv_contract_no(u):
+    """Tenant-based HAP contract number: HCHA-HCV-<move-in year>-<unit>."""
+    return f"HCHA-HCV-{u['move_in'][2:4]}-{u['unit'].zfill(4)}"
 
 PBV_CONTRACT = "HCHA-PBV-24-0007"
 PBRA_CONTRACT = "DEMO-PBRA-0412"
@@ -302,7 +307,7 @@ ADJ_CODES = {
 REG_SPECIAL = {
     # month, unit -> overrides
     ("2026-08", "JR", "101"): {"adj_code": "RTA", "adj": 45,
-                               "memo": "Retro HAP eff 07/01/2026 - interim reexam (income decrease) processed late"},
+                               "memo": "One-time correction: July 2026 HAP short-paid $45 (PHA keying error) - repaid; ongoing HAP unchanged"},
     ("2026-08", "BT", "3D"): {"omit": True},                                    # S8-13
     ("2026-09", "JR", "104"): {"adj_code": "ABT", "adj": -940,
                                "memo": "HQS reinspection failed 08/13/2026 - HAP abated eff 09/01/2026"},  # S8-14
@@ -336,8 +341,7 @@ def register_rows(month):
             "Vendor ID": p["vendor_id"],
             "Payee": p["owner"],
             "Program": "PBV" if u["program"] == "PBV" else "HCV",
-            "HAP Contract": u.get("hap_contract") or (PBV_CONTRACT if u["program"] == "PBV" else
-                                                      f"HCHA-HCV-{u['client'][-4:]}"),
+            "HAP Contract": PBV_CONTRACT if u["program"] == "PBV" else hcv_contract_no(u),
             "Client ID": u["client"],
             "Head of Household": u["tenant"],
             "Unit Address": f"{p['street']} #{unit}",
@@ -428,6 +432,10 @@ def pdf_text(file, page, contains):
     return {"type": "pdf_text", "file": file, "page": page, "contains": contains}
 
 
+def pdf_absent(file, page, text):
+    return {"type": "pdf_absent", "file": file, "page": page, "text": text}
+
+
 RR_COLS = {
     # style -> (unit col, contract col, tenant col, hap col, status col, recert col)
     "appfolio": ("Unit", "Rent", "Tenant Portion", "HAP", "Status", "Next Recert"),
@@ -480,7 +488,7 @@ def build_errors():
                   rr_cell("RR3", "BT", "3B", col("RR3", "hap"), 0),
                   rr_cell("RR4", "BT", "3B", col("RR4", "contract"), 1240),
                   reg_cell("2026-10", "3B", "HAP Amount", 953),
-                  pdf_text(hc["HC4"]["file"], 1, "3B")])
+                  pdf_text(hc["HC4"]["file"], 1, "3B 3BR/2BA $1,240.00")])
     u206 = U[("JR", "206")]
     add(id="S8-03", category="HAP mismatch (rent roll vs PHA register)",
         flag="s8_hap_mismatch_register", severity="medium", units=["Juniper Row 206"],
@@ -515,14 +523,14 @@ def build_errors():
                   rr_cell("RR1", "JR", "210", col("RR1", "hap"), 1000),
                   rr_cell("RR2", "JR", "210", col("RR2", "tenant"), 410)])
     u104 = U[("JR", "104")]
-    months_104 = 7  # Mar-Sep 2026 paid before the review date
+    months_104 = 8  # Mar-Oct 2026 rent charges due on or before the as-of date
     add(id="S8-06", category="Lease rent differs from HAP contract rent",
         flag="s8_lease_rent_ne_hap_contract_rent", severity="high", units=["Juniper Row 104"],
         what=("Lease says monthly rent $1,295 (tenant $355 + HAP $940). HAP contract Part A rent to owner is $1,250 "
               "(tenant $310 + HAP $940). Rent rolls bill the tenant $355, i.e. $45/mo above the approved rent."),
         monthly_impact=u104["lease_rent"] - u104["contract"],
         impact_to_date=(u104["lease_rent"] - u104["contract"]) * months_104,
-        impact_note="Tenant overcharged $45/mo since 03/2026 (7 months to 09/30/2026) - refundable to the family.",
+        impact_note="Tenant overcharged $45/mo for Mar-Oct 2026 (8 monthly charges through 10/01/2026) - refundable to the family.",
         rule="Owner may not charge more than the PHA-approved rent to owner; the HAP contract and tenancy addendum prevail over the lease.",
         evidence=[pdf_text(lease_file("JR", "104"), 1, "Monthly Rent: $1,295.00"),
                   pdf_text(hc["HC2"]["file"], 1, "$1,250.00"),
@@ -532,8 +540,8 @@ def build_errors():
         flag="s8_side_payment", severity="high", units=["Juniper Row 108"],
         what=("Lease section 6 requires a $75/mo 'Supplemental Rent' paid directly to the landlord and 'not reported "
               "to the Housing Authority', on top of the $412 tenant share."),
-        monthly_impact=u108["side_payment"], impact_to_date=u108["side_payment"] * 9,
-        impact_note="$75/mo since 01/2026 (9 months to 09/30/2026) - must be repaid; PHA may terminate the HAP contract.",
+        monthly_impact=u108["side_payment"], impact_to_date=u108["side_payment"] * 10,
+        impact_note="$75/mo for Jan-Oct 2026 (10 monthly charges through 10/01/2026) - must be repaid; PHA may terminate the HAP contract.",
         rule="Owner may not demand or accept any payment from the family beyond the family share (HAP contract Part B; 24 CFR 982.451(b)(4), paraphrased).",
         evidence=[pdf_text(lease_file("JR", "108"), 2, "Supplemental Rent of $75.00 per month"),
                   pdf_text(lease_file("JR", "108"), 2, "not reported to the Housing Authority")])
@@ -552,7 +560,7 @@ def build_errors():
     gap = 9
     add(id="S8-09", category="Lease begins before HAP contract effective date",
         flag="s8_lease_precedes_hap_contract", severity="low", units=["Juniper Row 203"],
-        what=("Lease term begins 02/01/2026; HAP contract HCHA-HCV-26-0203 is effective 02/10/2026 (after the unit "
+        what=(f"Lease term begins 02/01/2026; HAP contract {hcv_contract_no(u203)} is effective 02/10/2026 (after the unit "
               "passed HQS). HAP is not payable for 02/01-02/09."),
         monthly_impact=None, impact_to_date=round(u203["hap"] * gap / 28, 2),
         impact_note="One-time: 9/28 of $885 HAP not payable; collectible from no one.",
@@ -671,7 +679,9 @@ def build_errors():
         rule="PHA pays PBV HAP only for units listed on Exhibit A (24 CFR 983.207, paraphrased).",
         evidence=[rr_cell("RR3", "BT", "3A", col("RR3", "hap"), 840),
                   rr_cell("RR4", "BT", "3A", col("RR4", "hap"), 840),
-                  reg_absent("2026-10", "3A")])
+                  reg_absent("2026-10", "3A"),
+                  pdf_text(hc["HC4"]["file"], 1, "3C 3BR/2BA $1,240.00"),
+                  pdf_absent(hc["HC4"]["file"], 1, "3A 3BR/2BA")])
     add(id="S8-21", category="Tenancy addendum not signed",
         flag="s8_tenancy_addendum_unsigned", severity="medium", units=["Bellmont Terrace 3B"],
         what=("The PBV Tenancy Addendum acknowledgment page for unit 3B is signed by the owner's agent only; the "
@@ -699,7 +709,7 @@ def build_errors():
 
 CLEAN_CONTROLS = [
     {"prop": "JR", "unit": "101", "note": ("Fully documented (lease, addendum, HCV HAP contract, 3 registers, 3 rent rolls). "
-                                           "Trap: August register has a coded +$45 RTA retro adjustment - legitimate, must not flag.")},
+                                           "Trap: August register has a coded +$45 RTA one-time correction of a July short-pay; HAP stays $905 - must not flag.")},
     {"prop": "JR", "unit": "214", "note": "Fully documented HCV unit (lease, addendum, registers, rent rolls); everything agrees."},
     {"prop": "BT", "unit": "2C", "note": ("Fully documented PBV unit. Trap: NSPIRE-V cited a moderate deficiency that was corrected "
                                           "inside 30 days and passed reinspection - must not flag. Lease has a scanned-image signature page.")},
@@ -1078,7 +1088,7 @@ def hcv_contract_pages(key):
           P("(Simplified model of form HUD-52641 - paraphrased for test purposes; not an official HUD form)", CENTER),
           P("Part A of the HAP Contract: Contract Information", H2),
           kv_table([
-              ("HAP contract number", u["hap_contract"]),
+              ("HAP contract number", hcv_contract_no(u)),
               ("PHA", f"{PHA['name']}, {PHA['address']}"),
               ("Owner", f"{p['owner']} (vendor {p['vendor_id']})"),
               ("Tenant", f"{u['tenant']} (client {u['client']})"),
@@ -1239,8 +1249,8 @@ def inspection_pbv_pages():
           P("Deficiencies", H2),
           grid(["Unit", "Location", "Deficiency", "Severity", "Correct by", "Corrected"], rows,
                widths=[0.45 * inch, 0.8 * inch, 2.4 * inch, 1.1 * inch, 0.9 * inch, 0.9 * inch]),
-          P("Life-Threatening deficiencies must be corrected within 24 hours of the inspection; Severe within 24 hours "
-            "(or 30 days if PHA-approved); Moderate and Low within 30 days.", SMALL)]
+          P("Life-Threatening deficiencies must be corrected within 24 hours of the inspection; all other "
+            "deficiencies within 30 days.", SMALL)]
     p2 = [P("REINSPECTION", H1),
           kv_table([("Reinspection date", "09/18/2026"), ("Units", "2B, 2C, 3B"),
                     ("Result", "PASS - all cited deficiencies verified corrected")]),
@@ -1531,6 +1541,8 @@ def describe_evidence(ev):
         return f"`{ev['file']}` unit {ev['unit']}, column \"{ev['column']}\" = {v}"
     if t == "register_absent":
         return f"`{ev['file']}` has no row for unit {ev['unit']}"
+    if t == "pdf_absent":
+        return f"`{ev['file']}` page {ev['page']} does NOT contain \"{ev['text']}\""
     return f"`{ev['file']}` page {ev['page']}: \"{ev['contains']}\""
 
 
@@ -1566,7 +1578,8 @@ def write_answer_key(out, errors):
     a("> `backend/tests/test_section8_fixtures.py`).")
     a("")
     a(f"**Review as-of date: {fmt_date(AS_OF)}.** All \"overdue\", \"expired\" and \"to date\" figures are measured")
-    a("against this fixed date, so the set never goes stale. Everything here is fictional; rule references are")
+    a("against this fixed date, so the set never goes stale. **\"To date\" counts every monthly charge or payment due")
+    a("on or before 10/01/2026**, so the October 1 rent charge and HAP payment are included. Everything here is fictional; rule references are")
     a("paraphrased and **not practitioner-checked**. Flag codes are *proposals* for a future checker - nothing in")
     a("the app emits them yet.")
     a("")
@@ -1642,7 +1655,8 @@ def write_answer_key(out, errors):
     a("")
     a("## Not errors (traps)")
     a("")
-    a("- Juniper Row 101, Aug register: `RTA` +$45 retro adjustment with a memo - a coded, explained adjustment.")
+    a("- Juniper Row 101, Aug register: `RTA` +$45 one-time correction of a July short-pay, with a memo; the ongoing")
+    a("  HAP stays $905 in every month and document - a coded, explained adjustment.")
     a("- Juniper Row 206, Sep register: `INT` memo line - the PHA's notice of the new split (the error is the rent")
     a("  roll not following it, S8-03).")
     a("- Juniper Row 104 HQS item 1 (smoke detector, 24-hour) was corrected within 24 hours.")
@@ -1650,8 +1664,18 @@ def write_answer_key(out, errors):
     a("  within 30 days.")
     a("- Bellmont 1D Severe GFCI item corrected on its 24-hour deadline.")
     a("- PBRA units are absent from the PHA registers by design (paid via TRACS by the contract administrator).")
+    a("- No HAP for vacant PBV unit 3C: this fixture's PBV contract says no vacancy payments. That is a term of")
+    a("  *this* contract, not a general rule; real PBV contracts may allow limited vacancy payments.")
     a("- Juniper Row 210 and Bellmont 2A show lease end dates before the as-of date: both continue month to month")
     a("  under their lease terms. Their real problems are the missed recerts (S8-11, S8-10), not lease expiry.")
+    a("")
+    a("## Modelling caveats")
+    a("")
+    a("- Juniper Row 104 is inspected under legacy **HQS** while the PBV project uses **NSPIRE-V**. That models a PHA")
+    a("  still inside HUD's NSPIRE-V transition window for its HCV program; check the current compliance date before")
+    a("  treating either standard as the only valid one in 2026.")
+    a("- Cure periods used: Life-Threatening 24 hours, other deficiencies 30 days (HCV/PBV); Severe 24 hours and")
+    a("  Moderate 30 days (multifamily NSPIRE). Paraphrased, not practitioner-checked.")
     a("")
     a("## Regenerating")
     a("")

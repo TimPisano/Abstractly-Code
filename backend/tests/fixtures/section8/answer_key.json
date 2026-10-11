@@ -163,7 +163,7 @@
           "type": "pdf_text",
           "file": "hap_contracts/hap_contract_pbv_bellmont_terrace.pdf",
           "page": 1,
-          "contains": "3B"
+          "contains": "3B 3BR/2BA $1,240.00"
         }
       ],
       "impact_to_date": null
@@ -318,8 +318,8 @@
       ],
       "what": "Lease says monthly rent $1,295 (tenant $355 + HAP $940). HAP contract Part A rent to owner is $1,250 (tenant $310 + HAP $940). Rent rolls bill the tenant $355, i.e. $45/mo above the approved rent.",
       "monthly_impact": 45,
-      "impact_to_date": 315,
-      "impact_note": "Tenant overcharged $45/mo since 03/2026 (7 months to 09/30/2026) - refundable to the family.",
+      "impact_to_date": 360,
+      "impact_note": "Tenant overcharged $45/mo for Mar-Oct 2026 (8 monthly charges through 10/01/2026) - refundable to the family.",
       "rule": "Owner may not charge more than the PHA-approved rent to owner; the HAP contract and tenancy addendum prevail over the lease.",
       "evidence": [
         {
@@ -361,8 +361,8 @@
       ],
       "what": "Lease section 6 requires a $75/mo 'Supplemental Rent' paid directly to the landlord and 'not reported to the Housing Authority', on top of the $412 tenant share.",
       "monthly_impact": 75,
-      "impact_to_date": 675,
-      "impact_note": "$75/mo since 01/2026 (9 months to 09/30/2026) - must be repaid; PHA may terminate the HAP contract.",
+      "impact_to_date": 750,
+      "impact_note": "$75/mo for Jan-Oct 2026 (10 monthly charges through 10/01/2026) - must be repaid; PHA may terminate the HAP contract.",
       "rule": "Owner may not demand or accept any payment from the family beyond the family share (HAP contract Part B; 24 CFR 982.451(b)(4), paraphrased).",
       "evidence": [
         {
@@ -877,6 +877,18 @@
           "type": "register_absent",
           "file": "hap_registers/hcha_hap_register_2026-10.csv",
           "unit": "3A"
+        },
+        {
+          "type": "pdf_text",
+          "file": "hap_contracts/hap_contract_pbv_bellmont_terrace.pdf",
+          "page": 1,
+          "contains": "3C 3BR/2BA $1,240.00"
+        },
+        {
+          "type": "pdf_absent",
+          "file": "hap_contracts/hap_contract_pbv_bellmont_terrace.pdf",
+          "page": 1,
+          "text": "3A 3BR/2BA"
         }
       ]
     },
@@ -969,7 +981,7 @@
     {
       "property": "Juniper Row Apartments",
       "unit": "101",
-      "note": "Fully documented (lease, addendum, HCV HAP contract, 3 registers, 3 rent rolls). Trap: August register has a coded +$45 RTA retro adjustment - legitimate, must not flag."
+      "note": "Fully documented (lease, addendum, HCV HAP contract, 3 registers, 3 rent rolls). Trap: August register has a coded +$45 RTA one-time correction of a July short-pay; HAP stays $905 - must not flag."
     },
     {
       "property": "Juniper Row Apartments",

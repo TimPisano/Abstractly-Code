@@ -1,13 +1,13 @@
 Payment Date,Vendor ID,Payee,Program,HAP Contract,Client ID,Head of Household,Unit Address,Unit,Contract Rent,HAP Amount,Adj Code,Adj Amount,Net Payment,Memo
-09/01/2026,V-2041,Juniper Row Holdings LLC,HCV,HCHA-HCV-25-1101,C-104417,Talia Brennaway,2400 Quillfeather Lane #101,101,1325.00,905.00,,0.00,905.00,
-09/01/2026,V-2041,Juniper Row Holdings LLC,HCV,HCHA-HCV-26-0304,C-104562,Osric Fenmore,2400 Quillfeather Lane #104,104,1250.00,940.00,ABT,-940.00,0.00,HQS reinspection failed 08/13/2026 - HAP abated eff 09/01/2026
-09/01/2026,V-2041,Juniper Row Holdings LLC,HCV,HCHA-HCV-3988,C-103988,Wren Halloway-Quist,2400 Quillfeather Lane #105,105,1240.00,905.00,,0.00,905.00,
-09/01/2026,V-2041,Juniper Row Holdings LLC,HCV,HCHA-HCV-4390,C-104390,Delphine Marrowby,2400 Quillfeather Lane #108,108,1385.00,873.00,,0.00,873.00,
-09/01/2026,V-2041,Juniper Row Holdings LLC,HCV,HCHA-HCV-3702,C-103702,Anselm Treadwick,2400 Quillfeather Lane #112,112,1180.00,880.00,,0.00,880.00,
+09/01/2026,V-2041,Juniper Row Holdings LLC,HCV,HCHA-HCV-25-0101,C-104417,Talia Brennaway,2400 Quillfeather Lane #101,101,1325.00,905.00,,0.00,905.00,
+09/01/2026,V-2041,Juniper Row Holdings LLC,HCV,HCHA-HCV-26-0104,C-104562,Osric Fenmore,2400 Quillfeather Lane #104,104,1250.00,940.00,ABT,-940.00,0.00,HQS reinspection failed 08/13/2026 - HAP abated eff 09/01/2026
+09/01/2026,V-2041,Juniper Row Holdings LLC,HCV,HCHA-HCV-24-0105,C-103988,Wren Halloway-Quist,2400 Quillfeather Lane #105,105,1240.00,905.00,,0.00,905.00,
+09/01/2026,V-2041,Juniper Row Holdings LLC,HCV,HCHA-HCV-26-0108,C-104390,Delphine Marrowby,2400 Quillfeather Lane #108,108,1385.00,873.00,,0.00,873.00,
+09/01/2026,V-2041,Juniper Row Holdings LLC,HCV,HCHA-HCV-25-0112,C-103702,Anselm Treadwick,2400 Quillfeather Lane #112,112,1180.00,880.00,,0.00,880.00,
 09/01/2026,V-2041,Juniper Row Holdings LLC,HCV,HCHA-HCV-26-0203,C-104475,Rosalind Achterberg,2400 Quillfeather Lane #203,203,1295.00,885.00,,0.00,885.00,
-09/01/2026,V-2041,Juniper Row Holdings LLC,HCV,HCHA-HCV-4601,C-104601,Marisol Pennyworth-Oake,2400 Quillfeather Lane #206,206,1295.00,912.00,INT,0.00,912.00,"Interim reexam eff 09/01/2026: TTP $245 -> $383; HAP $1,050 -> $912"
-09/01/2026,V-2041,Juniper Row Holdings LLC,HCV,HCHA-HCV-3341,C-103341,Kestrel Imbody,2400 Quillfeather Lane #210,210,1410.00,1000.00,,0.00,1000.00,
-09/01/2026,V-2041,Juniper Row Holdings LLC,HCV,HCHA-HCV-4688,C-104688,Nadia Quellwater,2400 Quillfeather Lane #214,214,1260.00,905.00,,0.00,905.00,
+09/01/2026,V-2041,Juniper Row Holdings LLC,HCV,HCHA-HCV-26-0206,C-104601,Marisol Pennyworth-Oake,2400 Quillfeather Lane #206,206,1295.00,912.00,INT,0.00,912.00,"Interim reexam eff 09/01/2026: TTP $245 -> $383; HAP $1,050 -> $912"
+09/01/2026,V-2041,Juniper Row Holdings LLC,HCV,HCHA-HCV-23-0210,C-103341,Kestrel Imbody,2400 Quillfeather Lane #210,210,1410.00,1000.00,,0.00,1000.00,
+09/01/2026,V-2041,Juniper Row Holdings LLC,HCV,HCHA-HCV-26-0214,C-104688,Nadia Quellwater,2400 Quillfeather Lane #214,214,1260.00,905.00,,0.00,905.00,
 09/01/2026,V-2077,Bellmont Terrace Housing LP,PBV,HCHA-PBV-24-0007,C-103120,Abigail Thornquist,77 Tinderbox Court #2A,2A,1210.00,920.00,,0.00,920.00,
 09/01/2026,V-2077,Bellmont Terrace Housing LP,PBV,HCHA-PBV-24-0007,C-103133,Rufus Elverson,77 Tinderbox Court #2B,2B,1210.00,860.00,,0.00,860.00,
 09/01/2026,V-2077,Bellmont Terrace Housing LP,PBV,HCHA-PBV-24-0007,C-104512,Mireille Vantongeren,77 Tinderbox Court #2C,2C,1210.00,945.00,,0.00,945.00,

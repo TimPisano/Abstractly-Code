@@ -133,6 +133,10 @@ def test_every_evidence_item_is_really_there():
                 pages = pdf_pages(ev["file"])
                 assert ev["page"] <= len(pages), where
                 assert ev["contains"] in pages[ev["page"] - 1], where
+            elif ev["type"] == "pdf_absent":
+                pages = pdf_pages(ev["file"])
+                assert ev["page"] <= len(pages), where
+                assert ev["text"] not in pages[ev["page"] - 1], where
             elif ev["type"] in ("rent_roll_cell", "register_cell"):
                 hits = find_row(ev["file"], ev["unit"], ev.get("prop"))
                 assert len(hits) == 1, f"{where}: {len(hits)} rows"
