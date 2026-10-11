@@ -106,16 +106,16 @@ those by taking **main's** TASKS.md, not the branch's.
 | `chore/repo-layout` | `~/dev/projects/abstractly-repo-layout` | — | Branched off `main` `1d203d2` 2026-10-05. Repo tidy-up: move stray root reports/plans into `docs/`, fill `.gitignore` gaps, README project-layout section. File moves + doc-comment path fixes only, no code behavior change. **Plan written, awaiting user approval** — `docs/plans/chore-repo-layout.md`. |
 
 | `qa/section8-fixtures` | `~/dev/projects/abstractly-s8-fixtures` | — | Branched off `main` `54a9499` 2026-10-11. Synthetic Section 8 test set (fixtures only, no app code): 10 voucher leases + HUD tenancy addenda, 5 HAP contracts (HCV + project-based), 5 rent rolls (CSV/XLSX, contract/tenant/HAP split), 3 PHA HAP registers, 3 HQS/NSPIRE inspections, planted errors + `ANSWER_KEY.md`. **Plan approved, building** — `docs/plans/qa-section8-fixtures.md`. |
-| `fix/section8-tenant-share` | `~/dev/projects/abstractly-s8-tenant-share` | — | Branched off `qa/overnight-gauntlet` `906eaab` 2026-10-11 (builds on its `a1cff89` tenant-portion/HAP parsing). Rent roll parsing + validation only: contract rent = tenant share + HAP, check it per row, flag mismatches as import warnings, never use tenant share alone as rent. Regression tests: voucher, market, mixed rolls. **Plan written, awaiting user approval** — `docs/plans/fix-section8-tenant-share.md`. |
+| `fix/section8-tenant-share` | `~/dev/projects/abstractly-s8-tenant-share` | — | Branched off `qa/overnight-gauntlet` `906eaab` 2026-10-11 (builds on its `a1cff89` tenant-portion/HAP parsing). Rent roll parsing + validation only: contract rent = tenant share + HAP, check it per row, flag mismatches as import warnings, never use tenant share alone as rent. Regression tests: voucher, market, mixed rolls. **Plan approved, building** — `docs/plans/fix-section8-tenant-share.md`. |
 
 ### Handoff blocks
 
 #### fix/section8-tenant-share
 - Worktree: ~/dev/projects/abstractly-s8-tenant-share
 - Goal: rent roll import never treats a Section 8 tenant share as the unit's rent; validates contract rent = tenant share + HAP per row and flags mismatches clearly.
-- Loop step: 3 — plan written, waiting for user approval
+- Loop step: 4 — building (plan approved 2026-10-11 with changes: $1 tolerance; ambiguous Tenant Rent flagged when voucher indicators)
 - Last update: 2026-10-11 by start-task
-- Next action: user reviews docs/plans/fix-section8-tenant-share.md (incl. base-branch choice)
+- Next action: build per plan
 
 #### qa/section8-fixtures
 - Worktree: ~/dev/projects/abstractly-s8-fixtures
