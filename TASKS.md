@@ -101,7 +101,7 @@ those by taking **main's** TASKS.md, not the branch's.
 
 | `qa/overnight-gauntlet` | `~/dev/projects/abstractly-gauntlet` | — | **Reviewed: MERGE (reviewer + security-auditor).** Branched off `main` `3f1d3aa` 2026-10-05. Overnight reliability gauntlet: 60+ synthetic messy rent rolls, 30+ T-12s, matching leases with planted mismatches + manifest; full local pipeline graded each cycle; root-cause fixes with regression tests; `QA_REPORT.md` updated per cycle. User's prompt is the approved scope (autonomous, no questions). Never merges/deploys. |
 | `audit/production-readiness` | `~/dev/projects/abstractly-audit` | 0 | Started 2026-10-05 off `origin/main` `3f1d3aa`. **Read-only** production readiness audit (DB, security, reliability, cost, Section 8 trust) → `AUDIT.md` at the worktree root, **uncommitted by user instruction** (no code edits, commits, pushes, or Render changes). Overnight deep pass: every route + job traced, bugs added ranked by severity. |
-| `feature/s8-data-model` | `~/dev/projects/abstractly-s8-data-model` | — | Branched off `main` 2026-10-11. **T1 of the Section 8 pivot** (PIVOT_PLAN.md): `SECTION8_MODE` flag + team-scoped tables properties/units/phas/tenancies/hap_contracts/unit_documents, scoped CRUD, minimal routes, address backfill. No UI. **Plan written, awaiting user approval** — `docs/plans/feature-s8-data-model.md`. |
+| `feature/s8-data-model` | `~/dev/projects/abstractly-s8-data-model` | — | Branched off `main` 2026-10-11. **T1 of the Section 8 pivot** (PIVOT_PLAN.md): `SECTION8_MODE` flag + team-scoped tables properties/units/phas/tenancies/hap_contracts/unit_documents, scoped CRUD, minimal routes, address backfill. No UI. **Plan approved, building** — `docs/plans/feature-s8-data-model.md`. |
 | `pivot/section8` | `~/dev/projects/abstractly-pivot-section8` | — | Branched off `main` `323d85f` 2026-10-11. **Plan only, no code:** `PIVOT_PLAN.md` — audit (KEEP/ADAPT/REMOVE), Section 8 feature set, copy/positioning, parallel build order for pivoting Abstractly to Section 8 landlords/PMs. **Plan approved 2026-10-11** (`623e884`); tasks T0–T13 queued in Up next → "Section 8 pivot". Open questions Q1–Q7 still unanswered — plan defaults assumed. Builds on `research/section8`, `feature/lease-intelligence`, `feature/s8-hud-data`, `feature/s8-demo-files`. |
 | `docs/design-tokens` | `~/dev/projects/abstractly-design-tokens` | — | Branched off `main` 2026-10-11. Document every color/font/spacing/radius/shadow/logo asset in `DESIGN_TOKENS.md`; centralize duplicated hardcoded colors into CSS variables with **zero rendered change**; before/after headless screenshots (home, dashboard, login). **Plan approved, building** — `docs/plans/docs-design-tokens.md`. |
 | `chore/repo-layout` | `~/dev/projects/abstractly-repo-layout` | — | Branched off `main` `1d203d2` 2026-10-05. Repo tidy-up: move stray root reports/plans into `docs/`, fill `.gitignore` gaps, README project-layout section. File moves + doc-comment path fixes only, no code behavior change. **Plan written, awaiting user approval** — `docs/plans/chore-repo-layout.md`. |
@@ -135,9 +135,9 @@ those by taking **main's** TASKS.md, not the branch's.
 #### feature/s8-data-model
 - Worktree: ~/dev/projects/abstractly-s8-data-model
 - Goal: the Section 8 data foundation (properties, units, PHAs, tenancies, HAP contracts, unit documents), team-scoped, behind SECTION8_MODE.
-- Loop step: 3 — plan written, waiting for user approval
-- Last update: 2026-10-11 by start-task
-- Next action: user reviews docs/plans/feature-s8-data-model.md
+- Loop step: 4 — building (plan approved 2026-10-11; change: backfilled units always status 'unknown')
+- Last update: 2026-10-11 by the s8-data-model session
+- Next action: build per plan
 
 #### pivot/section8
 - Worktree: ~/dev/projects/abstractly-pivot-section8
