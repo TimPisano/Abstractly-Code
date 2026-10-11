@@ -101,7 +101,7 @@ those by taking **main's** TASKS.md, not the branch's.
 
 | `qa/overnight-gauntlet` | `~/dev/projects/abstractly-gauntlet` | — | **Reviewed: MERGE (reviewer + security-auditor).** Branched off `main` `3f1d3aa` 2026-10-05. Overnight reliability gauntlet: 60+ synthetic messy rent rolls, 30+ T-12s, matching leases with planted mismatches + manifest; full local pipeline graded each cycle; root-cause fixes with regression tests; `QA_REPORT.md` updated per cycle. User's prompt is the approved scope (autonomous, no questions). Never merges/deploys. |
 | `audit/production-readiness` | `~/dev/projects/abstractly-audit` | 0 | Started 2026-10-05 off `origin/main` `3f1d3aa`. **Read-only** production readiness audit (DB, security, reliability, cost, Section 8 trust) → `AUDIT.md` at the worktree root, **uncommitted by user instruction** (no code edits, commits, pushes, or Render changes). Overnight deep pass: every route + job traced, bugs added ranked by severity. |
-| `pivot/section8` | `~/dev/projects/abstractly-pivot-section8` | — | Branched off `main` `323d85f` 2026-10-11. **Plan only, no code:** `PIVOT_PLAN.md` — audit (KEEP/ADAPT/REMOVE), Section 8 feature set, copy/positioning, parallel build order for pivoting Abstractly to Section 8 landlords/PMs. **Plan written, awaiting user approval.** Builds on `research/section8`, `feature/lease-intelligence`, `feature/s8-hud-data`, `feature/s8-demo-files`. |
+| `pivot/section8` | `~/dev/projects/abstractly-pivot-section8` | — | Branched off `main` `323d85f` 2026-10-11. **Plan only, no code:** `PIVOT_PLAN.md` — audit (KEEP/ADAPT/REMOVE), Section 8 feature set, copy/positioning, parallel build order for pivoting Abstractly to Section 8 landlords/PMs. **Plan approved 2026-10-11** (`623e884`); tasks T0–T13 queued in Up next → "Section 8 pivot". Open questions Q1–Q7 still unanswered — plan defaults assumed. Builds on `research/section8`, `feature/lease-intelligence`, `feature/s8-hud-data`, `feature/s8-demo-files`. |
 | `docs/design-tokens` | `~/dev/projects/abstractly-design-tokens` | — | Branched off `main` 2026-10-11. Document every color/font/spacing/radius/shadow/logo asset in `DESIGN_TOKENS.md`; centralize duplicated hardcoded colors into CSS variables with **zero rendered change**; before/after headless screenshots (home, dashboard, login). **Plan approved, building** — `docs/plans/docs-design-tokens.md`. |
 | `chore/repo-layout` | `~/dev/projects/abstractly-repo-layout` | — | Branched off `main` `1d203d2` 2026-10-05. Repo tidy-up: move stray root reports/plans into `docs/`, fill `.gitignore` gaps, README project-layout section. File moves + doc-comment path fixes only, no code behavior change. **Plan written, awaiting user approval** — `docs/plans/chore-repo-layout.md`. |
 
@@ -134,9 +134,10 @@ those by taking **main's** TASKS.md, not the branch's.
 #### pivot/section8
 - Worktree: ~/dev/projects/abstractly-pivot-section8
 - Goal: a reviewed pivot plan (PIVOT_PLAN.md) turning Abstractly into a Section 8 landlord / PM tool, split into claimable tasks.
-- Loop step: 3 — plan written (PIVOT_PLAN.md, committed on the branch), waiting for user approval + answers to its 7 open questions
-- Last update: 2026-10-11 by start-task
-- Next action: user reviews PIVOT_PLAN.md; on approval, add tasks T0–T13 to Up next so other windows can /start-task them
+- Loop step: plan approved 2026-10-11 by the user ("yes continue"); tasks queued in Up next. Branch holds only PIVOT_PLAN.md — nothing to merge until the user wants the plan on main.
+- Last update: 2026-10-11 by the pivot planning session
+- Assumed until the user answers PIVOT_PLAN.md Q1–Q7: HCV first, PBRA phase 2; pricing unchanged until Q2; T11 copy does not merge before T3+T5 are live on tester; T0 required before real tenant docs.
+- Next action: other windows claim tasks from Up next → "Section 8 pivot" with /start-task (read PIVOT_PLAN.md on branch pivot/section8 first)
 
 #### fix/quick-wins
 - Worktree: `~/dev/projects/abstractly-quick-wins`
@@ -244,6 +245,34 @@ loan-underwriting. (`landing-positioning` dropped — superseded.)
    Abstractly could help with sits with **Project-Based Section 8 and
    LIHTC**, where the owner/agent certifies. Decide whether that's a
    product direction or shelf it; merging the doc didn't decide it.
+
+### Section 8 pivot (approved 2026-10-11 — full detail in `PIVOT_PLAN.md` on branch `pivot/section8`)
+
+Claim with `/start-task <branch>`; read PIVOT_PLAN.md Step 4 first (`git show pivot/section8:PIVOT_PLAN.md`). Every new surface behind `SECTION8_MODE` (default off); additive schema only; brand files untouched; never edit Render env vars. Test bed = `qa/section8-fixtures` answer key.
+
+**Phase 0 — prerequisites**
+- P1 `/merge-branch feature/lease-intelligence` (user) · P2 `/merge-branch qa/overnight-gauntlet` (user, after its 3 QA_REPORT decisions) · P5 `/merge-branch feature/s8-hud-data` (user; only T8 needs it)
+- P3 `fix/section8-tenant-share` and P4 `qa/section8-fixtures` — in flight in other sessions; user approves their plans
+- **T0 `feature/s8-pii-guard`** (M) — SSN/DOB/bank masking before storage + before Anthropic, traceback scrub in alert emails, per-team AI-off switch. **Can start now. Must merge before testers upload real tenant docs.**
+
+**Phase 1 — core** (claimable as soon as deps are met)
+- **T1 `feature/s8-data-model`** (M) — `SECTION8_MODE` helper + team-scoped tables: properties, units, phas, tenancies, hap_contracts, unit_documents. **Can start now.** Owns `database.py` schema for these.
+- T2 `feature/s8-hap-contract-extraction` (M) — HAP contract / PHA notice doc kinds + new fields. Needs P1, P4.
+- T3 `feature/s8-rent-roll-check` (M) — contract/tenant/HAP detectors in deal_mismatch, report relabel under flag. Needs P1, P3, P4.
+- T4 `feature/s8-hap-payment-import` (M) — PHA payment registers → `hap_payments`. Needs T1, P4.
+- T5 `feature/s8-hap-reconciliation` (L) — expected vs received HAP by unit/PHA/month, $ findings, export. Needs T1, T4.
+
+**Phase 2 — compliance calendar**
+- T6 `feature/s8-inspections` (L) — needs T1 · T7 `feature/s8-recert-tracking` (M, HCV) — needs T1, T2 · T7b `feature/s8-pbra-recerts` (L) — needs T7, T0 · T8 `feature/s8-rent-increases-renewals` (M) — needs T1, T2, P5 · T9 `feature/s8-unit-file-and-phas` (M) — needs T1 · T10 `feature/s8-this-month` (M) — needs T5, panels from T6–T8
+
+**Phase 3 — repositioning**
+- T11 `feature/s8-marketing-copy` (M) — **can be drafted now; must NOT merge until T3 + T5 are live on tester** (one push to main = public on prod). Pricing waits on Q2.
+- T12 `feature/s8-app-reframe` (M) — nav/labels, hide CRE views under the flag. Needs T1.
+- T13 `feature/s8-sample-data` (S–M) — Section 8 sample + DEMO_MODE seed under the flag. Needs P4, T1.
+
+**Phase 4** — T14 `feature/s8-assistant` on `feature/deal-assistant`; plan later.
+
+**Startable right now in parallel:** T0, T1, T11 (draft only).
 
 ### Housekeeping (safe, low priority — each needs a yes)
 
