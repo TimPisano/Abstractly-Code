@@ -6,9 +6,10 @@ frontend uses today: where it's defined, and where it's used. Audited
 references across `frontend/` (CSS, HTML, and JS), excluding `vendor/`.
 
 **One rule:** `frontend/design-system.css` is the single source of truth.
-Every page loads it first, either through a `<link>` or through the
-`@import` in `app/styles.css`. New colors go there as a named token, never as
-a bare hex in a component rule.
+Every HTML page loads it first, with its own `<link>` (there is no
+`@import`; older comments in `design-system.css`, `app/styles.css`, and
+`admin/dashboard.html` still mention one). New colors go there as a named
+token, never as a bare hex in a component rule.
 
 | Stylesheet | Loaded by | Role |
 |---|---|---|
@@ -16,7 +17,7 @@ a bare hex in a component rule.
 | `landing.css` | `index.html`, `pricing.html` | Marketing site. **Re-themes** some tokens to dark (see [Local overrides](#local-overrides)) |
 | `app/auth.css` | `app/login`, `signup`, `forgot-password`, `reset-password`, `finish-signup` | Dark auth pages, own `--auth-*` aliases |
 | `app/styles.css` | `app/index.html`, `app/team-setup.html`, `404.html`, `admin/dashboard.html` | The customer app |
-| `admin/admin.css` | `admin/*` | Staff console, on top of `app/styles.css` |
+| `admin/admin.css` | `admin/*` | Staff console (on `admin/dashboard.html` it loads on top of `app/styles.css`) |
 | `owner/owner.css` | `owner/*` | Owner console |
 
 ---
