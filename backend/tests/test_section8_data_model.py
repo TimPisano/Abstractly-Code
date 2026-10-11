@@ -474,6 +474,41 @@ def test_backfill_reuses_manually_created_property_and_unit():
     print("✓ test_backfill_reuses_manually_created_property_and_unit: PASS")
 
 
+# ------------------------------------------------- security-audit follow-ups
+
+def test_huge_exponent_money_is_400_not_500():
+    with _Env() as env:
+        _, _, unit_id = _make_basics(env)
+        for value in ("1e400", "1e30", "-1e400", "1E+999999"):
+            resp = _post(env.analyst, "/section8/tenancies", {"unit_id": unit_id, "hap": value})
+            assert resp.status_code == 400, f"{value} -> {resp.status_code}"
+    print("✓ test_huge_exponent_money_is_400_not_500: PASS")
+
+
+def test_backfill_non_object_body_is_400_not_500():
+    with _Env() as env:
+        for raw in ("[1]", "\"apply\"", "7"):
+            resp = env.admin.post("/section8/backfill", data=raw, content_type="application/json")
+            assert resp.status_code == 400, f"{raw} -> {resp.status_code}"
+    print("✓ test_backfill_non_object_body_is_400_not_500: PASS")
+
+
+def test_end_current_is_atomic_when_insert_fails():
+    """If creating the new tenancy fails, the old one must still be current (not left 'past' with nothing current)."""
+    with _Env() as env:
+        _, _, unit_id = _make_basics(env)
+        first = _post(env.analyst, "/section8/tenancies", {"unit_id": unit_id, "head_of_household": "First"}).get_json()
+        try:
+            # NOT NULL unit_id violation on the insert half of the transaction.
+            database.replace_current_tenancy(env.team_id, unit_id, {"unit_id": None, "status": "current"}, "2026-06-01")
+            raise AssertionError("expected the insert to fail")
+        except __import__("sqlite3").IntegrityError:
+            pass
+        row = database.get_section8_record("tenancies", first["id"], env.team_id)
+        assert row["status"] == "current" and row["move_out_date"] is None, "old tenancy was ended even though the new one failed"
+    print("✓ test_end_current_is_atomic_when_insert_fails: PASS")
+
+
 if __name__ == "__main__":
     test_every_route_404s_when_flag_off_even_logged_out()
     test_flag_values()
@@ -490,4 +525,7 @@ if __name__ == "__main__":
     test_unit_detail_shows_tenancy_contracts_and_documents()
     test_backfill_dry_run_apply_idempotent_and_leases_untouched()
     test_backfill_reuses_manually_created_property_and_unit()
+    test_huge_exponent_money_is_400_not_500()
+    test_backfill_non_object_body_is_400_not_500()
+    test_end_current_is_atomic_when_insert_fails()
     print("\nAll Section 8 data model tests passed.")

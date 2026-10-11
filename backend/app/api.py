@@ -6352,12 +6352,17 @@ def s8_create_tenancy():
             existing = database.list_section8_records("tenancies", team_id, {"unit_id": values["unit_id"], "status": "current"})
             if existing and not end_current:
                 raise s8_records.RecordError(409, _S8_CURRENT_TENANCY_CONFLICT)
-            for old in existing:
-                old_values = {"status": "past"}
-                if not old.get("move_out_date") and values.get("move_in_date"):
-                    old_values["move_out_date"] = values["move_in_date"]
-                database.update_section8_record("tenancies", old["id"], team_id, old_values)
-        tenancy_id = _s8_insert("tenancies", values, _S8_CURRENT_TENANCY_CONFLICT)
+        if values["status"] == "current" and end_current:
+            # One transaction: ending the old tenancy and inserting the new
+            # one succeed or fail together (never leaves no current tenancy).
+            try:
+                tenancy_id = database.replace_current_tenancy(team_id, values["unit_id"], values, values.get("move_in_date"))
+            except sqlite3.IntegrityError as exc:
+                if _s8_unique_violation(exc):
+                    raise s8_records.RecordError(409, _S8_CURRENT_TENANCY_CONFLICT)
+                raise
+        else:
+            tenancy_id = _s8_insert("tenancies", values, _S8_CURRENT_TENANCY_CONFLICT)
     except s8_records.RecordError as exc:
         return _s8_error(exc)
     return jsonify(s8_records.to_api(database.get_section8_record("tenancies", tenancy_id, team_id))), 201
@@ -6510,6 +6515,8 @@ def s8_update_unit_document(link_id):
 def s8_backfill():
     """Body: {"apply": false} (default: dry run, writes nothing). Groups this team's uploads into properties/units by address and links them; never modifies a lease. See section8_records.backfill_units."""
     body = request.get_json(silent=True) or {}
+    if not isinstance(body, dict):
+        return jsonify({"error": "Request body must be a JSON object"}), 400
     apply = body.get("apply", False)
     if not isinstance(apply, bool):
         return jsonify({"error": "apply must be true or false"}), 400

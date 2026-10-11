@@ -4981,6 +4981,37 @@ def update_section8_record(
         conn.close()
 
 
+def replace_current_tenancy(team_id: int, unit_id: int, values: Dict[str, Any], move_out_date: Optional[str]) -> int:
+    """
+    In ONE transaction: marks the unit's live 'current' tenancies 'past'
+    (move_out_date defaults to `move_out_date` where unset), then inserts
+    the new tenancy from `values`. If the insert fails, the rollback
+    leaves the old tenancy current. Raises sqlite3.IntegrityError like
+    create_section8_record.
+    """
+    cols = [c for c in SECTION8_COLUMNS["tenancies"] if c in values]
+    now = datetime.now(timezone.utc).isoformat()
+    all_cols = cols + ["team_id", "created_at", "updated_at"]
+    conn = get_connection()
+    try:
+        conn.execute(
+            "UPDATE tenancies SET status = 'past', move_out_date = COALESCE(move_out_date, ?), updated_at = ? "
+            "WHERE unit_id = ? AND team_id = ? AND status = 'current' AND archived_at IS NULL",
+            (move_out_date, now, unit_id, team_id),
+        )
+        cur = conn.execute(
+            f"INSERT INTO tenancies ({', '.join(all_cols)}) VALUES ({', '.join('?' for _ in all_cols)})",
+            [values[c] for c in cols] + [team_id, now, now],
+        )
+        conn.commit()
+        return cur.lastrowid
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
 def count_section8_units(property_id: int, team_id: int) -> int:
     conn = get_connection()
     try:

@@ -186,6 +186,10 @@ def dollars_to_cents(value: Any, key: str) -> Optional[int]:
         raise RecordError(400, f"{key} must be a dollar amount")
     if amount < 0:
         raise RecordError(400, f"{key} cannot be negative")
+    # Bound the size BEFORE quantize: "1e400" is a valid Decimal but
+    # quantize raises InvalidOperation on it (a 500, not a 400).
+    if amount.adjusted() > 12:
+        raise RecordError(400, f"{key} is too large")
     if amount != amount.quantize(Decimal("0.01")):
         raise RecordError(400, f"{key} can have at most 2 decimal places")
     cents = int(amount * 100)
