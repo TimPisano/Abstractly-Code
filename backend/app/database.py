@@ -1065,6 +1065,7 @@ def init_db() -> None:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_training_rounds_created_at ON training_rounds(created_at)")
         _migrate_add_team_id_column(conn, "training_rounds", legacy_team_id)
         _migrate_scope_natural_keys_by_team(conn)
+        _create_section8_tables(conn)
 
         # ---- Hardening pass (perf): indexes for lookups that were
         # full-table-scanning. SQLite does NOT auto-index a plain
@@ -1095,6 +1096,11 @@ def reset_db() -> None:
     """Drop and recreate all tables. Used by tests for a clean slate."""
     conn = get_connection()
     try:
+        # Section 8 tables first: they REFERENCE teams/each other, and
+        # dropping a parent while children still point at it fails with
+        # foreign_keys ON. Children before parents.
+        for table in SECTION8_TABLES_DROP_ORDER:
+            conn.execute(f"DROP TABLE IF EXISTS {table}")
         conn.execute("DROP TABLE IF EXISTS lease_tags")
         conn.execute("DROP TABLE IF EXISTS comments")
         conn.execute("DROP TABLE IF EXISTS alerts")
@@ -4700,5 +4706,304 @@ def list_ai_extraction_runs(limit: int = 500, kind: Optional[str] = None) -> Lis
             d["detail"] = json.loads(d["detail"]) if d.get("detail") else None
             out.append(d)
         return out
+    finally:
+        conn.close()
+
+
+# ----------------------------------------------------------------------
+# Section 8 records (feature/s8-data-model, behind SECTION8_MODE)
+#
+# properties / units / phas / tenancies / hap_contracts / unit_documents.
+# Every table carries team_id NOT NULL and every function here takes the
+# caller's team_id and puts it in the WHERE clause -- the same isolation
+# boundary as get_lease. Money is integer cents (*_cents). No hard
+# deletes: archived_at is set instead (pivot rule: deprecate, never
+# delete user data). lease_id / source_lease_id point at leases.id but
+# are deliberately NOT FK'd, same "survives deletion of the thing it
+# referenced" reasoning as tasks.lease_id.
+#
+# The FKs between these tables prove a referenced row EXISTS, not that
+# it's the same team's -- section8_records.require_own() checks that
+# before any write.
+# ----------------------------------------------------------------------
+
+# Writable columns per table (team_id, id and timestamps are managed
+# here, never taken from a request). Also the whitelist that makes the
+# f-string table/column names below safe.
+SECTION8_COLUMNS: Dict[str, List[str]] = {
+    "phas": [
+        "name", "short_name", "jurisdiction", "inspection_standard", "payment_day",
+        "rent_increase_notice_days", "settings_json", "portal_url",
+        "contact_name", "contact_email", "contact_phone", "notes",
+    ],
+    "properties": ["name", "address", "normalized_address", "program", "default_pha_id", "notes"],
+    "units": ["property_id", "unit_label", "normalized_address", "bedrooms", "status"],
+    "tenancies": [
+        "unit_id", "head_of_household", "household_size", "pha_id", "program", "voucher_bedrooms",
+        "move_in_date", "move_out_date", "contract_rent_cents", "tenant_rent_cents", "hap_cents",
+        "utility_allowance_cents", "amounts_effective_date", "source_lease_id", "status",
+    ],
+    "hap_contracts": [
+        "pha_id", "contract_type", "contract_number", "form", "property_id", "unit_id", "tenancy_id",
+        "start_date", "end_date", "contract_rent_cents", "initial_hap_cents", "source_lease_id", "status",
+    ],
+    "unit_documents": ["lease_id", "unit_id", "tenancy_id", "pha_id", "hap_contract_id", "doc_kind", "linked_by"],
+}
+
+# Children before parents (reset_db drops in this order).
+SECTION8_TABLES_DROP_ORDER = ["unit_documents", "hap_contracts", "tenancies", "units", "properties", "phas"]
+
+# Columns a list call may filter on with equality, per table.
+SECTION8_LIST_FILTERS: Dict[str, List[str]] = {
+    "phas": [],
+    "properties": ["program", "default_pha_id"],
+    "units": ["property_id", "status"],
+    "tenancies": ["unit_id", "pha_id", "status", "program"],
+    "hap_contracts": ["pha_id", "property_id", "unit_id", "tenancy_id", "contract_type", "status"],
+    "unit_documents": ["unit_id", "tenancy_id", "pha_id", "hap_contract_id", "lease_id", "doc_kind"],
+}
+
+
+def _create_section8_tables(conn: sqlite3.Connection) -> None:
+    """Additive only: CREATE ... IF NOT EXISTS, no change to any existing table. Created whether or not SECTION8_MODE is on (empty tables are harmless; flipping the flag later needs no migration)."""
+    common = (
+        "team_id INTEGER NOT NULL REFERENCES teams(id), "
+        "created_at TEXT NOT NULL, updated_at TEXT NOT NULL, archived_at TEXT"
+    )
+    conn.execute(f"""
+        CREATE TABLE IF NOT EXISTS phas (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            short_name TEXT,
+            jurisdiction TEXT,
+            inspection_standard TEXT,
+            payment_day INTEGER,
+            rent_increase_notice_days INTEGER,
+            settings_json TEXT,
+            portal_url TEXT,
+            contact_name TEXT,
+            contact_email TEXT,
+            contact_phone TEXT,
+            notes TEXT,
+            {common},
+            UNIQUE(team_id, name)
+        )
+    """)
+    conn.execute(f"""
+        CREATE TABLE IF NOT EXISTS properties (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            address TEXT,
+            normalized_address TEXT,
+            program TEXT,
+            default_pha_id INTEGER REFERENCES phas(id),
+            notes TEXT,
+            {common},
+            UNIQUE(team_id, normalized_address)
+        )
+    """)
+    conn.execute(f"""
+        CREATE TABLE IF NOT EXISTS units (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            property_id INTEGER NOT NULL REFERENCES properties(id),
+            unit_label TEXT NOT NULL,
+            normalized_address TEXT,
+            bedrooms INTEGER,
+            status TEXT NOT NULL DEFAULT 'unknown',
+            {common},
+            UNIQUE(team_id, normalized_address)
+        )
+    """)
+    conn.execute(f"""
+        CREATE TABLE IF NOT EXISTS tenancies (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            unit_id INTEGER NOT NULL REFERENCES units(id),
+            head_of_household TEXT,
+            household_size INTEGER,
+            pha_id INTEGER REFERENCES phas(id),
+            program TEXT,
+            voucher_bedrooms INTEGER,
+            move_in_date TEXT,
+            move_out_date TEXT,
+            contract_rent_cents INTEGER,
+            tenant_rent_cents INTEGER,
+            hap_cents INTEGER,
+            utility_allowance_cents INTEGER,
+            amounts_effective_date TEXT,
+            source_lease_id INTEGER,
+            status TEXT NOT NULL DEFAULT 'current',
+            {common}
+        )
+    """)
+    conn.execute(f"""
+        CREATE TABLE IF NOT EXISTS hap_contracts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            pha_id INTEGER REFERENCES phas(id),
+            contract_type TEXT NOT NULL,
+            contract_number TEXT,
+            form TEXT,
+            property_id INTEGER REFERENCES properties(id),
+            unit_id INTEGER REFERENCES units(id),
+            tenancy_id INTEGER REFERENCES tenancies(id),
+            start_date TEXT,
+            end_date TEXT,
+            contract_rent_cents INTEGER,
+            initial_hap_cents INTEGER,
+            source_lease_id INTEGER,
+            status TEXT NOT NULL DEFAULT 'active',
+            {common}
+        )
+    """)
+    conn.execute(f"""
+        CREATE TABLE IF NOT EXISTS unit_documents (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            lease_id INTEGER NOT NULL,
+            unit_id INTEGER NOT NULL REFERENCES units(id),
+            tenancy_id INTEGER REFERENCES tenancies(id),
+            pha_id INTEGER REFERENCES phas(id),
+            hap_contract_id INTEGER REFERENCES hap_contracts(id),
+            doc_kind TEXT NOT NULL,
+            linked_by TEXT NOT NULL DEFAULT 'user',
+            {common},
+            UNIQUE(team_id, lease_id, unit_id)
+        )
+    """)
+    # At most one live 'current' tenancy per unit.
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_tenancies_one_current_per_unit "
+        "ON tenancies(unit_id) WHERE status = 'current' AND archived_at IS NULL"
+    )
+    for table in SECTION8_COLUMNS:
+        conn.execute(f"CREATE INDEX IF NOT EXISTS idx_{table}_team_id ON {table}(team_id)")
+    for table, column in [
+        ("properties", "default_pha_id"), ("units", "property_id"),
+        ("tenancies", "unit_id"), ("tenancies", "pha_id"),
+        ("hap_contracts", "pha_id"), ("hap_contracts", "property_id"), ("hap_contracts", "unit_id"),
+        ("hap_contracts", "tenancy_id"),
+        ("unit_documents", "unit_id"), ("unit_documents", "lease_id"), ("unit_documents", "tenancy_id"),
+        ("unit_documents", "pha_id"), ("unit_documents", "hap_contract_id"),
+    ]:
+        conn.execute(f"CREATE INDEX IF NOT EXISTS idx_{table}_{column} ON {table}({column})")
+
+
+def _check_section8_table(table: str) -> None:
+    if table not in SECTION8_COLUMNS:
+        raise ValueError(f"Unknown Section 8 table: {table}")
+
+
+def create_section8_record(table: str, team_id: int, values: Dict[str, Any]) -> int:
+    """Inserts one row. Only SECTION8_COLUMNS[table] keys are written. Raises sqlite3.IntegrityError on a uniqueness clash (callers translate to 409)."""
+    _check_section8_table(table)
+    cols = [c for c in SECTION8_COLUMNS[table] if c in values]
+    now = datetime.now(timezone.utc).isoformat()
+    all_cols = cols + ["team_id", "created_at", "updated_at"]
+    placeholders = ", ".join("?" for _ in all_cols)
+    conn = get_connection()
+    try:
+        cur = conn.execute(
+            f"INSERT INTO {table} ({', '.join(all_cols)}) VALUES ({placeholders})",
+            [values[c] for c in cols] + [team_id, now, now],
+        )
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def get_section8_record(table: str, record_id: int, team_id: int) -> Optional[Dict[str, Any]]:
+    """team_id is the boundary check (see get_lease): another team's row returns None, identically to a nonexistent id. Archived rows are still returned (by-id reads show them; lists hide them)."""
+    _check_section8_table(table)
+    conn = get_connection()
+    try:
+        row = conn.execute(f"SELECT * FROM {table} WHERE id = ? AND team_id = ?", (record_id, team_id)).fetchone()
+        return dict(row) if row else None
+    except OverflowError:
+        return None
+    finally:
+        conn.close()
+
+
+def list_section8_records(
+    table: str,
+    team_id: int,
+    filters: Optional[Dict[str, Any]] = None,
+    include_archived: bool = False,
+) -> List[Dict[str, Any]]:
+    """team_id first, then equality filters from SECTION8_LIST_FILTERS[table] only (anything else is ignored). Oldest first."""
+    _check_section8_table(table)
+    clauses, params = ["team_id = ?"], [team_id]
+    for column, value in (filters or {}).items():
+        if column in SECTION8_LIST_FILTERS[table] and value is not None:
+            clauses.append(f"{column} = ?")
+            params.append(value)
+    if not include_archived:
+        clauses.append("archived_at IS NULL")
+    conn = get_connection()
+    try:
+        rows = conn.execute(f"SELECT * FROM {table} WHERE {' AND '.join(clauses)} ORDER BY id", params).fetchall()
+        return [dict(r) for r in rows]
+    except OverflowError:
+        return []
+    finally:
+        conn.close()
+
+
+def update_section8_record(
+    table: str,
+    record_id: int,
+    team_id: int,
+    values: Dict[str, Any],
+    archived: Optional[bool] = None,
+) -> bool:
+    """Updates allow-listed columns and/or archives (archived=True) / un-archives (False). Returns False if no such row on this team. Raises sqlite3.IntegrityError on a uniqueness clash."""
+    _check_section8_table(table)
+    cols = [c for c in SECTION8_COLUMNS[table] if c in values]
+    now = datetime.now(timezone.utc).isoformat()
+    sets, params = [f"{c} = ?" for c in cols], [values[c] for c in cols]
+    if archived is True:
+        sets.append("archived_at = COALESCE(archived_at, ?)")
+        params.append(now)
+    elif archived is False:
+        sets.append("archived_at = NULL")
+    sets.append("updated_at = ?")
+    params.append(now)
+    conn = get_connection()
+    try:
+        cur = conn.execute(
+            f"UPDATE {table} SET {', '.join(sets)} WHERE id = ? AND team_id = ?",
+            params + [record_id, team_id],
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    except OverflowError:
+        return False
+    finally:
+        conn.close()
+
+
+def count_section8_units(property_id: int, team_id: int) -> int:
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT COUNT(*) AS n FROM units WHERE property_id = ? AND team_id = ? AND archived_at IS NULL",
+            (property_id, team_id),
+        ).fetchone()
+        return row["n"]
+    finally:
+        conn.close()
+
+
+def list_unit_document_links(unit_id: int, team_id: int, include_archived: bool = False) -> List[Dict[str, Any]]:
+    """A unit's linked documents with each upload's filename/display_name. The JOIN repeats team_id on leases too, so a link row can never surface another team's lease even if one were somehow written."""
+    archived_clause = "" if include_archived else " AND d.archived_at IS NULL"
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT d.*, l.filename AS lease_filename, l.display_name AS lease_display_name "
+            "FROM unit_documents d LEFT JOIN leases l ON l.id = d.lease_id AND l.team_id = d.team_id "
+            f"WHERE d.unit_id = ? AND d.team_id = ?{archived_clause} ORDER BY d.id",
+            (unit_id, team_id),
+        ).fetchall()
+        return [dict(r) for r in rows]
     finally:
         conn.close()

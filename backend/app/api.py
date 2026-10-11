@@ -114,6 +114,9 @@ from app.summary_memo import generate_lease_summary_pdf, generate_portfolio_summ
 from app.sheets_export import export_to_google_sheets, SheetsExportError
 from app.auth import verify_password, require_role, require_owner, current_user, current_team_id, hash_password, issue_token
 from app import password_rules
+from app import section8_records as s8_records
+from app.section8_mode import require_section8_mode
+from app.portfolio import _normalize_address
 
 
 app = Flask(__name__)
@@ -6057,6 +6060,469 @@ def extraction_quality_field_reliability():
         "based_on_training_round": rounds[-1]["round_label"] if rounds else None,
         "ai_extracted_lease_count": len(ai_leases),
     }), 200
+
+
+# ----------------------------------------------------------------------
+# Section 8 records (feature/s8-data-model). Every route: 404 unless
+# SECTION8_MODE is on (outermost, so a flag-off route is
+# indistinguishable from a nonexistent one), an explicit role, and the
+# caller's team_id on every read/write. Referenced ids in a body are
+# checked against the caller's team (section8_records.require_own)
+# before anything is written. No DELETE routes: archive via PATCH
+# {"archived": true}.
+# ----------------------------------------------------------------------
+
+def _s8_error(exc: s8_records.RecordError):
+    return jsonify({"error": exc.message}), exc.status
+
+
+def _s8_include_archived() -> bool:
+    return request.args.get("include_archived", "").strip().lower() in ("1", "true", "yes")
+
+
+def _s8_archived_flag(body):
+    archived = body.get("archived") if isinstance(body, dict) else None
+    if archived is not None and not isinstance(archived, bool):
+        raise s8_records.RecordError(400, "archived must be true or false")
+    return archived
+
+
+def _s8_unique_violation(exc: sqlite3.IntegrityError) -> bool:
+    return "UNIQUE" in str(exc).upper()
+
+
+def _s8_list(table, filter_args):
+    filters = {}
+    for arg in filter_args:
+        raw = request.args.get(arg)
+        if raw is None or raw == "":
+            continue
+        if arg.endswith("_id"):
+            try:
+                filters[arg] = int(raw)
+            except ValueError:
+                return jsonify({"error": f"{arg} must be an integer"}), 400
+        else:
+            filters[arg] = raw
+    rows = database.list_section8_records(table, current_team_id(), filters, include_archived=_s8_include_archived())
+    return jsonify([s8_records.to_api(r) for r in rows]), 200
+
+
+def _s8_get_or_404(table, record_id):
+    row = database.get_section8_record(table, record_id, current_team_id())
+    if row is None:
+        raise s8_records.RecordError(404, f"{s8_records._ENTITY_LABEL[table]} not found")
+    return row
+
+
+def _s8_insert(table, values, conflict_message):
+    try:
+        return database.create_section8_record(table, current_team_id(), values)
+    except sqlite3.IntegrityError as exc:
+        if _s8_unique_violation(exc):
+            raise s8_records.RecordError(409, conflict_message)
+        raise
+
+
+def _s8_update(table, record_id, values, archived, conflict_message):
+    try:
+        database.update_section8_record(table, record_id, current_team_id(), values, archived=archived)
+    except sqlite3.IntegrityError as exc:
+        if _s8_unique_violation(exc):
+            raise s8_records.RecordError(409, conflict_message)
+        raise
+    return s8_records.to_api(database.get_section8_record(table, record_id, current_team_id()))
+
+
+# ---- PHAs
+
+@app.route('/section8/phas', methods=['GET'])
+@require_section8_mode
+@require_role()
+def s8_list_phas():
+    return _s8_list("phas", [])
+
+
+@app.route('/section8/phas', methods=['POST'])
+@require_section8_mode
+@require_role('analyst')
+def s8_create_pha():
+    try:
+        values = s8_records.clean_body("phas", request.get_json(silent=True) or {}, current_team_id(), creating=True)
+        pha_id = _s8_insert("phas", values, "A PHA with that name already exists")
+    except s8_records.RecordError as exc:
+        return _s8_error(exc)
+    return jsonify(s8_records.to_api(database.get_section8_record("phas", pha_id, current_team_id()))), 201
+
+
+@app.route('/section8/phas/<int:pha_id>', methods=['GET'])
+@require_section8_mode
+@require_role()
+def s8_get_pha(pha_id):
+    try:
+        return jsonify(s8_records.to_api(_s8_get_or_404("phas", pha_id))), 200
+    except s8_records.RecordError as exc:
+        return _s8_error(exc)
+
+
+@app.route('/section8/phas/<int:pha_id>', methods=['PATCH'])
+@require_section8_mode
+@require_role('analyst')
+def s8_update_pha(pha_id):
+    body = request.get_json(silent=True) or {}
+    try:
+        _s8_get_or_404("phas", pha_id)
+        archived = _s8_archived_flag(body)
+        values = s8_records.clean_body("phas", body, current_team_id(), creating=False)
+        return jsonify(_s8_update("phas", pha_id, values, archived, "A PHA with that name already exists")), 200
+    except s8_records.RecordError as exc:
+        return _s8_error(exc)
+
+
+# ---- Properties
+
+def _s8_property_values(body, creating):
+    values = s8_records.clean_body("properties", body, current_team_id(), creating=creating)
+    if "address" in values:
+        values["normalized_address"] = _normalize_building_address(values["address"]) if values["address"] else None
+    return values
+
+
+def _s8_property_api(row):
+    out = s8_records.to_api(row)
+    out["unit_count"] = database.count_section8_units(row["id"], current_team_id())
+    return out
+
+
+@app.route('/section8/properties', methods=['GET'])
+@require_section8_mode
+@require_role()
+def s8_list_properties():
+    return _s8_list("properties", ["program", "default_pha_id"])
+
+
+@app.route('/section8/properties', methods=['POST'])
+@require_section8_mode
+@require_role('analyst')
+def s8_create_property():
+    try:
+        values = _s8_property_values(request.get_json(silent=True) or {}, creating=True)
+        property_id = _s8_insert("properties", values, "A property with that address already exists")
+    except s8_records.RecordError as exc:
+        return _s8_error(exc)
+    return jsonify(_s8_property_api(database.get_section8_record("properties", property_id, current_team_id()))), 201
+
+
+@app.route('/section8/properties/<int:property_id>', methods=['GET'])
+@require_section8_mode
+@require_role()
+def s8_get_property(property_id):
+    try:
+        return jsonify(_s8_property_api(_s8_get_or_404("properties", property_id))), 200
+    except s8_records.RecordError as exc:
+        return _s8_error(exc)
+
+
+@app.route('/section8/properties/<int:property_id>', methods=['PATCH'])
+@require_section8_mode
+@require_role('analyst')
+def s8_update_property(property_id):
+    body = request.get_json(silent=True) or {}
+    try:
+        _s8_get_or_404("properties", property_id)
+        archived = _s8_archived_flag(body)
+        values = _s8_property_values(body, creating=False)
+        _s8_update("properties", property_id, values, archived, "A property with that address already exists")
+        return jsonify(_s8_property_api(database.get_section8_record("properties", property_id, current_team_id()))), 200
+    except s8_records.RecordError as exc:
+        return _s8_error(exc)
+
+
+# ---- Units
+
+def _s8_unit_values(body, creating):
+    values = s8_records.clean_body("units", body, current_team_id(), creating=creating)
+    # Optional full street address -> the same unit-level match key the
+    # backfill and rent-roll reconciliation use; the raw address isn't stored.
+    if isinstance(body, dict) and "address" in body:
+        address = body.get("address")
+        if address is not None and not isinstance(address, str):
+            raise s8_records.RecordError(400, "address must be text")
+        values["normalized_address"] = _normalize_address(address) if address else None
+    return values
+
+
+def _s8_unit_detail(row):
+    team_id = current_team_id()
+    out = s8_records.to_api(row)
+    current = database.list_section8_records("tenancies", team_id, {"unit_id": row["id"], "status": "current"})
+    out["current_tenancy"] = s8_records.to_api(current[0]) if current else None
+    out["hap_contracts"] = [
+        s8_records.to_api(c) for c in database.list_section8_records("hap_contracts", team_id, {"unit_id": row["id"]})
+    ]
+    out["documents"] = [
+        {
+            "id": d["id"], "lease_id": d["lease_id"], "doc_kind": d["doc_kind"], "linked_by": d["linked_by"],
+            "tenancy_id": d["tenancy_id"], "pha_id": d["pha_id"], "hap_contract_id": d["hap_contract_id"],
+            "filename": d["lease_filename"], "display_name": d["lease_display_name"],
+        }
+        for d in database.list_unit_document_links(row["id"], team_id)
+    ]
+    return out
+
+
+@app.route('/section8/units', methods=['GET'])
+@require_section8_mode
+@require_role()
+def s8_list_units():
+    return _s8_list("units", ["property_id", "status"])
+
+
+@app.route('/section8/units', methods=['POST'])
+@require_section8_mode
+@require_role('analyst')
+def s8_create_unit():
+    try:
+        values = _s8_unit_values(request.get_json(silent=True) or {}, creating=True)
+        unit_id = _s8_insert("units", values, "A unit with that address already exists")
+    except s8_records.RecordError as exc:
+        return _s8_error(exc)
+    return jsonify(_s8_unit_detail(database.get_section8_record("units", unit_id, current_team_id()))), 201
+
+
+@app.route('/section8/units/<int:unit_id>', methods=['GET'])
+@require_section8_mode
+@require_role()
+def s8_get_unit(unit_id):
+    try:
+        return jsonify(_s8_unit_detail(_s8_get_or_404("units", unit_id))), 200
+    except s8_records.RecordError as exc:
+        return _s8_error(exc)
+
+
+@app.route('/section8/units/<int:unit_id>', methods=['PATCH'])
+@require_section8_mode
+@require_role('analyst')
+def s8_update_unit(unit_id):
+    body = request.get_json(silent=True) or {}
+    try:
+        _s8_get_or_404("units", unit_id)
+        archived = _s8_archived_flag(body)
+        values = _s8_unit_values(body, creating=False)
+        _s8_update("units", unit_id, values, archived, "A unit with that address already exists")
+        return jsonify(_s8_unit_detail(database.get_section8_record("units", unit_id, current_team_id()))), 200
+    except s8_records.RecordError as exc:
+        return _s8_error(exc)
+
+
+# ---- Tenancies
+
+_S8_CURRENT_TENANCY_CONFLICT = (
+    "This unit already has a current tenancy. End it first, or send \"end_current\": true to mark it past."
+)
+
+
+def _s8_check_tenancy_dates(merged):
+    s8_records.check_date_order(merged.get("move_in_date"), merged.get("move_out_date"), "move_in_date", "move_out_date")
+
+
+@app.route('/section8/tenancies', methods=['GET'])
+@require_section8_mode
+@require_role()
+def s8_list_tenancies():
+    return _s8_list("tenancies", ["unit_id", "pha_id", "status", "program"])
+
+
+@app.route('/section8/tenancies', methods=['POST'])
+@require_section8_mode
+@require_role('analyst')
+def s8_create_tenancy():
+    """Body: tenancy fields (money in dollars) + optional "end_current": true, which marks the unit's existing current tenancy 'past' (move_out_date defaults to this tenancy's move_in_date) instead of refusing with 409."""
+    body = request.get_json(silent=True) or {}
+    team_id = current_team_id()
+    try:
+        values = s8_records.clean_body("tenancies", body, team_id, creating=True)
+        values.setdefault("status", "current")
+        values["status"] = values["status"] or "current"
+        _s8_check_tenancy_dates(values)
+        end_current = body.get("end_current")
+        if end_current is not None and not isinstance(end_current, bool):
+            raise s8_records.RecordError(400, "end_current must be true or false")
+        if values["status"] == "current":
+            existing = database.list_section8_records("tenancies", team_id, {"unit_id": values["unit_id"], "status": "current"})
+            if existing and not end_current:
+                raise s8_records.RecordError(409, _S8_CURRENT_TENANCY_CONFLICT)
+            for old in existing:
+                old_values = {"status": "past"}
+                if not old.get("move_out_date") and values.get("move_in_date"):
+                    old_values["move_out_date"] = values["move_in_date"]
+                database.update_section8_record("tenancies", old["id"], team_id, old_values)
+        tenancy_id = _s8_insert("tenancies", values, _S8_CURRENT_TENANCY_CONFLICT)
+    except s8_records.RecordError as exc:
+        return _s8_error(exc)
+    return jsonify(s8_records.to_api(database.get_section8_record("tenancies", tenancy_id, team_id))), 201
+
+
+@app.route('/section8/tenancies/<int:tenancy_id>', methods=['GET'])
+@require_section8_mode
+@require_role()
+def s8_get_tenancy(tenancy_id):
+    try:
+        return jsonify(s8_records.to_api(_s8_get_or_404("tenancies", tenancy_id))), 200
+    except s8_records.RecordError as exc:
+        return _s8_error(exc)
+
+
+@app.route('/section8/tenancies/<int:tenancy_id>', methods=['PATCH'])
+@require_section8_mode
+@require_role('analyst')
+def s8_update_tenancy(tenancy_id):
+    body = request.get_json(silent=True) or {}
+    try:
+        row = _s8_get_or_404("tenancies", tenancy_id)
+        archived = _s8_archived_flag(body)
+        values = s8_records.clean_body("tenancies", body, current_team_id(), creating=False)
+        if "status" in values and values["status"] is None:
+            raise s8_records.RecordError(400, "status cannot be empty")
+        _s8_check_tenancy_dates({**row, **values})
+        return jsonify(_s8_update("tenancies", tenancy_id, values, archived, _S8_CURRENT_TENANCY_CONFLICT)), 200
+    except s8_records.RecordError as exc:
+        return _s8_error(exc)
+
+
+# ---- HAP contracts
+
+def _s8_check_hap_contract(merged):
+    s8_records.check_date_order(merged.get("start_date"), merged.get("end_date"), "start_date", "end_date")
+    team_id = current_team_id()
+    if merged.get("unit_id") is not None and merged.get("property_id") is not None:
+        unit = database.get_section8_record("units", merged["unit_id"], team_id)
+        if unit and unit["property_id"] != merged["property_id"]:
+            raise s8_records.RecordError(400, "unit_id is not in property_id")
+    if merged.get("tenancy_id") is not None and merged.get("unit_id") is not None:
+        tenancy = database.get_section8_record("tenancies", merged["tenancy_id"], team_id)
+        if tenancy and tenancy["unit_id"] != merged["unit_id"]:
+            raise s8_records.RecordError(400, "tenancy_id is not a tenancy of unit_id")
+
+
+@app.route('/section8/hap-contracts', methods=['GET'])
+@require_section8_mode
+@require_role()
+def s8_list_hap_contracts():
+    return _s8_list("hap_contracts", ["pha_id", "property_id", "unit_id", "tenancy_id", "contract_type", "status"])
+
+
+@app.route('/section8/hap-contracts', methods=['POST'])
+@require_section8_mode
+@require_role('analyst')
+def s8_create_hap_contract():
+    team_id = current_team_id()
+    try:
+        values = s8_records.clean_body("hap_contracts", request.get_json(silent=True) or {}, team_id, creating=True)
+        if values.get("status") is None:
+            values["status"] = "active"
+        _s8_check_hap_contract(values)
+        contract_id = _s8_insert("hap_contracts", values, "That HAP contract already exists")
+    except s8_records.RecordError as exc:
+        return _s8_error(exc)
+    return jsonify(s8_records.to_api(database.get_section8_record("hap_contracts", contract_id, team_id))), 201
+
+
+@app.route('/section8/hap-contracts/<int:contract_id>', methods=['GET'])
+@require_section8_mode
+@require_role()
+def s8_get_hap_contract(contract_id):
+    try:
+        return jsonify(s8_records.to_api(_s8_get_or_404("hap_contracts", contract_id))), 200
+    except s8_records.RecordError as exc:
+        return _s8_error(exc)
+
+
+@app.route('/section8/hap-contracts/<int:contract_id>', methods=['PATCH'])
+@require_section8_mode
+@require_role('analyst')
+def s8_update_hap_contract(contract_id):
+    body = request.get_json(silent=True) or {}
+    try:
+        row = _s8_get_or_404("hap_contracts", contract_id)
+        archived = _s8_archived_flag(body)
+        values = s8_records.clean_body("hap_contracts", body, current_team_id(), creating=False)
+        if "status" in values and values["status"] is None:
+            raise s8_records.RecordError(400, "status cannot be empty")
+        _s8_check_hap_contract({**row, **values})
+        return jsonify(_s8_update("hap_contracts", contract_id, values, archived, "That HAP contract already exists")), 200
+    except s8_records.RecordError as exc:
+        return _s8_error(exc)
+
+
+# ---- Unit documents (links from an existing upload to a unit)
+
+def _s8_check_document_link(unit_id, merged):
+    team_id = current_team_id()
+    if merged.get("tenancy_id") is not None:
+        tenancy = database.get_section8_record("tenancies", merged["tenancy_id"], team_id)
+        if tenancy and tenancy["unit_id"] != unit_id:
+            raise s8_records.RecordError(400, "tenancy_id is not a tenancy of this unit")
+    if merged.get("hap_contract_id") is not None:
+        contract = database.get_section8_record("hap_contracts", merged["hap_contract_id"], team_id)
+        if contract and contract["unit_id"] is not None and contract["unit_id"] != unit_id:
+            raise s8_records.RecordError(400, "hap_contract_id belongs to a different unit")
+
+
+@app.route('/section8/units/<int:unit_id>/documents', methods=['POST'])
+@require_section8_mode
+@require_role('analyst')
+def s8_link_unit_document(unit_id):
+    """Body: {"lease_id": int, "doc_kind": str, "tenancy_id"?, "pha_id"?, "hap_contract_id"?}. lease_id is any of the team's uploads (lease, rent-roll row, amendment)."""
+    team_id = current_team_id()
+    try:
+        _s8_get_or_404("units", unit_id)
+        values = s8_records.clean_body("unit_documents", request.get_json(silent=True) or {}, team_id, creating=True)
+        _s8_check_document_link(unit_id, values)
+        values["unit_id"] = unit_id
+        values["linked_by"] = "user"
+        link_id = _s8_insert("unit_documents", values, "That document is already linked to this unit")
+    except s8_records.RecordError as exc:
+        return _s8_error(exc)
+    return jsonify(s8_records.to_api(database.get_section8_record("unit_documents", link_id, team_id))), 201
+
+
+@app.route('/section8/unit-documents/<int:link_id>', methods=['PATCH'])
+@require_section8_mode
+@require_role('analyst')
+def s8_update_unit_document(link_id):
+    body = request.get_json(silent=True) or {}
+    try:
+        row = _s8_get_or_404("unit_documents", link_id)
+        archived = _s8_archived_flag(body)
+        values = s8_records.clean_body("unit_documents", body, current_team_id(), creating=False)
+        _s8_check_document_link(row["unit_id"], {**row, **values})
+        return jsonify(_s8_update("unit_documents", link_id, values, archived, "That document is already linked to this unit")), 200
+    except s8_records.RecordError as exc:
+        return _s8_error(exc)
+
+
+# ---- Backfill
+
+@app.route('/section8/backfill', methods=['POST'])
+@require_section8_mode
+@require_role('admin')
+def s8_backfill():
+    """Body: {"apply": false} (default: dry run, writes nothing). Groups this team's uploads into properties/units by address and links them; never modifies a lease. See section8_records.backfill_units."""
+    body = request.get_json(silent=True) or {}
+    apply = body.get("apply", False)
+    if not isinstance(apply, bool):
+        return jsonify({"error": "apply must be true or false"}), 400
+    team_id = current_team_id()
+    summary = s8_records.backfill_units(team_id, apply=apply)
+    if apply:
+        created = summary["created"]
+        database.insert_activity(
+            "section8_backfill",
+            f"Section 8 backfill: {created['properties']} properties, {created['units']} units, {created['links']} document links",
+            team_id=team_id,
+        )
+    return jsonify(summary), 200
 
 
 @app.route('/health', methods=['GET'])
