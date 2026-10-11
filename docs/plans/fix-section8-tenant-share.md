@@ -54,8 +54,9 @@ block of `parse_rent_roll_rows`. I'll pull it out into one helper,
    unit counts as 0, so a market unit in a mixed roll gets rent = its share.
 2. **Rent column + share + HAP all present** (any `rent_amount` alias:
    Contract Rent, Gross Rent, Rent…): compare. If they differ by more than
-   $0.01:
-   - if the rent column equals the share (the "Rent" column is really
+   **$1.00** (HAP and tenant share are rounded to whole dollars; user
+   decision 2026-10-11):
+   - if the rent column equals the share (within $1) (the "Rent" column is really
      the tenant's share), use share + HAP. Same as today, but now it's
      reported.
    - otherwise keep the stated contract rent, mark the field
@@ -64,11 +65,18 @@ block of `parse_rent_roll_rows`. I'll pull it out into one helper,
 3. **Share column with no HAP column and no rent column:**
    - unambiguous Section 8 labels (`tenant portion`, `tenant share`,
      `resident portion`, `tenant paid/pays/payment`): **do not** use it as
-     rent. Leave rent blank and flag ("this file shows only the tenant's
+     rent. Leave rent blank and flag it ("this file shows only the tenant's
      share; contract rent can't be determined without the HAP").
-   - generic labels (`tenant rent`, `resident rent`) with no
-     subsidy/HAP column anywhere: treat as the rent (a market-rate PMS
-     wording). See Open question 1.
+   - generic labels (`tenant rent`, `resident rent`): treat as the rent
+     on a market-rate roll. **But** if the file (any header naming
+     voucher / Section 8 / HCV / PBV / PBRA / HAP / subsidy / PHA /
+     housing authority / utility allowance) or the unit's own row (a cell
+     saying Section 8, S8, HCV, voucher, PBV, PBRA, HAP, PHA, housing
+     authority) shows a voucher indicator, **don't guess**. Leave that
+     unit's rent blank and flag it as ambiguous, with the figure the file
+     showed, for the user to confirm. With a file-level indicator, every
+     unit is flagged. With only a row-level one, just that unit is.
+     (Decided by the user 2026-10-11.)
 4. **HAP present but share blank** on a row: rent = HAP, flagged ("tenant
    share missing").
 5. **Citations:** a derived rent gets the quote `"Tenant share $412.00 +
@@ -141,17 +149,15 @@ where it applies:
 - Utility allowance / utility reimbursement checks.
 - Any UI change, including new styling for the warnings.
 
-## Open questions
+## Decisions (user, 2026-10-11)
 
-1. **Base branch.** I recommend building on `qa/overnight-gauntlet` (done;
-   the worktree is on it). That means this branch can only merge *after*
-   gauntlet, which is waiting on your 3 QA_REPORT decisions. The
-   alternative is to rebase onto `main` and redo `a1cff89` here, which
-   gives a duplicate commit plus merge conflicts with gauntlet.
-2. **"Tenant Rent" with no HAP column** (step 3). I recommend treating it
-   as the rent: plenty of market-rate PMS exports label rent that way, and
-   with no subsidy column there's no sign of Section 8. Only the explicit
-   "portion/share/paid" labels are refused. Say if you want those
-   refused too.
-3. **Mismatch tolerance:** $0.01 (cents rounding only). Say if you'd
-   rather allow, e.g., $1.
+1. Base branch: build on `qa/overnight-gauntlet` (`a1cff89`). This branch
+   merges after it.
+2. Bare "Tenant Rent" with no HAP column: rent on market-rate rolls;
+   flagged as ambiguous (rent left blank) when the file or unit shows any
+   voucher/HAP indicator.
+3. Mismatch tolerance: $1.00.
+
+Known limit: title rows *above* the header row ("Section 8 Rent Roll")
+don't reach `parse_rent_roll_rows`, so they don't count as a file-level
+indicator. Only headers and row cells do.
