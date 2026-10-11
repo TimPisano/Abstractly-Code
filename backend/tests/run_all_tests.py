@@ -112,6 +112,8 @@ UNIT_TESTS = [
     # Overnight reliability gauntlet (qa/overnight-gauntlet, 2026-10-05):
     # one regression test per bug the gauntlet found.
     "test_gauntlet_regressions.py",
+    # Section 8 contract rent = tenant share + HAP (fix/section8-tenant-share).
+    "test_section8_rent_roll.py",
 ]
 
 LIVE_API_TESTS = [

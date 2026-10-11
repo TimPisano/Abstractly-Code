@@ -300,6 +300,164 @@ def _has_rent_column(mapping: Dict[str, int]) -> bool:
             or ("charge_code" in mapping and "charge_amount" in mapping))
 
 
+# Section 8 contract rent = tenant share + HAP. HUD rounds both to whole
+# dollars, so a stated contract rent within $1 of their sum agrees.
+_SECTION8_TOLERANCE = 1.00
+
+# Share-column labels that can only mean "the tenant's part of the rent".
+# "Tenant Rent"/"Resident Rent" are NOT here: plenty of market-rate PMS
+# exports use them for the whole rent.
+_EXPLICIT_SHARE_LABELS = {"tenant portion", "resident portion", "tenant share", "tenant paid", "tenant pays",
+                          "tenant payment"}
+
+# A HAP alias like "subsidy" must not grab "Subsidy Type"/"HAP Contract #":
+# those hold text, and a HAP read as blank on every row would price each
+# voucher unit at its tenant share alone.
+_HAP_NON_AMOUNT_WORDS = {"type", "program", "status", "date", "start", "end", "number", "no", "id", "code",
+                         "name", "contract", "note", "notes", "description", "desc"}
+
+# Signs that a rent roll (a header) or one unit (a row cell) involves a
+# voucher / housing assistance -- see _resolve_section8_rent.
+_VOUCHER_INDICATOR_RE = re.compile(
+    r"\b(?:section\s*8|sec\.?\s*8|s8|hcv|voucher|pbv|pbra|hap|subsidy|subsidized|pha|housing authority|"
+    r"housing assistance|utility allowance)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_hap_non_amount_header(normalized_header: str) -> bool:
+    return bool(set(normalized_header.split()) & _HAP_NON_AMOUNT_WORDS)
+
+
+def _money(amount: float) -> str:
+    return f"${amount:,.2f}"
+
+
+def _resolve_section8_rent(column_mapping, headers, row, cell):
+    """
+    One row's rent, honoring Section 8: contract rent = tenant share + HAP.
+
+    Returns ``(rent, quote, confidence, check)``. ``check`` is None when
+    nothing needs the user's attention, else a dict describing it (see
+    ``_section8_warnings`` for every ``kind``). A tenant share on its own
+    is never returned as the rent when the file or unit shows any sign of
+    a voucher -- that would understate the unit by the whole HAP.
+    """
+    rent_raw = cell("rent_amount")
+    rent = _parse_import_currency(rent_raw)
+    quote = _cell_to_str(rent_raw)
+    has_share, has_hap = "tenant_portion" in column_mapping, "hap" in column_mapping
+    if not has_share and not has_hap:
+        return rent, quote, "high", None
+
+    share_raw = _cell_to_str(cell("tenant_portion")) if has_share else None
+    hap_raw = _cell_to_str(cell("hap")) if has_hap else None
+    share = _parse_import_currency(share_raw)
+    hap = _parse_import_currency(hap_raw)
+    stated = rent  # the rent column's own figure, kept for the check record
+    check = {"rent_column": stated, "tenant_share": share, "hap": hap}
+
+    if has_hap and hap_raw is not None and hap is None:
+        # "pending", "see PHA" -- not a dollar amount, and not $0 either.
+        if rent is not None:
+            return rent, quote, "low", {**check, "kind": "hap_unreadable", "hap_text": hap_raw}
+        return None, None, None, {**check, "kind": "hap_unreadable", "hap_text": hap_raw}
+
+    if has_hap and (share is not None or hap is not None):
+        # A blank HAP is $0 (a market unit in a mixed roll); a blank
+        # share next to a real HAP is unusual enough to flag.
+        contract = round((share or 0.0) + (hap or 0.0), 2)
+        # A market unit (HAP cell blank) cites its own rent cell as-is.
+        split_quote = share_raw if hap is None else f"Tenant share {_money(share or 0.0)} + HAP {_money(hap)}"
+        share_missing = share is None and hap
+        check = {**check, "contract_from_split": contract}
+        if rent is None:
+            if share_missing:
+                return contract, split_quote, "low", {**check, "kind": "tenant_share_missing"}
+            return contract, split_quote, "high", None
+        if abs(rent - contract) <= _SECTION8_TOLERANCE:
+            if share_missing:
+                return rent, quote, "low", {**check, "kind": "tenant_share_missing"}
+            return rent, quote, "high", None
+        if share is not None and (hap or 0.0) > _SECTION8_TOLERANCE and abs(rent - share) <= _SECTION8_TOLERANCE:
+            # The "rent" column is really the tenant's share.
+            return contract, split_quote, "high", {**check, "kind": "rent_column_was_tenant_share"}
+        return rent, quote, "low", {**check, "kind": "contract_rent_mismatch", "gap": round(rent - contract, 2)}
+
+    if has_share and not has_hap and share is not None and rent is None:
+        # A share column, no HAP column, and no rent figure for this row.
+        share_header = _normalize_header(headers[column_mapping["tenant_portion"]])
+        if any(re.search(rf"\b{label}\b", share_header) for label in _EXPLICIT_SHARE_LABELS):
+            return None, None, None, {**check, "kind": "tenant_share_only"}
+        indicator = _voucher_indicator(column_mapping, headers, row)
+        if indicator:
+            return None, None, None, {**check, "kind": "ambiguous_tenant_rent", "indicator": indicator}
+        return share, share_raw, "high", None  # market-rate wording for the whole rent
+
+    return rent, quote, "high", None
+
+
+def _voucher_indicator(column_mapping, headers, row) -> Optional[str]:
+    """The first header, else the first cell in this row, that signals a voucher; None if there's none."""
+    for h in headers:
+        text = _cell_to_str(h)
+        if text and _VOUCHER_INDICATOR_RE.search(text):
+            return f'column "{text}"'
+    skip = {column_mapping.get("tenant")}  # "Hap Nguyen" is a person, not a HAP
+    for i, value in enumerate(row):
+        text = _cell_to_str(value)
+        if i not in skip and text and _VOUCHER_INDICATOR_RE.search(text):
+            return f'"{text}" in this unit\'s row'
+    return None
+
+
+_SECTION8_WARNING_CAP = 10
+
+
+def _section8_warnings(checks: List[Dict[str, Any]]) -> List[str]:
+    """One plain-English warning per kind of problem, listing its units (first 10, then "+N more")."""
+    intros = {
+        "contract_rent_mismatch": "Section 8 rent doesn't add up: the rent column is more than $1 away from tenant "
+                                  "share + HAP. The rent column's figure was kept but marked low confidence -- check "
+                                  "these against the lease and HAP contract",
+        "rent_column_was_tenant_share": "The rent column showed only the tenant's share, so rent was set to the "
+                                        "contract rent (tenant share + HAP)",
+        "tenant_share_only": "Only the tenant's share is shown and there's no HAP column, so contract rent can't be "
+                             "worked out and rent was left blank. Re-export the rent roll with the HAP or contract "
+                             "rent column",
+        "ambiguous_tenant_rent": "This may be only the tenant's share: the file shows signs of Section 8 vouchers "
+                                 "but has no HAP column. Rent was left blank -- please confirm the contract rent",
+        "tenant_share_missing": "A HAP amount is shown but the tenant's share is blank -- rent was taken as the HAP "
+                                "alone; confirm the tenant pays $0",
+        "hap_unreadable": "The HAP cell isn't a dollar amount, so contract rent couldn't be checked",
+    }
+    out = []
+    for kind, intro in intros.items():
+        hits = [c for c in checks if c["kind"] == kind]
+        if not hits:
+            continue
+        parts = [f"Unit {c['unit']} (row {c['row']}): {c['detail']}" for c in hits[:_SECTION8_WARNING_CAP]]
+        more = f"; +{len(hits) - _SECTION8_WARNING_CAP} more" if len(hits) > _SECTION8_WARNING_CAP else ""
+        out.append(f"{len(hits)} unit(s) -- {intro}. " + "; ".join(parts) + more + ".")
+    return out
+
+
+def _section8_detail(check: Dict[str, Any]) -> str:
+    kind, rc, share, hap = check["kind"], check["rent_column"], check["tenant_share"], check["hap"]
+    if kind == "contract_rent_mismatch":
+        return (f"rent column {_money(rc)} vs. tenant share {_money(share or 0.0)} + HAP {_money(hap or 0.0)} = "
+                f"{_money(check['contract_from_split'])} (off by {_money(abs(check['gap']))})")
+    if kind == "rent_column_was_tenant_share":
+        return f"{_money(share)} + HAP {_money(hap)} = {_money(check['contract_from_split'])}"
+    if kind == "tenant_share_only":
+        return f"tenant share {_money(share)}"
+    if kind == "ambiguous_tenant_rent":
+        return f"file shows {_money(share)} ({check['indicator']})"
+    if kind == "tenant_share_missing":
+        return f"HAP {_money(hap)}"
+    return f'HAP cell reads "{check["hap_text"]}"'
+
+
 _RENT_CHARGE_CODES = {"rent", "rnt", "rentres", "resrent", "base rent", "baserent", "rent charge", "rentr", "rent res",
                       "residential rent", "apartment rent", "aptrent", "apt rent"}
 
@@ -381,6 +539,8 @@ def _match_columns(headers: List[Any]) -> Dict[str, int]:
                 continue  # see _NON_ADDRESS_PROPERTY_WORDS -- never eligible for property, exact match or not
             if field_name == "concessions" and _is_concession_non_amount_header(h):
                 continue  # see _CONCESSION_NON_AMOUNT_WORDS -- a concession date/count/type column is not dollars
+            if field_name == "hap" and _is_hap_non_amount_header(h):
+                continue  # see _HAP_NON_AMOUNT_WORDS -- "Subsidy Type" is text, not the HAP dollars
             if h in alias_norms:
                 mapping[field_name] = i
                 used_columns.add(i)
@@ -414,6 +574,8 @@ def _match_columns(headers: List[Any]) -> Dict[str, int]:
                     continue  # see _NON_ADDRESS_PROPERTY_WORDS -- e.g. "Property Manager" must not fall through to the bare "property" alias
                 if field_name == "concessions" and _is_concession_non_amount_header(h):
                     continue  # see _CONCESSION_NON_AMOUNT_WORDS -- e.g. "Concession End Date" must not be read as dollars
+                if field_name == "hap" and _is_hap_non_amount_header(h):
+                    continue  # see _HAP_NON_AMOUNT_WORDS -- "Subsidy Type" is text, not the HAP dollars
                 if pattern.search(h):
                     candidates.append((len(alias_norm), field_name, i))
 
@@ -443,6 +605,8 @@ def _match_columns(headers: List[Any]) -> Dict[str, int]:
                     continue
                 if field_name == "concessions" and _is_concession_non_amount_header(h):
                     continue
+                if field_name == "hap" and _is_hap_non_amount_header(h):
+                    continue  # see _HAP_NON_AMOUNT_WORDS -- "Subsidy Type" is text, not the HAP dollars
                 header_words = h.split()
                 if len(header_words) == len(alias_words) and header_words != alias_words and all(
                     hw == aw or (len(aw) >= 5 and len(hw) >= 5 and _one_typo_apart(hw, aw))
@@ -815,6 +979,7 @@ def parse_rent_roll_rows(
     # imported as leases, which made every rent roll look 100% occupied.
     unit_summary: Dict[str, Dict[str, Any]] = {}
     seen_rows: Dict[tuple, int] = {}
+    section8_checks: List[Dict[str, Any]] = []
 
     def _summary_for(base):
         return unit_summary.setdefault(base, {"occupied_units": 0, "vacant_units": [], "down_units": []})
@@ -856,18 +1021,9 @@ def parse_rent_roll_rows(
             })
             continue
 
-        rent = _parse_import_currency(cell("rent_amount"))
-        if "tenant_portion" in column_mapping and "hap" in column_mapping:
-            # Section 8: with no contract-rent column, the lease rent is the
-            # resident's portion plus the HAP. A "rent" column that is only
-            # the resident's portion would understate every voucher unit.
-            portion = _parse_import_currency(cell("tenant_portion"))
-            hap = _parse_import_currency(cell("hap"))
-            if "rent_amount" not in column_mapping or (rent is not None and portion is not None and abs(rent - portion) < 0.005):
-                if portion is not None or hap is not None:
-                    rent = round((portion or 0.0) + (hap or 0.0), 2)
-        elif rent is None and "tenant_portion" in column_mapping:
-            rent = _parse_import_currency(cell("tenant_portion"))
+        # Section 8: the rent is the contract rent (tenant share + HAP),
+        # checked against any stated rent -- see _resolve_section8_rent.
+        rent, rent_quote, rent_confidence, s8_check = _resolve_section8_rent(column_mapping, headers, row, cell)
         landlord_str = _cell_to_str(cell("landlord"))
         unit_str = _cell_to_str(cell("unit"))
         sqft_str = _cell_to_str(cell("square_footage"))
@@ -889,7 +1045,9 @@ def parse_rent_roll_rows(
         # field missing is vanishingly rare in practice (a real lease
         # has SOME dollar figure or date attached); a row with a tenant
         # name and truly nothing else is far more often noise than data.
-        if rent is None and parse_date(start_str) is None and parse_date(end_str) is None:
+        # A flagged Section 8 row has a real dollar figure even with no rent
+        # -- keep it (and its flag) rather than skipping it as noise.
+        if rent is None and s8_check is None and parse_date(start_str) is None and parse_date(end_str) is None:
             skipped_rows.append({
                 "row": row_num,
                 "reason": "tenant name found but no rent or lease dates -- likely a non-data row (e.g. a page-break/footer artifact), not a real lease",
@@ -940,7 +1098,8 @@ def parse_rent_roll_rows(
             set_field("landlord", landlord_str, landlord_str)
         set_field("property_address", address, unit_str if unit_str else (property_str or base_property_address))
         if rent is not None:
-            set_field("rent_amount", f"${rent:,.2f}", _cell_to_str(cell("rent_amount")))
+            set_field("rent_amount", f"${rent:,.2f}", rent_quote)
+            fields["rent_amount"]["confidence"] = rent_confidence
         if sqft_str is not None and parse_square_footage(sqft_str) is not None:
             set_field("square_footage", f"{parse_square_footage(sqft_str):,.0f} sq ft", sqft_str)
         if start_str is not None and parse_date(start_str) is not None:
@@ -965,6 +1124,10 @@ def parse_rent_roll_rows(
             continue
         seen_rows[identity] = row_num
         parsed_leases.append({"extracted_fields": fields, "display_name": display_name})
+        if s8_check is not None:
+            s8_check.update(row=row_num, unit=unit_str or tenant_raw, tenant=tenant_raw)
+            s8_check["detail"] = _section8_detail(s8_check)
+            section8_checks.append(s8_check)
         if effective_base:
             _summary_for(effective_base)["occupied_units"] += 1
 
@@ -987,6 +1150,10 @@ def parse_rent_roll_rows(
         "skipped_rows": skipped_rows,
         "unit_summary": unit_summary,
         "column_mapping": column_mapping,
+        # Only present when there's something to say, so a market-rate
+        # rent roll's result is exactly what it was before.
+        **({"section8_checks": section8_checks, "warnings": _section8_warnings(section8_checks)}
+           if section8_checks else {}),
     }
 
 
@@ -1229,7 +1396,7 @@ def parse_rent_roll_file(
         )
 
     result["source_kind"] = table.source_kind
-    result["warnings"] = list(table.warnings)
+    result["warnings"] = list(table.warnings) + result.get("warnings", [])
     if table.source_kind in ("pdf-ocr", "image-ocr"):
         # OCR drops digits ("$1,475.00" -> "$1.00"). A monthly rent between
         # $0 and $100 can't be a real apartment rent: treat it as unreadable
