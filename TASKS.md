@@ -140,7 +140,7 @@ those by taking **main's** TASKS.md, not the branch's.
 - Goal: a reviewed pivot plan (PIVOT_PLAN.md) turning Abstractly into a Section 8 landlord / PM tool, split into claimable tasks.
 - Loop step: plan approved 2026-10-11 by the user ("yes continue"); tasks queued in Up next. Branch holds only PIVOT_PLAN.md — nothing to merge until the user wants the plan on main.
 - Last update: 2026-10-11 by the pivot planning session
-- Assumed until the user answers PIVOT_PLAN.md Q1–Q7: HCV first, PBRA phase 2; pricing unchanged until Q2; T11 copy does not merge before T3+T5 are live on tester; T0 required before real tenant docs.
+- Q4 + Q5 answered 2026-10-12 (see Up next → Section 8 pivot → User decisions). Still assumed until the user answers Q1–Q3, Q6, Q7: HCV first, PBRA phase 2; pricing unchanged until Q2; T11 copy does not merge before T3+T5 are live on tester; T0 required before real tenant docs.
 - Next action: other windows claim tasks from Up next → "Section 8 pivot" with /start-task (read PIVOT_PLAN.md on branch pivot/section8 first)
 
 #### fix/quick-wins
@@ -261,6 +261,10 @@ loan-underwriting. (`landing-positioning` dropped — superseded.)
 
 ### Section 8 pivot (approved 2026-10-11 — full detail in `PIVOT_PLAN.md` on branch `pivot/section8`)
 
+**User decisions 2026-10-12 (answer PIVOT_PLAN.md Q4 + Q5; binding for every Section 8 task):**
+- **Q5 — data minimization.** Store only what the features need: tenant name, unit, tenant share, HAP amount, contract rent, recert dates, inspection dates. **Never store** SSNs, full income documents, or bank details (DOB is not on the list either, so don't store it). Everything stays scoped by `team_id`. Consequences: T0 masks/drops SSN, DOB and bank numbers in stored `extracted_fields` `source_text` quotes, in free-text `notes` on write, and in text sent to Anthropic; income-verification documents must not be kept as uploads (extract the allowed fields, keep nothing else); every new table carries `team_id NOT NULL`. Encryption at rest / MFA / export-delete were not part of the answer — still tracked separately, not made prerequisites here.
+- **Q4 — deadline rules configurable per PHA.** Cure deadlines, notice periods, renewal lead times etc. live in per-PHA settings (`phas.settings_json`, from T1) with code defaults as fallback; never hard-coded in a detector. Every rule-driven date shows **"Verify with your PHA"** in the UI. **Launch gate:** the user's Section 8 contacts check the defaults before launch (before T11 copy or `SECTION8_MODE` goes live on prod).
+
 Claim with `/start-task <branch>`; read PIVOT_PLAN.md Step 4 first (`git show pivot/section8:PIVOT_PLAN.md`). Every new surface behind `SECTION8_MODE` (default off); additive schema only; brand files untouched; never edit Render env vars. Test bed = `qa/section8-fixtures` answer key.
 
 **Phase 0 — prerequisites**
@@ -334,6 +338,8 @@ Claim with `/start-task <branch>`; read PIVOT_PLAN.md Step 4 first (`git show pi
 | (docs) | `64af20a`, `d55fef9`, `70ed972` | First CLAUDE.md / TASKS.md / agents / skills. |
 
 ## Decisions log
+
+- **2026-10-12 — Section 8 PII = data minimization; deadline rules per PHA (user, PIVOT_PLAN Q5/Q4).** Store only tenant name, unit, tenant share, HAP, contract rent, recert + inspection dates; never SSNs, full income documents, or bank details; all team-scoped. Deadline rules configurable per PHA with defaults, labelled "Verify with your PHA", defaults checked by the user's Section 8 contacts before launch. Detail under Up next → Section 8 pivot.
 
 - **2026-10-11 — The test suite isn't hermetic in the primary checkout.** On merged `a36a085` it gave 75/83 there (gitignored `backend/.env` + local `*.db`: `UNIQUE constraint failed: users.email`, email-backend assertion), 80/83 in a fresh detached worktree (missing gitignored `backend/tests/sample_lease.pdf`), 83/83 in the branch worktree on an identical tree. User approved the push on that evidence. Also seen: a test attempted real SMTP (`550` for jane@example.com) and one hit `anthropic.APIConnectionError` — candidate fix branch (rule 8). Run merge-gate suites in a clean worktree with fixtures generated, not the primary.
 
