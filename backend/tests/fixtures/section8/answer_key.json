@@ -1,0 +1,1021 @@
+{
+  "as_of": "2026-10-01",
+  "properties": {
+    "JR": {
+      "name": "Juniper Row Apartments",
+      "owner": "Juniper Row Holdings LLC"
+    },
+    "BT": {
+      "name": "Bellmont Terrace",
+      "owner": "Bellmont Terrace Housing LP"
+    }
+  },
+  "files": {
+    "leases": [
+      "leases/lease_juniper_row_101_brennaway.pdf",
+      "leases/lease_juniper_row_104_fenmore.pdf",
+      "leases/lease_juniper_row_108_marrowby.pdf",
+      "leases/lease_juniper_row_112_treadwick.pdf",
+      "leases/lease_juniper_row_203_achterberg.pdf",
+      "leases/lease_juniper_row_206_pennyworth-oake.pdf",
+      "leases/lease_juniper_row_214_quellwater.pdf",
+      "leases/lease_bellmont_terrace_2A_thornquist.pdf",
+      "leases/lease_bellmont_terrace_2C_vantongeren.pdf",
+      "leases/lease_bellmont_terrace_3B_ferncastle.pdf"
+    ],
+    "hap_contracts": [
+      "hap_contracts/hap_contract_hcv_juniper_row_101.pdf",
+      "hap_contracts/hap_contract_hcv_juniper_row_104.pdf",
+      "hap_contracts/hap_contract_hcv_juniper_row_203.pdf",
+      "hap_contracts/hap_contract_pbv_bellmont_terrace.pdf",
+      "hap_contracts/hap_contract_pbra_bellmont_terrace.pdf"
+    ],
+    "rent_rolls": [
+      "rent_rolls/juniper_row_rent_roll_2026-10-01_appfolio.csv",
+      "rent_rolls/juniper_row_rent_roll_2026-09-01_yardi.xlsx",
+      "rent_rolls/bellmont_terrace_rent_roll_2026-10-01_realpage.csv",
+      "rent_rolls/bellmont_terrace_rent_roll_2026-09-01_buildium.csv",
+      "rent_rolls/seller_portfolio_rent_roll_2026-10-01.xlsx"
+    ],
+    "hap_registers": [
+      "hap_registers/hcha_hap_register_2026-08.csv",
+      "hap_registers/hcha_hap_register_2026-08.pdf",
+      "hap_registers/hcha_hap_register_2026-09.csv",
+      "hap_registers/hcha_hap_register_2026-09.pdf",
+      "hap_registers/hcha_hap_register_2026-10.csv",
+      "hap_registers/hcha_hap_register_2026-10.pdf"
+    ],
+    "inspections": [
+      "inspections/hqs_inspection_juniper_row_104.pdf",
+      "inspections/nspire_v_inspection_bellmont_terrace_pbv.pdf",
+      "inspections/nspire_inspection_bellmont_terrace_pbra.pdf"
+    ]
+  },
+  "scanned_image_pages": [
+    {
+      "file": "leases/lease_juniper_row_112_treadwick.pdf",
+      "page": 3
+    },
+    {
+      "file": "leases/lease_bellmont_terrace_2C_vantongeren.pdf",
+      "page": 3
+    }
+  ],
+  "errors": [
+    {
+      "id": "S8-01",
+      "category": "Tenant share entered as full rent",
+      "flag": "s8_tenant_share_as_contract_rent",
+      "severity": "high",
+      "units": [
+        "Juniper Row 108"
+      ],
+      "what": "Seller portfolio rent roll shows Contract Rent $412 (the tenant share) and a blank HAP column for unit 108. The lease and every PHA register show contract rent $1,385 = tenant $412 + HAP $973.",
+      "monthly_impact": 973,
+      "impact_note": "Gross potential rent understated by the HAP portion.",
+      "rule": "HCV rent to owner = tenant share + HAP (24 CFR 982.451, paraphrased).",
+      "evidence": [
+        {
+          "type": "rent_roll_cell",
+          "file": "rent_rolls/seller_portfolio_rent_roll_2026-10-01.xlsx",
+          "prop": "Juniper Row Apartments",
+          "unit": "108",
+          "column": "Contract Rent",
+          "value": 412
+        },
+        {
+          "type": "rent_roll_cell",
+          "file": "rent_rolls/seller_portfolio_rent_roll_2026-10-01.xlsx",
+          "prop": "Juniper Row Apartments",
+          "unit": "108",
+          "column": "HAP",
+          "value": null
+        },
+        {
+          "type": "rent_roll_cell",
+          "file": "rent_rolls/juniper_row_rent_roll_2026-10-01_appfolio.csv",
+          "prop": "Juniper Row Apartments",
+          "unit": "108",
+          "column": "Rent",
+          "value": 1385
+        },
+        {
+          "type": "register_cell",
+          "file": "hap_registers/hcha_hap_register_2026-10.csv",
+          "unit": "108",
+          "column": "HAP Amount",
+          "value": 973
+        },
+        {
+          "type": "pdf_text",
+          "file": "leases/lease_juniper_row_108_marrowby.pdf",
+          "page": 1,
+          "contains": "Monthly Rent: $1,385.00"
+        }
+      ],
+      "impact_to_date": null
+    },
+    {
+      "id": "S8-02",
+      "category": "Tenant share entered as full rent",
+      "flag": "s8_tenant_share_as_contract_rent",
+      "severity": "high",
+      "units": [
+        "Bellmont Terrace 3B"
+      ],
+      "what": "October RealPage rent roll shows Contract Rent $287 = Tenant Share $287 with Subsidy $0 for PBV unit 3B. The PBV HAP contract Exhibit A rent is $1,240 and the PHA pays $953 HAP every month; the September rent roll had it right.",
+      "monthly_impact": 953,
+      "impact_note": "Rent and HAP income understated by $953/mo.",
+      "rule": "PBV rent to owner is the Exhibit A contract rent; tenant pays only the family share (24 CFR 983.353, paraphrased).",
+      "evidence": [
+        {
+          "type": "rent_roll_cell",
+          "file": "rent_rolls/bellmont_terrace_rent_roll_2026-10-01_realpage.csv",
+          "prop": "Bellmont Terrace",
+          "unit": "3B",
+          "column": "Contract Rent",
+          "value": 287
+        },
+        {
+          "type": "rent_roll_cell",
+          "file": "rent_rolls/bellmont_terrace_rent_roll_2026-10-01_realpage.csv",
+          "prop": "Bellmont Terrace",
+          "unit": "3B",
+          "column": "Subsidy Amount",
+          "value": 0
+        },
+        {
+          "type": "rent_roll_cell",
+          "file": "rent_rolls/bellmont_terrace_rent_roll_2026-09-01_buildium.csv",
+          "prop": "Bellmont Terrace",
+          "unit": "3B",
+          "column": "Rent",
+          "value": 1240
+        },
+        {
+          "type": "register_cell",
+          "file": "hap_registers/hcha_hap_register_2026-10.csv",
+          "unit": "3B",
+          "column": "HAP Amount",
+          "value": 953
+        },
+        {
+          "type": "pdf_text",
+          "file": "hap_contracts/hap_contract_pbv_bellmont_terrace.pdf",
+          "page": 1,
+          "contains": "3B 3BR/2BA $1,240.00"
+        }
+      ],
+      "impact_to_date": null
+    },
+    {
+      "id": "S8-03",
+      "category": "HAP mismatch (rent roll vs PHA register)",
+      "flag": "s8_hap_mismatch_register",
+      "severity": "medium",
+      "units": [
+        "Juniper Row 206"
+      ],
+      "what": "PHA processed an interim reexam effective 09/01/2026 (TTP $245 -> $383, HAP $1,050 -> $912). Both Juniper Row rent rolls and the seller rent roll still show tenant $245 / HAP $1,050.",
+      "monthly_impact": 138,
+      "impact_to_date": 276,
+      "impact_note": "HAP receivable overstated $138/mo (Sep + Oct); the same $138/mo is under-billed to the tenant.",
+      "rule": "Owner must bill the family share the PHA sets; HAP changes take effect on the PHA's notice date.",
+      "evidence": [
+        {
+          "type": "rent_roll_cell",
+          "file": "rent_rolls/juniper_row_rent_roll_2026-10-01_appfolio.csv",
+          "prop": "Juniper Row Apartments",
+          "unit": "206",
+          "column": "HAP",
+          "value": 1050
+        },
+        {
+          "type": "rent_roll_cell",
+          "file": "rent_rolls/juniper_row_rent_roll_2026-09-01_yardi.xlsx",
+          "prop": "Juniper Row Apartments",
+          "unit": "206",
+          "column": "Subsidy Rent",
+          "value": 1050
+        },
+        {
+          "type": "register_cell",
+          "file": "hap_registers/hcha_hap_register_2026-09.csv",
+          "unit": "206",
+          "column": "Adj Code",
+          "value": "INT"
+        },
+        {
+          "type": "register_cell",
+          "file": "hap_registers/hcha_hap_register_2026-10.csv",
+          "unit": "206",
+          "column": "HAP Amount",
+          "value": 912
+        }
+      ]
+    },
+    {
+      "id": "S8-04",
+      "category": "HAP mismatch (rent roll vs PHA register)",
+      "flag": "s8_hap_mismatch_register",
+      "severity": "medium",
+      "units": [
+        "Juniper Row 105"
+      ],
+      "what": "All three seller rent rolls show HAP $1,005 / tenant $235 for unit 105; the PHA has paid $905 every month (Aug-Oct) on contract rent $1,240. Rows still sum, so a sum-check alone misses it.",
+      "monthly_impact": 100,
+      "impact_to_date": 300,
+      "impact_note": "HAP income overstated $100/mo; tenant under-billed $100/mo.",
+      "rule": "HAP amount is set by the PHA; owner records must match the PHA's payment.",
+      "evidence": [
+        {
+          "type": "rent_roll_cell",
+          "file": "rent_rolls/juniper_row_rent_roll_2026-10-01_appfolio.csv",
+          "prop": "Juniper Row Apartments",
+          "unit": "105",
+          "column": "HAP",
+          "value": 1005
+        },
+        {
+          "type": "rent_roll_cell",
+          "file": "rent_rolls/seller_portfolio_rent_roll_2026-10-01.xlsx",
+          "prop": "Juniper Row Apartments",
+          "unit": "105",
+          "column": "HAP",
+          "value": 1005
+        },
+        {
+          "type": "register_cell",
+          "file": "hap_registers/hcha_hap_register_2026-08.csv",
+          "unit": "105",
+          "column": "HAP Amount",
+          "value": 905
+        },
+        {
+          "type": "register_cell",
+          "file": "hap_registers/hcha_hap_register_2026-10.csv",
+          "unit": "105",
+          "column": "HAP Amount",
+          "value": 905
+        }
+      ]
+    },
+    {
+      "id": "S8-05",
+      "category": "Rent split does not sum",
+      "flag": "s8_rent_split_does_not_sum",
+      "severity": "low",
+      "units": [
+        "Juniper Row 210"
+      ],
+      "what": "October AppFolio rent roll: Rent $1,410 but Tenant Portion $380 + HAP $1,000 = $1,380.",
+      "monthly_impact": 30,
+      "impact_note": "$30/mo unexplained gap (September Yardi roll shows $410 + $1,000).",
+      "rule": "Contract rent = tenant share + HAP.",
+      "evidence": [
+        {
+          "type": "rent_roll_cell",
+          "file": "rent_rolls/juniper_row_rent_roll_2026-10-01_appfolio.csv",
+          "prop": "Juniper Row Apartments",
+          "unit": "210",
+          "column": "Rent",
+          "value": 1410
+        },
+        {
+          "type": "rent_roll_cell",
+          "file": "rent_rolls/juniper_row_rent_roll_2026-10-01_appfolio.csv",
+          "prop": "Juniper Row Apartments",
+          "unit": "210",
+          "column": "Tenant Portion",
+          "value": 380
+        },
+        {
+          "type": "rent_roll_cell",
+          "file": "rent_rolls/juniper_row_rent_roll_2026-10-01_appfolio.csv",
+          "prop": "Juniper Row Apartments",
+          "unit": "210",
+          "column": "HAP",
+          "value": 1000
+        },
+        {
+          "type": "rent_roll_cell",
+          "file": "rent_rolls/juniper_row_rent_roll_2026-09-01_yardi.xlsx",
+          "prop": "Juniper Row Apartments",
+          "unit": "210",
+          "column": "Resident Rent",
+          "value": 410
+        }
+      ],
+      "impact_to_date": null
+    },
+    {
+      "id": "S8-06",
+      "category": "Lease rent differs from HAP contract rent",
+      "flag": "s8_lease_rent_ne_hap_contract_rent",
+      "severity": "high",
+      "units": [
+        "Juniper Row 104"
+      ],
+      "what": "Lease says monthly rent $1,295 (tenant $355 + HAP $940). HAP contract Part A rent to owner is $1,250 (tenant $310 + HAP $940). Rent rolls bill the tenant $355, i.e. $45/mo above the approved rent.",
+      "monthly_impact": 45,
+      "impact_to_date": 360,
+      "impact_note": "Tenant overcharged $45/mo for Mar-Oct 2026 (8 monthly charges through 10/01/2026) - refundable to the family.",
+      "rule": "Owner may not charge more than the PHA-approved rent to owner; the HAP contract and tenancy addendum prevail over the lease.",
+      "evidence": [
+        {
+          "type": "pdf_text",
+          "file": "leases/lease_juniper_row_104_fenmore.pdf",
+          "page": 1,
+          "contains": "Monthly Rent: $1,295.00"
+        },
+        {
+          "type": "pdf_text",
+          "file": "hap_contracts/hap_contract_hcv_juniper_row_104.pdf",
+          "page": 1,
+          "contains": "$1,250.00"
+        },
+        {
+          "type": "rent_roll_cell",
+          "file": "rent_rolls/juniper_row_rent_roll_2026-10-01_appfolio.csv",
+          "prop": "Juniper Row Apartments",
+          "unit": "104",
+          "column": "Rent",
+          "value": 1295
+        },
+        {
+          "type": "register_cell",
+          "file": "hap_registers/hcha_hap_register_2026-08.csv",
+          "unit": "104",
+          "column": "Contract Rent",
+          "value": 1250
+        }
+      ]
+    },
+    {
+      "id": "S8-07",
+      "category": "Prohibited side payment",
+      "flag": "s8_side_payment",
+      "severity": "high",
+      "units": [
+        "Juniper Row 108"
+      ],
+      "what": "Lease section 6 requires a $75/mo 'Supplemental Rent' paid directly to the landlord and 'not reported to the Housing Authority', on top of the $412 tenant share.",
+      "monthly_impact": 75,
+      "impact_to_date": 750,
+      "impact_note": "$75/mo for Jan-Oct 2026 (10 monthly charges through 10/01/2026) - must be repaid; PHA may terminate the HAP contract.",
+      "rule": "Owner may not demand or accept any payment from the family beyond the family share (HAP contract Part B; 24 CFR 982.451(b)(4), paraphrased).",
+      "evidence": [
+        {
+          "type": "pdf_text",
+          "file": "leases/lease_juniper_row_108_marrowby.pdf",
+          "page": 2,
+          "contains": "Supplemental Rent of $75.00 per month"
+        },
+        {
+          "type": "pdf_text",
+          "file": "leases/lease_juniper_row_108_marrowby.pdf",
+          "page": 2,
+          "contains": "not reported to the Housing Authority"
+        }
+      ]
+    },
+    {
+      "id": "S8-08",
+      "category": "Expired HAP contract",
+      "flag": "s8_hap_contract_expired",
+      "severity": "high",
+      "units": [
+        "Bellmont Terrace 1A",
+        "Bellmont Terrace 1B",
+        "Bellmont Terrace 1C",
+        "Bellmont Terrace 1D"
+      ],
+      "what": "PBRA HAP contract DEMO-PBRA-0412 term ended 08/31/2026 and the data room has no renewal. Both Bellmont rent rolls (Sep, Oct) still book HAP on units 1A-1D.",
+      "monthly_impact": 3517,
+      "impact_to_date": 7034,
+      "impact_note": "$3,517/mo of HAP ($42,204.00/yr) has no contract behind it.",
+      "rule": "No HAP is payable after a Section 8 HAP contract expires unless renewed (MAHRAA renewal; owner request due 120 days before expiration, paraphrased).",
+      "evidence": [
+        {
+          "type": "pdf_text",
+          "file": "hap_contracts/hap_contract_pbra_bellmont_terrace.pdf",
+          "page": 1,
+          "contains": "August 31, 2026"
+        },
+        {
+          "type": "rent_roll_cell",
+          "file": "rent_rolls/bellmont_terrace_rent_roll_2026-10-01_realpage.csv",
+          "prop": "Bellmont Terrace",
+          "unit": "1A",
+          "column": "Subsidy Amount",
+          "value": 830
+        },
+        {
+          "type": "rent_roll_cell",
+          "file": "rent_rolls/bellmont_terrace_rent_roll_2026-10-01_realpage.csv",
+          "prop": "Bellmont Terrace",
+          "unit": "1D",
+          "column": "Subsidy Amount",
+          "value": 947
+        },
+        {
+          "type": "rent_roll_cell",
+          "file": "rent_rolls/bellmont_terrace_rent_roll_2026-09-01_buildium.csv",
+          "prop": "Bellmont Terrace",
+          "unit": "1B",
+          "column": "Housing Assistance Payment",
+          "value": 865
+        }
+      ]
+    },
+    {
+      "id": "S8-09",
+      "category": "Lease begins before HAP contract effective date",
+      "flag": "s8_lease_precedes_hap_contract",
+      "severity": "low",
+      "units": [
+        "Juniper Row 203"
+      ],
+      "what": "Lease term begins 02/01/2026; HAP contract HCHA-HCV-26-0203 is effective 02/10/2026 (after the unit passed HQS). HAP is not payable for 02/01-02/09.",
+      "monthly_impact": null,
+      "impact_to_date": 284.46,
+      "impact_note": "One-time: 9/28 of $885 HAP not payable; collectible from no one.",
+      "rule": "PHA pays HAP only from the HAP contract effective date (24 CFR 982.305, paraphrased).",
+      "evidence": [
+        {
+          "type": "pdf_text",
+          "file": "leases/lease_juniper_row_203_achterberg.pdf",
+          "page": 1,
+          "contains": "February 1, 2026"
+        },
+        {
+          "type": "pdf_text",
+          "file": "hap_contracts/hap_contract_hcv_juniper_row_203.pdf",
+          "page": 1,
+          "contains": "February 10, 2026"
+        }
+      ]
+    },
+    {
+      "id": "S8-10",
+      "category": "Missed recertification",
+      "flag": "s8_recert_overdue",
+      "severity": "high",
+      "units": [
+        "Bellmont Terrace 2A"
+      ],
+      "also_flags": [
+        "s8_hap_suspended_but_booked"
+      ],
+      "what": "Annual reexam was due 08/01/2026 (shown as Recert Due on both Bellmont rent rolls). The PHA held October HAP (code HLD); the October rent roll still books $920 HAP.",
+      "monthly_impact": 920,
+      "impact_note": "$920/mo HAP at risk until the reexam is completed.",
+      "rule": "PBV families must be reexamined at least annually (24 CFR 983.259, paraphrased).",
+      "evidence": [
+        {
+          "type": "rent_roll_cell",
+          "file": "rent_rolls/bellmont_terrace_rent_roll_2026-10-01_realpage.csv",
+          "prop": "Bellmont Terrace",
+          "unit": "2A",
+          "column": "Recert Due",
+          "value": "08/01/2026"
+        },
+        {
+          "type": "rent_roll_cell",
+          "file": "rent_rolls/bellmont_terrace_rent_roll_2026-10-01_realpage.csv",
+          "prop": "Bellmont Terrace",
+          "unit": "2A",
+          "column": "Subsidy Amount",
+          "value": 920
+        },
+        {
+          "type": "register_cell",
+          "file": "hap_registers/hcha_hap_register_2026-10.csv",
+          "unit": "2A",
+          "column": "Adj Code",
+          "value": "HLD"
+        },
+        {
+          "type": "register_cell",
+          "file": "hap_registers/hcha_hap_register_2026-10.csv",
+          "unit": "2A",
+          "column": "Net Payment",
+          "value": 0
+        }
+      ],
+      "impact_to_date": null
+    },
+    {
+      "id": "S8-11",
+      "category": "Missed recertification",
+      "flag": "s8_recert_overdue",
+      "severity": "high",
+      "units": [
+        "Juniper Row 210"
+      ],
+      "also_flags": [
+        "s8_hap_terminated_but_booked"
+      ],
+      "what": "Annual reexam due 09/01/2026 was not completed; the PHA terminated assistance effective 10/01/2026 (October register code TRM, net $0). The October rent roll still books $1,000 HAP.",
+      "monthly_impact": 1000,
+      "impact_note": "$1,000/mo HAP lost; the full $1,410 now falls on the family or the unit turns.",
+      "rule": "HCV assistance may be terminated if the family fails to supply reexam information (24 CFR 982.552, paraphrased).",
+      "evidence": [
+        {
+          "type": "rent_roll_cell",
+          "file": "rent_rolls/juniper_row_rent_roll_2026-10-01_appfolio.csv",
+          "prop": "Juniper Row Apartments",
+          "unit": "210",
+          "column": "Next Recert",
+          "value": "09/01/2026"
+        },
+        {
+          "type": "register_cell",
+          "file": "hap_registers/hcha_hap_register_2026-10.csv",
+          "unit": "210",
+          "column": "Adj Code",
+          "value": "TRM"
+        },
+        {
+          "type": "register_cell",
+          "file": "hap_registers/hcha_hap_register_2026-10.csv",
+          "unit": "210",
+          "column": "Net Payment",
+          "value": 0
+        }
+      ],
+      "impact_to_date": null
+    },
+    {
+      "id": "S8-12",
+      "category": "PHA payment shortfall",
+      "flag": "s8_hap_shortfall_unexplained",
+      "severity": "medium",
+      "units": [
+        "Juniper Row 108"
+      ],
+      "what": "September register pays $873 HAP for unit 108 with no adjustment code or memo; August and October pay $973 and the rent roll books $973.",
+      "monthly_impact": null,
+      "impact_to_date": 100,
+      "impact_note": "One-time $100 short-pay to chase with the PHA.",
+      "rule": "HAP should equal the PHA-approved amount; any change carries an adjustment notice.",
+      "evidence": [
+        {
+          "type": "register_cell",
+          "file": "hap_registers/hcha_hap_register_2026-09.csv",
+          "unit": "108",
+          "column": "HAP Amount",
+          "value": 873
+        },
+        {
+          "type": "register_cell",
+          "file": "hap_registers/hcha_hap_register_2026-09.csv",
+          "unit": "108",
+          "column": "Adj Code",
+          "value": ""
+        },
+        {
+          "type": "register_cell",
+          "file": "hap_registers/hcha_hap_register_2026-08.csv",
+          "unit": "108",
+          "column": "HAP Amount",
+          "value": 973
+        }
+      ]
+    },
+    {
+      "id": "S8-13",
+      "category": "PHA payment shortfall",
+      "flag": "s8_hap_payment_missing",
+      "severity": "medium",
+      "units": [
+        "Bellmont Terrace 3D"
+      ],
+      "what": "PBV unit 3D (on Exhibit A, occupied, HAP $910 on every rent roll) has no line at all on the August register, and no retro payment appears in September or October.",
+      "monthly_impact": null,
+      "impact_to_date": 910,
+      "impact_note": "One-time $910 unpaid HAP.",
+      "rule": "PHA pays HAP monthly for each occupied PBV contract unit (24 CFR 983.351, paraphrased).",
+      "evidence": [
+        {
+          "type": "register_absent",
+          "file": "hap_registers/hcha_hap_register_2026-08.csv",
+          "unit": "3D"
+        },
+        {
+          "type": "register_cell",
+          "file": "hap_registers/hcha_hap_register_2026-09.csv",
+          "unit": "3D",
+          "column": "HAP Amount",
+          "value": 910
+        },
+        {
+          "type": "rent_roll_cell",
+          "file": "rent_rolls/bellmont_terrace_rent_roll_2026-09-01_buildium.csv",
+          "prop": "Bellmont Terrace",
+          "unit": "3D",
+          "column": "Housing Assistance Payment",
+          "value": 910
+        }
+      ]
+    },
+    {
+      "id": "S8-14",
+      "category": "Abatement after failed inspection",
+      "flag": "s8_hap_abated_but_booked",
+      "severity": "high",
+      "units": [
+        "Juniper Row 104"
+      ],
+      "what": "Unit 104 failed the HQS reinspection on 08/13/2026; HAP is abated from 09/01/2026 (September and October registers: ABT, net $0). The October rent roll still books HAP $940.",
+      "monthly_impact": 940,
+      "impact_to_date": 1880,
+      "impact_note": "$940/mo HAP not being received; the family may not be charged for it.",
+      "rule": "PHA may not pay HAP for a unit that fails HQS and is not corrected in the cure period (24 CFR 982.404, paraphrased).",
+      "evidence": [
+        {
+          "type": "pdf_text",
+          "file": "inspections/hqs_inspection_juniper_row_104.pdf",
+          "page": 2,
+          "contains": "abated effective 09/01/2026"
+        },
+        {
+          "type": "register_cell",
+          "file": "hap_registers/hcha_hap_register_2026-09.csv",
+          "unit": "104",
+          "column": "Adj Code",
+          "value": "ABT"
+        },
+        {
+          "type": "register_cell",
+          "file": "hap_registers/hcha_hap_register_2026-10.csv",
+          "unit": "104",
+          "column": "Net Payment",
+          "value": 0
+        },
+        {
+          "type": "rent_roll_cell",
+          "file": "rent_rolls/juniper_row_rent_roll_2026-10-01_appfolio.csv",
+          "prop": "Juniper Row Apartments",
+          "unit": "104",
+          "column": "HAP",
+          "value": 940
+        }
+      ]
+    },
+    {
+      "id": "S8-15",
+      "category": "Overdue reinspection / repair certification",
+      "flag": "s8_reinspection_overdue",
+      "severity": "medium",
+      "units": [
+        "Bellmont Terrace 1B",
+        "Bellmont Terrace (site)"
+      ],
+      "what": "NSPIRE inspection on 08/31/2026 cited moderate deficiencies (unit 1B water-heater leak, sidewalk trip hazard) with correction and owner certification due 09/30/2026. Status on the 10/01/2026 report: NOT RECEIVED.",
+      "impact_note": "No direct dollar figure; repeat findings put the (already expired) PBRA renewal at further risk.",
+      "rule": "NSPIRE moderate deficiencies must be corrected within 30 days and certified (24 CFR 5.711, paraphrased).",
+      "evidence": [
+        {
+          "type": "pdf_text",
+          "file": "inspections/nspire_inspection_bellmont_terrace_pbra.pdf",
+          "page": 2,
+          "contains": "NOT RECEIVED"
+        },
+        {
+          "type": "pdf_text",
+          "file": "inspections/nspire_inspection_bellmont_terrace_pbra.pdf",
+          "page": 1,
+          "contains": "09/30/2026"
+        }
+      ],
+      "monthly_impact": null,
+      "impact_to_date": null
+    },
+    {
+      "id": "S8-16",
+      "category": "Life-threatening deficiency not cured in 24 hours",
+      "flag": "s8_lt_deficiency_cured_late",
+      "severity": "medium",
+      "units": [
+        "Bellmont Terrace 2B"
+      ],
+      "what": "PBV NSPIRE-V inspection 08/20/2026: unit 2B bedroom egress window blocked (Life-Threatening, deadline 08/21/2026). Corrected 08/22/2026 - one day late. Later reinspection passed.",
+      "impact_note": "No dollar figure; PHA could have abated HAP from the missed deadline.",
+      "rule": "Life-threatening deficiencies must be corrected within 24 hours (24 CFR 983.103 / NSPIRE, paraphrased).",
+      "evidence": [
+        {
+          "type": "pdf_text",
+          "file": "inspections/nspire_v_inspection_bellmont_terrace_pbv.pdf",
+          "page": 1,
+          "contains": "08/22/2026"
+        },
+        {
+          "type": "pdf_text",
+          "file": "inspections/nspire_v_inspection_bellmont_terrace_pbv.pdf",
+          "page": 1,
+          "contains": "Life-Threatening"
+        }
+      ],
+      "monthly_impact": null,
+      "impact_to_date": null
+    },
+    {
+      "id": "S8-17",
+      "category": "HAP received after move-out",
+      "flag": "s8_hap_paid_after_moveout",
+      "severity": "high",
+      "units": [
+        "Juniper Row 112"
+      ],
+      "what": "Tenant moved out 08/31/2026 at lease end (both Juniper Row rent rolls show 112 vacant), but the PHA paid $880 HAP for unit 112 in September and October.",
+      "monthly_impact": 880,
+      "impact_to_date": 1760,
+      "impact_note": "$1,760 the owner must repay to the PHA (a liability, not income).",
+      "rule": "Owner is not entitled to HAP after the family moves out and must return it (HAP contract Part B, paraphrased).",
+      "evidence": [
+        {
+          "type": "rent_roll_cell",
+          "file": "rent_rolls/juniper_row_rent_roll_2026-10-01_appfolio.csv",
+          "prop": "Juniper Row Apartments",
+          "unit": "112",
+          "column": "Status",
+          "value": "Vacant"
+        },
+        {
+          "type": "rent_roll_cell",
+          "file": "rent_rolls/juniper_row_rent_roll_2026-09-01_yardi.xlsx",
+          "prop": "Juniper Row Apartments",
+          "unit": "112",
+          "column": "Status",
+          "value": "Vacant"
+        },
+        {
+          "type": "register_cell",
+          "file": "hap_registers/hcha_hap_register_2026-09.csv",
+          "unit": "112",
+          "column": "Net Payment",
+          "value": 880
+        },
+        {
+          "type": "register_cell",
+          "file": "hap_registers/hcha_hap_register_2026-10.csv",
+          "unit": "112",
+          "column": "Net Payment",
+          "value": 880
+        },
+        {
+          "type": "pdf_text",
+          "file": "leases/lease_juniper_row_112_treadwick.pdf",
+          "page": 1,
+          "contains": "August 31, 2026"
+        }
+      ]
+    },
+    {
+      "id": "S8-18",
+      "category": "Rent increase without PHA approval",
+      "flag": "s8_rent_increase_not_approved",
+      "severity": "high",
+      "units": [
+        "Juniper Row 203"
+      ],
+      "what": "Notice dated 08/20/2026 raises rent $1,295 -> $1,350 effective 09/01/2026 (12 days' notice, during the initial lease term, no PHA approval). PHA still pays $885 on $1,295; rent rolls bill the tenant $465 instead of $410.",
+      "monthly_impact": 55,
+      "impact_to_date": 110,
+      "impact_note": "Tenant overcharged $55/mo (Sep + Oct) - refundable.",
+      "rule": "No rent increase during the initial term; later increases need 60 days' written notice to the PHA and PHA rent-reasonableness approval (tenancy addendum, paraphrased).",
+      "evidence": [
+        {
+          "type": "pdf_text",
+          "file": "leases/lease_juniper_row_203_achterberg.pdf",
+          "page": 7,
+          "contains": "$1,350.00"
+        },
+        {
+          "type": "pdf_text",
+          "file": "leases/lease_juniper_row_203_achterberg.pdf",
+          "page": 7,
+          "contains": "August 20, 2026"
+        },
+        {
+          "type": "rent_roll_cell",
+          "file": "rent_rolls/juniper_row_rent_roll_2026-10-01_appfolio.csv",
+          "prop": "Juniper Row Apartments",
+          "unit": "203",
+          "column": "Tenant Portion",
+          "value": 465
+        },
+        {
+          "type": "register_cell",
+          "file": "hap_registers/hcha_hap_register_2026-10.csv",
+          "unit": "203",
+          "column": "Contract Rent",
+          "value": 1295
+        }
+      ]
+    },
+    {
+      "id": "S8-19",
+      "category": "Utility responsibility mismatch",
+      "flag": "s8_utility_responsibility_mismatch",
+      "severity": "medium",
+      "units": [
+        "Juniper Row 104"
+      ],
+      "what": "HAP contract Part A says the owner pays gas (heating and cooking); the lease makes the tenant pay gas. The PHA's tenant share assumes no gas utility allowance.",
+      "impact_note": "Tenant bearing a utility cost the PHA's rent calculation assigns to the owner; no fixed $ in the files.",
+      "rule": "Lease utility responsibilities must match the HAP contract (tenancy addendum: lease terms inconsistent with the HAP contract are void, paraphrased).",
+      "evidence": [
+        {
+          "type": "pdf_text",
+          "file": "leases/lease_juniper_row_104_fenmore.pdf",
+          "page": 1,
+          "contains": "Gas - heating Tenant"
+        },
+        {
+          "type": "pdf_text",
+          "file": "hap_contracts/hap_contract_hcv_juniper_row_104.pdf",
+          "page": 1,
+          "contains": "Gas - heating Owner"
+        }
+      ],
+      "monthly_impact": null,
+      "impact_to_date": null
+    },
+    {
+      "id": "S8-20",
+      "category": "Unit not on HAP contract",
+      "flag": "s8_unit_not_on_hap_contract",
+      "severity": "high",
+      "units": [
+        "Bellmont Terrace 3A"
+      ],
+      "what": "Both Bellmont rent rolls label unit 3A as PBV with $840 HAP, but 3A is not on the PBV HAP contract Exhibit A (3C is) and the PHA has never paid HAP on it.",
+      "monthly_impact": 840,
+      "impact_to_date": null,
+      "impact_note": "$840/mo booked HAP with no contract or payment behind it.",
+      "rule": "PHA pays PBV HAP only for units listed on Exhibit A (24 CFR 983.207, paraphrased).",
+      "evidence": [
+        {
+          "type": "rent_roll_cell",
+          "file": "rent_rolls/bellmont_terrace_rent_roll_2026-10-01_realpage.csv",
+          "prop": "Bellmont Terrace",
+          "unit": "3A",
+          "column": "Subsidy Amount",
+          "value": 840
+        },
+        {
+          "type": "rent_roll_cell",
+          "file": "rent_rolls/bellmont_terrace_rent_roll_2026-09-01_buildium.csv",
+          "prop": "Bellmont Terrace",
+          "unit": "3A",
+          "column": "Housing Assistance Payment",
+          "value": 840
+        },
+        {
+          "type": "register_absent",
+          "file": "hap_registers/hcha_hap_register_2026-10.csv",
+          "unit": "3A"
+        },
+        {
+          "type": "pdf_text",
+          "file": "hap_contracts/hap_contract_pbv_bellmont_terrace.pdf",
+          "page": 1,
+          "contains": "3C 3BR/2BA $1,240.00"
+        },
+        {
+          "type": "pdf_absent",
+          "file": "hap_contracts/hap_contract_pbv_bellmont_terrace.pdf",
+          "page": 1,
+          "text": "3A 3BR/2BA"
+        }
+      ]
+    },
+    {
+      "id": "S8-21",
+      "category": "Tenancy addendum not signed",
+      "flag": "s8_tenancy_addendum_unsigned",
+      "severity": "medium",
+      "units": [
+        "Bellmont Terrace 3B"
+      ],
+      "what": "The PBV Tenancy Addendum acknowledgment page for unit 3B is signed by the owner's agent only; the tenant signature and date lines are blank.",
+      "impact_note": "Documentation gap; no direct dollar figure.",
+      "rule": "The PHA-prescribed tenancy addendum must be part of the lease (24 CFR 983.256, paraphrased).",
+      "evidence": [
+        {
+          "type": "pdf_text",
+          "file": "leases/lease_bellmont_terrace_3B_ferncastle.pdf",
+          "page": 6,
+          "contains": "NOT SIGNED"
+        }
+      ],
+      "monthly_impact": null,
+      "impact_to_date": null
+    },
+    {
+      "id": "S8-22",
+      "category": "Initial lease term under one year",
+      "flag": "s8_initial_term_under_one_year",
+      "severity": "low",
+      "units": [
+        "Juniper Row 206"
+      ],
+      "what": "Initial HCV lease term for unit 206 runs 05/01/2026-10/31/2026 (6 months), with no PHA approval of a shorter term in the file.",
+      "impact_note": "Compliance only; renewal falls inside the hold period.",
+      "rule": "Initial HCV lease term must be at least one year unless the PHA approves a shorter term (24 CFR 982.309, paraphrased).",
+      "evidence": [
+        {
+          "type": "pdf_text",
+          "file": "leases/lease_juniper_row_206_pennyworth-oake.pdf",
+          "page": 4,
+          "contains": "October 31, 2026"
+        }
+      ],
+      "monthly_impact": null,
+      "impact_to_date": null
+    },
+    {
+      "id": "S8-23",
+      "category": "Vacant unit reported occupied",
+      "flag": "s8_moved_out_unit_reported_occupied",
+      "severity": "high",
+      "units": [
+        "Juniper Row 112"
+      ],
+      "what": "Seller portfolio rent roll shows unit 112 occupied by Anselm Treadwick at $1,180 with $880 HAP. The tenant moved out 08/31/2026; the AppFolio and Yardi rolls show it vacant.",
+      "monthly_impact": 1180,
+      "impact_note": "$1,180/mo of rent that doesn't exist.",
+      "rule": "Rent roll occupancy should match the property's PMS and move-out records.",
+      "evidence": [
+        {
+          "type": "rent_roll_cell",
+          "file": "rent_rolls/seller_portfolio_rent_roll_2026-10-01.xlsx",
+          "prop": "Juniper Row Apartments",
+          "unit": "112",
+          "column": "Status",
+          "value": "Occupied"
+        },
+        {
+          "type": "rent_roll_cell",
+          "file": "rent_rolls/seller_portfolio_rent_roll_2026-10-01.xlsx",
+          "prop": "Juniper Row Apartments",
+          "unit": "112",
+          "column": "HAP",
+          "value": 880
+        },
+        {
+          "type": "rent_roll_cell",
+          "file": "rent_rolls/juniper_row_rent_roll_2026-10-01_appfolio.csv",
+          "prop": "Juniper Row Apartments",
+          "unit": "112",
+          "column": "Status",
+          "value": "Vacant"
+        }
+      ],
+      "impact_to_date": null
+    }
+  ],
+  "clean_controls": [
+    {
+      "property": "Juniper Row Apartments",
+      "unit": "101",
+      "note": "Fully documented (lease, addendum, HCV HAP contract, 3 registers, 3 rent rolls). Trap: August register has a coded +$45 RTA one-time correction of a July short-pay; HAP stays $905 - must not flag."
+    },
+    {
+      "property": "Juniper Row Apartments",
+      "unit": "214",
+      "note": "Fully documented HCV unit (lease, addendum, registers, rent rolls); everything agrees."
+    },
+    {
+      "property": "Bellmont Terrace",
+      "unit": "2C",
+      "note": "Fully documented PBV unit. Trap: NSPIRE-V cited a moderate deficiency that was corrected inside 30 days and passed reinspection - must not flag. Lease has a scanned-image signature page."
+    }
+  ],
+  "flags": [
+    "s8_hap_abated_but_booked",
+    "s8_hap_contract_expired",
+    "s8_hap_mismatch_register",
+    "s8_hap_paid_after_moveout",
+    "s8_hap_payment_missing",
+    "s8_hap_shortfall_unexplained",
+    "s8_hap_suspended_but_booked",
+    "s8_hap_terminated_but_booked",
+    "s8_initial_term_under_one_year",
+    "s8_lease_precedes_hap_contract",
+    "s8_lease_rent_ne_hap_contract_rent",
+    "s8_lt_deficiency_cured_late",
+    "s8_moved_out_unit_reported_occupied",
+    "s8_recert_overdue",
+    "s8_reinspection_overdue",
+    "s8_rent_increase_not_approved",
+    "s8_rent_split_does_not_sum",
+    "s8_side_payment",
+    "s8_tenancy_addendum_unsigned",
+    "s8_tenant_share_as_contract_rent",
+    "s8_unit_not_on_hap_contract",
+    "s8_utility_responsibility_mismatch"
+  ]
+}
