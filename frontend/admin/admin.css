@@ -269,7 +269,7 @@ body {
 .text-input:focus {
     outline: none;
     border-color: var(--primary-color);
-    box-shadow: 0 0 0 3px rgba(182, 138, 78, 0.18);
+    box-shadow: 0 0 0 3px var(--lux-accent-ring);
 }
 
 /* ---- Sidebar brand-as-home-button ----
