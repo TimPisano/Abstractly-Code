@@ -113,6 +113,7 @@ UNIT_TESTS = [
     "test_demo_deal_regression.py",
     # Section 8 pivot T1 (feature/s8-data-model).
     "test_section8_data_model.py",
+    "test_section8_fixtures.py",
 ]
 
 LIVE_API_TESTS = [
