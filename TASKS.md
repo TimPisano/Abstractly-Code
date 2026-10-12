@@ -95,6 +95,7 @@ those by taking **main's** TASKS.md, not the branch's.
 
 | Branch | Worktree | +/− main | State |
 |---|---|---|---|
+| `feature/s8-unit-file-and-phas` | `~/dev/projects/abstractly-s8-unit-file` | — | Branched off **`feature/s8-data-model` `b6caf9a`** (stacked — T1 unmerged) 2026-10-12. **T9 of the Section 8 pivot:** Units list + Unit file page + Housing Authorities (PHA) directory/settings UI in the customer app, behind `SECTION8_MODE`. **Plan written, awaiting user approval** — `docs/plans/feature-s8-unit-file-and-phas.md`. Cannot merge before T1. |
 | `fix/quick-wins` | `~/dev/projects/abstractly-quick-wins` | — | Branched off `main` 2026-10-06. (1) lease detail cards cut off on the right at 375px + sweep every page at 375px; (2) upgrade Pillow and every dependency with a known security advisory, full suite green. **Plan approved, building** — `docs/plans/fix-quick-wins.md`. |
 | `feature/loan-underwriting` | `~/dev/projects/abstractly-loan` | +2 / −16 | ~19 uncommitted files (`api.py`, `database.py`, tests, plan); not pushed. Feature-flagged off. Merge **after** team isolation (its plan defers all tenancy to it). Another session may be active — don't touch. |
 | `feature/deal-assistant` | `~/dev/projects/abstractly-assistant` | 0 / −7 | Worktree only, nothing built. Not started. |
@@ -127,6 +128,14 @@ those by taking **main's** TASKS.md, not the branch's.
 - Loop step: 10 — waiting for user to approve merge (`/merge-branch docs/design-tokens`)
 - Last update: 2026-10-11 by the design-tokens session — tip `e13701d` pushed, suite 83/83, reviewer MERGE
 - Next action: user reviews; follow-ups (not in this branch): stale `@import` comments in design-system.css/app/styles.css/admin/dashboard.html; landing.js comment says --lux-accent-rgb is in landing.css; leftover blue focus ring `rgba(37,99,235,.2)` in app/styles.css; app sidebar still uses the generic building icon.
+
+#### feature/s8-unit-file-and-phas
+- Worktree: ~/dev/projects/abstractly-s8-unit-file
+- Goal: Section 8 operators can see every unit with its current tenancy, open a per-unit file (tenancy, HAP contracts, linked documents), and manage their housing authorities — behind SECTION8_MODE.
+- Base: stacked on feature/s8-data-model (b6caf9a); rebase onto main once T1 merges
+- Loop step: 3 — plan written, waiting for user approval
+- Last update: 2026-10-12 by start-task
+- Next action: user reviews docs/plans/feature-s8-unit-file-and-phas.md
 
 #### feature/s8-data-model
 - Worktree: ~/dev/projects/abstractly-s8-data-model
@@ -280,7 +289,7 @@ Claim with `/start-task <branch>`; read PIVOT_PLAN.md Step 4 first (`git show pi
 - T5 `feature/s8-hap-reconciliation` (L) — expected vs received HAP by unit/PHA/month, $ findings, export. Needs T1, T4.
 
 **Phase 2 — compliance calendar**
-- T6 `feature/s8-inspections` (L) — needs T1 · T7 `feature/s8-recert-tracking` (M, HCV) — needs T1, T2 · T7b `feature/s8-pbra-recerts` (L) — needs T7, T0 · T8 `feature/s8-rent-increases-renewals` (M) — needs T1, T2, P5 · T9 `feature/s8-unit-file-and-phas` (M) — needs T1 · T10 `feature/s8-this-month` (M) — needs T5, panels from T6–T8
+- T6 `feature/s8-inspections` (L) — needs T1 · T7 `feature/s8-recert-tracking` (M, HCV) — needs T1, T2 · T7b `feature/s8-pbra-recerts` (L) — needs T7, T0 · T8 `feature/s8-rent-increases-renewals` (M) — needs T1, T2, P5 · T9 `feature/s8-unit-file-and-phas` (M) — needs T1 — **claimed 2026-10-12, stacked on T1** · T10 `feature/s8-this-month` (M) — needs T5, panels from T6–T8
 
 **Phase 3 — repositioning**
 - T11 `feature/s8-marketing-copy` (M) — **can be drafted now; must NOT merge until T3 + T5 are live on tester** (one push to main = public on prod). Pricing waits on Q2.
