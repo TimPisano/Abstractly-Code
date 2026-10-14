@@ -24,6 +24,7 @@ from werkzeug.exceptions import HTTPException
 from flask_cors import CORS
 from dotenv import load_dotenv
 from datetime import date, datetime, timedelta, timezone
+import copy
 import csv
 import hashlib
 import io
@@ -115,7 +116,7 @@ from app.sheets_export import export_to_google_sheets, SheetsExportError
 from app.auth import verify_password, require_role, require_owner, current_user, current_team_id, hash_password, issue_token
 from app import password_rules
 from app import section8_records as s8_records
-from app.section8_mode import require_section8_mode
+from app.section8_mode import require_section8_mode, section8_mode_enabled
 from app.portfolio import _normalize_address
 
 
@@ -1183,7 +1184,11 @@ def upload_sample_lease():
     not real portfolio data and easy to filter out or delete from the normal
     lease list/detail view -- no separate deletion mechanism needed.
     """
-    split_leases = _load_sample_fixture()
+    # SECTION8_MODE: the Section 8 sample's clean-control voucher lease
+    # instead (feature/s8-sample-data). Deep-copied: _persist_split_leases
+    # writes lease ids back into the dicts it's given.
+    split_leases = (copy.deepcopy(sample_deal.section8_single_lease()) if section8_mode_enabled()
+                    else _load_sample_fixture())
     if not split_leases:
         return jsonify({"error": "Sample data not available"}), 503
 
@@ -1531,10 +1536,23 @@ def load_sample_deal_route():
     often as they like at zero cost.
     """
     team_id = current_team_id()
+    if section8_mode_enabled():
+        # SECTION8_MODE: the fictional Section 8 sample portfolio
+        # (documents + PHA/properties/units/tenancies/HAP contracts), all
+        # owned by the caller's team -- see sample_deal.load_section8_sample.
+        try:
+            counts = sample_deal.load_section8_sample(team_id)
+        except sample_deal.SampleAlreadyLoaded:
+            return jsonify({"error": "The sample portfolio is already loaded in your workspace."}), 409
+        name = sample_deal.section8_sample_name()
+        database.insert_activity("sample_deal_loaded", f"{current_user()['name']} loaded the {name} ({counts['documents']} documents, {counts['units']} units)", team_id)
+        _invalidate_lease_derived_caches()
+        return jsonify({"status": "loaded", "lease_count": counts["documents"], "sample_name": name, "counts": counts}), 201
+
     created_count = sample_deal.load_sample_deal(team_id)
     database.insert_activity("sample_deal_loaded", f"{current_user()['name']} loaded the Maple Ridge sample deal ({created_count} documents)", team_id)
     _invalidate_lease_derived_caches()
-    return jsonify({"status": "loaded", "lease_count": created_count}), 201
+    return jsonify({"status": "loaded", "lease_count": created_count, "sample_name": "Maple Ridge sample deal"}), 201
 
 
 @app.route('/leases', methods=['GET'])

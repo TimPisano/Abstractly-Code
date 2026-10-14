@@ -124,8 +124,10 @@ const Dashboard = {
         btn.disabled = true;
         btn.textContent = 'Loading sample deal...';
         try {
-            await Api.loadSampleDeal();
-            showToast('Maple Ridge sample deal loaded.', 'success');
+            const result = await Api.loadSampleDeal();
+            // The API names what it loaded (Maple Ridge, or the Section 8
+            // sample portfolio when SECTION8_MODE is on).
+            showToast(`${(result && result.sample_name) || 'Maple Ridge sample deal'} loaded.`, 'success');
             await this.load();
         } catch (err) {
             showError(`Couldn't load the sample deal: ${err.message}`);

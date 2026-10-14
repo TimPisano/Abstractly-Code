@@ -27,7 +27,8 @@ import logging
 import os
 import tempfile
 
-from app import database
+from app import database, sample_deal
+from app.section8_mode import section8_mode_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +70,10 @@ _CONTENT_TABLES = [
     "training_rounds",
     "leases",
 ]
+# Section 8 tables (feature/s8-data-model), wiped before the rest,
+# children before parents -- they reference each other with FKs.
+# See database.SECTION8_TABLES_DROP_ORDER.
+_SECTION8_CONTENT_TABLES = list(database.SECTION8_TABLES_DROP_ORDER)
 
 _PROPERTY_A = "428 Harbor View Drive, Suite 200, Miami, FL 33131"
 _PROPERTY_B = "1200 Innovation Parkway, Floor 4, Austin, TX 78701"
@@ -237,7 +242,7 @@ def seed_demo_data() -> None:
         team_id = legacy_team["id"]
 
         existing = database.get_all_leases(team_id, document_type=None)
-        if existing:
+        if existing or database.list_section8_records("properties", team_id, include_archived=True):
             logger.info("Demo data already present (%d lease(s)) -- skipping seed.", len(existing))
             return
 
@@ -250,6 +255,14 @@ def seed_demo_data() -> None:
             )
             if user_result["status"] == "created":
                 logger.info("Seeded demo user %s", account["email"])
+
+        if section8_mode_enabled():
+            # SECTION8_MODE on this deployment: the Section 8 sample
+            # portfolio instead (feature/s8-sample-data).
+            counts = sample_deal.load_section8_sample(team_id)
+            database.insert_activity("demo_seeded", f"Demo account seeded with the {sample_deal.section8_sample_name()}", team_id)
+            logger.info("Demo data seeded: Section 8 sample portfolio %s.", counts)
+            return
 
         for lease in _sample_pdf_leases():
             database.insert_lease(lease["filename"], lease["extracted_fields"], team_id, document_type="lease", display_name=lease["display_name"])
@@ -268,7 +281,7 @@ def reset_demo_data() -> None:
     """Wipes every content table (see _CONTENT_TABLES) and reseeds. Only ever call this against the dedicated demo database."""
     conn = database.get_connection()
     try:
-        for table in _CONTENT_TABLES:
+        for table in _SECTION8_CONTENT_TABLES + _CONTENT_TABLES:
             conn.execute(f"DELETE FROM {table}")
         conn.commit()
     finally:
