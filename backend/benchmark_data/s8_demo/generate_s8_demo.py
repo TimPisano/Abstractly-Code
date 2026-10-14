@@ -36,7 +36,9 @@ from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, 
 # Byte-reproducible PDFs: no creation timestamps or random document IDs.
 rl_config.invariant = 1
 
-OUT_DIR = os.path.dirname(os.path.abspath(__file__))
+# S8_DEMO_OUT_DIR lets the reproducibility test regenerate into a temp dir
+# instead of over the committed files.
+OUT_DIR = os.environ.get("S8_DEMO_OUT_DIR") or os.path.dirname(os.path.abspath(__file__))
 FILES_DIR = os.path.join(OUT_DIR, "tenant_files")
 RENT_ROLL_DIR = os.path.join(OUT_DIR, "rent_roll")
 

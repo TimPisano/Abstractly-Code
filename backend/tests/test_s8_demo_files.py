@@ -13,6 +13,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -27,56 +28,24 @@ DEMO_DIR = os.path.join(
 
 
 def test_expected_findings_totals():
-    """Confirm that total dollar amounts equal the sum of individual findings."""
+    """Each finding's total is monthly x months, and the README's headline
+    totals equal the sum of the findings of each kind."""
     with open(os.path.join(DEMO_DIR, "expected_findings.json"), encoding="utf-8") as f:
-        findings = json.load(f)
+        findings = json.load(f)["findings"]
+    with open(os.path.join(DEMO_DIR, "README.md"), encoding="utf-8") as f:
+        readme = f.read()
 
-    findings_list = findings.get("findings", [])
-
-    # Group by kind (confirmed vs potential) and sum
-    totals_by_kind = {}
-    for finding in findings_list:
+    sums = {}
+    for finding in findings:
         impact = finding.get("dollar_impact")
-        if impact:
-            kind = impact.get("kind")
-            total = impact.get("total", 0)
-            if kind not in totals_by_kind:
-                totals_by_kind[kind] = 0
-            totals_by_kind[kind] += total
+        if not impact:
+            continue
+        assert impact["total"] == impact["monthly"] * impact["months"], finding["id"]
+        sums[impact["kind"]] = sums.get(impact["kind"], 0) + impact["total"]
 
-    # Expected totals as stated in README
-    expected_confirmed = 1451
-    expected_potential = 17981
-
-    actual_confirmed = totals_by_kind.get("confirmed", 0)
-    actual_potential = totals_by_kind.get("potential", 0)
-    actual_exposure = totals_by_kind.get("exposure", 0)
-
-    # E1 and E6 are now "exposure" not "potential"; they were in potential before
-    # But let's check what we actually have
-    print(
-        f"Confirmed: {actual_confirmed} (expected {expected_confirmed})",
-    )
-    print(
-        f"Potential: {actual_potential} (expected {expected_potential})",
-    )
-    print(f"Exposure: {actual_exposure}")
-
-    # E1 ($2,886) and E6 ($1,630) changed from potential to exposure
-    # So new totals: confirmed stays 1,451; potential = 17,981 - 2,886 - 1,630 = 13,465; exposure = 4,516
-    expected_confirmed_new = 1451
-    expected_potential_new = 17981 - 2886 - 1630  # 13,465
-    expected_exposure_new = 2886 + 1630  # 4,516
-
-    assert (
-        actual_confirmed == expected_confirmed_new
-    ), f"Confirmed total mismatch: got {actual_confirmed}, expected {expected_confirmed_new}"
-    assert (
-        actual_potential == expected_potential_new
-    ), f"Potential total mismatch: got {actual_potential}, expected {expected_potential_new}"
-    assert (
-        actual_exposure == expected_exposure_new
-    ), f"Exposure total mismatch: got {actual_exposure}, expected {expected_exposure_new}"
+    assert set(sums) <= {"confirmed", "potential", "exposure"}, sums
+    for kind, total in sums.items():
+        assert f"**${total:,} {kind}**" in readme, f"README headline doesn't state ${total:,} {kind}"
 
 
 def test_pdf_pages_exist():
@@ -148,55 +117,32 @@ def test_clean_units_exist():
 
 
 def test_generator_reproducibility():
-    """Confirm that regenerating produces byte-identical outputs.
+    """The generator is the source of truth: regenerating (into a temp dir,
+    never over the committed files) must reproduce README.md,
+    expected_findings.json, the CSV rent roll and every PDF byte-for-byte.
+    The .xlsx is skipped -- openpyxl stamps it with the current time."""
+    with tempfile.TemporaryDirectory() as out:
+        result = subprocess.run(
+            [sys.executable, os.path.join(DEMO_DIR, "generate_s8_demo.py")],
+            env={**os.environ, "S8_DEMO_OUT_DIR": out},
+            capture_output=True,
+        )
+        assert result.returncode == 0, f"Generator failed: {result.stderr.decode()}"
 
-    The generator is the source of truth. Running it again with no code changes
-    must produce identical PDFs, CSV, README, and JSON (Excel differs only by timestamp).
-    """
-    # Read current files before regeneration
-    with open(os.path.join(DEMO_DIR, "expected_findings.json"), "rb") as f:
-        json_before = f.read()
-    with open(os.path.join(DEMO_DIR, "README.md"), "rb") as f:
-        readme_before = f.read()
-
-    # List all PDFs and CSV before
-    files_dir = os.path.join(DEMO_DIR, "tenant_files")
-    rent_roll_dir = os.path.join(DEMO_DIR, "rent_roll")
-    pdfs_before = {}
-    for fname in os.listdir(files_dir):
-        if fname.endswith(".pdf"):
-            with open(os.path.join(files_dir, fname), "rb") as f:
-                pdfs_before[fname] = f.read()
-
-    with open(os.path.join(rent_roll_dir, "oak_hollow_rent_roll_40unit.csv"), "rb") as f:
-        csv_before = f.read()
-
-    # Regenerate
-    backend_dir = os.path.dirname(os.path.dirname(DEMO_DIR))
-    result = subprocess.run(
-        [sys.executable, "benchmark_data/s8_demo/generate_s8_demo.py"],
-        cwd=backend_dir,
-        capture_output=True,
-    )
-    assert result.returncode == 0, f"Generator failed: {result.stderr.decode()}"
-
-    # Compare files after regeneration
-    with open(os.path.join(DEMO_DIR, "expected_findings.json"), "rb") as f:
-        json_after = f.read()
-    assert json_before == json_after, "expected_findings.json changed after regeneration"
-
-    with open(os.path.join(DEMO_DIR, "README.md"), "rb") as f:
-        readme_after = f.read()
-    assert readme_before == readme_after, "README.md changed after regeneration"
-
-    for fname in pdfs_before:
-        with open(os.path.join(files_dir, fname), "rb") as f:
-            pdf_after = f.read()
-        assert pdfs_before[fname] == pdf_after, f"PDF {fname} changed after regeneration"
-
-    with open(os.path.join(rent_roll_dir, "oak_hollow_rent_roll_40unit.csv"), "rb") as f:
-        csv_after = f.read()
-    assert csv_before == csv_after, "CSV rent roll changed after regeneration"
+        compared = 0
+        for root, _dirs, files in os.walk(out):
+            for fname in files:
+                if fname.endswith(".xlsx"):
+                    continue
+                rel = os.path.relpath(os.path.join(root, fname), out)
+                with open(os.path.join(out, rel), "rb") as f:
+                    fresh = f.read()
+                with open(os.path.join(DEMO_DIR, rel), "rb") as f:
+                    committed = f.read()
+                assert fresh == committed, f"{rel} differs from a fresh generator run"
+                compared += 1
+        # 10 tenant PDFs + CSV + README + JSON at minimum.
+        assert compared >= 13, compared
 
 
 if __name__ == "__main__":
