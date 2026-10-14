@@ -46,10 +46,18 @@
 // bounce someone to the login page with no error shown, mid-typo, while
 // still fully logged in. Callers for that route pass `false` to get the
 // normal error-message path instead of the redirect.
+// The bearer token admin/login.js stores, sent alongside the cookie: the
+// cookie is cross-site, which Safari drops entirely.
+function adminAuthHeaders(extra = {}) {
+    let token = null;
+    try { token = sessionStorage.getItem('authToken'); } catch (e) { /* storage blocked */ }
+    return token ? { ...extra, Authorization: `Bearer ${token}` } : { ...extra };
+}
+
 async function adminFetch(path, options = {}, treatAsSessionExpiry = true) {
     let response;
     try {
-        response = await fetch(`${API_BASE_URL}${path}`, { ...options, credentials: 'include' });
+        response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers: adminAuthHeaders(options.headers || {}), credentials: 'include' });
     } catch (networkErr) {
         throw new Error("Couldn't reach the server. Is the backend running?");
     }
@@ -244,7 +252,7 @@ if (document.readyState === 'loading') {
 async function initAdminDashboard() {
     let session;
     try {
-        session = await fetch(`${API_BASE_URL}/auth/session`, { credentials: 'include' }).then(r => r.json());
+        session = await fetch(`${API_BASE_URL}/auth/session`, { credentials: 'include', headers: adminAuthHeaders() }).then(r => r.json());
     } catch (err) {
         session = { authenticated: false };
     }
@@ -274,6 +282,7 @@ async function initAdminDashboard() {
             // the login page -- there's nothing useful to do here besides
             // that regardless of why logout's own request failed.
         }
+        try { sessionStorage.removeItem('authToken'); } catch (e) { /* storage blocked */ }
         window.location.href = 'index.html';
     });
 

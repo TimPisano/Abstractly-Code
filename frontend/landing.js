@@ -4,6 +4,8 @@
  *  - Book a Demo form: posts to the backend and swaps in a confirmation
  *    state instead of navigating away. Only present on index.html --
  *    guarded so pricing.html doesn't throw on this line.
+ *  - "Book a call" links: pointed at the API's CALENDLY_URL once
+ *    /public-config answers (fallback: the on-page demo form).
  *  - Pageview beacon: fire-and-forget first-party analytics (see
  *    backend/app/api.py's POST /analytics/pageview).
  *  - Scroll reveal: a subtle fade + rise for elements marked .reveal
@@ -115,7 +117,12 @@ if (demoFormEl) {
             }
 
             document.getElementById('demoFormWrap').classList.add('submitted');
-            document.getElementById('demoFormConfirm').classList.add('show');
+            const confirmEl = document.getElementById('demoFormConfirm');
+            // The server says whether a booking link was actually emailed;
+            // the HTML's own text stays as the fallback.
+            const confirmText = confirmEl.querySelector('span');
+            if (data.message && confirmText) confirmText.textContent = data.message;
+            confirmEl.classList.add('show');
             recordPageview('/__event/demo_requested');
         } catch (err) {
             errorEl.textContent = err.message;
@@ -125,6 +132,36 @@ if (demoFormEl) {
         }
     });
 }
+
+/**
+ * ===================== "Book a call" links -> Calendly =====================
+ * Every a[data-book-call] (footer + FAQ on index.html and pricing.html)
+ * starts pointed at the on-page demo form. GET /public-config returns
+ * the API's CALENDLY_URL; once it arrives, those links open it in a new
+ * tab instead. If the API is asleep or slow, unreachable, or CALENDLY_URL
+ * is unset (calendly_url: null), the links simply keep going to the form
+ * -- never a dead click.
+ */
+(function () {
+    const links = document.querySelectorAll('a[data-book-call]');
+    if (!links.length) return;
+
+    fetch(`${API_BASE_URL}/public-config`)
+        .then((resp) => (resp.ok ? resp.json() : null))
+        .then((config) => {
+            const url = config && config.calendly_url;
+            if (typeof url !== 'string' || !url.startsWith('https://')) {
+                console.warn('Book a call: no CALENDLY_URL from /public-config; links stay on the demo form.');
+                return;
+            }
+            links.forEach((a) => {
+                a.href = url;
+                a.target = '_blank';
+                a.rel = 'noopener';
+            });
+        })
+        .catch(() => { /* network error: keep the form fallback */ });
+})();
 
 if ('IntersectionObserver' in window) {
     const observer = new IntersectionObserver((entries) => {

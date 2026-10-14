@@ -252,6 +252,67 @@ def _migrate_users_add_team_id(conn: sqlite3.Connection) -> None:
             conn.execute("UPDATE users SET team_id = ? WHERE team_id IS NULL", (legacy_team[0],))
 
 
+def _migrate_password_reset_tokens_add_revoked_at(conn: sqlite3.Connection) -> None:
+    """
+    `revoked_at` marks a reset/setup link that a NEWER link replaced.
+    Older code deleted those rows outright, which made a superseded link
+    indistinguishable from a forged one -- the reset page could only say
+    "invalid". Keeping the row (revoked, still unusable) lets the page
+    say "a newer link was sent" and offer a one-click resend instead.
+    """
+    existing_columns = {row["name"] for row in conn.execute("PRAGMA table_info(password_reset_tokens)").fetchall()}
+    if "revoked_at" not in existing_columns:
+        conn.execute("ALTER TABLE password_reset_tokens ADD COLUMN revoked_at TEXT")
+    # `purpose`: 'reset' (forgot password, 1 hour) or 'setup' (owner-
+    # created team's first login, 7 days). Each route accepts only its
+    # own kind -- before this, a 1-hour forgot-password link could be
+    # redeemed through /auth/team-setup under the 7-day limit. NULL =
+    # a row from before this column, accepted by either (old behavior).
+    if "purpose" not in existing_columns:
+        conn.execute("ALTER TABLE password_reset_tokens ADD COLUMN purpose TEXT")
+
+
+def _migrate_users_add_session_version(conn: sqlite3.Connection) -> None:
+    """
+    `session_version` is copied into every session cookie and bearer
+    token at login, and auth._live_user rejects any credential whose
+    copy no longer matches the row. Bumping it is therefore "sign this
+    user out everywhere" -- done on a password reset, so a reset really
+    does lock out whoever had the old password. Both credentials are
+    otherwise stateless, so without this a reset left every existing
+    login alive until it expired on its own. Existing rows start at 0,
+    and credentials issued before this column existed (no version in
+    them) are read as 0 too, so nobody is logged out by the migration.
+    """
+    existing_columns = {row["name"] for row in conn.execute("PRAGMA table_info(users)").fetchall()}
+    if "session_version" not in existing_columns:
+        conn.execute("ALTER TABLE users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 0")
+
+
+def _create_signup_requests_table(conn: sqlite3.Connection) -> None:
+    """
+    A self-serve signup that hasn't been confirmed yet. Deliberately NOT
+    a `users` row: no account (and no team) exists until the emailed
+    link is used, so typing someone else's address into the signup form
+    creates nothing but an email to them. Same token rules as
+    password_reset_tokens: only the SHA-256 of the link's token is
+    stored, `used_at` makes it single-use, and `revoked_at` marks one
+    that a newer request for the same email replaced.
+    """
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS signup_requests (
+            token_hash TEXT PRIMARY KEY,
+            email TEXT NOT NULL,
+            name TEXT NOT NULL,
+            company TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            used_at TEXT,
+            revoked_at TEXT
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_signup_requests_email ON signup_requests(email)")
+
+
 def _migrate_usage_events_table(conn: sqlite3.Connection) -> None:
     """
     Creates the `usage_events` table for logging extraction attempts
@@ -757,6 +818,9 @@ def init_db() -> None:
             )
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user_id ON password_reset_tokens(user_id)")
+        _migrate_password_reset_tokens_add_revoked_at(conn)
+        _migrate_users_add_session_version(conn)
+        _create_signup_requests_table(conn)
         # Owner-console finance tracking (see api.py's /owner/revenue,
         # /owner/expenses). external_source/external_id are nullable and
         # unused today (no billing integration exists yet -- every row
@@ -2415,9 +2479,24 @@ def update_user_status(user_id: int, status: str) -> bool:
 
 
 def update_user_password(user_id: int, password_hash: str) -> bool:
+    """
+    Sets the password, kills every still-live reset link for the user,
+    and signs the user out everywhere (session_version + 1) -- whoever
+    changed it (themselves, an admin, the owner, a reset). An older reset
+    email must not be able to undo it, and a stolen 30-day token must not
+    survive it. A caller who should stay signed in (the person changing
+    their own password) starts a fresh session afterwards.
+    """
     conn = get_connection()
     try:
-        cur = conn.execute("UPDATE users SET password_hash = ? WHERE id = ?", (password_hash, user_id))
+        cur = conn.execute(
+            "UPDATE users SET password_hash = ?, session_version = session_version + 1 WHERE id = ?",
+            (password_hash, user_id),
+        )
+        conn.execute(
+            "UPDATE password_reset_tokens SET revoked_at = ? WHERE user_id = ? AND used_at IS NULL AND revoked_at IS NULL",
+            (_utcnow_iso(), user_id),
+        )
         conn.commit()
         return cur.rowcount > 0
     except OverflowError:
@@ -2520,7 +2599,37 @@ def get_usage_stats_for_users(users: List[Dict[str, Any]]) -> Dict[int, Dict[str
         conn.close()
 
 
-def create_password_reset_token(user_id: int, token_hash: str) -> None:
+# Rows older than this are deleted whenever a new link is issued. Long
+# enough that every link's own status (used/expired/superseded) is still
+# answerable for its whole useful life -- the longest-lived link is a
+# 7-day team-setup link -- short enough that the tables don't grow
+# forever on a public endpoint.
+_AUTH_LINK_RETENTION_SECONDS = 30 * 24 * 3600
+
+
+def _utcnow_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _purge_old_auth_links(conn: sqlite3.Connection) -> None:
+    cutoff = (datetime.now(timezone.utc) - timedelta(seconds=_AUTH_LINK_RETENTION_SECONDS)).isoformat()
+    conn.execute("DELETE FROM password_reset_tokens WHERE created_at < ?", (cutoff,))
+    conn.execute("DELETE FROM signup_requests WHERE created_at < ?", (cutoff,))
+
+
+def _link_status(row, max_age_seconds: int) -> str:
+    """'valid' | 'used' | 'superseded' | 'expired' for an existing token row. Used beats superseded beats expired: say the most useful true thing."""
+    if row["used_at"] is not None:
+        return "used"
+    if row["revoked_at"] is not None:
+        return "superseded"
+    age = (datetime.now(timezone.utc) - datetime.fromisoformat(row["created_at"])).total_seconds()
+    if age > max_age_seconds:
+        return "expired"
+    return "valid"
+
+
+def create_password_reset_token(user_id: int, token_hash: str, purpose: str = "reset") -> None:
     """
     Stores a single-use password reset token, keyed by the SHA-256
     hash of the random token (the raw token itself only ever exists in
@@ -2528,30 +2637,57 @@ def create_password_reset_token(user_id: int, token_hash: str) -> None:
     an attacker working reset links, exactly the same reasoning that
     keeps users.password_hash a hash and not the password).
 
-    Any earlier unused token for the same user is deleted first, so a
+    Any earlier unused token for the same user is revoked first, so a
     person who clicks "forgot password" twice only ever has one live
     link -- the most recent one -- and the older email's link stops
-    working immediately.
+    working immediately. Revoked, not deleted, so the reset page can
+    tell that person "a newer link was sent" (see _link_status).
     """
+    now = _utcnow_iso()
     conn = get_connection()
     try:
-        conn.execute("DELETE FROM password_reset_tokens WHERE user_id = ? AND used_at IS NULL", (user_id,))
+        _purge_old_auth_links(conn)
         conn.execute(
-            "INSERT INTO password_reset_tokens (token_hash, user_id, created_at) VALUES (?, ?, ?)",
-            (token_hash, user_id, datetime.now(timezone.utc).isoformat()),
+            "UPDATE password_reset_tokens SET revoked_at = ? WHERE user_id = ? AND used_at IS NULL AND revoked_at IS NULL",
+            (now, user_id),
+        )
+        conn.execute(
+            "INSERT INTO password_reset_tokens (token_hash, user_id, created_at, purpose) VALUES (?, ?, ?, ?)",
+            (token_hash, user_id, now, purpose),
         )
         conn.commit()
     finally:
         conn.close()
 
 
-def consume_password_reset_token(token_hash: str, max_age_seconds: int = 3600) -> Optional[int]:
+def get_password_reset_token_status(token_hash: str, max_age_seconds: int = 3600, purpose: str = "reset"):
+    """
+    Read-only: ('valid'|'used'|'superseded'|'expired'|'invalid', user_id
+    or None). Never consumes the token. Lets the reset page show the
+    right friendly message BEFORE someone types a new password into a
+    form that can only fail.
+    """
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT user_id, created_at, used_at, revoked_at FROM password_reset_tokens "
+            "WHERE token_hash = ? AND (purpose = ? OR purpose IS NULL)",
+            (token_hash, purpose),
+        ).fetchone()
+        if row is None:
+            return "invalid", None
+        return _link_status(row, max_age_seconds), row["user_id"]
+    finally:
+        conn.close()
+
+
+def consume_password_reset_token(token_hash: str, max_age_seconds: int = 3600, purpose: str = "reset") -> Optional[int]:
     """
     Looks up a reset token by its hash and, if it's valid (exists,
-    never used, not older than max_age_seconds), marks it used and
-    returns the user_id it belongs to. Returns None otherwise --
-    unknown, already-used, or expired all look identical to the caller,
-    which must treat every None as "this link is no longer valid."
+    never used, not revoked, not older than max_age_seconds), marks it
+    used and returns the user_id it belongs to. Returns None otherwise
+    -- the caller treats every None as "this link is no longer valid"
+    and can ask get_password_reset_token_status for which kind.
 
     Marking used and checking age happen in one call so a token can
     never be redeemed twice, even by two requests racing each other:
@@ -2561,25 +2697,142 @@ def consume_password_reset_token(token_hash: str, max_age_seconds: int = 3600) -
     conn = get_connection()
     try:
         row = conn.execute(
-            "SELECT user_id, created_at FROM password_reset_tokens WHERE token_hash = ? AND used_at IS NULL",
-            (token_hash,),
+            "SELECT user_id, created_at, used_at, revoked_at FROM password_reset_tokens "
+            "WHERE token_hash = ? AND (purpose = ? OR purpose IS NULL)",
+            (token_hash, purpose),
         ).fetchone()
-        if row is None:
-            return None
-
-        age = (datetime.now(timezone.utc) - datetime.fromisoformat(row["created_at"])).total_seconds()
-        if age > max_age_seconds:
+        if row is None or _link_status(row, max_age_seconds) != "valid":
             return None
 
         cur = conn.execute(
-            "UPDATE password_reset_tokens SET used_at = ? WHERE token_hash = ? AND used_at IS NULL",
-            (datetime.now(timezone.utc).isoformat(), token_hash),
+            "UPDATE password_reset_tokens SET used_at = ? WHERE token_hash = ? AND used_at IS NULL AND revoked_at IS NULL",
+            (_utcnow_iso(), token_hash),
         )
         conn.commit()
         if cur.rowcount == 0:
             # Another request consumed it between the SELECT and here.
             return None
         return row["user_id"]
+    finally:
+        conn.close()
+
+
+def create_signup_request(email: str, name: str, company: str, token_hash: str) -> None:
+    """Stores a pending self-serve signup (see _create_signup_requests_table). Revokes any earlier unused request for the same email, so only the newest link works."""
+    now = _utcnow_iso()
+    email = (email or "").strip().lower()
+    conn = get_connection()
+    try:
+        _purge_old_auth_links(conn)
+        conn.execute(
+            "UPDATE signup_requests SET revoked_at = ? WHERE email = ? AND used_at IS NULL AND revoked_at IS NULL",
+            (now, email),
+        )
+        conn.execute(
+            "INSERT INTO signup_requests (token_hash, email, name, company, created_at) VALUES (?, ?, ?, ?, ?)",
+            (token_hash, email, name, company, now),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_signup_request(token_hash: str, max_age_seconds: int):
+    """Read-only: (status, row dict or None) -- same statuses as get_password_reset_token_status."""
+    conn = get_connection()
+    try:
+        row = conn.execute("SELECT * FROM signup_requests WHERE token_hash = ?", (token_hash,)).fetchone()
+        if row is None:
+            return "invalid", None
+        return _link_status(row, max_age_seconds), dict(row)
+    finally:
+        conn.close()
+
+
+def get_open_signup_request(email: str) -> Optional[Dict[str, Any]]:
+    """The newest not-yet-used, not-replaced signup request for this email (expired or not), or None. Lets "Forgot password?" help someone who signed up but never finished."""
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT * FROM signup_requests WHERE email = ? AND used_at IS NULL AND revoked_at IS NULL "
+            "ORDER BY created_at DESC LIMIT 1",
+            ((email or "").strip().lower(),),
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+# Team names a self-serve signup must never take verbatim: code looks
+# the Legacy team up BY NAME (create_user's default team, migrations),
+# so a stranger's company literally called "Legacy" on a fresh database
+# would otherwise become every unassigned user's team.
+_RESERVED_TEAM_NAMES = {"legacy"}
+
+
+def complete_signup(token_hash: str, max_age_seconds: int, password_hash: str) -> Dict[str, Any]:
+    """
+    Turns a pending signup into a real account, all in ONE transaction:
+    consume the link, create the team (named after the company), create
+    the user as that team's admin. Returns one of:
+      {"status": "created", "user_id": ..., "team_id": ...}
+      {"status": "used"|"superseded"|"expired"|"invalid"}   -- link is dead
+      {"status": "exists"}  -- that email got an account some other way
+                               meanwhile; nothing was created and the
+                               link is left unused
+    A team-name clash ("Acme" already taken by another firm) is not an
+    error -- teams.name is UNIQUE, so this one becomes "Acme (2)".
+    Two concurrent requests with the same link (a double-click) can't
+    both win: the used_at UPDATE only changes a row for one of them, and
+    the loser's transaction is rolled back before it creates anything.
+    """
+    conn = get_connection()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute("SELECT * FROM signup_requests WHERE token_hash = ?", (token_hash,)).fetchone()
+        if row is None:
+            conn.rollback()
+            return {"status": "invalid"}
+        status = _link_status(row, max_age_seconds)
+        if status != "valid":
+            conn.rollback()
+            return {"status": status}
+
+        if conn.execute("SELECT 1 FROM users WHERE email = ?", (row["email"],)).fetchone():
+            conn.rollback()
+            return {"status": "exists"}
+
+        now = _utcnow_iso()
+        cur = conn.execute(
+            "UPDATE signup_requests SET used_at = ? WHERE token_hash = ? AND used_at IS NULL AND revoked_at IS NULL",
+            (now, token_hash),
+        )
+        if cur.rowcount == 0:
+            conn.rollback()
+            return {"status": "used"}
+
+        base_name = row["company"].strip()
+        team_name, n = base_name, 1
+        while (
+            team_name.lower() in _RESERVED_TEAM_NAMES
+            or conn.execute("SELECT 1 FROM teams WHERE name = ? COLLATE NOCASE", (team_name,)).fetchone()
+        ):
+            n += 1
+            team_name = f"{base_name} ({n})"
+        team_id = conn.execute(
+            "INSERT INTO teams (name, status, created_at) VALUES (?, 'active', ?)", (team_name, now),
+        ).lastrowid
+        user_id = conn.execute(
+            "INSERT INTO users (email, name, password_hash, role, status, created_at, team_id) "
+            "VALUES (?, ?, ?, 'admin', 'active', ?, ?)",
+            (row["email"], row["name"], password_hash, now, team_id),
+        ).lastrowid
+        conn.commit()
+        return {"status": "created", "user_id": user_id, "team_id": team_id}
+    except sqlite3.IntegrityError:
+        # users.email UNIQUE lost a race with another account creation.
+        conn.rollback()
+        return {"status": "exists"}
     finally:
         conn.close()
 

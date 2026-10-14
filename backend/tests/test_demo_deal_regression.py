@@ -28,6 +28,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 from app.api import app
 from app import database
+from _session_users import sync_session_user
 from app.deal_mismatch import build_deal_mismatch_report_data
 
 DEMO_DIR = os.path.join(os.path.dirname(__file__), '..', 'benchmark_data', 'demo_deal')
@@ -48,19 +49,36 @@ def _fresh_temp_db():
     return tmp.name
 
 
-def _authed_client():
+def _legacy_team_id():
     conn = database.get_connection()
     try:
         legacy_team = conn.execute("SELECT id FROM teams WHERE name='Legacy' LIMIT 1").fetchone()
     finally:
         conn.close()
+    return legacy_team[0] if legacy_team else None
+
+
+def _authed_client():
+    team_id = _legacy_team_id()
+    # A real users row, same as test_demo_deal_golden.py's fixture: a
+    # hardcoded user_id=1 only existed when the machine's backend/.env
+    # seeded an admin, so on a clean checkout every upload failed (500 on
+    # the usage_events foreign key, then 401 once sessions were checked
+    # against real users). TASKS.md "Waiting on you" #10.
+    from app.auth import hash_password
+    created = database.create_user(
+        "regression-test@example.com", "Regression Test", hash_password("x"), role="analyst",
+        team_id=team_id,
+    )
+    user_id = created["id"] if created["status"] == "created" else database.get_user_by_email("regression-test@example.com")["id"]
     client = app.test_client()
     with client.session_transaction() as sess:
-        sess["user_id"] = 1
+        sess["user_id"] = user_id
         sess["email"] = "regression-test@example.com"
         sess["name"] = "Regression Test"
         sess["role"] = "analyst"
-        sess["team_id"] = legacy_team[0] if legacy_team else None
+        sess["team_id"] = team_id
+        sync_session_user(sess)
     return client
 
 
@@ -113,7 +131,7 @@ def test_every_live_planted_finding_is_still_caught_with_the_right_dollar_amount
         _upload_all_demo_leases(client)
         _upload_rent_roll(client, RENT_ROLL_16)
 
-        data = build_deal_mismatch_report_data(today=DEMO_AS_OF)
+        data = build_deal_mismatch_report_data(team_id=_legacy_team_id(), today=DEMO_AS_OF)
         got_by_key = {
             (row["unit"].split("Suite ")[-1], row["discrepancy_type"]): row
             for row in data["discrepancies"]
@@ -218,7 +236,7 @@ def test_clean_negative_controls_never_flagged():
         _upload_all_demo_leases(client)
         _upload_rent_roll(client, RENT_ROLL_16)
 
-        data = build_deal_mismatch_report_data(today=DEMO_AS_OF)
+        data = build_deal_mismatch_report_data(team_id=_legacy_team_id(), today=DEMO_AS_OF)
         flagged_units = {row["unit"].split("Suite ")[-1] for row in data["discrepancies"]}
         leaked = clean_unit_ids & flagged_units
         assert not leaked, f"clean negative-control unit(s) incorrectly flagged: {leaked}"

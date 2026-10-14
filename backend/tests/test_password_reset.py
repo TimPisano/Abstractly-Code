@@ -49,7 +49,7 @@ def _setup():
     """Fresh DB + one active user + stubbed mail + cleared rate limiter. Returns (client, user_id, sent)."""
     user = database.create_user(USER_EMAIL, "Reset Me", hash_password(USER_PASSWORD), role="analyst")
     sent = []
-    email_service.send_password_reset_email = lambda to, url: (sent.append((to, url)), True)[1]
+    email_service.send_password_reset_email = lambda to, url, name="": (sent.append((to, url)), True)[1]
     api_module._reset_forgot_password_rate_limit_for_tests()
     return app.test_client(), user["id"], sent
 

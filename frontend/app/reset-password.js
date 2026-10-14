@@ -1,112 +1,97 @@
 /**
- * "Choose a new password" page, reached only via the link in a reset
- * email. The single-use token comes in as a `?token=` query param and
- * is posted to /auth/reset-password, which validates it (exists, not
- * already used, under 1 hour old -- see
- * database.consume_password_reset_token) and sets the new password.
+ * "Choose a new password" -- reached only from a reset email's link.
  *
- * The token is deliberately NOT pre-validated with its own round trip
- * on page load. A "check if this token is good" endpoint would be a
- * free oracle for testing stolen/guessed tokens without consuming
- * them, and the token is single-use -- so a pre-check either burns the
- * token before the person types anything, or has to be non-consuming
- * and thus abusable. Instead the token is submitted once, together
- * with the new password, and an invalid/expired one is reported in the
- * same response. The only thing checked up front is that a token is
- * present at all, which needs no server round trip.
+ * Same shape as finish-signup.js: the token leaves the address bar, is
+ * checked with POST /auth/link-status so a dead link gets a friendly
+ * screen up front, and POST /auth/reset-password both sets the password
+ * and logs this browser in. The reset signs out every other session
+ * (server side, see database.bump_session_version), so the page says so.
  *
- * The two password fields are compared client-side purely as an
- * immediate typo check -- the backend only ever receives one password
- * and enforces the real minimum-length rule itself.
- *
- * API_BASE_URL comes from ../config.js, loaded before this script.
+ * (An earlier version deliberately skipped the up-front check, worried it
+ * was a token-guessing oracle. It isn't one: the token is 256 random
+ * bits, and anyone holding a live one could simply use it. Telling an
+ * honest person their link expired before they type a password is worth
+ * more.)
  */
+(function () {
+    const TOKEN_KEY = 'abstractly.resetToken';
+    const token = Auth.takeLinkToken(TOKEN_KEY);
+    const form = document.getElementById('resetForm');
+    const passwordInput = document.getElementById('password');
+    const button = document.getElementById('submitButton');
+    const statusEl = document.getElementById('formStatus');
+    let person = { email: '', name: '' };
 
-const resetToken = new URLSearchParams(window.location.search).get('token');
+    const passwordField = Auth.setupPasswordField({
+        input: passwordInput,
+        toggle: document.getElementById('passwordToggle'),
+        rulesList: document.getElementById('passwordRules'),
+        context: () => person,
+    });
+    passwordInput.addEventListener('input', () => Auth.setFieldError(passwordInput, ''));
 
-const resetFormEl = document.getElementById('resetForm');
-const resetMessageEl = document.getElementById('resetMessage');
-
-// No token in the URL at all -- someone opened this page directly, or
-// a mail client mangled the link. Say so immediately rather than
-// letting them type a password into a form that can only fail.
-if (!resetToken) {
-    resetFormEl.hidden = true;
-    resetMessageEl.textContent = 'This reset link is invalid or incomplete. Request a new one below.';
-    resetMessageEl.classList.add('is-error');
-    document.getElementById('resetRequestNewLink').hidden = false;
-}
-
-resetFormEl.addEventListener('submit', async (e) => {
-    e.preventDefault();
-
-    const passwordInput = document.getElementById('resetPassword');
-    const confirmInput = document.getElementById('resetPasswordConfirm');
-    const submitBtn = document.getElementById('resetSubmitBtn');
-
-    const password = passwordInput.value;
-    const confirmation = confirmInput.value;
-
-    resetMessageEl.textContent = '';
-    resetMessageEl.classList.remove('is-error');
-
-    if (password !== confirmation) {
-        resetMessageEl.textContent = "Those passwords don't match.";
-        resetMessageEl.classList.add('is-error');
-        confirmInput.value = '';
-        confirmInput.focus();
-        return;
-    }
-    if (password.length < 8) {
-        resetMessageEl.textContent = 'New password must be at least 8 characters.';
-        resetMessageEl.classList.add('is-error');
-        passwordInput.focus();
-        return;
+    function dead(status) {
+        if (status !== 'expired' && status !== 'superseded' && status !== 'used') Auth.forgetLinkToken(TOKEN_KEY);
+        Auth.showDeadLink('reset', status, token);
     }
 
-    submitBtn.disabled = true;
-    submitBtn.textContent = 'Saving...';
-
-    try {
-        let response;
+    (async function check() {
+        if (!token) return dead('invalid');
         try {
-            response = await fetch(`${API_BASE_URL}/auth/reset-password`, {
+            const { ok, data } = await Auth.request('/auth/link-status', {
+                // POST, not a query string: the token must never reach server logs.
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ token: resetToken, new_password: password }),
+                body: { kind: 'reset', token },
+                onSlow: () => Auth.setStatus(document.getElementById('loadingSlow'), 'The server may be waking up. This can take up to a minute.'),
             });
-        } catch (networkErr) {
-            throw new Error("Couldn't reach the server. Check your connection and try again.");
-        }
-        const data = await response.json().catch(() => ({}));
-
-        if (!response.ok) {
-            const err = new Error(data.error || 'Something went wrong. Please try again.');
-            // A 400 here means the token itself is dead (invalid,
-            // already used, or expired) -- retrying with the same link
-            // can never succeed, so hide the form and offer a fresh
-            // request instead of inviting another doomed attempt.
-            err.tokenDead = response.status === 400 && !data.error?.includes('8 characters');
-            throw err;
-        }
-
-        // Straight to login rather than showing a success state here --
-        // the person came to this page to get back in, so hand them the
-        // sign-in form with their new password already active. login.js
-        // reads ?reset=1 and shows the confirmation there.
-        window.location.href = 'login.html?reset=1';
-    } catch (err) {
-        resetMessageEl.textContent = err.message;
-        resetMessageEl.classList.add('is-error');
-        if (err.tokenDead) {
-            resetFormEl.hidden = true;
-            document.getElementById('resetRequestNewLink').hidden = false;
-        } else {
-            submitBtn.disabled = false;
-            submitBtn.textContent = 'Set new password';
-            passwordInput.value = '';
-            confirmInput.value = '';
+            if (!ok) throw new Error(data.error || 'Something went wrong. Please refresh the page.');
+            if (data.status !== 'valid') return dead(data.status);
+            person = { email: data.email || '', name: data.first_name || '' };
+            document.getElementById('username').value = person.email;
+            if (data.first_name && data.first_name !== 'there') {
+                document.getElementById('greeting').textContent =
+                    `Hi ${data.first_name}. Pick a new password. This also signs you out on your other devices.`;
+            }
+            passwordField.refresh();
+            Auth.showView('form');
             passwordInput.focus();
+        } catch (err) {
+            Auth.setStatus(document.getElementById('loadingSlow'), err.message, 'error');
         }
-    }
-});
+    })();
+
+    Auth.handleSubmit(form, button, 'Saving...', async () => {
+        Auth.setStatus(statusEl, '');
+        if (!passwordField.check()) {
+            Auth.setFieldError(passwordInput, 'Pick a password that meets the rules above.');
+            passwordInput.focus();
+            return false;
+        }
+        try {
+            const { ok, data } = await Auth.request('/auth/reset-password', {
+                method: 'POST',
+                body: { token, new_password: passwordInput.value, remember: document.getElementById('remember').checked },
+                onSlow: () => Auth.setStatus(statusEl, 'Still working. The server may be waking up, which can take up to a minute.'),
+            });
+            if (ok) {
+                Auth.forgetLinkToken(TOKEN_KEY);
+                if (data.logged_in && data.token) {
+                    Auth.finishLogin(data);
+                    return true;
+                }
+                Auth.clearToken();
+                Auth.showView('done');
+                return false;
+            }
+            if (data.link_status) {
+                dead(data.link_status);
+                return false;
+            }
+            Auth.setFieldError(passwordInput, data.error || 'Something went wrong. Please try again.');
+            passwordInput.focus();
+        } catch (err) {
+            Auth.setStatus(statusEl, err.message, 'error');
+        }
+        return false;
+    });
+})();

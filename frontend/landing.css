@@ -29,14 +29,8 @@
     --radius-lg: 4px;
     --radius-xl: 6px;
 
-    --lux-line-dark: rgba(246, 243, 236, 0.14);
-    --lux-line-dark-faint: rgba(246, 243, 236, 0.08);
-
-    /* Same color as --lux-accent (#b68a4e), as a bare "r, g, b" triplet
-       for canvas/rgba() contexts (landing.js's cursor-reactive light
-       bands) and CSS translucent fills alike. Keep in sync with
-       design-system.css's --lux-accent by hand. */
-    --lux-accent-rgb: 182, 138, 78;
+    /* --lux-line-dark, --lux-line-dark-faint and --lux-accent-rgb live in
+       design-system.css (shared with app/auth.css). */
 
     /* System monospace only — no font request, no new network cost.
        Used sparingly (ticker labels, timestamps, capability chips) for
@@ -242,22 +236,23 @@ body.scrolled .site-header {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    font-weight: 600;
+    font-weight: 500;
     font-size: 1.0625rem;
-    letter-spacing: -0.02em;
+    letter-spacing: -0.025em;
     color: var(--lux-ivory);
     white-space: nowrap;
     text-decoration: none;
 }
 
-/* ---- Logo mark: a rounded square in the accent color holding two
-   short horizontal lines, the bottom one shorter and offset -- two
-   records being reconciled, the product's whole premise, as a mark.
-   Solid fills only (no hairline strokes) so it stays crisp at 16px,
-   including as the favicon (see favicon.svg, same mark). ---- */
+/* ---- Logo mark: a capital A built from seven stacked rent-roll rows,
+   the crossbar row shifted right -- a caught mismatch. Fill is
+   currentColor, so it always matches the wordmark. Sized in px, not
+   rem, on purpose: the SVG is pixel-hinted (1px bars on whole pixels)
+   for exactly 24x19, and any other size puts the bars on fractional
+   pixels and blurs them. Source: design/logo/build.py. ---- */
 .landing-logo-mark {
-    width: 1.375rem;
-    height: 1.375rem;
+    width: 24px;
+    height: 19px;
     flex-shrink: 0;
 }
 
@@ -771,8 +766,8 @@ body.scrolled .site-header {
     font-weight: 700;
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    color: #e0b374;
-    border: 1px solid #e0b374;
+    color: var(--lux-warning-on-dark);
+    border: 1px solid var(--lux-warning-on-dark);
     border-radius: var(--radius-full);
     padding: 0.1875rem 0.5rem;
 }
@@ -804,7 +799,7 @@ body.scrolled .site-header {
 }
 
 .sample-disc-high { border-left-color: var(--lux-error-on-dark); }
-.sample-disc-medium { border-left-color: #e0b374; }
+.sample-disc-medium { border-left-color: var(--lux-warning-on-dark); }
 
 .sample-disc-head {
     display: flex;
@@ -824,7 +819,7 @@ body.scrolled .site-header {
 }
 
 .sample-sev-high { color: var(--lux-error-on-dark); background: rgba(154, 59, 59, 0.22); }
-.sample-sev-medium { color: #e0b374; background: rgba(166, 116, 31, 0.22); }
+.sample-sev-medium { color: var(--lux-warning-on-dark); background: rgba(166, 116, 31, 0.22); }
 
 .sample-disc-type {
     font-size: 0.8125rem;
@@ -1156,6 +1151,11 @@ body.scrolled .site-header {
     line-height: 1.65;
 }
 
+.faq-item p a {
+    color: inherit;
+    text-decoration: underline;
+}
+
 /* ===================== Dark statement section (final CTA) ===================== */
 
 .statement {
@@ -1301,6 +1301,21 @@ body.scrolled .site-header {
     display: flex;
 }
 
+.demo-form-alt {
+    margin-top: 1.25rem;
+    font-size: 0.875rem;
+    color: rgba(246, 243, 236, 0.6);
+}
+
+.demo-form-alt a {
+    color: rgba(246, 243, 236, 0.85);
+    text-decoration: underline;
+}
+
+.demo-form-alt a:hover {
+    color: var(--lux-ivory);
+}
+
 .demo-form-confirm svg {
     width: 1.25rem;
     height: 1.25rem;
@@ -1340,14 +1355,17 @@ body.scrolled .site-header {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    font-weight: 700;
+    font-weight: 500;
+    letter-spacing: -0.025em;
     color: var(--lux-ivory);
     font-size: 0.9375rem;
 }
 
+/* Same pixel-hinted mark as the header; see .landing-logo-mark. */
 .footer-logo-mark {
-    width: 1.25rem;
-    height: 1.25rem;
+    width: 24px;
+    height: 19px;
+    flex-shrink: 0;
     color: var(--lux-ivory);
 }
 

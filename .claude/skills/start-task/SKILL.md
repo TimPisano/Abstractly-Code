@@ -88,8 +88,10 @@ branch, so the reviewer sees it):
 - **Approach** — numbered steps.
 - **Files to change** / **Files not to touch**.
 - **Team isolation & roles** — which routes/queries are touched and how
-  each is scoped (rule 3). If it needs document-level isolation that
-  `main` lacks, say so and build on `feature/team-isolation`'s `team_id`.
+  each is scoped (rule 3). `main` scopes document tables by `team_id`;
+  scope any new table, query, or cache key the same way, using the
+  authenticated caller's `team_id`, and add a case to
+  `tests/test_team_isolation.py`.
 - **Feature flag** — if not tester-ready, the env var (default off).
 - **Verification** — the tests to add, and for UI work the pages and
   widths for headless screenshots.

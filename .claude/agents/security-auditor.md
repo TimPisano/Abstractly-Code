@@ -16,12 +16,14 @@ isolated throwaway database only — never prod, tester, or demo.
 The question for every route the change touches: *can a logged-in user
 on team A read, change, or delete team B's data?*
 
-- `main` today: `teams` + `users.team_id` exist but scope only billing/
-  quota (`usage_events`, `/teams`). Document tables (`leases`,
-  `discrepancies`, `alerts`, `tasks`, comments, assignments, caches) are
-  **not** scoped. `feature/team-isolation` is the branch adding that.
-  Say which model the branch is on; don't grade a pre-isolation branch
-  against a model it couldn't have.
+- `main` today: document tables (`leases`, `discrepancies`, `alerts`,
+  `tasks`, comments, assignments, tags) carry `team_id`, and cache keys
+  include it — merged as `3cff20b` (`feature/team-isolation`). Every
+  document query must take the *authenticated* caller's `team_id`
+  (`auth.current_team_id()`), never one from the request, so an
+  unscoped document query or route is a real finding. A branch cut
+  before `3cff20b` couldn't have this — say so rather than grading it
+  against a model it didn't have.
 - For every query function in `database.py` the diff touches: does it
   take a team parameter, and does every caller in `api.py` pass the
   **authenticated** user's team (from the session/token), never a value

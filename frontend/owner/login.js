@@ -74,6 +74,12 @@ document.getElementById('ownerLoginForm').addEventListener('submit', async (e) =
             throw new Error('This account does not have owner access.');
         }
 
+        // Kept for owner-app.js to send as a bearer token: the session
+        // cookie is cross-site and Safari drops it, so cookie-only meant
+        // the owner console never worked in Safari. Per-tab.
+        try {
+            if (data.token) sessionStorage.setItem('ownerAuthToken', data.token);
+        } catch (e) { /* storage blocked: cookie-only, as before */ }
         clearTimeout(coldStartHintTimer);
         window.location.href = 'index.html';
     } catch (err) {

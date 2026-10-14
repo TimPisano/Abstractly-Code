@@ -57,6 +57,24 @@
         bootLoadingEl.style.display = 'none';
     }
 
+    // Sign out: ends the cookie session server-side and forgets the
+    // token in BOTH storages ("Keep me signed in" keeps it in
+    // localStorage, which would otherwise survive this). Other open tabs
+    // using that same localStorage token get bounced to the login page
+    // on their next request.
+    const signOutBtn = document.getElementById('signOutBtn');
+    if (signOutBtn) {
+        signOutBtn.addEventListener('click', async () => {
+            signOutBtn.disabled = true;
+            try {
+                await fetch(`${API_BASE_URL}/auth/logout`, { method: 'POST', credentials: 'include' });
+            } catch (e) { /* offline: still forget the token locally */ }
+            forgetTokenHere();
+            if (tabChannel) tabChannel.postMessage({ type: 'signed-out' });
+            window.location.replace('login.html?signedout=1');
+        });
+    }
+
     function grant(session) {
         // Stashed globally (not fetched again per-module) so tasks-view.js,
         // messaging.js, and the Today dashboard rebuild can all know "who
@@ -135,6 +153,96 @@
         scripts.forEach((script) => document.body.appendChild(script));
     }
 
+    // ---- Sharing a login between tabs --------------------------------
+    // Without "Keep me signed in" the token lives in THIS tab's
+    // sessionStorage, which a new tab doesn't get -- so opening the app
+    // in a second tab (or a link in a new tab) bounced to the login page.
+    // (The session-cookie fallback can't cover it: the API is on another
+    // site, and Safari and Chrome block that cookie.) So a tab with no
+    // token asks the others, over a same-origin BroadcastChannel, and
+    // any signed-in tab answers with its token. It never leaves this
+    // origin -- the same scripts that could read it from sessionStorage
+    // are the only ones that can hear it. Sign-out is broadcast the same
+    // way, so it ends the login in every tab, not just this one.
+    const TAB_CHANNEL = 'abstractly-auth';
+    const tabChannel = ('BroadcastChannel' in window) ? new BroadcastChannel(TAB_CHANNEL) : null;
+
+    function storedToken() {
+        try {
+            return sessionStorage.getItem('authToken') || localStorage.getItem('authToken');
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function forgetTokenHere() {
+        try {
+            sessionStorage.removeItem('authToken');
+            localStorage.removeItem('authToken');
+        } catch (e) { /* storage blocked */ }
+    }
+
+    if (tabChannel) {
+        tabChannel.addEventListener('message', (event) => {
+            const msg = event.data || {};
+            if (msg.type === 'token-request') {
+                let mine = null;
+                try { mine = sessionStorage.getItem('authToken'); } catch (e) { /* blocked */ }
+                if (mine && window.CURRENT_USER) tabChannel.postMessage({ type: 'token', id: msg.id, token: mine });
+            } else if (msg.type === 'signed-out') {
+                forgetTokenHere();
+                window.location.replace('login.html?signedout=1');
+            }
+        });
+    }
+
+    function askOtherTabsForToken(waitMs) {
+        if (!tabChannel) return Promise.resolve(null);
+        return new Promise((resolve) => {
+            const id = Math.random().toString(36).slice(2);
+            const onMessage = (event) => {
+                const msg = event.data || {};
+                if (msg.type === 'token' && msg.id === id && msg.token) {
+                    tabChannel.removeEventListener('message', onMessage);
+                    clearTimeout(timer);
+                    resolve(msg.token);
+                }
+            };
+            const timer = setTimeout(() => {
+                tabChannel.removeEventListener('message', onMessage);
+                resolve(null);
+            }, waitMs);
+            tabChannel.addEventListener('message', onMessage);
+            tabChannel.postMessage({ type: 'token-request', id });
+        });
+    }
+
+    // Back button after signing out (or after this login expired / was
+    // revoked elsewhere): browsers restore the whole page from the
+    // back/forward cache WITHOUT re-running this file, which would put
+    // the last person's dashboard back on screen on a shared computer.
+    // So a restored page hides itself and re-checks the session first.
+    window.addEventListener('pageshow', async (event) => {
+        if (!event.persisted) return;
+        shellEl.style.display = 'none';
+        const token = storedToken();
+        if (!token) {
+            window.location.replace('login.html');
+            return;
+        }
+        try {
+            const { data } = await fetchJson(`${API_BASE_URL}/auth/session`, {
+                credentials: 'include', headers: { 'Authorization': `Bearer ${token}` },
+            });
+            if (data.authenticated) {
+                shellEl.style.display = '';
+                return;
+            }
+        } catch (e) { /* unreachable: fail closed */ }
+        forgetTokenHere();
+        window.location.replace('login.html?expired=1');
+    });
+
     // access-gate.js runs before api.js even loads (it's the thing that
     // decides whether api.js gets loaded at all), so it can't share
     // apiRequest()'s network-failure handling and needs its own copy of
@@ -157,9 +265,16 @@
     }
 
     (async function init() {
-        let session = { authenticated: false };
+        let session = { authenticated: null };
+        let token = null;
         try {
-            const token = sessionStorage.getItem('authToken');
+            token = storedToken();
+            if (!token) {
+                token = await askOtherTabsForToken(400);
+                if (token) {
+                    try { sessionStorage.setItem('authToken', token); } catch (e) { /* blocked */ }
+                }
+            }
             const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
             const { data } = await fetchJson(`${API_BASE_URL}/auth/session`, { credentials: 'include', headers });
             session = data;
@@ -172,6 +287,14 @@
             grant(session);
             return;
         }
-        window.location.href = 'login.html';
+        // A stored token the server no longer accepts (it expired, or a
+        // password reset signed this device out) -- drop it and say why,
+        // rather than a bare login form with no explanation.
+        if (token && session.authenticated === false) {
+            forgetTokenHere();
+            window.location.replace('login.html?expired=1');
+            return;
+        }
+        window.location.replace('login.html');
     })();
 })();
