@@ -264,7 +264,7 @@
         "total": 60,
         "through": "10/01/2026",
         "kind": "confirmed",
-        "basis": "Unit 309 took a $480 dependent deduction it isn't entitled to: tenant rent $918 should be $930, so HAP is overpaid by the difference. Unit 309 is also certified at household size 2 instead of 1 (which would leave one person in a 2BR - occupancy standards are out of scope for this demo)."
+        "basis": "Unit 309 took a $480 dependent deduction it isn't entitled to: tenant rent $918 should be $930, so HAP is overpaid by the difference. Unit 309 is also certified at household size 2 instead of 1 (which would leave one person in a 2BR - occupancy standards are out of scope for this demo)"
       }
     },
     {
@@ -337,7 +337,7 @@
         "total": 11570,
         "through": "10/01/2026",
         "kind": "potential",
-        "basis": "Household may never have been eligible; HAP since move-in is at risk (amount uses the current HAP for every month)"
+        "basis": "Household may never have been eligible; HAP since move-in is at risk (amount uses current HAP for every month)"
       }
     }
   ],

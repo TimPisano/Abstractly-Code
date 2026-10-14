@@ -133,7 +133,7 @@ Totals as of 10/01/2026: **$1,451 confirmed** (tenant overcharges owed back, plu
 - **Rule it breaks:** Tenant rent must equal the amount on the current effective certification. When an interim decrease is processed, the new rent applies from its effective date.
 - **Citation:** HUD Handbook 4350.3, Ch. 7 (interim recertifications)
 - **Where to look:** `unit_304_brooks_t.pdf` p.6, `unit_304_brooks_t.pdf` p.10, `oak_hollow_rent_roll_40unit.xlsx` (Unit 304)
-- **Dollar impact:** $935 confirmed per rent roll ($187/mo x 5 mo). Tenant overcharged $187/mo; owed back to the tenant (no tenant ledger on file to cross-check).
+- **Dollar impact:** $935 confirmed ($187/mo x 5 mo). Tenant overcharged $187/mo per rent roll; owed back to the tenant (no tenant ledger on file to cross-check).
 
 ### E10 - Unit 307: Student enrolled at an institution without exemption or parental-income documentation
 

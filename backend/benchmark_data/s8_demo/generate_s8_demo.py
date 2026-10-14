@@ -704,11 +704,12 @@ def build_findings(by_unit, calcs, cites):
         f, pages = cites[unit]
         return [{"file": f"tenant_files/{f}", "page": pages[k], "document": k} for k in keys]
 
-    def impact(monthly, start, basis, potential=False):
+    def impact(monthly, start, basis, kind="confirmed"):
+        # kind can be "confirmed", "potential", or "exposure"
         months = months_between(start, REVIEW_DATE)
         return {"monthly": monthly, "months": months, "total": monthly * months,
                 "through": fmt_date(date(REVIEW_DATE.year, REVIEW_DATE.month, 1)),
-                "kind": "potential" if potential else "confirmed", "basis": basis}
+                "kind": kind, "basis": basis}
 
     F = []
     h = by_unit["105"]; c = calcs["105"]["cert"]
@@ -716,9 +717,9 @@ def build_findings(by_unit, calcs, cites):
               "title": "Spouse did not sign the annual certification",
               "detail": f"Doreen Whitfield (Spouse, age {age_on(d(h['members'][1]['dob']), d(h['cert']['effective']))}) has a blank signature and date on the {fmt_date(d(h['cert']['effective']))} certification. Only the head and the agent signed.",
               "rule": "Every adult household member (head, spouse, co-head, and other adults) must sign the certification. Without all signatures it is not a valid certification, and assistance paid on it can be recovered.",
-              "citation": "HUD Handbook 4350.3, Ch. 7 (recertification) and the HUD-50059 signature requirements",
+              "citation": "HUD Handbook 4350.3, Ch. 7 (chapter-level; paragraph unverified) and the HUD-50059 signature requirements",
               "evidence": cite("105", "certification"),
-              "dollar_impact": impact(c["hap"], d(h["cert"]["effective"]), "HAP paid on an invalid certification is at risk of recovery", True)})
+              "dollar_impact": impact(c["hap"], d(h["cert"]["effective"]), "HAP paid on an invalid certification is at risk; usual remedy is obtaining the signature, not recovery of funds already paid", "exposure")})
 
     F.append({"id": "E2", "units": ["108"], "severity": "medium", "category": "Missing consent form",
               "title": "Adult son never signed HUD-9887 / 9887-A",
@@ -732,8 +733,8 @@ def build_findings(by_unit, calcs, cites):
     F.append({"id": "E3", "units": ["108"], "severity": "medium", "category": "Stale verification",
               "title": "Head's employment verification was too old when used",
               "detail": f"Grace Okafor's employment verification was received {fmt_date(rec)}; the certification it supports was signed {fmt_date(d(h['cert']['signed']))} and took effect {fmt_date(eff)}: {(d(h['cert']['signed']) - rec).days} days from receipt to signing and {(eff - rec).days} days to the effective date, both past the {VERIFICATION_VALID_DAYS}-day limit.",
-              "rule": f"Third-party verifications are valid for {VERIFICATION_VALID_DAYS} days from the date the owner receives them. Older verifications must be redone before the certification is completed.",
-              "citation": "HUD Handbook 4350.3, Ch. 5 (verification); see docs/research/section8.md §2",
+              "rule": f"Third-party verifications are valid for {VERIFICATION_VALID_DAYS} days from a specified point. Older verifications must be redone before the certification is completed. (Note: start point for the {VERIFICATION_VALID_DAYS}-day window—whether receipt, signature, or effective date—is unverified.)",
+              "citation": "HUD Handbook 4350.3, Ch. 5 (verification)",
               "evidence": cite("108", "verification_1", "certification"), "dollar_impact": None})
 
     h = by_unit["203"]; cert, true = calcs["203"]["cert"], calcs["203"]["true"]
@@ -741,19 +742,19 @@ def build_findings(by_unit, calcs, cites):
     F.append({"id": "E4", "units": ["203"], "severity": "high", "category": "Unresolved EIV discrepancy",
               "title": "EIV shows a second employer that is not on the certification",
               "detail": f"The EIV report pulled {fmt_date(d(h['eiv']['pulled']))} shows wages from Lakeside Logistics, Inc. ($3,120 in each of Q4 2025 and Q1 2026). The certification lists only Riverton Public Library income, and the discrepancy-resolution section is blank.",
-              "rule": "Owners must review EIV income reports and resolve every income discrepancy with the tenant, documenting the resolution in writing in the file. EIV discrepancies are the most common MOR finding.",
-              "citation": "24 CFR 5.233; HUD Handbook 4350.3, Ch. 9 (EIV)",
+              "rule": "Owners must review EIV income reports and resolve every income discrepancy with the tenant, documenting the resolution in writing in the file.",
+              "citation": "24 CFR 5.233; HUD Handbook 4350.3, Ch. 9 (chapter-level; paragraph unverified) (EIV)",
               "evidence": cite("203", "eiv", "certification"),
               "dollar_impact": impact(diff, d(h["cert"]["effective"]),
-                                      f"If the Lakeside wages are current (~{money(h['unreported_income']['annual'])}/yr), tenant rent is understated by {money(diff)}/mo ({money(cert['tenant_rent'])} certified vs {money(true['tenant_rent'])}) and HAP is overpaid by the same amount", True)})
+                                      f"If the Lakeside wages are current (~{money(h['unreported_income']['annual'])}/yr), tenant rent is understated by {money(diff)}/mo ({money(cert['tenant_rent'])} certified vs {money(true['tenant_rent'])}) and HAP is overpaid by the same amount", "potential")})
 
     h = by_unit["206"]; cert, true = calcs["206"]["cert"], calcs["206"]["true"]
     diff = cert["tenant_rent"] - true["tenant_rent"]
     F.append({"id": "E5", "units": ["206"], "severity": "high", "category": "Rent calculation error",
               "title": "Dependent and child-care deductions verified but not taken",
               "detail": f"The file verifies two dependent children and {money(h['childcare']['annual'])}/yr of child care, but the certification shows $0 for both deductions. Adjusted income is {money(cert['adjusted'])} on the cert; it should be {money(true['adjusted'])}.",
-              "rule": f"Adjusted income must subtract ${DEPENDENT_DEDUCTION} per dependent and reasonable child-care expenses that enable a family member to work. TTP is the greater of 30% of monthly adjusted income, 10% of monthly gross income, or the minimum rent.",
-              "citation": "24 CFR 5.611 (adjusted income), 5.628 (TTP); HUD Handbook 4350.3, Ch. 5",
+              "rule": f"Adjusted income must subtract ${DEPENDENT_DEDUCTION} per dependent (pre-HOTMA; post-HOTMA rules differ) and reasonable child-care expenses that enable a family member to work. TTP is the greater of 30% of monthly adjusted income, 10% of monthly gross income, or the minimum rent.",
+              "citation": "24 CFR 5.611 (adjusted income; pre-HOTMA version), 5.628 (TTP); HUD Handbook 4350.3, Ch. 5",
               "evidence": cite("206", "certification", "household", "verification_childcare"),
               "dollar_impact": impact(diff, d(h["cert"]["effective"]),
                                       f"Tenant overcharged {money(diff)}/mo ({money(cert['tenant_rent'])} charged vs {money(true['tenant_rent'])} correct); owed back to the tenant")})
@@ -762,10 +763,10 @@ def build_findings(by_unit, calcs, cites):
     F.append({"id": "E6", "units": ["207"], "severity": "high", "category": "Late recertification",
               "title": "Annual recertification is 2 months overdue and reminders were never sent",
               "detail": f"The annual recertification was due {fmt_date(due)}. The 120-day notice went out {fmt_date(d(h['notices']['120']))}; the tenant never responded and no 90-, 60-, or 30-day reminder was sent. As of {fmt_date(REVIEW_DATE)} the household is still on the {fmt_date(d(h['cert']['effective']))} certification.",
-              "rule": "Owners must send the initial notice 120 days before the recertification date and reminders at 90 and 60 days (plus a 30-day notice) if the tenant has not responded, and complete the recertification by the anniversary date.",
+              "rule": "HUD Handbook directs owners to send the initial notice 120 days before the recertification date and reminders at 90 and 60 days (plus a 30-day notice) if the tenant has not responded, and complete the recertification by the anniversary date (cadence per secondary source, unverified).",
               "citation": "HUD Handbook 4350.3, Ch. 7 (annual recertification notices and deadlines)",
               "evidence": cite("207", "notices", "certification"),
-              "dollar_impact": impact(c["hap"], due, "HAP paid after the anniversary date on an expired certification is at risk", True)})
+              "dollar_impact": impact(c["hap"], due, "HAP paid after the anniversary date on an expired certification is at risk, but not necessarily recoverable in the normal case", "exposure")})
 
     h = by_unit["301"]; cert, true = calcs["301"]["cert"], calcs["301"]["true"]
     limit = LOW_INCOME_LIMIT[len(h["members"])]
@@ -775,17 +776,17 @@ def build_findings(by_unit, calcs, cites):
               "rule": "Annual income includes all adult members' income. At admission, household income may not exceed the applicable low-income limit for the household size.",
               "citation": "24 CFR 5.609 (annual income), 5.653 (income eligibility at admission); HUD Handbook 4350.3, Ch. 3",
               "evidence": cite("301", "application", "verification_2", "certification"),
-              "dollar_impact": impact(cert["hap"], d(h["cert"]["effective"]), "Household was not eligible; all HAP since move-in is at risk", True)})
+              "dollar_impact": impact(cert["hap"], d(h["cert"]["effective"]), "Household was not eligible; all HAP since move-in is at risk (amount uses current HAP for every month)", "potential")})
 
     h304, h309 = by_unit["304"], by_unit["309"]; c309, t309 = calcs["309"]["cert"], calcs["309"]["true"]
     F.append({"id": "E8", "units": ["304", "309"], "severity": "high", "category": "Duplicate household member",
               "title": "Same child counted in two assisted households",
               "detail": f"Jaylen Brooks (SSN {JAYLEN['ssn']}, DOB {fmt_date(d(JAYLEN['dob']))}) is a dependent on both the Unit 304 certification (mother) and the Unit 309 certification (father). Unit 309's own custody summary says he spends 2 of 7 nights there, so he belongs to Unit 304 only.",
               "rule": "A person may be a member of only one assisted household. For joint custody, the child is counted in the household where they live more than 50% of the time, and only that household takes the dependent deduction.",
-              "citation": "24 CFR 5.216 (SSN disclosure lets duplicates be caught); HUD Handbook 4350.3, Ch. 3 (household composition, joint custody)",
+              "citation": "HUD Handbook 4350.3, Ch. 3 (household composition, joint custody; chapter-level, paragraph unverified). Supporting evidence: 24 CFR 5.216 (SSN disclosure helps detect duplicates).",
               "evidence": cite("304", "household", "certification") + cite("309", "household", "certification", "custody"),
               "dollar_impact": impact(t309["tenant_rent"] - c309["tenant_rent"], d(h309["cert"]["effective"]),
-                                      f"Unit 309 took a ${DEPENDENT_DEDUCTION} dependent deduction it isn't entitled to: tenant rent {money(c309['tenant_rent'])} should be {money(t309['tenant_rent'])}, so HAP is overpaid by the difference. Unit 309 is also certified at household size 2 instead of 1 (which would leave one person in a 2BR - occupancy standards are out of scope for this demo).")})
+                                      f"Unit 309 took a ${DEPENDENT_DEDUCTION} dependent deduction it isn't entitled to: tenant rent {money(c309['tenant_rent'])} should be {money(t309['tenant_rent'])}, so HAP is overpaid by the difference. Unit 309 is also certified at household size 2 instead of 1 (which would leave one person in a 2BR - occupancy standards are out of scope for this demo)")})
     h = by_unit["304"]; c = calcs["304"]["cert"]
     diff = h["rent_roll_tenant_rent"] - c["tenant_rent"]
     F.append({"id": "E9", "units": ["304"], "severity": "high", "category": "Rent roll vs certification",
@@ -794,16 +795,16 @@ def build_findings(by_unit, calcs, cites):
               "rule": "Tenant rent must equal the amount on the current effective certification. When an interim decrease is processed, the new rent applies from its effective date.",
               "citation": "HUD Handbook 4350.3, Ch. 7 (interim recertifications)",
               "evidence": cite("304", "certification", "lease") + [{"file": "rent_roll/oak_hollow_rent_roll_40unit.xlsx", "row": "Unit 304"}],
-              "dollar_impact": impact(diff, d(h["cert"]["effective"]), f"Tenant overcharged {money(diff)}/mo; owed back to the tenant")})
+              "dollar_impact": impact(diff, d(h["cert"]["effective"]), f"Tenant overcharged {money(diff)}/mo per rent roll; owed back to the tenant (no tenant ledger on file to cross-check)")})
 
     h = by_unit["307"]; c = calcs["307"]["cert"]
     F.append({"id": "E10", "units": ["307"], "severity": "critical", "category": "Ineligible student",
-              "title": "Full-time student household with no exemption or parental-income documentation",
-              "detail": "Tyler Ostrander (age 20) is a full-time student living alone. He is unmarried, not a veteran, not disabled, and has no dependent child. The file has no independent-student documentation and no certification of his parents' income.",
-              "rule": "A student under 24 who is not a veteran, not married, has no dependent child, and is not a person with disabilities is ineligible for Section 8 assistance unless the student is individually income-eligible and either is independent of their parents or the parents are also income-eligible - and that must be documented.",
+              "title": "Student enrolled at an institution without exemption or parental-income documentation",
+              "detail": "Tyler Ostrander (age 20) is enrolled at an institution of higher education and living alone. He is unmarried, not a veteran, not disabled, and has no dependent child. The file has no independent-student documentation and no certification of his parents' income.",
+              "rule": "A student under 24 who is not a veteran, not married, has no dependent child, and is not a person with disabilities is ineligible for Section 8 assistance unless the student is individually income-eligible and either is independent of their parents or the parents are also income-eligible - and that must be documented. (Simplified rule; confirm with current guidance. Note: disability exception applies narrowly to those receiving Section 8 assistance as of 11/30/2005.)",
               "citation": "24 CFR 5.612; HUD Handbook 4350.3, Ch. 3 (student eligibility)",
               "evidence": cite("307", "student", "household", "certification"),
-              "dollar_impact": impact(c["hap"], d(h["move_in"]), "Household may never have been eligible; HAP since move-in is at risk (amount uses the current HAP for every month)", True)})
+              "dollar_impact": impact(c["hap"], d(h["move_in"]), "Household may never have been eligible; HAP since move-in is at risk (amount uses current HAP for every month)", "potential")})
     return F
 
 
@@ -944,6 +945,7 @@ def write_readme(findings, cites, rows):
                   f"- **Dollar impact:** {dol(f['dollar_impact'])}", ""]
     confirmed = sum(f["dollar_impact"]["total"] for f in findings if f["dollar_impact"] and f["dollar_impact"]["kind"] == "confirmed")
     potential = sum(f["dollar_impact"]["total"] for f in findings if f["dollar_impact"] and f["dollar_impact"]["kind"] == "potential")
+    exposure = sum(f["dollar_impact"]["total"] for f in findings if f["dollar_impact"] and f["dollar_impact"]["kind"] == "exposure")
     file_rows = "\n".join(
         f"| {u} | `tenant_files/{cites[u][0]}` | {len(cites[u][1])} | {', '.join(f['id'] for f in findings if u in f['units']) or '**clean** (control)'} |"
         for u in sorted(cites))
@@ -956,6 +958,8 @@ demoing affordable-housing file review. Nothing here is real: every person,
 employer, address, case number, and dollar figure was invented. SSNs all use
 the never-issued `000` area number (`000-00-0001` to `000-00-0021`).
 Forms are simplified models of the HUD forms, not the official forms.
+
+**⚠️ CRITICAL SECURITY NOTE:** These files contain full (fictional) SSNs in 000-range and income/asset verification pages. **Do NOT upload these files to any Abstractly deployment until the PII guard feature (`feature/s8-pii-guard`, currently in development) is merged.** The product will not yet safely redact or filter PII before display or export.
 
 - **Property:** {PROPERTY_NAME}, {PROPERTY_ADDRESS}
 - **Owner:** {OWNER_ENTITY} · **Agent:** {MANAGEMENT_CO}
@@ -991,9 +995,7 @@ consistent numbers and nothing planted.
 
 ## Planted errors
 
-Totals as of {fmt_date(REVIEW_DATE)}: **{money(confirmed)} confirmed** (tenant
-overcharges owed back, plus HAP overpaid on the duplicate dependent), and **{money(potential)} potential** subsidy at risk
-(HAP that HUD could recover, or understated rent if the EIV wages hold up).
+Totals as of {fmt_date(REVIEW_DATE)}: **{money(confirmed)} confirmed** (tenant overcharges owed back, plus HAP overpaid on the duplicate dependent), **{money(potential)} potential** subsidy at risk (HAP that HUD could recover, or understated rent if the EIV wages hold up), and **{money(exposure)} exposure** (HAP at risk due to procedural issues where normal remedies may not involve recovery—e.g., obtaining missing signatures).
 
 {chr(10).join(lines)}
 ## Rules the demo applies
@@ -1008,10 +1010,7 @@ limits, contract rents, and utility allowances are **made up** (2-person low
 income limit {money(LOW_INCOME_LIMIT[2])}; 1BR/2BR/3BR contract rents
 {money(UNIT_TYPES['1BR']['contract_rent'])}/{money(UNIT_TYPES['2BR']['contract_rent'])}/{money(UNIT_TYPES['3BR']['contract_rent'])}).
 
-⚠️ The rule summaries and citations are paraphrased from public sources
-(HUD Handbook 4350.3, 24 CFR Part 5, and `docs/research/section8.md`). They
-have **not been checked by a compliance practitioner**. Confirm the
-citations before showing this to anyone who does this work for a living.
+⚠️ **All rule statements in these error descriptions have NOT been checked by a compliance practitioner.** The summaries and citations are paraphrased from public sources (HUD Handbook 4350.3, 24 CFR Part 5). Many citations include explicit caveats ("chapter-level", "paragraph unverified", "unverified", "simplified; confirm") marking uncertain points. Confirm all rules and citations with current HUD guidance and a qualified compliance professional before using this demo for anything beyond feature testing.
 
 ## Regenerating
 
