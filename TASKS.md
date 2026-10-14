@@ -97,7 +97,7 @@ those by taking **main's** TASKS.md, not the branch's.
 |---|---|---|---|
 | `feature/s8-pii-guard` | `~/dev/projects/abstractly-s8-pii-guard` | — | **T0 of the Section 8 pivot.** Branched off `main` 2026-10-13. Mask/drop SSN, DOB and bank numbers before storage (extraction quotes, date candidates, free-text notes) and before Anthropic; scrub tracebacks from alert emails; per-team "AI processing off" switch (Q5 decision). Must merge before testers upload real tenant docs. **Plan written, awaiting user approval** — `docs/plans/feature-s8-pii-guard.md`. |
 | `feature/s8-sample-data` | `~/dev/projects/abstractly-s8-sample` | — | T13 of the Section 8 pivot. Branched off `feature/s8-data-model` `b6caf9a` (T1, unmerged) + `main` merged in, 2026-10-12. "Load sample deal" and the `DEMO_MODE` seed switch to the Section 8 fixtures (`backend/tests/fixtures/section8/`) when `SECTION8_MODE` is on; Maple Ridge unchanged with the flag off. **Must merge after T1.** **Plan approved, building** — `docs/plans/feature-s8-sample-data.md`. |
-| `feature/s8-unit-file-and-phas` | `~/dev/projects/abstractly-s8-unit-file` | — | Branched off **`feature/s8-data-model` `b6caf9a`** (stacked — T1 unmerged) 2026-10-12. **T9 of the Section 8 pivot:** Units list + Unit file page + Housing Authorities (PHA) directory/settings UI in the customer app, behind `SECTION8_MODE`. **Plan written, awaiting user approval** — `docs/plans/feature-s8-unit-file-and-phas.md`. Cannot merge before T1. |
+| `feature/s8-unit-file-and-phas` | `~/dev/projects/abstractly-s8-unit-file` | +5 / −0 | **Built, pushed `d893c56`; reviewer FIX FIRST on a T1 bug (see handoff).** T9 of the Section 8 pivot, stacked on `feature/s8-data-model` `b6caf9a` (T1, unmerged). Section 8 nav group (above Overview; hidden unless `GET /config` → `section8_mode: true`) with Units list (grouped by property, household/PHA/program/contract/tenant/HAP), unit file (current tenancy edit + record new w/ `end_current`, HAP contracts, documents link/kind/unlink → lease detail, past tenancies), Housing Authorities directory (add/edit/archive, show archived), admin “Group uploads into units” backfill with dry-run preview. Only backend change: `/config` boolean. Suite **84/84** on `d893c56`. security-auditor **MERGE**. Headless click-through + screenshots 1440/768/375 looked at (flag on/off, viewer read-only, no horizontal overflow). **Cannot merge before T1.** |
 | `fix/quick-wins` | `~/dev/projects/abstractly-quick-wins` | — | Branched off `main` 2026-10-06. (1) lease detail cards cut off on the right at 375px + sweep every page at 375px; (2) upgrade Pillow and every dependency with a known security advisory, full suite green. **Plan approved, building** — `docs/plans/fix-quick-wins.md`. |
 | `feature/loan-underwriting` | `~/dev/projects/abstractly-loan` | +2 / −16 | ~19 uncommitted files (`api.py`, `database.py`, tests, plan); not pushed. Feature-flagged off. Merge **after** team isolation (its plan defers all tenancy to it). Another session may be active — don't touch. |
 | `feature/deal-assistant` | `~/dev/projects/abstractly-assistant` | 0 / −7 | Worktree only, nothing built. Not started. |
@@ -135,9 +135,12 @@ those by taking **main's** TASKS.md, not the branch's.
 - Worktree: ~/dev/projects/abstractly-s8-unit-file
 - Goal: Section 8 operators can see every unit with its current tenancy, open a per-unit file (tenancy, HAP contracts, linked documents), and manage their housing authorities — behind SECTION8_MODE.
 - Base: stacked on feature/s8-data-model (b6caf9a); rebase onto main once T1 merges
-- Loop step: 3 — plan written, waiting for user approval
-- Last update: 2026-10-12 by start-task
-- Next action: user reviews docs/plans/feature-s8-unit-file-and-phas.md
+- Loop step: 9 — built + pushed (`d893c56`), suite 84/84, security-auditor MERGE; reviewer FIX FIRST item belongs to T1
+- Last update: 2026-10-13 by the T9 build session. User approved plan; wording "Group uploads into units"; nav group placed ABOVE existing groups (my recommendation, user accepted)
+- Blocker (T1 bug, found by reviewer): unlink = PATCH archived:true, but `unit_documents` UNIQUE(team_id, lease_id, unit_id) counts archived rows, so re-linking an unlinked upload 409s with no UI way out. Fix belongs on `feature/s8-data-model` (POST /section8/units/<id>/documents should un-archive the existing row) + regression test (link → unlink → re-link = 201). Not done: T1's worktree belongs to another session and the plan says T1 bugs are fixed on T1. Waiting on user decision.
+- Not verified: real tester deployment with the flag on; contextual toolbar on S8 views falls back to dashboard quick actions (app.js out of plan scope); s8unit view highlights no nav item.
+- Screenshots: scratchpad of session 3b7e8ed2 (s8/shots4, shots5, shots6) — temporary
+- Next action: user decides on the T1 unlink/re-link fix; then re-review, then `/merge-branch feature/s8-data-model` before this branch
 
 #### feature/s8-data-model
 - Worktree: ~/dev/projects/abstractly-s8-data-model
@@ -290,7 +293,7 @@ Claim with `/start-task <branch>`; read PIVOT_PLAN.md Step 4 first (`git show pi
 - T5 `feature/s8-hap-reconciliation` (L) — expected vs received HAP by unit/PHA/month, $ findings, export. Needs T1, T4.
 
 **Phase 2 — compliance calendar**
-- T6 `feature/s8-inspections` (L) — needs T1 · T7 `feature/s8-recert-tracking` (M, HCV) — needs T1, T2 · T7b `feature/s8-pbra-recerts` (L) — needs T7, T0 · T8 `feature/s8-rent-increases-renewals` (M) — needs T1, T2, P5 · T9 `feature/s8-unit-file-and-phas` (M) — needs T1 — **claimed 2026-10-12, stacked on T1** · T10 `feature/s8-this-month` (M) — needs T5, panels from T6–T8
+- T6 `feature/s8-inspections` (L) — needs T1 · T7 `feature/s8-recert-tracking` (M, HCV) — needs T1, T2 · T7b `feature/s8-pbra-recerts` (L) — needs T7, T0 · T8 `feature/s8-rent-increases-renewals` (M) — needs T1, T2, P5 · T9 `feature/s8-unit-file-and-phas` (M) — needs T1 — **built + pushed 2026-10-13 (`d893c56`), stacked on T1** · T10 `feature/s8-this-month` (M) — needs T5, panels from T6–T8
 
 **Phase 3 — repositioning**
 - T11 `feature/s8-marketing-copy` (M) — **can be drafted now; must NOT merge until T3 + T5 are live on tester** (one push to main = public on prod). Pricing waits on Q2.
