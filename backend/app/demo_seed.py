@@ -243,7 +243,7 @@ def seed_demo_data() -> None:
 
         existing = database.get_all_leases(team_id, document_type=None)
         if existing or database.list_section8_records("properties", team_id, include_archived=True):
-            logger.info("Demo data already present (%d lease(s)) -- skipping seed.", len(existing))
+            logger.info("Demo data already present (leases or Section 8 records) -- skipping seed.")
             return
 
         for account in DEMO_ACCOUNTS:

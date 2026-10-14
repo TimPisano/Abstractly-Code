@@ -101,11 +101,29 @@ def section8_sample_loaded(team_id: int) -> bool:
     return bool(wanted & have)
 
 
-def _create(table, team_id, body, extra=None):
-    """Same validation and same-team reference checks the /section8 routes apply (clean_body), then T1's insert."""
+def _create(table, team_id, body, extra=None, created=None):
+    """Same validation and same-team reference checks the /section8 routes apply (clean_body), then T1's insert. Records (table, id) in `created` for rollback."""
     values = s8_records.clean_body(table, body, team_id, creating=True)
     values.update(extra or {})
-    return database.create_section8_record(table, team_id, values)
+    record_id = database.create_section8_record(table, team_id, values)
+    if created is not None:
+        created.append((table, record_id))
+    return record_id
+
+
+def _undo_partial_load(team_id, created, lease_ids):
+    """Removes exactly the rows one failed load_section8_sample call inserted (children first), so a failure or a lost race leaves the team's workspace as it was."""
+    conn = database.get_connection()
+    try:
+        for table, record_id in reversed(created):
+            assert table in database.SECTION8_COLUMNS  # fixed table names only
+            conn.execute(f"DELETE FROM {table} WHERE id = ? AND team_id = ?", (record_id, team_id))
+        for lease_id in lease_ids:
+            conn.execute("DELETE FROM lease_tags WHERE lease_id = ?", (lease_id,))
+            conn.execute("DELETE FROM leases WHERE id = ? AND team_id = ?", (lease_id, team_id))
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def load_section8_sample(team_id: int) -> dict:
@@ -116,12 +134,43 @@ def load_section8_sample(team_id: int) -> dict:
     `team_id`. Raises SampleAlreadyLoaded if the team already has it --
     unlike Maple Ridge, a second copy can't coexist (unique addresses).
     Returns counts per kind.
+
+    All-or-nothing: the PHA and properties are created FIRST -- their
+    per-team unique name/address constraints act as the lock, so a
+    concurrent second load (double click, two tabs) fails before writing
+    any document. Any failure removes everything this call inserted, and
+    a failure caused by the sample now being present is reported as
+    SampleAlreadyLoaded (409), not a 500.
     """
     if section8_sample_loaded(team_id):
         raise SampleAlreadyLoaded()
+    created, lease_ids = [], []
+    try:
+        return _load_section8_sample(team_id, created, lease_ids)
+    except Exception:
+        _undo_partial_load(team_id, created, lease_ids)
+        if section8_sample_loaded(team_id):
+            raise SampleAlreadyLoaded()
+        raise
+
+
+def _load_section8_sample(team_id, created, lease_ids):
     fx = _load_s8_fixture()
     rec = fx["records"]
+    ids = {}
 
+    def create(table, body, extra=None):
+        return _create(table, team_id, body, extra, created)
+
+    # 1. Claim: PHA + properties (unique per team) before anything else.
+    pha = {k: v for k, v in rec["pha"].items() if k != "key"}
+    ids[rec["pha"]["key"]] = create("phas", pha)
+    for p in rec["properties"]:
+        body = {"name": p["name"], "address": p["address"], "program": p["program"],
+                "default_pha_id": ids[p["default_pha"]], "notes": p["notes"]}
+        ids[p["key"]] = create("properties", body, {"normalized_address": _normalize_building_address(p["address"])})
+
+    # 2. Documents.
     leases = {}  # capture key -> [lease ids], in file order
     for row in fx["documents"]:
         lease_id = database.insert_lease(
@@ -130,23 +179,15 @@ def load_section8_sample(team_id: int) -> dict:
             display_name=row.get("display_name"), source_page_start=row.get("source_page_start"),
             source_page_end=row.get("source_page_end"),
         )
+        lease_ids.append(lease_id)
         database.add_lease_tag(lease_id, SAMPLE_TAG, team_id=team_id)
         leases.setdefault(row["key"], []).append(lease_id)
 
-    ids = {}
-    pha = {k: v for k, v in rec["pha"].items() if k != "key"}
-    ids[rec["pha"]["key"]] = _create("phas", team_id, pha)
-
-    for p in rec["properties"]:
-        body = {"name": p["name"], "address": p["address"], "program": p["program"],
-                "default_pha_id": ids[p["default_pha"]], "notes": p["notes"]}
-        ids[p["key"]] = _create("properties", team_id, body,
-                                {"normalized_address": _normalize_building_address(p["address"])})
-
+    # 3. The rest of the records.
     for u in rec["units"]:
         body = {"property_id": ids[u["property"]], "unit_label": u["unit_label"],
                 "bedrooms": u["bedrooms"], "status": u["status"]}
-        ids[u["key"]] = _create("units", team_id, body, {"normalized_address": _normalize_address(u["address"])})
+        ids[u["key"]] = create("units", body, {"normalized_address": _normalize_address(u["address"])})
 
     for t in rec["tenancies"]:
         source = leases.get(t["source"], [None])[0]
@@ -157,7 +198,7 @@ def load_section8_sample(team_id: int) -> dict:
                 "tenant_rent": t["tenant_rent"], "hap": t["hap"],
                 "amounts_effective_date": t.get("amounts_effective_date"),
                 "source_lease_id": source, "status": t["status"]}
-        ids[t["key"]] = _create("tenancies", team_id, body)
+        ids[t["key"]] = create("tenancies", body)
 
     for c in rec["hap_contracts"]:
         body = {"pha_id": ids[c["pha"]] if c["pha"] else None, "contract_type": c["contract_type"],
@@ -166,7 +207,7 @@ def load_section8_sample(team_id: int) -> dict:
                 "start_date": c["start_date"], "end_date": c["end_date"],
                 "contract_rent": c["contract_rent"], "initial_hap": c["initial_hap"],
                 "source_lease_id": leases[c["document"]][0], "status": c["status"]}
-        ids[c["key"]] = _create("hap_contracts", team_id, body)
+        ids[c["key"]] = create("hap_contracts", body)
 
     # Link every document to its unit: lease PDFs and rent-roll rows to
     # the unit (+ tenancy), each HAP contract PDF to every unit it covers.
@@ -178,11 +219,11 @@ def load_section8_sample(team_id: int) -> dict:
                 "tenancy_id": ids[tenancy_key] if tenancy_key in ids else None,
                 "hap_contract_id": ids[contract_key] if contract_key else None,
                 "pha_id": ids[pha_key] if pha_key else None}
-        _create("unit_documents", team_id, body, {"unit_id": ids[unit_key], "linked_by": "sample"})
+        create("unit_documents", body, {"unit_id": ids[unit_key], "linked_by": "sample"})
         links += 1
 
     tenancy_pha = {t["key"]: t["pha"] for t in rec["tenancies"]}
-    for key, lease_ids in leases.items():
+    for key, group in leases.items():
         kind, *rest = key.split(":")
         if kind == "hap_contract":
             continue  # linked per covered unit below
@@ -194,7 +235,7 @@ def load_section8_sample(team_id: int) -> dict:
             prop = "JR" if rr == "RR1" else "BT"
             doc_kind = "rent_roll_row"
         tkey = f"tenancy:{prop}:{unit}"
-        for lid in lease_ids:
+        for lid in group:
             link(lid, f"unit:{prop}:{unit}", doc_kind, tkey, pha_key=tenancy_pha.get(tkey) if doc_kind == "lease" else None)
     for c in rec["hap_contracts"]:
         link(leases[c["document"]][0], c["unit"], "hap_contract", c["tenancy"], c["key"], c["pha"])

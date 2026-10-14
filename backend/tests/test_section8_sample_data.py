@@ -209,6 +209,62 @@ def test_second_load_is_409_and_inserts_nothing():
     print("✓ test_second_load_is_409_and_inserts_nothing: PASS")
 
 
+def test_failure_mid_load_leaves_nothing_behind_and_retry_is_clean():
+    """Regression (reviewer FIX FIRST): a failure partway through used to leave 65 orphan Sample documents, and a retry then inserted 65 more."""
+    with _Env() as env:
+        real_create = database.create_section8_record
+
+        def fail_late(table, team_id, values):
+            # The 41st unit-document link: after every document and every
+            # other record exists -- so this proves the rollback covers all of them.
+            if table == "unit_documents":
+                fail_late.calls += 1
+                if fail_late.calls == 41:
+                    raise RuntimeError("simulated failure mid-load")
+            return real_create(table, team_id, values)
+
+        fail_late.calls = 0
+        database.create_section8_record = fail_late
+        try:
+            try:
+                sample_deal.load_section8_sample(env.team_id)
+                raise AssertionError("expected the simulated failure to propagate")
+            except RuntimeError:
+                pass
+        finally:
+            database.create_section8_record = real_create
+        assert database.get_all_leases(env.team_id, document_type=None) == [], "orphan sample documents left behind"
+        assert _s8_counts(env.team_id) == {t: 0 for t in S8_TABLES}, "partial Section 8 rows left behind"
+        resp = env.analyst.post("/sample-deal/load")
+        assert resp.status_code == 201, resp.get_json()
+        assert len(database.get_all_leases(env.team_id, document_type=None)) == len(CAPTURE["documents"])
+    print("✓ test_failure_mid_load_leaves_nothing_behind_and_retry_is_clean: PASS")
+
+
+def test_concurrent_second_load_is_409_not_500_and_adds_nothing():
+    """Regression (reviewer + security-auditor): two loads that both pass the pre-check (double click / two tabs). The loser must get a clean 409 and insert nothing, not a 500 with 65 orphan documents."""
+    with _Env() as env:
+        assert env.analyst.post("/sample-deal/load").status_code == 201
+        before = (_s8_counts(env.team_id), len(database.get_all_leases(env.team_id, document_type=None)))
+        real_check = sample_deal.section8_sample_loaded
+        calls = []
+
+        def stale_precheck(team_id):
+            # The first (pre-)check runs before the other request committed;
+            # later checks see the truth.
+            calls.append(team_id)
+            return False if len(calls) == 1 else real_check(team_id)
+
+        sample_deal.section8_sample_loaded = stale_precheck
+        try:
+            resp = env.analyst.post("/sample-deal/load")
+        finally:
+            sample_deal.section8_sample_loaded = real_check
+        assert resp.status_code == 409, (resp.status_code, resp.get_json())
+        assert (_s8_counts(env.team_id), len(database.get_all_leases(env.team_id, document_type=None))) == before
+    print("✓ test_concurrent_second_load_is_409_not_500_and_adds_nothing: PASS")
+
+
 def test_viewer_cannot_load_either_sample():
     with _Env() as env:
         assert env.viewer.post("/sample-deal/load").status_code == 403
@@ -288,6 +344,8 @@ if __name__ == "__main__":
     test_flag_on_loads_section8_portfolio_into_callers_team()
     test_planted_errors_survive_into_the_records()
     test_second_load_is_409_and_inserts_nothing()
+    test_failure_mid_load_leaves_nothing_behind_and_retry_is_clean()
+    test_concurrent_second_load_is_409_not_500_and_adds_nothing()
     test_viewer_cannot_load_either_sample()
     test_single_sample_lease_is_the_voucher_control_when_flag_on()
     test_demo_seed_and_reset_with_section8_mode()
