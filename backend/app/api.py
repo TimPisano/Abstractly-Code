@@ -115,7 +115,7 @@ from app.sheets_export import export_to_google_sheets, SheetsExportError
 from app.auth import verify_password, require_role, require_owner, current_user, current_team_id, hash_password, issue_token
 from app import password_rules
 from app import section8_records as s8_records
-from app.section8_mode import require_section8_mode
+from app.section8_mode import require_section8_mode, section8_mode_enabled
 from app.portfolio import _normalize_address
 
 
@@ -6559,11 +6559,13 @@ def health_check():
 @app.route('/config', methods=['GET'])
 def get_config():
     """Public, read-only flags the frontend needs before it can decide how
-    to render — currently just local_dev_mode, which lets /app's access
-    gate (frontend/app/access-gate.js) know whether to skip itself. Keep
-    this endpoint to flags that are safe for anyone to read; never put a
+    to render: local_dev_mode, which lets /app's access gate
+    (frontend/app/access-gate.js) know whether to skip itself, and
+    section8_mode, which reveals the Section 8 nav (section8-view.js;
+    the /section8/* routes enforce the flag themselves). Keep this
+    endpoint to flags that are safe for anyone to read; never put a
     secret or anything env-specific-but-sensitive here."""
-    return jsonify({"local_dev_mode": LOCAL_DEV_MODE}), 200
+    return jsonify({"local_dev_mode": LOCAL_DEV_MODE, "section8_mode": section8_mode_enabled()}), 200
 
 
 @app.route('/demo/reset', methods=['POST'])

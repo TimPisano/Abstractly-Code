@@ -509,6 +509,17 @@ def test_end_current_is_atomic_when_insert_fails():
     print("✓ test_end_current_is_atomic_when_insert_fails: PASS")
 
 
+def test_config_reports_section8_mode():
+    """/config tells the frontend whether to show the Section 8 nav. Public (logged out), and only a boolean."""
+    with _Env(flag=False):
+        body = app.test_client().get("/config").get_json()
+        assert body["section8_mode"] is False, body
+    with _Env(flag=True):
+        body = app.test_client().get("/config").get_json()
+        assert body["section8_mode"] is True, body
+    print("✓ test_config_reports_section8_mode: PASS")
+
+
 if __name__ == "__main__":
     test_every_route_404s_when_flag_off_even_logged_out()
     test_flag_values()
@@ -528,4 +539,5 @@ if __name__ == "__main__":
     test_huge_exponent_money_is_400_not_500()
     test_backfill_non_object_body_is_400_not_500()
     test_end_current_is_atomic_when_insert_fails()
+    test_config_reports_section8_mode()
     print("\nAll Section 8 data model tests passed.")
