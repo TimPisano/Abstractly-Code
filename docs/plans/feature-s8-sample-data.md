@@ -105,8 +105,12 @@ Full suite run in this worktree. UI: headless screenshots of the dashboard empty
 - Marketing copy (T11).
 - Re-capturing Maple Ridge.
 
-## Open questions
+## Decisions (plan approved 2026-10-13)
 
-1. **Base branch.** This branch sits on T1 (`feature/s8-data-model`, unmerged) with `main` merged in, so it can only merge **after** T1. If T1 changes in review, I'll merge its new tip in. OK?
-2. **`/leases/sample`** (the single "try a sample lease" button) still returns the commercial sample lease with the flag on. Switch it to one voucher lease (Juniper Row 214, the clean control) in this task, or leave it for T12? I'd do it here: it's about 10 lines, and the same pattern.
-3. **Rent-roll capture uses `main`'s importer.** The Section 8 tenant-share/HAP column support lives on unmerged `qa/overnight-gauntlet` (P2), so the captured rent-roll rows read "Rent"/"Contract Rent" only. That's fine for loading; the capture script can be re-run after P2 merges. OK?
+The user approved the plan and asked for these three questions to be answered with the recommendations.
+
+1. **Base branch: built on T1.** This branch sits on `feature/s8-data-model` (`b6caf9a`, unmerged) with `main` merged in, so it **merges only after T1**. If T1 changes in review, its new tip gets merged in here.
+2. **`/leases/sample`: switched in this task.** With `SECTION8_MODE` on, the single "try a sample lease" button returns the Juniper Row 214 voucher lease (the fixture set's clean control), precomputed and tagged `Sample`. Flag off: unchanged. Added to Approach as step 6 below.
+3. **Rent-roll capture: re-runnable, captured with `main`'s current importer.** The user believed `qa/overnight-gauntlet` was merged. **It is not, as of 2026-10-13**: `origin/main` does not contain it and has no `tenant_portion` support. So the captured rent-roll rows reflect `main`'s importer today. The capture script is one command, and its README says to re-run it after the gauntlet merges. The Section 8 *records* (tenancy contract rent, tenant share and HAP) come from the fixture rent rolls directly, not from the importer, so they are correct either way.
+
+6. **(from decision 2)** `POST /leases/sample`: flag on returns the precomputed Juniper Row 214 lease from the same capture JSON, instead of the commercial sample. Flag off: unchanged.
