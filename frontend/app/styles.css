@@ -4863,6 +4863,15 @@
    Layout only, existing tokens only. Tables reuse .data-table /
    .team-members-table; pills reuse .tag-chip-mini. */
 
+/* The Section 8 nav group starts [hidden] until /config says the flag is
+   on. The mobile .nav-group rule sets a display value, which beats the UA
+   stylesheet's [hidden] { display:none } (same issue as
+   .access-gate-link[hidden] above) -- without this the group showed in
+   the phone top bar with the flag off. */
+.nav-group[hidden] {
+    display: none;
+}
+
 .s8-subtle {
     color: var(--text-medium);
     font-size: 0.8125rem;
@@ -4901,6 +4910,15 @@
     white-space: nowrap;
 }
 
+/* The PHA directory has long names/contacts: let text wrap, keep actions on one line. */
+.s8-table-wrap td {
+    white-space: normal;
+}
+
+.s8-table-wrap .s8-row-actions {
+    white-space: nowrap;
+}
+
 .s8-table.data-table th {
     cursor: default;
 }
@@ -4915,14 +4933,15 @@
 }
 
 .s8-row-actions {
-    display: flex;
+    display: inline-flex;
     gap: 0.75rem;
 }
 
+/* minmax(0, ...) so a wide table scrolls inside its panel instead of
+   stretching the column (and the page) past a phone's width. */
 .s8-unit-grid {
     display: grid;
-    grid-template-columns: 1fr;
-    gap: 0;
+    grid-template-columns: minmax(0, 1fr);
 }
 
 .s8-panel-actions {

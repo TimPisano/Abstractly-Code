@@ -562,7 +562,7 @@ const S8UnitFileView = {
                 ['Amounts effective', s8Text(t.amounts_effective_date)],
             ];
             body = `
-                <dl class="s8-dl">${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>
+                <dl class="s8-dl">${rows.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>
                 ${s8SplitMismatch(t) ? '<p class="s8-note">Tenant share + HAP doesn’t equal contract rent.</p>' : ''}`;
         }
         return `
@@ -869,16 +869,16 @@ const S8PhasView = {
                         <td>${p.rent_increase_notice_days === null || p.rent_increase_notice_days === undefined ? '—' : `${p.rent_increase_notice_days} days`}</td>
                         <td>${contact || '—'}</td>
                         <td>${portal ? `<a href="${s8Attr(portal)}" target="_blank" rel="noopener noreferrer">Open</a>` : '—'}</td>
-                        ${canEdit ? `<td class="s8-row-actions">
+                        ${canEdit ? `<td><span class="s8-row-actions">
                             <button type="button" class="btn-text" data-action="edit" data-pha-id="${p.id}">Edit</button>
                             <button type="button" class="btn-text" data-action="${p.archived ? 'restore' : 'archive'}" data-pha-id="${p.id}">${p.archived ? 'Restore' : 'Archive'}</button>
-                        </td>` : ''}
+                        </span></td>` : ''}
                     </tr>`;
             }).join('');
             body = `
                 <div class="panel">
                     <div class="table-scroll s8-table-scroll">
-                        <table class="team-members-table s8-table">
+                        <table class="team-members-table s8-table s8-table-wrap">
                             <thead><tr><th>Name</th><th>Jurisdiction</th><th>Inspections</th><th>HAP pay day</th><th>Rent-increase notice</th><th>Contact</th><th>Portal</th>${canEdit ? '<th></th>' : ''}</tr></thead>
                             <tbody>${rows}</tbody>
                         </table>
