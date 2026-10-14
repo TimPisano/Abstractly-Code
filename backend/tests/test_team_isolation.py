@@ -830,6 +830,30 @@ def test_section8_backfill_only_reads_callers_team():
     print("✓ test_section8_backfill_only_reads_callers_team: PASS")
 
 
+
+@_with_section8_mode
+def test_section8_sample_portfolio_isolated_to_calling_team_only():
+    """feature/s8-sample-data: Team A loading the Section 8 sample creates nothing Team B can list or fetch, and Team B can still load its own copy."""
+    db_path = _fresh_temp_db()
+    try:
+        client_a, team_a, _, client_b, team_b, _ = _setup_two_teams()
+        resp = client_a.post("/sample-deal/load")
+        assert resp.status_code == 201, resp.get_json()
+        assert client_b.get("/leases").get_json() == [], "Team B sees Team A's sample documents"
+        for path in ("phas", "properties", "units", "tenancies", "hap-contracts"):
+            rows_a = client_a.get(f"/section8/{path}").get_json()
+            assert rows_a, path
+            assert client_b.get(f"/section8/{path}").get_json() == [], f"Team B lists Team A's sample {path}"
+            assert client_b.get(f"/section8/{path}/{rows_a[0]['id']}").status_code == 404, f"Team B fetched Team A's sample {path}"
+        for table in ("phas", "properties", "units", "tenancies", "hap_contracts", "unit_documents"):
+            assert database.list_section8_records(table, team_b, include_archived=True) == [], table
+        # Team A's copy doesn't block Team B's own (uniqueness is per team).
+        assert client_b.post("/sample-deal/load").status_code == 201
+        assert len(client_b.get("/section8/units").get_json()) == len(client_a.get("/section8/units").get_json())
+    finally:
+        os.unlink(db_path)
+    print("✓ test_section8_sample_portfolio_isolated_to_calling_team_only: PASS")
+
 if __name__ == "__main__":
     test_lease_list_excludes_other_team()
     test_lease_get_by_id_404s_for_other_team()
@@ -860,4 +884,5 @@ if __name__ == "__main__":
     test_section8_records_isolated_between_teams()
     test_section8_cannot_reference_another_teams_records()
     test_section8_backfill_only_reads_callers_team()
+    test_section8_sample_portfolio_isolated_to_calling_team_only()
     print("\nAll team isolation tests passed.")

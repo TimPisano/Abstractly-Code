@@ -114,6 +114,8 @@ UNIT_TESTS = [
     # Section 8 pivot T1 (feature/s8-data-model).
     "test_section8_data_model.py",
     "test_section8_fixtures.py",
+    # Section 8 pivot T13 (feature/s8-sample-data).
+    "test_section8_sample_data.py",
 ]
 
 LIVE_API_TESTS = [
