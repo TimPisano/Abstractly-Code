@@ -72,14 +72,15 @@ def refresh(
         filename, source = os.path.basename(urlparse(url).path), url
 
     parsed = parse_file(dataset, content, filename, year)
-    date_was_defaulted = effective_date is None
     eff_date = effective_date or default_effective_date(dataset, year)
 
-    if date_was_defaulted:
+    # FMR's Oct 1 is the fiscal-year start; IL/MTSP dates are set per HUD
+    # release, so a defaulted one is a guess worth flagging.
+    if effective_date is None and dataset != DATASET_FMR:
         msg = (
             f"Effective date defaulted to {eff_date.isoformat()} for {dataset} {year}. "
-            f"Verify this matches HUD's release (LIHTC/IL are typically April 1, FMR Oct 1 of prior year). "
-            f"Use --effective-date to override."
+            f"HUD sets the real date in each release -- check it and pass "
+            f"--effective-date if it differs."
         )
         print(f"⚠️  {msg}")
         logger.warning(msg)

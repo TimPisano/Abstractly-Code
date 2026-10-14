@@ -96,13 +96,12 @@ AIT_LEVELS = (20, 30, 40, 50, 60, 70, 80)
 
 def lihtc_income_limit(limits: LihtcLimits, household_size: int, ami_pct: int) -> int:
     """
-    Income limit for a household at an AMI designation per IRC §42(g)(2).
-    Returns HUD's published figure for that level when present; raises
-    HudDataNotFound if the requested AMI percentage is not in the loaded file.
+    Income limit for a household at an AMI designation (the IRC §42(g)(1)
+    income tests). Returns HUD's published MTSP figure for that level;
+    raises HudDataNotFound if that level isn't in the loaded file -- it is
+    never derived from another level.
 
-    Caveats: State agency LIHTC rules may round differently or use alternative
-    methodologies. This returns HUD's published MTSP limits, which are not a
-    substitute for the housing agency's rent chart or income determinations.
+    Not a substitute for the state housing agency's published limits.
     """
     if household_size not in limits.limit_50:
         raise ValueError(f"household_size must be 1-8, got {household_size}")
@@ -138,11 +137,13 @@ def lihtc_rent_limit(limits: LihtcLimits, bedrooms: int, ami_pct: int) -> int:
     unit uses 1.5 persons, which is the average of 1-person and 2-person
     income limits).
 
-    Caveats: The 1.5-persons-per-bedroom interpolation and the 30%/12
-    calculation are derived conventions (not HUD-published) and should be
-    confirmed with the state housing agency before use. Not a substitute
-    for the agency's rent determination rules, hold-harmless provisions,
-    Special HERA rent, or DDA/QCT adjustments.
+    The 30% cap and the imputed household size (1 person with no separate
+    bedroom, 1.5 per bedroom) are statutory: IRC §42(g)(2)(A) and (C).
+    Averaging the two neighbouring sizes' limits for a fractional size and
+    rounding down to the dollar are common conventions, not statute --
+    confirm with the state housing agency. Not a substitute for the
+    agency's rent chart; hold-harmless, HERA Special and DDA/QCT rules are
+    not modelled.
     """
     if not 0 <= bedrooms <= 5:
         raise ValueError(f"bedrooms must be 0-5, got {bedrooms}")

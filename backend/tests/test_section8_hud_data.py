@@ -476,6 +476,23 @@ def test_cli_refresh_and_status():
     print("✓ test_cli_refresh_and_status: PASS")
 
 
+def test_defaulted_effective_date_warns_only_for_il_and_mtsp():
+    # IL/MTSP effective dates are set per HUD release, so a defaulted date is
+    # a guess worth flagging; FMR's Oct 1 fiscal-year start is not.
+    with hud_env():
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            refresh("il", 2025, file_path=fx("il_fy2025.csv"))
+        assert "Effective date defaulted" in out.getvalue(), out.getvalue()
+
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            refresh("il", 2025, file_path=fx("il_fy2025.csv"), effective_date=date(2025, 5, 15))
+            refresh("fmr", 2026, file_path=fx("fmr_fy2026.csv"))
+        assert "Effective date defaulted" not in out.getvalue(), out.getvalue()
+    print("✓ test_defaulted_effective_date_warns_only_for_il_and_mtsp: PASS")
+
+
 if __name__ == "__main__":
     test_flag_off_by_default_blocks_everything()
     test_db_path_defaults()
@@ -493,4 +510,5 @@ if __name__ == "__main__":
     test_url_refresh_allow_list_and_fake_fetch()
     test_download_refuses_redirects_errors_and_oversize()
     test_cli_refresh_and_status()
+    test_defaulted_effective_date_warns_only_for_il_and_mtsp()
     print("\nAll section8 hud_data tests passed.")
