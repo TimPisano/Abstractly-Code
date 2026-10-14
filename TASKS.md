@@ -95,7 +95,7 @@ those by taking **main's** TASKS.md, not the branch's.
 
 | Branch | Worktree | +/− main | State |
 |---|---|---|---|
-| `feature/s8-sample-data` | `~/dev/projects/abstractly-s8-sample` | — | T13 of the Section 8 pivot. Branched off `feature/s8-data-model` `b6caf9a` (T1, unmerged) + `main` merged in, 2026-10-12. "Load sample deal" and the `DEMO_MODE` seed switch to the Section 8 fixtures (`backend/tests/fixtures/section8/`) when `SECTION8_MODE` is on; Maple Ridge unchanged with the flag off. **Must merge after T1.** **Plan written, awaiting user approval** — `docs/plans/feature-s8-sample-data.md`. |
+| `feature/s8-sample-data` | `~/dev/projects/abstractly-s8-sample` | — | T13 of the Section 8 pivot. Branched off `feature/s8-data-model` `b6caf9a` (T1, unmerged) + `main` merged in, 2026-10-12. "Load sample deal" and the `DEMO_MODE` seed switch to the Section 8 fixtures (`backend/tests/fixtures/section8/`) when `SECTION8_MODE` is on; Maple Ridge unchanged with the flag off. **Must merge after T1.** **Plan approved, building** — `docs/plans/feature-s8-sample-data.md`. |
 | `feature/s8-unit-file-and-phas` | `~/dev/projects/abstractly-s8-unit-file` | — | Branched off **`feature/s8-data-model` `b6caf9a`** (stacked — T1 unmerged) 2026-10-12. **T9 of the Section 8 pivot:** Units list + Unit file page + Housing Authorities (PHA) directory/settings UI in the customer app, behind `SECTION8_MODE`. **Plan written, awaiting user approval** — `docs/plans/feature-s8-unit-file-and-phas.md`. Cannot merge before T1. |
 | `fix/quick-wins` | `~/dev/projects/abstractly-quick-wins` | — | Branched off `main` 2026-10-06. (1) lease detail cards cut off on the right at 375px + sweep every page at 375px; (2) upgrade Pillow and every dependency with a known security advisory, full suite green. **Plan approved, building** — `docs/plans/fix-quick-wins.md`. |
 | `feature/loan-underwriting` | `~/dev/projects/abstractly-loan` | +2 / −16 | ~19 uncommitted files (`api.py`, `database.py`, tests, plan); not pushed. Feature-flagged off. Merge **after** team isolation (its plan defers all tenancy to it). Another session may be active — don't touch. |
@@ -112,9 +112,9 @@ those by taking **main's** TASKS.md, not the branch's.
 #### feature/s8-sample-data
 - Worktree: ~/dev/projects/abstractly-s8-sample
 - Goal: with SECTION8_MODE on, "Load sample deal" and the DEMO_MODE seed load a Section 8 sample portfolio built from the qa/section8-fixtures set; flag off = Maple Ridge, unchanged.
-- Loop step: 3 — plan written, waiting for user approval
-- Last update: 2026-10-12 by start-task
-- Next action: user reviews docs/plans/feature-s8-sample-data.md (base = T1 branch; merge after T1)
+- Loop step: 4 — building (plan approved 2026-10-13; open questions answered in the plan)
+- Last update: 2026-10-13 by the s8-sample session
+- Next action: build per plan; capture uses main's rent-roll importer (qa/overnight-gauntlet NOT merged as of 2026-10-13 — re-run the capture after it merges)
 
 #### fix/section8-tenant-share
 - Worktree: ~/dev/projects/abstractly-s8-tenant-share
