@@ -1,0 +1,18 @@
+Brookstone Village
+Rent Roll
+Report Date: 2026-10-05
+Bldg-Unit,Floor Plan,Resident,Status,Lease Start,Lease End,Market Rent,Scheduled Rent,Concession,Balance
+101,1x1,Hollis Yarborough,Current,04/01/2026,03/31/2027,"1,200.00","1,150.00",0.00,0.00
+101,1x1,Dante Bellweather,Applicant,11/01/2026,10/31/2027,"1,200.00","1,200.00",0.00,0.00
+102,2x2,,Vacant,,,"1,525.00",,,
+103,2x2,Mateo Brightwater,Current,1/1/26,12/31/26,"1,575.00","1,525.00",0.00,0.00
+103,2x2,Ezra Xenakis,Applicant,11/1/26,10/31/27,"1,575.00","1,575.00",0.00,0.00
+104,2x2,Odette Underhill,Current,01-Apr-2026,31-Jan-2027,"1,550.00","1,500.00",0.00,0.00
+201,1x1,Dante Calloway,Current,03/01/2026,02/28/2027,"1,175.00","1,175.00",0.00,0.00
+202,2x2,Malik Juarez,Current,2026-01-01,2026-12-31,"1,575.00","1,575.00",0.00,0.00
+203,3x2,Noor Sorensen,Current,5/1/26,4/30/27,"1,900.00","1,850.00",0.00,0.00
+204,1x1,Desmond Dunmore,Current,01-Feb-2026,31-Jan-2027,"1,225.00","1,105.00",0.00,0.00
+301,3x2,Avery Castellano,Current,01/01/2026,12/31/2026,"1,925.00","1,900.00",0.00,0.00
+302,1x1,Maeve Everhart,Current,2026-02-01,2027-01-31,"1,175.00","1,175.00",0.00,0.00
+
+Totals:,,,,,,,"12,955.00",,

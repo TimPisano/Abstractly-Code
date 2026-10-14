@@ -35,11 +35,12 @@ _POTENTIAL_INCOME_WORDS.
 import csv
 import io
 import re
+from datetime import date, datetime
 from typing import Any, Dict, List, Optional
 
 from openpyxl import load_workbook
 
-from app.normalize import normalize_header as _normalize_header, parse_currency
+from app.normalize import normalize_decimal_comma, normalize_header as _normalize_header, parse_currency
 
 
 class T12ImportError(Exception):
@@ -57,6 +58,7 @@ class T12ImportError(Exception):
 _TOTAL_COLUMN_ALIASES = [
     "total", "annual total", "annual", "ytd", "ytd total",
     "12 month total", "trailing 12", "t12", "ttm",
+    "trailing 12 total", "trailing 12 months", "t12 total", "ttm total", "12 months total", "twelve month total",
 ]
 
 # Twelve months' worth of header aliases, each key a canonical month id.
@@ -77,6 +79,7 @@ _RENTAL_INCOME_LABEL_ALIASES = [
     "total rental income", "rental income", "gross rental income",
     "base rental income", "total rent income", "rent revenue",
     "scheduled rent income", "total rent revenue",
+    "rental revenue", "net rental revenue", "net rent revenue", "net rents", "rent collected",
 ]
 
 # Label words that mean a rent-like line item is the THEORETICAL,
@@ -112,15 +115,93 @@ def _match_t12_columns(headers: List[Any]) -> Dict[str, Any]:
     month_norms = {month: {_normalize_header(a) for a in aliases} for month, aliases in _MONTH_COLUMN_ALIASES.items()}
 
     mapping: Dict[str, Any] = {"months": {}}
+    month_years: Dict[str, int] = {}
     for i, h in enumerate(normalized):
+        # Budget-comparison statements pair each month's Actual with its
+        # Budget / Variance / Prior Year: only ACTUAL columns are data
+        # (overnight gauntlet, 2026-10-05). "Oct 2025 Actual" -> "Oct 2025".
+        words = h.split()
+        raw = str(headers[i]) if headers[i] is not None else ""
+        if set(words) & _NON_ACTUAL_COLUMN_WORDS or "%" in raw:
+            continue
+        if set(words) & _ACTUAL_WORDS:
+            h = " ".join(w for w in words if w not in _ACTUAL_WORDS)
+            raw = re.sub(r"\b(?:actuals?|act)\b\.?", " ", raw, flags=re.I).strip(" -/")
         if h in total_norms and "total" not in mapping:
             mapping["total"] = i
             continue
-        for month, norms in month_norms.items():
-            if h in norms and month not in mapping["months"]:
-                mapping["months"][month] = i
+        month = None
+        for candidate, norms in month_norms.items():
+            if h in norms:
+                month = candidate
                 break
+        if month is None:
+            month = _month_of_header(headers[i] if isinstance(headers[i], (datetime, date)) else raw)
+        if month is not None:
+            # A T-24 (two years side by side) names every month twice: keep
+            # the LATEST year's column, not the first one seen.
+            year = _year_of_header(headers[i] if isinstance(headers[i], (datetime, date)) else raw)
+            if month not in mapping["months"] or (year is not None and year > month_years.get(month, -1)):
+                mapping["months"][month] = i
+                month_years[month] = year if year is not None else month_years.get(month, -1)
     return mapping
+
+
+def _year_of_header(raw: Any) -> Optional[int]:
+    """The year a month column belongs to ("Oct 2025", "Oct-25", "10/2025", a date cell), or None."""
+    if isinstance(raw, (datetime, date)):
+        return raw.year
+    text = str(raw or "").strip()
+    m = re.match(r"^(\d{4})\s*[/\-.]\s*\d{1,2}$", text)  # "2025-10"
+    if not m:
+        m = re.search(r"(?:^|[^\d])(\d{4}|\d{2})$", text)  # "Oct 2025", "Oct-25", "10/2025"
+        if not m:
+            return None
+    year = int(m.group(1))
+    return year + 2000 if year < 100 else year
+
+
+_ACTUAL_WORDS = {"actual", "actuals", "act"}
+_NON_ACTUAL_COLUMN_WORDS = {"budget", "budgeted", "bud", "variance", "var", "prior", "py", "forecast", "fcst", "plan",
+                            "proforma", "ly", "change", "chg"}
+
+_MONTH_PREFIX = {name[:3]: month for month, names in _MONTH_COLUMN_ALIASES.items() for name in names}
+_MONTH_WORD_YEAR_RE = re.compile(r"^([a-z]{3,9})\.?(?:[\s\-/'’]*(\d{4}|\d{2}))?$")
+_MONTH_NUM_YEAR_RE = re.compile(r"^(\d{1,2})\s*[/\-.]\s*(\d{4}|\d{2})$")
+_YEAR_MONTH_NUM_RE = re.compile(r"^(\d{4})\s*[/\-.]\s*(\d{1,2})$")
+
+
+def _month_of_header(raw: Any) -> Optional[str]:
+    """
+    A month column header as real T-12 exports write it, read from the RAW
+    cell (normalize_header strips the punctuation that separates "Oct-25"
+    or "10/2025"): "Oct 2025", "Oct-25", "Sept. '25", "October 2025",
+    "10/2025", "2025-10", or a real Excel date cell. Only bare "Oct"/
+    "October" used to be recognized, so most exports failed outright
+    (overnight gauntlet, 2026-10-05). A whole-cell match only: "Mayfield
+    Rd" or "Decor" are not months.
+    """
+    if isinstance(raw, (datetime, date)):
+        return _MONTH_IDS_IN_ORDER[raw.month - 1]
+    if raw is None:
+        return None
+    text = str(raw).strip().lower()
+    m = _MONTH_WORD_YEAR_RE.match(text)
+    if m:
+        word = m.group(1)
+        month = _MONTH_PREFIX.get(word[:3])
+        full_names = _MONTH_COLUMN_ALIASES.get(month, []) if month else []
+        if month and any(name.startswith(word) for name in full_names + ["sept"]) and (m.group(2) or word in full_names):
+            return month
+        return None
+    for regex, month_group in ((_MONTH_NUM_YEAR_RE, 1), (_YEAR_MONTH_NUM_RE, 2)):
+        m = regex.match(text)
+        if m and 1 <= int(m.group(month_group)) <= 12:
+            return _MONTH_IDS_IN_ORDER[int(m.group(month_group)) - 1]
+    return None
+
+
+_MONTH_IDS_IN_ORDER = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
 
 
 def _find_t12_header_row(all_rows: List[List[Any]]) -> int:
@@ -148,19 +229,24 @@ def _parse_t12_currency(value: Any) -> Optional[float]:
         return float(value)
     if value is None:
         return None
-    text = str(value).strip()
+    text = normalize_decimal_comma(str(value).strip())
     if not text:
         return None
     strict = parse_currency(text)
     if strict is not None:
         return strict
-    match = re.search(r"[\d,]+(?:\.\d+)?", text)
+    # Bare numbers keep their sign: "-1,234.56", "(1,234.56)" (accounting
+    # negative) and a trailing "1,234.56-". The old fallback dropped it, so
+    # a negative NOI or a reversed charge read as positive.
+    match = re.search(r"(\()?\s*(-\s*)?([\d,]*\d(?:\.\d+)?)\s*(-)?\s*(\))?", text)
     if not match:
         return None
     try:
-        return float(match.group(0).replace(",", ""))
+        value = float(match.group(3).replace(",", ""))
     except ValueError:
         return None
+    negative = bool(match.group(2) or match.group(4) or (match.group(1) and match.group(5)))
+    return -value if negative else value
 
 
 def _row_annual_total(row: List[Any], column_mapping: Dict[str, Any]) -> Optional[float]:
@@ -172,12 +258,14 @@ def _row_annual_total(row: List[Any], column_mapping: Dict[str, Any]) -> Optiona
     if len(months) < 12:
         return None
     total = 0.0
+    found = False
     for idx in months.values():
         if idx < len(row):
             value = _parse_t12_currency(row[idx])
             if value is not None:
                 total += value
-    return total
+                found = True
+    return total if found else None  # an all-blank row has no total, not a $0 one
 
 
 def parse_t12_rows(
@@ -297,29 +385,108 @@ def parse_csv_t12(file_bytes: bytes, filename: str) -> Dict[str, Any]:
     )
 
 
-def parse_xlsx_t12(file_bytes: bytes, filename: str) -> Dict[str, Any]:
-    """Reads an .xlsx T12's bytes and parses it via parse_t12_rows. Uses the first (active) worksheet. Raises T12ImportError for a genuinely empty or unreadable file."""
+_OLE_MAGIC = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
+
+
+def is_password_protected_office_file(file_bytes: bytes) -> bool:
+    """An encrypted .xlsx/.docx is an OLE container holding an 'EncryptedPackage' stream."""
+    return file_bytes[:8] == _OLE_MAGIC and "EncryptedPackage".encode("utf-16-le") in file_bytes
+
+
+PASSWORD_PROTECTED_MESSAGE = (
+    "This file is password-protected, so it can't be read. Open it in Excel, remove the "
+    "password (File > Info > Protect Workbook > Encrypt with Password, clear it), save, and upload again."
+)
+
+
+def load_workbook_sheets(file_bytes: bytes) -> List[List[tuple]]:
+    """
+    Every worksheet of an .xlsx/.xlsm or legacy .xls, as lists of
+    (1-indexed row number, row values) with blank rows dropped -- in
+    workbook order. T-12 exports routinely put a "Summary" tab first, so
+    callers try each sheet rather than trusting the active one; a legacy
+    .xls (OLE container) is read with xlrd, which openpyxl can't open.
+    Raises T12ImportError for an encrypted or unreadable file.
+    """
+    if is_password_protected_office_file(file_bytes):
+        raise T12ImportError(PASSWORD_PROTECTED_MESSAGE)
+    sheets: List[List[tuple]] = []
+    if file_bytes[:8] == _OLE_MAGIC:
+        import xlrd
+        try:
+            book = xlrd.open_workbook(file_contents=file_bytes)
+        except Exception as exc:
+            if "encrypt" in str(exc).lower():
+                raise T12ImportError(PASSWORD_PROTECTED_MESSAGE)
+            raise T12ImportError(f"Couldn't read this file as an Excel (.xls) workbook: {exc}")
+        for sheet in book.sheets():
+            rows = []
+            for r in range(sheet.nrows):
+                values = []
+                for cell in sheet.row(r):
+                    if cell.ctype == xlrd.XL_CELL_DATE:
+                        try:
+                            values.append(xlrd.xldate.xldate_as_datetime(cell.value, book.datemode))
+                        except Exception:
+                            values.append(cell.value)
+                    elif cell.ctype in (xlrd.XL_CELL_EMPTY, xlrd.XL_CELL_BLANK):
+                        values.append(None)
+                    else:
+                        values.append(cell.value)
+                if any(v is not None and str(v).strip() for v in values):
+                    rows.append((r + 1, values))
+            sheets.append(rows)
+        return sheets
     try:
         workbook = load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
     except Exception as exc:
-        raise T12ImportError(f"Couldn't read this file as an Excel workbook: {exc}")
+        raise T12ImportError(
+            "Couldn't read this file as an Excel workbook -- it may be damaged, or not really an "
+            f"Excel file. ({exc})"
+        )
+    for name in workbook.sheetnames:
+        sheets.append([
+            (i, list(row)) for i, row in enumerate(workbook[name].iter_rows(values_only=True), start=1)
+            if any(cell is not None and str(cell).strip() for cell in row)
+        ])
+    return sheets
 
-    sheet = workbook.active
-    numbered_rows = [
-        (i, list(row)) for i, row in enumerate(sheet.iter_rows(values_only=True), start=1)
-        if any(cell is not None and str(cell).strip() for cell in row)
-    ]
 
-    if not numbered_rows:
+def _t12_sheet_candidates(file_bytes: bytes):
+    """(headers, data_rows, header_idx, data_row_numbers) for each sheet with a T-12 header row, in workbook order."""
+    sheets = load_workbook_sheets(file_bytes)
+    if not any(sheets):
         raise T12ImportError("This Excel file is empty -- nothing to import.")
+    found = []
+    for numbered_rows in sheets:
+        if not numbered_rows:
+            continue
+        row_contents = [row for _, row in numbered_rows]
+        header_idx = _find_t12_header_row(row_contents)
+        mapping = _match_t12_columns(row_contents[header_idx])
+        if "total" not in mapping and len(mapping["months"]) < 2:
+            continue
+        data_entries = numbered_rows[header_idx + 1:]
+        found.append((list(row_contents[header_idx]), [r for _, r in data_entries], header_idx, [n for n, _ in data_entries]))
+    return found
 
-    row_contents = [row for _, row in numbered_rows]
-    header_idx = _find_t12_header_row(row_contents)
-    headers = row_contents[header_idx]
-    data_entries = numbered_rows[header_idx + 1:]
-    data_rows = [row for _, row in data_entries]
-    data_row_numbers = [n for n, _ in data_entries]
-    return parse_t12_rows(
-        list(headers), data_rows, filename,
-        header_row_offset=header_idx, row_numbers=data_row_numbers,
+
+def parse_xlsx_t12(file_bytes: bytes, filename: str) -> Dict[str, Any]:
+    """
+    Reads an .xlsx/.xls T12's bytes and parses it via parse_t12_rows,
+    using the first worksheet that has a usable header row AND a rental
+    income line (not just the active sheet -- see load_workbook_sheets).
+    Raises T12ImportError for an empty, unreadable or encrypted file.
+    """
+    candidates = _t12_sheet_candidates(file_bytes)
+    last_error = None
+    for headers, data_rows, header_idx, row_numbers in candidates:
+        try:
+            return parse_t12_rows(headers, data_rows, filename, header_row_offset=header_idx, row_numbers=row_numbers)
+        except T12ImportError as exc:
+            last_error = exc
+    if last_error:
+        raise last_error
+    raise T12ImportError(
+        "Couldn't find a T-12 header row (month columns or a Total/Annual column) on any sheet of this workbook."
     )
