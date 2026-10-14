@@ -73,6 +73,8 @@ from app.portfolio import (
     FIELD_NAMES,
     field_value,
     _normalize_building_address,
+    _normalize_address,
+    _is_rent_roll_import,
     compute_portfolio_metrics,
     compute_expiration_timeline,
     compute_attention_items,
@@ -974,6 +976,7 @@ def _persist_split_leases(filename, split_leases):
             source_page_end=lease_data["source_page_end"],
             processing_status="processing" if lease_data.get("pending") else lease_data.get("processing_status", "complete"),
             processing_error=lease_data.get("processing_error"),
+            source_kind="document",
         team_id=current_team_id(),
         )
         if lease_data.get("ai_run_id"):
@@ -1280,6 +1283,7 @@ def resubmit_lease(lease_id):
         status="active",
         supersedes_lease_id=lease_id,
         version_number=new_version_number,
+        source_kind="document",
     team_id=current_team_id(),
     )
 
@@ -1466,7 +1470,7 @@ def import_rent_roll():
     filename = file_storage.filename
     extension = filename.rsplit('.', 1)[1].lower() if '.' in filename else ''
     if extension not in ALL_RENT_ROLL_EXTENSIONS:
-        supported = "CSV/TSV, Excel (.xlsx/.xls), Word (.docx), PDF, or an image (.jpg/.png/.heic)"
+        supported = "CSV/TSV/TXT, Excel (.xlsx/.xls), Word (.docx), PDF, or an image (.jpg/.png/.heic)"
         return jsonify({"error": f"Invalid file type '.{extension or '?'}'. Supported rent-roll formats: {supported}."}), 400
 
     base_property_address = (request.form.get('property_address') or '').strip() or None
@@ -1478,17 +1482,62 @@ def import_rent_roll():
         return jsonify({"error": str(e)}), 400
 
     created = []
-    for lease_data in parsed["leases"]:
-        lease_id = database.insert_lease(
-            filename,
-            lease_data["extracted_fields"],
-            document_type="lease",
-            display_name=lease_data["display_name"],
-        team_id=current_team_id(),
+    new_ids = []
+    try:
+        for lease_data in parsed["leases"]:
+            lease_id = database.insert_lease(
+                filename,
+                lease_data["extracted_fields"],
+                document_type="lease",
+                display_name=lease_data["display_name"],
+                source_kind="rent_roll",
+            team_id=current_team_id(),
+            )
+            new_ids.append(lease_id)
+            lease = database.get_effective_lease(lease_id, team_id=current_team_id())
+            lease["tags"] = []
+            created.append(_lease_summary(lease))
+    except Exception:
+        # Never leave a half-imported rent roll active -- and the previous
+        # one (not superseded yet) stays exactly as it was.
+        for lease_id in new_ids:
+            database.supersede_lease(lease_id)
+        raise
+
+    # Re-importing a building's rent roll (the seller's updated export)
+    # REPLACES that building's previous rent-roll rows instead of adding a
+    # second copy of every unit (AUDIT.md §6.11). Old rows are marked
+    # superseded -- excluded from every report, still retrievable by id --
+    # never deleted, and only after the new rows are all in. Only this
+    # team's rows (team-scoped query), only the buildings this file covers.
+    new_buildings = {
+        _normalize_building_address(l["extracted_fields"]["property_address"]["value"])
+        for l in parsed["leases"] if l["extracted_fields"]["property_address"]["value"]
+    } - {None}
+    replaced = 0
+    if new_buildings:
+        # Only an earlier file that covers the SAME units is replaced (at
+        # least half its units reappear here). A property delivered as
+        # several files -- Building A units, Building B units, same street
+        # address -- keeps every file (review finding).
+        new_units = {_normalize_address(l["extracted_fields"]["property_address"]["value"]) for l in parsed["leases"]}
+        old_by_file = {}
+        for old_row in database.get_all_effective_leases(team_id=current_team_id()):
+            if old_row["id"] not in new_ids and _is_rent_roll_import(old_row) and _normalize_building_address(
+                    field_value(old_row, "property_address")) in new_buildings:
+                old_by_file.setdefault(old_row.get("filename"), []).append(old_row)
+        for old_rows in old_by_file.values():
+            old_units = {_normalize_address(field_value(r, "property_address")) for r in old_rows}
+            if old_units and len(old_units & new_units) * 2 >= len(old_units):
+                for old_row in old_rows:
+                    if database.supersede_lease(old_row["id"]):
+                        replaced += 1
+
+    for building, counts in (parsed.get("unit_summary") or {}).items():
+        database.insert_rent_roll_unit_summary(
+            current_team_id(), filename, building, counts["occupied_units"],
+            counts["vacant_units"], counts["down_units"],
         )
-        lease = database.get_effective_lease(lease_id, team_id=current_team_id())
-        lease["tags"] = []
-        created.append(_lease_summary(lease))
 
     if created:
         _invalidate_lease_derived_caches()
@@ -1514,6 +1563,8 @@ def import_rent_roll():
         "imported_count": len(created),
         "skipped_rows": parsed["skipped_rows"],
         "column_mapping": parsed["column_mapping"],
+        "unit_summary": parsed.get("unit_summary", {}),
+        "replaced_previous_rows": replaced,
         # How the table was obtained ("delimited"/"excel"/"excel_legacy"/
         # "word"/"pdf-text"/"pdf-ocr"/"image-ocr") and any caveats -- the
         # frontend shows `warnings` verbatim after an OCR/heuristic import
@@ -4489,6 +4540,31 @@ def portfolio_t12_reconciliation():
     return jsonify(result), 200
 
 
+def _t12_scope_from_rent_roll():
+    """
+    (property_address, error) for a T-12 sent without one -- what the
+    report page does (AUDIT.md §6.1(a): the T-12 cross-check was
+    unreachable from the UI, always 400). A T-12 covers one property: if
+    this team's rent roll covers exactly one building, that's the scope;
+    otherwise say which buildings there are. Team-scoped.
+    """
+    from app.portfolio import _SUITE_DESIGNATOR_RE
+    buildings = {}
+    for lease in database.get_all_effective_leases(team_id=current_team_id()):
+        if not _is_rent_roll_import(lease):
+            continue
+        address = field_value(lease, "property_address")
+        key = _normalize_building_address(address)
+        if key and key not in buildings:
+            buildings[key] = _SUITE_DESIGNATOR_RE.sub("", address).strip(" ,")
+    if len(buildings) == 1:
+        return next(iter(buildings.values())), None
+    if not buildings:
+        return None, "Import the property's rent roll before adding a T-12 -- there's no rent roll to compare it against."
+    names = "; ".join(sorted(buildings.values()))
+    return None, f"Your rent rolls cover {len(buildings)} properties ({names}). Choose which property this T-12 is for (property_address)."
+
+
 @app.route('/portfolio/deal-mismatch-report', methods=['POST'])
 @require_role('analyst')
 def portfolio_deal_mismatch_report():
@@ -4525,7 +4601,9 @@ def portfolio_deal_mismatch_report():
     t12_data = None
     if 't12_file' in request.files:
         if not property_address:
-            return jsonify({"error": "t12_file requires property_address"}), 400
+            property_address, scope_error = _t12_scope_from_rent_roll()
+            if scope_error:
+                return jsonify({"error": scope_error}), 400
 
         t12_file: FileStorage = request.files['t12_file']
         if not t12_file.filename:
@@ -4576,7 +4654,9 @@ def portfolio_deal_mismatch_report_pdf():
     t12_data = None
     if 't12_file' in request.files:
         if not property_address:
-            return jsonify({"error": "t12_file requires property_address"}), 400
+            property_address, scope_error = _t12_scope_from_rent_roll()
+            if scope_error:
+                return jsonify({"error": scope_error}), 400
 
         t12_file: FileStorage = request.files['t12_file']
         if not t12_file.filename:
@@ -4635,7 +4715,9 @@ def portfolio_deal_mismatch_report_excel():
     t12_data = None
     if 't12_file' in request.files:
         if not property_address:
-            return jsonify({"error": "t12_file requires property_address"}), 400
+            property_address, scope_error = _t12_scope_from_rent_roll()
+            if scope_error:
+                return jsonify({"error": scope_error}), 400
 
         t12_file: FileStorage = request.files['t12_file']
         if not t12_file.filename:

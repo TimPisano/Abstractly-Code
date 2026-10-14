@@ -95,8 +95,9 @@ those by taking **main's** TASKS.md, not the branch's.
 
 | Branch | Worktree | +/− main | State |
 |---|---|---|---|
-| `feature/s8-sample-data` | `~/dev/projects/abstractly-s8-sample` | — | T13 of the Section 8 pivot. Branched off `feature/s8-data-model` `b6caf9a` (T1, unmerged) + `main` merged in, 2026-10-12. "Load sample deal" and the `DEMO_MODE` seed switch to the Section 8 fixtures (`backend/tests/fixtures/section8/`) when `SECTION8_MODE` is on; Maple Ridge unchanged with the flag off. **Must merge after T1.** **Plan approved, building** — `docs/plans/feature-s8-sample-data.md`. |
-| `feature/s8-unit-file-and-phas` | `~/dev/projects/abstractly-s8-unit-file` | — | Branched off **`feature/s8-data-model` `b6caf9a`** (stacked — T1 unmerged) 2026-10-12. **T9 of the Section 8 pivot:** Units list + Unit file page + Housing Authorities (PHA) directory/settings UI in the customer app, behind `SECTION8_MODE`. **Plan written, awaiting user approval** — `docs/plans/feature-s8-unit-file-and-phas.md`. Cannot merge before T1. |
+| `feature/s8-hap-payment-import` | `~/dev/projects/abstractly-s8-hap-payments` | — | **T4 of the Section 8 pivot.** Stacked on `feature/s8-data-model` (T1, unmerged) + `main`, 2026-10-13. Parse PHA HAP payment registers (CSV/XLSX/PDF) into a team-scoped `hap_payments` table behind `SECTION8_MODE`. **Merge only after T1.** **Plan written, awaiting user approval** — `docs/plans/feature-s8-hap-payment-import.md`. |
+| `feature/s8-pii-guard` | `~/dev/projects/abstractly-s8-pii-guard` | — | **T0 of the Section 8 pivot.** Branched off `main` 2026-10-13. Mask/drop SSN, DOB and bank numbers before storage (extraction quotes, date candidates, free-text notes) and before Anthropic; scrub tracebacks from alert emails; per-team "AI processing off" switch (Q5 decision). Must merge before testers upload real tenant docs. **Plan written, awaiting user approval** — `docs/plans/feature-s8-pii-guard.md`. |
+| `feature/s8-unit-file-and-phas` | `~/dev/projects/abstractly-s8-unit-file` | +5 / −0 | **Built, pushed `d893c56`; reviewer FIX FIRST on a T1 bug (see handoff).** T9 of the Section 8 pivot, stacked on `feature/s8-data-model` `b6caf9a` (T1, unmerged). Section 8 nav group (above Overview; hidden unless `GET /config` → `section8_mode: true`) with Units list (grouped by property, household/PHA/program/contract/tenant/HAP), unit file (current tenancy edit + record new w/ `end_current`, HAP contracts, documents link/kind/unlink → lease detail, past tenancies), Housing Authorities directory (add/edit/archive, show archived), admin “Group uploads into units” backfill with dry-run preview. Only backend change: `/config` boolean. Suite **84/84** on `d893c56`. security-auditor **MERGE**. Headless click-through + screenshots 1440/768/375 looked at (flag on/off, viewer read-only, no horizontal overflow). **Cannot merge before T1.** |
 | `fix/quick-wins` | `~/dev/projects/abstractly-quick-wins` | — | Branched off `main` 2026-10-06. (1) lease detail cards cut off on the right at 375px + sweep every page at 375px; (2) upgrade Pillow and every dependency with a known security advisory, full suite green. **Plan approved, building** — `docs/plans/fix-quick-wins.md`. |
 | `feature/loan-underwriting` | `~/dev/projects/abstractly-loan` | +2 / −16 | ~19 uncommitted files (`api.py`, `database.py`, tests, plan); not pushed. Feature-flagged off. Merge **after** team isolation (its plan defers all tenancy to it). Another session may be active — don't touch. |
 | `feature/deal-assistant` | `~/dev/projects/abstractly-assistant` | 0 / −7 | Worktree only, nothing built. Not started. |
@@ -109,12 +110,26 @@ those by taking **main's** TASKS.md, not the branch's.
 
 ### Handoff blocks
 
+#### feature/s8-hap-payment-import
+- Worktree: ~/dev/projects/abstractly-s8-hap-payments
+- Goal: upload a PHA's HAP payment register and get one hap_payments row per unit-month payment/adjustment, matched to the team's units/tenancies, behind SECTION8_MODE.
+- Loop step: 3 — plan written, waiting for user approval
+- Last update: 2026-10-13 by start-task
+- Next action: user reviews docs/plans/feature-s8-hap-payment-import.md (base = T1; merge after T1)
+
+#### feature/s8-pii-guard
+- Worktree: ~/dev/projects/abstractly-s8-pii-guard
+- Goal: SSNs, dates of birth and bank numbers never stored and never sent to Anthropic; alert emails carry no tracebacks; a team can turn AI processing off.
+- Loop step: 3 — plan written, waiting for user approval
+- Last update: 2026-10-13 by start-task
+- Next action: user reviews docs/plans/feature-s8-pii-guard.md (answer its open questions)
+
 #### feature/s8-sample-data
 - Worktree: ~/dev/projects/abstractly-s8-sample
-- Goal: with SECTION8_MODE on, "Load sample deal" and the DEMO_MODE seed load a Section 8 sample portfolio built from the qa/section8-fixtures set; flag off = Maple Ridge, unchanged.
-- Loop step: 4 — building (plan approved 2026-10-13; open questions answered in the plan)
-- Last update: 2026-10-13 by the s8-sample session
-- Next action: build per plan; capture uses main's rent-roll importer (qa/overnight-gauntlet NOT merged as of 2026-10-13 — re-run the capture after it merges)
+- Goal: with SECTION8_MODE on, "Load sample deal", /leases/sample and the DEMO_MODE seed load the Section 8 sample portfolio built from qa/section8-fixtures; flag off unchanged.
+- Loop step: 10 — READY, waiting for the user's morning review (user: T9 and T13 are NOT merged from worker windows)
+- Last update: 2026-10-13 by the s8-sample session — tip f085d02 pushed, suite 86/86, reviewer MERGE (after FIX FIRST), security-auditor MERGE, UI check PASS
+- Next action: user reviews; merge order T1 (feature/s8-data-model) first, then this. After P1/P2 merge, re-run backend/benchmark_data/section8_sample/capture_section8_sample.py.
 
 #### fix/section8-tenant-share
 - Worktree: ~/dev/projects/abstractly-s8-tenant-share
@@ -127,9 +142,12 @@ those by taking **main's** TASKS.md, not the branch's.
 - Worktree: ~/dev/projects/abstractly-s8-unit-file
 - Goal: Section 8 operators can see every unit with its current tenancy, open a per-unit file (tenancy, HAP contracts, linked documents), and manage their housing authorities — behind SECTION8_MODE.
 - Base: stacked on feature/s8-data-model (b6caf9a); rebase onto main once T1 merges
-- Loop step: 3 — plan written, waiting for user approval
-- Last update: 2026-10-12 by start-task
-- Next action: user reviews docs/plans/feature-s8-unit-file-and-phas.md
+- Loop step: 9 — built + pushed (`d893c56`), suite 84/84, security-auditor MERGE; reviewer FIX FIRST item belongs to T1
+- Last update: 2026-10-13 by the T9 build session. User approved plan; wording "Group uploads into units"; nav group placed ABOVE existing groups (my recommendation, user accepted)
+- Blocker (T1 bug, found by reviewer): unlink = PATCH archived:true, but `unit_documents` UNIQUE(team_id, lease_id, unit_id) counts archived rows, so re-linking an unlinked upload 409s with no UI way out. Fix belongs on `feature/s8-data-model` (POST /section8/units/<id>/documents should un-archive the existing row) + regression test (link → unlink → re-link = 201). Not done: T1's worktree belongs to another session and the plan says T1 bugs are fixed on T1. Waiting on user decision.
+- Not verified: real tester deployment with the flag on; contextual toolbar on S8 views falls back to dashboard quick actions (app.js out of plan scope); s8unit view highlights no nav item.
+- Screenshots: scratchpad of session 3b7e8ed2 (s8/shots4, shots5, shots6) — temporary
+- Next action: user decides on the T1 unlink/re-link fix; then re-review, then `/merge-branch feature/s8-data-model` before this branch
 
 #### feature/s8-data-model
 - Worktree: ~/dev/projects/abstractly-s8-data-model
@@ -164,10 +182,10 @@ those by taking **main's** TASKS.md, not the branch's.
 
 #### qa/overnight-gauntlet
 - Worktree: ~/dev/projects/abstractly-gauntlet
-- Goal: overnight reliability gauntlet — synthetic messy rent rolls/T-12s/leases graded against a manifest through the full local pipeline; fix root causes with regression tests; QA_REPORT.md per cycle.
-- Loop step: 8/9 done — reviewer MERGE (re-review after 4 FIX FIRST items), security-auditor MERGE; all follow-ups fixed. Lease extraction OUT of scope (feature/lease-intelligence).
-- Last update: 2026-10-06 overnight — cycle 8 pushed. 175/190 cases pass (22/132 at baseline); 1,979/1,979 planted mismatches caught; 19 false alarms (lease extraction / OCR char misreads); 61 Fix commits each with a regression test; suite 83/83. AUDIT.md §6.11 dollar bugs fixed with golden fixtures.
-- Next action: USER decides 3 items in QA_REPORT.md (unit-wording matching; rent_roll_unit_summaries table; re-import supersede rule), then `/merge-branch qa/overnight-gauntlet`. Frontend follow-ups (show replaced_previous_rows/unit_summary; .txt in picker) are separate tasks.
+- Loop step: 11 — MERGED LOCALLY, NOT PUSHED. Merge commit `b63927d` on local `main` (user approved 2026-10-13: "approve merge qa/overnight-gauntlet"). Only conflict: `run_all_tests.py` list (kept both entries).
+- Suite on merged main: **85/85** in a clean detached worktree (no `backend/.env`). In the primary checkout it gave 77/85 (known non-hermetic env, see Decisions log) and sent one real email (demo-request notification to the user's own Gmail).
+- `git push origin main` was DENIED by the Claude Code auto-mode permission classifier — not retried. Merge lock still held by session 10959d5d so no other session pushes this merge by accident.
+- Next action: USER pushes main (or allows the push), then smoke-test tester, move row to Done, remove worktree, release lock.
 
 #### chore/repo-layout
 - Worktree: `~/dev/projects/abstractly-repo-layout`
@@ -191,6 +209,7 @@ those by taking **main's** TASKS.md, not the branch's.
 
 | Branch | Worktree | +/− main | Notes |
 |---|---|---|---|
+| `feature/s8-sample-data` | `~/dev/projects/abstractly-s8-sample` | +16 / 0 vs main (includes T1's 6) | **READY — user reviews in the morning; do not merge from a worker window.** Tip `f085d02`. **T13.** Stacked on `feature/s8-data-model` (T1): **merge only after T1.** With `SECTION8_MODE` on: "Load Sample Deal" loads the fictional Juniper Row + Bellmont Terrace portfolio (65 documents tagged Sample + 1 PHA, 2 properties, 32 units, 30 tenancies, 13 HAP contract rows, 73 doc links) into the caller's team, all-or-nothing, 409 on a second/concurrent load; `/leases/sample` returns the Juniper Row 214 voucher lease; DEMO_MODE seed uses it and demo reset wipes Section 8 tables. Flag off: unchanged (Maple Ridge). Planted fixture errors survive into the records (checked against answer_key.json). Tests: `test_section8_sample_data.py` 12/12 (3 regression tests verified failing first), new isolation case; suite **86/86** in the worktree. Headless UI check PASS (toast flag on/off + 409 at 1440/768/375; scratchpad `shots-s8-sample-after/`, looked at). **reviewer: FIX FIRST → fixed → MERGE; security-auditor: MERGE.** **Caveat:** captured documents reflect `main`'s regex extraction (Section 8 leases split into 3, tenant read as "Gas") — re-run `capture_section8_sample.py` after P1 lease-intelligence + P2 gauntlet merge. |
 | `fix/section8-tenant-share` | `~/dev/projects/abstractly-s8-tenant-share` | 4 own commits on top of `qa/overnight-gauntlet` `906eaab` (+79 / −38 vs main incl. gauntlet) | **Ready. Merge AFTER `qa/overnight-gauntlet`** (built on its `a1cff89`, user-approved base). Pushed `5fa9e5f`. Rent roll import: contract rent = tenant share + HAP, checked per row with $1 tolerance; mismatch → rent column kept, confidence low, flagged with $ gap; explicit tenant-share column with no HAP never used as rent; bare "Tenant Rent" = rent on market rolls, but blank + flagged ambiguous when any header or that unit's row shows a voucher sign (unit/address/name columns ignored); "-"/N/A HAP = $0; "Subsidy Type" no longer read as HAP dollars; honest citations for derived rents; OCR warnings merged not overwritten. Flags go to the existing upload warnings box (grouped, first 10 units) + `section8_checks` in the parse result (not passed through the API yet). Only `rent_roll_import.py` + tests; no routes/UI. Suite **84/84** (no API key). New `test_section8_rent_roll.py` 23 tests (16 failed before the fix; 2 review regressions failed before their fix). 123 repo rent-roll fixtures re-parsed: **0 rent changes**, only 2 S8 fixtures' citations changed. **reviewer: MERGE** (after FIX FIRST: dash/N/A HAP and unit-id/address false positives — fixed with tests). **Not verified:** real PMS Section 8 exports; the warnings box rendering (no UI change, not screenshotted). |
 | `feature/s8-data-model` | `~/dev/projects/abstractly-s8-data-model` | +6 / −5 | **Ready.** Pushed `b6caf9a`. T1 of the Section 8 pivot: team-scoped tables phas/properties/units/tenancies/hap_contracts/unit_documents (additive only, money in integer cents, no deletes — archive via PATCH), 18 `/section8/*` routes (viewer read / analyst write / admin backfill), address backfill (dry run by default, idempotent, never edits leases; backfilled units always `unknown` per user), all behind `SECTION8_MODE` (default off → every route 404s, even logged out). No UI, no `render.yaml`/env changes. Tests: `test_section8_data_model.py` 18 + 3 cases in `test_team_isolation.py` (mutation-checked: disabling the same-team guard makes them fail). Suite **84/84** in a clean worktree on the pushed tip. **security-auditor: MERGE** (3 low items fixed in `b6caf9a` with failing-first tests); **reviewer: FIX FIRST → done** (push `b6caf9a` + re-run suite; no code issues). Overlap: `fix/section8-tenant-share` rewrites `portfolio.py` but keeps all 5 names this branch imports (checked); both it and `feature/s8-hud-data` add lines to `run_all_tests.py` (trivial conflict). Whichever merges second re-runs the suite. **Not verified:** a real tester deployment with the flag on. |
 | `feature/lease-intelligence` | `~/dev/projects/abstractly-lease-intel` | +16 / −22 | **Ready.** Tip `568c53d`. Lease extraction accuracy for multifamily + Section 8 (regex engine; AI prompt v3 mocked only). Measured on synthetic, fictional corpora: own 51.1% → 100%, held-out #1 55.6% → 99.6%, **blind #2 87.6% before tuning** → 95.8%, 0 high-confidence wrong values on all three; SEC commercial benchmark 36.7% → 40.0% (no lease/field regressed); Maple Ridge fields identical to main. Fixes: Section 8 lease + HUD addendum/HAP contract/renewals no longer split into 2–3 leases; co-residents; apartment wording; contract rent (not tenant portion/pet/parking/renewal rent); addresses keep the unit; per-page OCR of scanned attachments (≤10 pages / 60s). New fields behind `LEASE_MULTIFAMILY_FIELDS` (off): unit, pet/parking/utility (RUBS + flat fees), Section 8 split, in-file renewals/amendments/PHA notices, current rent/end; read-only lease-detail group. Suite **90/90**; **91/91 on a trial merge with current `main`** (incl. merged `feature/auth-flow`), merges clean. Headless screenshots 1440/768/375 flag on + off, looked at: session scratchpad `ui/png/` and `ui-checker/` (ui-checker PASS). **reviewer: MERGE** (after FIX FIRST: quadratic regex on long tokens 132s→0.4s, OCR time budget — both fixed with tests). Overlap: `qa/overnight-gauntlet` only in `run_all_tests.py` (list merge). Report + hand-offs for the gauntlet (report should use current rent / Section 8 split; Apt-vs-Suite address matching; concession phrasings): `docs/LEASE_EXTRACTION_REPORT.md`. **Not verified:** AI engine accuracy (no funded key — run the 3 corpora with `LEASE_EXTRACTION_ENGINE=ai` before enabling AI); real customer leases. |
@@ -226,6 +245,7 @@ loan-underwriting. (`landing-positioning` dropped — superseded.)
 
 ## Up next
 
+- **Rent-roll importer reads a totals row as a tenant** (found 2026-10-13 by `feature/s8-sample-data`): the Section 8 fixture `juniper_row_rent_roll_2026-10-01_appfolio.csv` has a final row `Total,,16 occupied / 18 units,...`; `parse_csv_rent_roll` imports it as tenant "16 occupied / 18 units" at $20,785.00, unit "Suite Total". Reproduced on `main` and on `qa/overnight-gauntlet` `906eaab`. Own `fix/` branch + regression test; then re-run `capture_section8_sample.py`.
 - **Test suite fails 8 files in the primary checkout only** (found 2026-10-05 during the auth-flow merge): `backend/tests/_session_users.py` inserts test users whose email collides with the first admin that `backend/.env` seeds (`ADMIN_EMAIL`), `UNIQUE constraint failed: users.email`. Clean worktrees (no `.env`) pass 83/83. Same on pre-merge main. Small fix, own branch.
 
 1. ~~Push local `main`~~ — done (`f68a287`).
@@ -281,7 +301,7 @@ Claim with `/start-task <branch>`; read PIVOT_PLAN.md Step 4 first (`git show pi
 - T5 `feature/s8-hap-reconciliation` (L) — expected vs received HAP by unit/PHA/month, $ findings, export. Needs T1, T4.
 
 **Phase 2 — compliance calendar**
-- T6 `feature/s8-inspections` (L) — needs T1 · T7 `feature/s8-recert-tracking` (M, HCV) — needs T1, T2 · T7b `feature/s8-pbra-recerts` (L) — needs T7, T0 · T8 `feature/s8-rent-increases-renewals` (M) — needs T1, T2, P5 · T9 `feature/s8-unit-file-and-phas` (M) — needs T1 — **claimed 2026-10-12, stacked on T1** · T10 `feature/s8-this-month` (M) — needs T5, panels from T6–T8
+- T6 `feature/s8-inspections` (L) — needs T1 · T7 `feature/s8-recert-tracking` (M, HCV) — needs T1, T2 · T7b `feature/s8-pbra-recerts` (L) — needs T7, T0 · T8 `feature/s8-rent-increases-renewals` (M) — needs T1, T2, P5 · T9 `feature/s8-unit-file-and-phas` (M) — needs T1 — **built + pushed 2026-10-13 (`d893c56`), stacked on T1** · T10 `feature/s8-this-month` (M) — needs T5, panels from T6–T8
 
 **Phase 3 — repositioning**
 - T11 `feature/s8-marketing-copy` (M) — **can be drafted now; must NOT merge until T3 + T5 are live on tester** (one push to main = public on prod). Pricing waits on Q2.
@@ -341,6 +361,8 @@ Claim with `/start-task <branch>`; read PIVOT_PLAN.md Step 4 first (`git show pi
 | (docs) | `64af20a`, `d55fef9`, `70ed972` | First CLAUDE.md / TASKS.md / agents / skills. |
 
 ## Decisions log
+
+- **2026-10-13 — qa/overnight-gauntlet QA_REPORT decisions: all three accepted as built (user).** (1) Unit matching ignores designator wording (Suite = Apt = Unit; Building A + Apt 101 = A-101) — reverses the old `test_unit_designator_preservation_is_intentional` docstring stance; revert is one function (`portfolio._normalize_address`). (2) New team-scoped table `rent_roll_unit_summaries` (vacant/down unit counts for occupancy). (3) Re-import supersedes an earlier rent-roll file only when ≥ half its units reappear; "replaced N rows" not shown in the upload UI yet (frontend follow-up).
 
 - **2026-10-12 — Section 8 PII = data minimization; deadline rules per PHA (user, PIVOT_PLAN Q5/Q4).** Store only tenant name, unit, tenant share, HAP, contract rent, recert + inspection dates; never SSNs, full income documents, or bank details; all team-scoped. Deadline rules configurable per PHA with defaults, labelled "Verify with your PHA", defaults checked by the user's Section 8 contacts before launch. Detail under Up next → Section 8 pivot.
 

@@ -1,0 +1,13 @@
+RealPage OneSite
+Lakeshore Commons - Rent Roll Detail
+As of 10/05/2026
+
+Bldg/Unit,Floorplan,SQFT,Unit/Lease Status,Name,Phone Number,Move-In,Move-Out,Lease Start,Lease End,Market + Addl.,Lease Rent,Other Charges/Credits,Total Billing,Dep On Hand,Balance
+101,1BR,690,Occupied,Greta Thibodeaux,555-0167,02/01/2026,,02/01/2026,01/31/2027,"$1,200.00","$1,200.00",$25.00,"$1,225.00",$500.00,$0.00
+102,3BR,1255,Occupied,Rafael Ingram,555-0195,03/01/2026,,03/01/2026,02/28/2027,"$1,850.00","$1,975.00",$25.00,"$2,000.00",$500.00,$0.00
+103,1BR,705,Occupied,Malik Bellweather,555-0187,01/01/2026,,01/01/2026,12/31/2026,"$1,200.00","$1,150.00",$25.00,"$1,175.00",$500.00,$0.00
+104,1BR,720,Occupied,Maeve Pemberton,555-0190,07/01/2025,,07/01/2025,06/30/2026,"$1,225.00","$1,200.00",$25.00,"$1,225.00",$500.00,$0.00
+201,1BR,720,Occupied,Lucia Zeller,555-0133,04/01/2026,,04/01/2026,03/31/2027,"$1,150.00","$1,150.00",$25.00,"$1,175.00",$500.00,$0.00
+202,3BR,1240,Occupied,Malik Whitlock,555-0130,04/01/2026,,04/01/2026,03/31/2027,"$1,900.00","$1,875.00",$25.00,"$1,900.00",$500.00,$0.00
+203,1BR,705,Occupied,Sofia Sorensen,555-0198,03/01/2026,,03/01/2026,02/28/2027,"$1,150.00","$1,150.00",$25.00,"$1,175.00",$500.00,$0.00
+204,3BR,1255,Vacant-Unrented,VACANT,,,,,,"$1,825.00",,,,,

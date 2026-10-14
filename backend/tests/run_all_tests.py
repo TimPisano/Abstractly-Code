@@ -114,6 +114,9 @@ UNIT_TESTS = [
     # Section 8 pivot T1 (feature/s8-data-model).
     "test_section8_data_model.py",
     "test_section8_fixtures.py",
+    # Overnight reliability gauntlet (qa/overnight-gauntlet, 2026-10-05):
+    # one regression test per bug the gauntlet found.
+    "test_gauntlet_regressions.py",
     # Section 8 pivot T13 (feature/s8-sample-data).
     "test_section8_sample_data.py",
 ]

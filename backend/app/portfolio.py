@@ -275,19 +275,104 @@ def _normalize_address(address: Optional[str]) -> Optional[str]:
     catching the SAME unit uploaded twice with conflicting numbers, so
     two different suites in the same building must NOT match here (see
     _normalize_building_address for the opposite, building-level need).
+
+    The unit designator's WORDING is not part of the key: "Suite 101",
+    "Apt 101", "Unit 101", "#101" and "Apartment No. 101" (before or after
+    the city) are the same unit of the same building. The rent-roll
+    importer itself writes "<typed address>, Suite <unit>" for a bare unit
+    number while multifamily leases say "Apt"/"Unit", so matching on the
+    literal wording meant a correct rent roll and a correct lease could
+    never be paired (overnight gauntlet, 2026-10-05). The unit NUMBER
+    still has to match ("0101" == "101" and "A-101" == "A101" aside), and
+    so does the building (street suffixes canonicalized, "Drive" == "Dr").
     """
-    return _normalize_for_matching(address)
+    if not address:
+        return None
+    # Pull the unit out FIRST: "Unit 5, 100 Oak St" must keep unit 5 before
+    # any leading property-name segment is dropped (review finding).
+    match = _UNIT_IN_ADDRESS_RE.search(address)
+    if not match:
+        return _canonical_street_words(_normalize_for_matching(_drop_property_name_prefix(address)))
+    building = address[:match.start()] + " " + address[match.end():]
+    unit = _canonical_unit_id(match.group(1))
+    # Garden communities: "Building A, Apartment 101" is the rent roll's
+    # "A-101" -- the building letter/number is part of the unit id, not of
+    # the street address. Kept as "building|unit" so "Bldg 1, Apt 12" never
+    # equals "Apt 112".
+    bldg = _BUILDING_IN_ADDRESS_RE.search(building)
+    if bldg:
+        building = building[:bldg.start()] + " " + building[bldg.end():]
+        if "|" not in unit:
+            unit = f"{_canonical_unit_id(bldg.group(1))}|{unit}"
+    building = _drop_property_name_prefix(building.strip(" ,"))
+    building_key = _canonical_street_words(_normalize_for_matching(building)) or ""
+    return f"{building_key} #{unit}"
+
+
+# Street-type words and directionals, long form -> USPS abbreviation, so
+# "1450 Cedar Bend Drive" and "1450 Cedar Bend Dr." are the same building.
+_STREET_WORD_CANON = {
+    "street": "st", "avenue": "ave", "av": "ave", "drive": "dr", "boulevard": "blvd", "road": "rd",
+    "lane": "ln", "court": "ct", "place": "pl", "terrace": "ter", "parkway": "pkwy", "circle": "cir",
+    "highway": "hwy", "square": "sq", "trail": "trl", "expressway": "expy", "freeway": "fwy",
+    "north": "n", "south": "s", "east": "e", "west": "w",
+    "northeast": "ne", "northwest": "nw", "southeast": "se", "southwest": "sw",
+}
+
+
+def _drop_property_name_prefix(address: str) -> str:
+    """
+    "Maple Ridge Apartments, 100 Oak St, ..." -> "100 Oak St, ...": drop
+    leading comma-separated segments before the first one that starts with
+    a street number. Leases and typed addresses routinely lead with the
+    property name; the rent-roll side usually doesn't (AUDIT.md §6.11).
+    An address with no numbered segment is returned unchanged.
+    """
+    parts = address.split(",")
+    for i, part in enumerate(parts):
+        if re.match(r"\s*\d", part):
+            return ",".join(parts[i:]) if i else address
+    return address
+
+
+def _canonical_street_words(normalized: Optional[str]) -> Optional[str]:
+    if not normalized:
+        return normalized
+    return " ".join(_STREET_WORD_CANON.get(w, w) for w in normalized.split())
+
+
+# One unit designator anywhere in an address: "Suite 101", "Ste. 4",
+# "Unit 12B", "Apt #3", "Apartment No. 7", "#301". The designator word
+# must be a whole word, so a street like "Unity Ave" is never "Unit y".
+_DESIGNATOR = r"(?:\b(?:suite|ste|unit|apt|apartment)\b\.?\s*(?:no\.?\s*|#\s*)?|#\s*)"
+_UNIT_IN_ADDRESS_RE = re.compile(_DESIGNATOR + r"([A-Za-z0-9][A-Za-z0-9-]*)", re.IGNORECASE)
+
+
+_BUILDING_IN_ADDRESS_RE = re.compile(r",?\s*\b(?:building|bldg)\b\.?\s*(?:no\.?\s*|#\s*)?([A-Za-z0-9]{1,4})\b", re.IGNORECASE)
+
+
+def _canonical_unit_id(raw: str) -> str:
+    """
+    "0101" -> "101"; "A-101" / "A101" -> "A|101" (building letter + unit);
+    "1-204" -> "1|204". A plain number stays one token, so "112" never
+    equals building 1 / unit 12 ("1|12").
+    """
+    unit = raw.upper().strip()
+    m = re.fullmatch(r"([A-Z]{1,2})-?(\d+[A-Z]?)", unit) or re.fullmatch(r"(\d+)-(\d+[A-Z]?)", unit)
+    if m:
+        return f"{m.group(1).lstrip('0') or '0'}|{m.group(2).lstrip('0') or '0'}"
+    unit = unit.replace("-", "")
+    if unit.isdigit():
+        unit = unit.lstrip("0") or "0"
+    return unit
 
 
 # Strips a recognizable suite/unit designator (", Suite 200", " Ste. 4",
 # " Unit 12B", " #301") wherever it appears, case-insensitively, before
 # the usual lowercase/punctuation/whitespace normalization runs. Applied
-# in _normalize_building_address only -- _normalize_address (used for
-# cross-lease mismatch detection) deliberately does NOT do this, since
-# that check exists specifically to catch the same unit's numbers
-# disagreeing across two uploads, which requires the suite to still be
-# part of the match key there.
-_SUITE_DESIGNATOR_RE = re.compile(r",?\s*(?:suite|ste\.?|unit|apt\.?|#)\s*[\w-]+", re.IGNORECASE)
+# in _normalize_building_address only; _normalize_address keeps the unit
+# number (canonicalized) in its key.
+_SUITE_DESIGNATOR_RE = re.compile(r",?\s*" + _DESIGNATOR + r"[\w-]+", re.IGNORECASE)
 
 
 def _normalize_building_address(address: Optional[str]) -> Optional[str]:
@@ -308,12 +393,94 @@ def _normalize_building_address(address: Optional[str]) -> Optional[str]:
     if not address:
         return None
     stripped = _SUITE_DESIGNATOR_RE.sub("", address)
-    return _normalize_for_matching(stripped)
+    stripped = _BUILDING_IN_ADDRESS_RE.sub("", stripped)
+    stripped = _drop_property_name_prefix(stripped.strip(" ,"))  # "Building A" of a garden community is the same property
+    return _canonical_street_words(_normalize_for_matching(stripped))
 
 
 def _normalize_tenant_name(tenant: Optional[str]) -> Optional[str]:
     """Loose matching for "same tenant" across independently-uploaded leases (e.g. a chain with several units) -- see _normalize_for_matching."""
     return _normalize_for_matching(tenant)
+
+
+_RESIDENT_SPLIT_RE = re.compile(r"\s*(?:&|\band\b|;|/|\+|\n)\s*", re.IGNORECASE)
+
+
+def _fold_accents(text: str) -> str:
+    """"François Søren" -> "Francois Soren" (NFKD + drop combining marks; ø/å/æ/ß spelled out)."""
+    import unicodedata
+    text = text.translate(str.maketrans({"ø": "o", "Ø": "O", "æ": "ae", "Æ": "AE", "ß": "ss", "đ": "d", "ł": "l", "Ł": "L"}))
+    return "".join(ch for ch in unicodedata.normalize("NFKD", text) if not unicodedata.combining(ch))
+
+
+def _resident_token_sets(tenant: Optional[str]) -> List[frozenset]:
+    """One word-set per person named in a tenant cell ("A & B", "Smith, John")."""
+    if not tenant:
+        return []
+    tenant = _fold_accents(tenant)
+    people = []
+    for part in _RESIDENT_SPLIT_RE.split(tenant):
+        words = frozenset(re.sub(r"[^\w\s]", " ", part.lower()).split())
+        if words:
+            people.append(words)
+    return people
+
+
+def _same_tenant(a: Optional[str], b: Optional[str]) -> bool:
+    """
+    True when two tenant cells name the same household: identical after
+    _normalize_tenant_name, OR at least one person in common, where a
+    person matches regardless of word order ("SMITH, JOHN" == "John
+    Smith") and a dropped middle initial ("John Q. Smith" == "John
+    Smith"). A rent roll routinely lists the household as "A & B" or
+    "Last, First" while the lease names "A and B" or just "A" -- none of
+    those is a different tenant (overnight gauntlet, 2026-10-05). Two
+    different people still differ: "Mateo Nakamura" vs "Malik Nakamura"
+    share only a surname, which is never enough.
+    """
+    if _normalize_tenant_name(a) == _normalize_tenant_name(b):
+        return True
+    # Accents and spacing are not identity: "Francois" == "François", and a
+    # scan's "EzraQuintero" == "Ezra Quintero" (letters identical, in order).
+    squash_a = re.sub(r"[^a-z]", "", _fold_accents(a or "").lower())
+    squash_b = re.sub(r"[^a-z]", "", _fold_accents(b or "").lower())
+    if squash_a and squash_a == squash_b:
+        return True
+    # A fixed-width PMS column cuts long names ("Bastian Brightwa"): a cut
+    # of 12+ letters that's a prefix of the full name is the same name.
+    short, long_ = sorted((squash_a, squash_b), key=len)
+    if len(short) >= 12 and long_.startswith(short):
+        return True
+    people_a, people_b = _resident_token_sets(a), _resident_token_sets(b)
+    if not people_a or not people_b:
+        return False
+    fewer, more = (people_a, people_b) if len(people_a) <= len(people_b) else (people_b, people_a)
+    # EVERY person on the shorter list must be on the other one (the lease
+    # may name only the primary resident); one shared roommate out of two
+    # is a household change, not a match (review finding).
+    return all(any(_same_person(p, q) for q in more) for p in fewer)
+
+
+_NAME_SUFFIXES = {"jr", "sr", "ii", "iii", "iv"}
+
+
+def _same_person(pa: frozenset, pb: frozenset) -> bool:
+    """Word order and a dropped middle initial don't matter; a generational suffix (Jr/Sr/II) does."""
+    if (pa & _NAME_SUFFIXES) != (pb & _NAME_SUFFIXES):
+        return False
+    full_a = {w for w in pa - _NAME_SUFFIXES if len(w) > 1}
+    full_b = {w for w in pb - _NAME_SUFFIXES if len(w) > 1}
+    init_a = {w for w in pa if len(w) == 1}
+    init_b = {w for w in pb if len(w) == 1}
+    (sf, si), (lf, _li) = sorted(((full_a, init_a), (full_b, init_b)), key=lambda t: len(t[0]))
+    if not sf <= lf:
+        return False
+    if len(sf) >= 2:
+        return True  # extra middle names/initials don't matter
+    # "BELLWEATHER, D." -- a surname plus an initial matching one of the other
+    # side's remaining given names (a surname alone is never enough).
+    rest = lf - sf
+    return len(sf) == 1 and bool(si) and all(any(w.startswith(i) for w in rest) for i in si)
 
 
 def _lease_label(lease: Dict[str, Any]) -> str:
@@ -1385,6 +1552,18 @@ _RENT_ROLL_IMPORT_EXTENSIONS = {"csv", "xlsx"}
 
 
 def _is_rent_roll_import(lease: Dict[str, Any]) -> bool:
+    """
+    A record created by the rent-roll importer (vs. an uploaded lease
+    document). Rows carry an explicit `source_kind` marker; before it
+    existed this was guessed from the file extension (.csv/.xlsx), which
+    misfiled every rent roll imported from .tsv/.txt/.xls/.docx/.pdf/an
+    image as a pile of LEASES -- the Deal Mismatch Report then compared
+    nothing (overnight gauntlet, 2026-10-05). The extension rule remains
+    only for unmarked legacy rows.
+    """
+    kind = lease.get("source_kind")
+    if kind:
+        return kind == "rent_roll"
     filename = (lease.get("filename") or "").lower()
     return "." in filename and filename.rsplit(".", 1)[1] in _RENT_ROLL_IMPORT_EXTENSIONS
 
@@ -1400,7 +1579,80 @@ _RENT_DISAGREEMENT_TOLERANCE_PCT = 1.0
 _RENT_DISAGREEMENT_TOLERANCE_ABS = 5.0
 
 
-def compute_rent_roll_reconciliation(leases: List[Dict[str, Any]]) -> Dict[str, Any]:
+def _operative_documents(docs: List[Dict[str, Any]], today: date) -> List[Dict[str, Any]]:
+    """
+    The lease document(s) that govern a unit on `today`. A buyer gets the
+    whole lease folder -- the expired original AND its renewal -- and
+    comparing the rent roll against every one of them invented money:
+    the old rent became a rent_mismatch and the old end date an
+    expired_but_occupied, ~$28,800/yr of phantom overstatement on a
+    correct unit (AUDIT.md §6.11). Rule: the lease(s) whose term covers
+    `today`; if none does, the one that starts latest (the newest term,
+    whether it has already ended or is a signed renewal yet to start).
+    Undated documents are kept only when no dated lease decides it.
+    Older documents are history, not a second lease to compare against.
+    """
+    if len(docs) <= 1:
+        return docs
+    # Two copies of the same lease (signed + unsigned scan) are one lease:
+    # comparing against both counted every finding on that unit twice.
+    unique, seen = [], set()
+    for doc in docs:
+        key = tuple((field_value(doc, f) or "").strip().lower()
+                    for f in ("tenant", "rent_amount", "lease_start_date", "lease_end_date", "concessions", "rent_escalation"))
+        if any(key) and key in seen:
+            continue
+        seen.add(key)
+        unique.append(doc)
+    docs = unique
+    if len(docs) <= 1:
+        return docs
+    dated = []
+    for doc in docs:
+        start = parse_date(field_value(doc, "lease_start_date"))
+        end = parse_date(field_value(doc, "lease_end_date"))
+        if start or end:
+            dated.append((start, end, doc))
+    if not dated:
+        return docs
+    covering = [d for s_, e_, d in dated if (s_ is None or s_ <= today) and (e_ is None or today <= e_) and s_ and e_]
+    if covering:
+        return _collapse_lease_versions(covering)
+    latest = max(dated, key=lambda t: (t[0] or t[1] or date.min))
+    return [latest[2]]
+
+
+def _collapse_lease_versions(docs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Same tenant + same term on several documents = versions of ONE lease
+    (the lease and its rent amendment, uploaded separately). Collapse them
+    to the latest upload (compared as THE lease), carrying the other
+    versions' rents in `_rent_versions` so the report can say "the rent
+    roll matches an earlier version" instead of pricing it as a plain
+    mismatch -- or hiding it (review follow-up).
+    """
+    families: Dict[tuple, List[Dict[str, Any]]] = {}
+    order = []
+    for doc in docs:
+        key = (_normalize_tenant_name(field_value(doc, "tenant")), parse_date(field_value(doc, "lease_start_date")),
+               parse_date(field_value(doc, "lease_end_date")))
+        if key not in families:
+            order.append(key)
+        families.setdefault(key, []).append(doc)
+    out = []
+    for key in order:
+        family = families[key]
+        if len(family) == 1:
+            out.append(family[0])
+            continue
+        rep = dict(max(family, key=lambda d: d.get("id") or 0))
+        rep["_rent_versions"] = [r for r in (parse_currency(field_value(d, "rent_amount")) for d in family
+                                             if d.get("id") != rep.get("id")) if r is not None]
+        out.append(rep)
+    return out
+
+
+def compute_rent_roll_reconciliation(leases: List[Dict[str, Any]], today: Optional[date] = None) -> Dict[str, Any]:
     """
     Cross-checks an imported rent roll against the actual lease PDF
     documents on file for the same units, and flags where they
@@ -1479,6 +1731,7 @@ def compute_rent_roll_reconciliation(leases: List[Dict[str, Any]]) -> Dict[str, 
     compared_pair_count = 0
 
     for group in address_groups.values():
+        group["lease_document"] = _operative_documents(group["lease_document"], today or date.today())
         if not group["lease_document"]:
             continue  # rent roll rows here, but no lease PDF to compare any of them against
         for rr_lease in group["rent_roll"]:
@@ -1488,7 +1741,7 @@ def compute_rent_roll_reconciliation(leases: List[Dict[str, Any]]) -> Dict[str, 
 
                 rr_tenant_norm = _normalize_for_matching(field_value(rr_lease, "tenant"))
                 doc_tenant_norm = _normalize_for_matching(field_value(doc_lease, "tenant"))
-                if rr_tenant_norm and doc_tenant_norm and rr_tenant_norm != doc_tenant_norm:
+                if rr_tenant_norm and doc_tenant_norm and not _same_tenant(field_value(rr_lease, "tenant"), field_value(doc_lease, "tenant")):
                     _add_mismatch(
                         mismatches, rr_lease, doc_lease, address, "tenant",
                         field_value(rr_lease, "tenant"), field_value(doc_lease, "tenant"),
@@ -1603,6 +1856,14 @@ def compute_t12_reconciliation(
         lease for lease in leases
         if _normalize_building_address(field_value(lease, "property_address")) == normalized_target
     ] if normalized_target else []
+    # The rent roll's claim is what's being checked: when the building has
+    # rent-roll rows, count only those. Adding the lease PDFs for the same
+    # units on top double-counted every documented unit (overnight
+    # gauntlet, 2026-10-05). Lease documents stand in only when no rent
+    # roll has been imported for the building.
+    rent_roll_rows = [lease for lease in matched_leases if _is_rent_roll_import(lease)]
+    if rent_roll_rows:
+        matched_leases = rent_roll_rows
 
     matched_rents = []
     excluded_lease_count = 0

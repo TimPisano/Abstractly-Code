@@ -25,3 +25,4 @@ drafts/
 *.env
 !.env.example
 .env
+backend/tools/gauntlet/results/

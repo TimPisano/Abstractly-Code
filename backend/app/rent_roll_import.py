@@ -26,12 +26,12 @@ frontend/app/detail-view.js for the matching display-side handling.
 import csv
 import io
 import re
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from openpyxl import load_workbook
 
-from app.normalize import normalize_header as _normalize_header, parse_currency, parse_date, parse_square_footage
+from app.normalize import BinaryTextUploadError, decode_text_upload, normalize_decimal_comma, normalize_header as _normalize_header, parse_currency, parse_date, parse_square_footage
 from app.portfolio import FIELD_NAMES
 
 
@@ -63,7 +63,10 @@ _COLUMN_ALIASES: Dict[str, List[str]] = {
     # a full lease abstraction states it -- doesn't silently drop it,
     # see api.py's _try_table_extraction for the round-trip this backs.
     "landlord": ["landlord", "owner", "lessor"],
-    "unit": ["unit number", "unit #", "suite #", "unit", "suite", "space"],
+    # "Bldg-Unit"/"Bldg/Unit" (Entrata, RealPage) normalize to "bldgunit"
+    # once punctuation is stripped, so they need their own aliases.
+    "unit": ["unit number", "unit #", "suite #", "unit", "suite", "space", "bldg-unit", "bldg/unit",
+             "building/unit", "building unit", "bldg unit", "apt #", "apt", "apartment", "unit id"],
     # "Unit SF" is Yardi/AppFolio's own compact form of "square feet".
     "square_footage": ["square footage", "square feet", "sq ft", "sqft", "sf", "rsf", "size", "area", "unit sf"],
     # "Scheduled Rent"/"Rent Charge" are Yardi/AppFolio's own terms for
@@ -75,7 +78,21 @@ _COLUMN_ALIASES: Dict[str, List[str]] = {
     # Rent"/"Charged Rent" are RealPage's own equivalent terms, for the
     # exact same reason -- RealPage rent rolls commonly show both an
     # Actual Rent and a Market Rent column side by side.
+    # Affordable / Section 8 rent rolls: the resident's share and the
+    # housing authority's Housing Assistance Payment. Contract rent (the
+    # lease rent) is their sum -- see parse_rent_roll_rows. Listed before
+    # "tenant" so "Tenant Portion"/"Tenant Rent" never become the tenant
+    # NAME column (longest alias wins in Pass 2 anyway).
+    "tenant_portion": ["tenant portion", "tenant rent", "resident rent", "resident portion", "tenant share",
+                       "tenant paid", "tenant pays", "tenant payment"],
+    "hap": ["hap", "hap amount", "hap payment", "subsidy", "subsidy amount", "housing assistance",
+            "housing assistance payment", "assistance payment", "hud portion", "pha portion"],
+    # Yardi "Rent Roll with Lease Charges": one row per charge code, the
+    # dollars in a generic Amount column. See _collapse_charge_code_rows.
+    "charge_code": ["charge code", "chg code", "charge type", "charge"],
+    "charge_amount": ["amount", "charge amount", "amt"],
     "rent_amount": [
+        "contract rent", "gross rent", "total contract rent",
         "monthly base rent", "monthly rent", "base rent", "current rent", "rent/mo", "rent",
         "scheduled rent", "rent charge", "scheduled charges", "actual rent", "charged rent",
     ],
@@ -109,10 +126,12 @@ _COLUMN_ALIASES: Dict[str, List[str]] = {
     "lease_start_date": [
         "lease commencement", "commencement date", "commence date", "lease start", "start date", "lease from",
         "rent commencement", "rent commencement date", "rent start", "rent start date", "commence",
+        "lease begin", "lease begins", "begin date", "term start", "lease term start", "start",
     ],
     "lease_end_date": [
         "lease expiration", "expiration date", "lease end", "end date", "expire", "lease to",
         "rent expiration", "rent expiration date", "rent end", "rent end date",
+        "lease exp", "exp date", "expiration", "term end", "lease term end", "lease ends",
     ],
     # Per-row property identifier -- most rent rolls (broker-built or a
     # single-property PMS pull) state the building once, outside the
@@ -132,6 +151,10 @@ _COLUMN_ALIASES: Dict[str, List[str]] = {
     # assuming every rent roll omits concessions (see deal_mismatch.py's
     # detect_concession_mismatch). Never eligible for rent_amount, see
     # _is_concession_header.
+    # Unit/lease status ("Current", "Vacant-Unrented", "Down", "Notice-
+    # Rented"...). Not a lease field -- read only to tell an occupied unit
+    # from a vacant/down one (see _unit_status_of_skipped_row).
+    "status": ["unit/lease status", "unit lease status", "lease status", "unit status", "status"],
     "concessions": ["concession", "concessions", "rent concession", "monthly concession", "concession amount", "rent discount", "concession/month", "concession/mo", "concessions/month", "concessions/mo"],
 }
 
@@ -259,7 +282,7 @@ def _is_non_address_property_header(normalized_header: str) -> bool:
 # roll that marks a vacant unit's tenant cell with a literal "0" (instead
 # of blank/VACANT/Vacant) should not import a fake tenant literally named
 # "0".
-_NON_TENANT_KEYWORDS = {"vacant", "vacancy", "total", "totals", "subtotal", "sub total", "n a", "na", "0"}
+_NON_TENANT_KEYWORDS = {"vacant", "vacancy", "total", "totals", "subtotal", "sub total", "grand total", "grand totals", "n a", "na", "0"}
 
 # Matches a Unit/Suite cell that already spells out its own designator
 # (e.g. "Suite 101", "Ste. 101", "Unit 5", "Apt 2", "#12"), as opposed to
@@ -268,14 +291,86 @@ _NON_TENANT_KEYWORDS = {"vacant", "vacancy", "total", "totals", "subtotal", "sub
 _UNIT_DESIGNATOR_RE = re.compile(r"^\s*(?:suite|ste\.?|unit|apt\.?|#)\s*[\w-]+", re.IGNORECASE)
 
 
+_TENANT_NAME_HEADERS = ["tenant name", "resident name", "lessee name", "tenant names", "resident names", "name"]
+
+
+def _has_rent_column(mapping: Dict[str, int]) -> bool:
+    """A rent column, a Section 8 tenant-portion column, or a charge-code layout the rent can be built from."""
+    return ("rent_amount" in mapping or "tenant_portion" in mapping
+            or ("charge_code" in mapping and "charge_amount" in mapping))
+
+
+_RENT_CHARGE_CODES = {"rent", "rnt", "rentres", "resrent", "base rent", "baserent", "rent charge", "rentr", "rent res",
+                      "residential rent", "apartment rent", "aptrent", "apt rent"}
+
+
+def _collapse_charge_code_rows(headers, rows, row_numbers, mapping):
+    """
+    Yardi "Rent Roll with Lease Charges" -> one row per unit: the unit's
+    first row plus two synthesized cells, its rent (the rent charge code
+    only -- trash/pet/parking and the per-unit "Total" line are not rent)
+    and its monthly concession (any conc*/concession/discount code, as a
+    positive amount). Returns (headers, rows, row_numbers, mapping).
+    """
+    code_idx, amt_idx, unit_idx = mapping["charge_code"], mapping["charge_amount"], mapping.get("unit")
+    out_rows, out_numbers = [], []
+    current = None
+
+    def flush():
+        if current is not None:
+            row, num, rent, conc, had_charges = current
+            out_rows.append(list(row) + [rent if had_charges else None, conc if had_charges else None])
+            out_numbers.append(num)
+
+    for row, num in zip(rows, row_numbers):
+        row = list(row)
+        unit = _cell_to_str(row[unit_idx]) if unit_idx is not None and unit_idx < len(row) else None
+        if unit or current is None:
+            flush()
+            current = [row, num, 0.0, 0.0, False]
+        code = (_cell_to_str(row[code_idx]) if code_idx < len(row) else None) or ""
+        amount = _parse_import_currency(row[amt_idx]) if amt_idx < len(row) else None
+        code_norm = re.sub(r"[^a-z ]", "", code.lower()).strip()
+        if amount is None or not code_norm or code_norm.startswith("total"):
+            continue
+        current[4] = True
+        if code_norm in _RENT_CHARGE_CODES:
+            current[2] += amount
+        elif code_norm.startswith("conc") or "concession" in code_norm or code_norm.startswith("disc"):
+            current[3] += abs(amount)
+    flush()
+    width = len(headers)
+    out_rows = [r[:width] + [None] * (width - len(r[:width])) + r[-2:] for r in out_rows]
+    new_headers = list(headers) + ["Rent (from charge codes)", "Concession (from charge codes)"]
+    new_mapping = {k: v for k, v in mapping.items() if k not in ("charge_code", "charge_amount")}
+    new_mapping["rent_amount"] = width
+    new_mapping["concessions"] = width + 1
+    return new_headers, out_rows, out_numbers, new_mapping
+
+
 def _match_columns(headers: List[Any]) -> Dict[str, int]:
     """Maps canonical field name -> column index for whichever headers could be confidently matched. See module docstring."""
     normalized = [_normalize_header(h) for h in headers]
     mapping: Dict[str, int] = {}
     used_columns = set()
 
+    # Pass 0: a column that is literally the tenant's NAME wins the tenant
+    # field over a bare "Resident"/"Tenant" column. RealPage heads it just
+    # "Name"; Yardi has "Resident" (an id like t0012345) next to "Name".
+    # "Name" counts only as the whole header -- never "Property Name".
+    for wanted in _TENANT_NAME_HEADERS:
+        if "tenant" in mapping:
+            break
+        for i, h in enumerate(normalized):
+            if h == wanted:
+                mapping["tenant"] = i
+                used_columns.add(i)
+                break
+
     # Pass 1: exact match (most confident) -- "Rent" header equals the "rent" alias exactly.
     for field_name, aliases in _COLUMN_ALIASES.items():
+        if field_name in mapping:
+            continue
         alias_norms = {_normalize_header(a) for a in aliases}
         for i, h in enumerate(normalized):
             if i in used_columns:
@@ -329,10 +424,60 @@ def _match_columns(headers: List[Any]) -> Dict[str, int]:
         mapping[field_name] = i
         used_columns.add(i)
 
+    # Pass 3: one typo per long word ("Lease Strat", "Lease Expiraton",
+    # "Tennant") for whatever is still unmapped. Same word count, every
+    # word equal or (5+ letters) one edit/transposition away -- strict
+    # enough that "Lease Status" never becomes a lease date.
+    fuzzy = []
+    for field_name, aliases in _COLUMN_ALIASES.items():
+        if field_name in mapping:
+            continue
+        for alias in aliases:
+            alias_words = _normalize_header(alias).split()
+            for i, h in enumerate(normalized):
+                if i in used_columns or not h:
+                    continue
+                if field_name == "rent_amount" and (_is_market_rent_header(h) or _is_concession_header(h) or _is_rate_not_amount_header(h) or _is_annual_not_monthly_header(h)):
+                    continue
+                if field_name == "property" and _is_non_address_property_header(h):
+                    continue
+                if field_name == "concessions" and _is_concession_non_amount_header(h):
+                    continue
+                header_words = h.split()
+                if len(header_words) == len(alias_words) and header_words != alias_words and all(
+                    hw == aw or (len(aw) >= 5 and len(hw) >= 5 and _one_typo_apart(hw, aw))
+                    for hw, aw in zip(header_words, alias_words)
+                ):
+                    fuzzy.append((len(alias), field_name, i))
+    fuzzy.sort(key=lambda c: c[0], reverse=True)
+    for _, field_name, i in fuzzy:
+        if field_name in mapping or i in used_columns:
+            continue
+        mapping[field_name] = i
+        used_columns.add(i)
+
     return mapping
 
 
-_HEADER_SCAN_WINDOW = 20  # generous bound for decorative title/date rows before the real header
+def _one_typo_apart(a: str, b: str) -> bool:
+    """Damerau-Levenshtein distance <= 1: one insert, delete, substitute, or adjacent swap."""
+    if a == b:
+        return True
+    if abs(len(a) - len(b)) > 1:
+        return False
+    if len(a) == len(b):
+        diffs = [k for k in range(len(a)) if a[k] != b[k]]
+        if len(diffs) == 1:
+            return True
+        return len(diffs) == 2 and diffs[1] == diffs[0] + 1 and a[diffs[0]] == b[diffs[1]] and a[diffs[1]] == b[diffs[0]]
+    short, long_ = (a, b) if len(a) < len(b) else (b, a)
+    for k in range(len(long_)):
+        if long_[:k] + long_[k + 1:] == short:
+            return True
+    return False
+
+
+_HEADER_SCAN_WINDOW = 50  # decorative title/date/parameter rows before the real header (canned PMS reports can run 20+; raised from 20 by the overnight gauntlet)
 
 
 def _find_header_row(all_rows: List[List[Any]]) -> int:
@@ -361,9 +506,52 @@ def _find_header_row(all_rows: List[List[Any]]) -> int:
     """
     for i, row in enumerate(all_rows[:_HEADER_SCAN_WINDOW]):
         mapping = _match_columns(row)
-        if "tenant" in mapping and "rent_amount" in mapping:
+        if "tenant" in mapping and _has_rent_column(mapping):
             return i
     return 0
+
+
+def _find_header(all_rows: List[List[Any]]):
+    """
+    (header cells, header row index, index of the first data row).
+
+    A single header row is found exactly as _find_header_row always did.
+    If none qualifies, a TWO-ROW header is tried: Yardi and other canned
+    reports split each title over two rows ("Actual" / "Rent", "Lease" /
+    "Expiration"), so neither row alone has a tenant AND a rent column.
+    Each column's two parts are joined ("Actual Rent") and matched again.
+    """
+    idx = _find_header_row(all_rows)
+    if "tenant" in _match_columns(all_rows[idx]) and _has_rent_column(_match_columns(all_rows[idx])):
+        return list(all_rows[idx]), idx, idx + 1
+    window = all_rows[:_HEADER_SCAN_WINDOW]
+
+    def filled(row):
+        return sum(1 for x in row if x is not None and str(x).strip())
+
+    best = None  # (mapped field count, -i, combined, i)
+    for i in range(len(window) - 1):
+        top, bottom = list(window[i]), list(window[i + 1])
+        if filled(top) < 2 or filled(bottom) < 2:
+            continue  # a title line ("Rent Roll") is never half of a header
+        width = max(len(top), len(bottom))
+        top += [None] * (width - len(top))
+        bottom += [None] * (width - len(bottom))
+        # A merged group title ("Lease" over "Start" / "End") only fills its
+        # first cell: carry it right while the sub-header row continues.
+        for c in range(1, width):
+            if (top[c] is None or not str(top[c]).strip()) and top[c - 1] and bottom[c] and bottom[c - 1]:
+                top[c] = top[c - 1]
+        combined = [" ".join(str(x).strip() for x in (a, b) if x is not None and str(x).strip()) or None
+                    for a, b in zip(top, bottom)]
+        mapping = _match_columns(combined)
+        if "tenant" in mapping and _has_rent_column(mapping):
+            candidate = (len(mapping), -i, combined, i)
+            if best is None or candidate[:2] > best[:2]:
+                best = candidate
+    if best:
+        return best[2], best[3], best[3] + 2
+    return list(all_rows[idx]), idx, idx + 1
 
 
 def _cell_to_str(value: Any) -> Optional[str]:
@@ -386,6 +574,26 @@ def _cell_to_str(value: Any) -> Optional[str]:
     return str(value)
 
 
+_EXCEL_EPOCH = date(1899, 12, 30)
+
+
+def _date_cell_to_str(value: Any) -> Optional[str]:
+    """
+    Like _cell_to_str, plus Excel serial-number dates: a CSV saved from
+    date cells formatted "General" (or a date cell read as a number)
+    carries 46113 for 2026-04-01. Only whole numbers in a plausible lease
+    range (1982-2119) in a DATE column are read this way.
+    """
+    text = _cell_to_str(value)
+    if text is None:
+        return None
+    if re.fullmatch(r"\d{5}(?:\.0+)?", text):
+        serial = int(float(text))
+        if 30000 <= serial <= 80000:
+            return (_EXCEL_EPOCH + timedelta(days=serial)).strftime("%B %d, %Y")
+    return text
+
+
 def _parse_import_currency(value: Any) -> Optional[float]:
     """
     Like normalize.parse_currency, but tolerant of a bare number with
@@ -400,6 +608,7 @@ def _parse_import_currency(value: Any) -> Optional[float]:
     text = _cell_to_str(value)
     if text is None:
         return None
+    text = normalize_decimal_comma(text)
     strict = parse_currency(text)  # handles "$1,200.00" (and "-$1,200.00"/"($1,200.00)") using the existing, already-tested parser
     if strict is not None:
         return strict
@@ -445,6 +654,72 @@ def _is_real_tenant_name(tenant_raw: Optional[str]) -> bool:
     # rather than a substring match, so "Totally Awesome Tenant" is never
     # mistaken for a "Total ..." row.
     return not any(normalized.startswith(keyword + " ") for keyword in _NON_TENANT_KEYWORDS)
+
+
+_VACANT_WORDS = {"vacant", "vacancy", "available", "unrented", "unoccupied", "empty"}
+_DOWN_WORDS = {"down", "model", "offline", "renovation", "reno", "uninhabitable", "nonrevenue", "non revenue", "unavailable"}
+# Whole-cell placeholders some exports put in the tenant column of an
+# empty unit ("DOWN UNIT", "MODEL") -- whole-cell only, so a real tenant
+# like "Model Unit Corp" is never mistaken for one. Sorted-word form.
+_PLACEHOLDER_TENANT_CELLS = {"down", "down unit", "model", "model unit", "offline", "admin unit", "unavailable",
+                             "renovation", "down renovation"}
+_UNIT_ID_RE = re.compile(r"^[A-Za-z]{0,3}[\s#-]*\d[\w-]{0,8}$")
+
+
+def _is_future_resident_status(status: Optional[str]) -> bool:
+    """
+    "Future", "Applicant", "Pending Move-In": a pre-leased resident whose
+    lease hasn't started, listed alongside the unit's CURRENT resident.
+    Not current rent. "Pending Renewal" / "Notice" residents are current.
+    """
+    if not status:
+        return False
+    words = set(re.sub(r"[^a-z\s]", " ", status.lower()).split())
+    if "renewal" in words:
+        return False
+    return bool(words & {"future", "applicant", "applicants"}) or ("pending" in words and ("move" in words or "movein" in words))
+
+
+def _unit_status_of_skipped_row(row: List[Any], column_mapping: Dict[str, int], tenant_raw: Optional[str]) -> Optional[str]:
+    """
+    "vacant" or "down" when this row is a real unit with no current
+    resident, else None (an occupied unit, or a total/subtotal/note row).
+
+    A unit counts only if its Unit cell looks like a unit id ("101",
+    "A-204", "#3B") -- a "Total"/"Floor 1" row never does. Vacant vs down:
+    the status column (or, without one, the tenant cell) says vacant /
+    down / model / offline. A status of vacant/down wins even when a name
+    is present: "Vacant-Leased" is a future resident in an empty unit, not
+    current rent. With no status column, a blank or "VACANT" tenant cell
+    on a unit row is vacant.
+    """
+    def cell(field_name):
+        idx = column_mapping.get(field_name)
+        return _cell_to_str(row[idx]) if idx is not None and idx < len(row) else None
+
+    unit = cell("unit")
+    if not unit or not _UNIT_ID_RE.match(unit.strip()):
+        return None
+
+    def words(text):
+        return set(re.sub(r"[^a-z\s]", " ", (text or "").lower()).split())
+
+    status_words = words(cell("status"))
+    whole_cell = " ".join(sorted(words(tenant_raw)))
+    real_tenant = _is_real_tenant_name(tenant_raw) and whole_cell not in _PLACEHOLDER_TENANT_CELLS
+    no_rent = _parse_import_currency(cell("rent_amount")) in (None, 0.0)
+    if status_words & _VACANT_WORDS:
+        return "vacant"
+    if status_words & _DOWN_WORDS and (no_rent or not real_tenant):
+        return "down"  # a model unit actually rented to a named tenant is still revenue
+    if real_tenant:
+        return None
+    tenant_words = words(tenant_raw)
+    if tenant_words & _DOWN_WORDS:
+        return "down"
+    if (tenant_words & _VACANT_WORDS or not tenant_raw) and no_rent:
+        return "vacant"
+    return None
 
 
 def parse_rent_roll_rows(
@@ -517,8 +792,12 @@ def parse_rent_roll_rows(
     reason to fail the whole file.
     """
     column_mapping = _match_columns(headers)
+    if "rent_amount" not in column_mapping and "charge_code" in column_mapping and "charge_amount" in column_mapping:
+        if row_numbers is None:
+            row_numbers = [i + header_row_offset + 2 for i in range(len(rows))]
+        headers, rows, row_numbers, column_mapping = _collapse_charge_code_rows(headers, rows, row_numbers, column_mapping)
 
-    if "tenant" not in column_mapping or "rent_amount" not in column_mapping:
+    if "tenant" not in column_mapping or not _has_rent_column(column_mapping):
         raise RentRollImportError(
             "Couldn't find a row with a recognizable tenant name column and rent "
             "column anywhere in the first rows of this file. Recognized headers "
@@ -531,6 +810,14 @@ def parse_rent_roll_rows(
 
     parsed_leases = []
     skipped_rows = []
+    # Per building (effective base address): occupied count + vacant/down
+    # unit ids, so occupancy can be computed later -- vacant rows are not
+    # imported as leases, which made every rent roll look 100% occupied.
+    unit_summary: Dict[str, Dict[str, Any]] = {}
+    seen_rows: Dict[tuple, int] = {}
+
+    def _summary_for(base):
+        return unit_summary.setdefault(base, {"occupied_units": 0, "vacant_units": [], "down_units": []})
 
     for row_index, row in enumerate(rows):
         if row_numbers is not None:
@@ -545,6 +832,23 @@ def parse_rent_roll_rows(
             return row[idx]
 
         tenant_raw = _cell_to_str(cell("tenant"))
+        if _is_future_resident_status(_cell_to_str(cell("status"))):
+            skipped_rows.append({
+                "row": row_num,
+                "reason": "future resident / applicant (lease not started) -- not current rent, not imported",
+            })
+            continue
+        non_occupied = _unit_status_of_skipped_row(row, column_mapping, tenant_raw)
+        if non_occupied:
+            unit_id = _cell_to_str(cell("unit"))
+            base = _cell_to_str(cell("property")) or base_property_address
+            if base:
+                _summary_for(base)[f"{non_occupied}_units"].append(unit_id)
+            skipped_rows.append({
+                "row": row_num,
+                "reason": f"{non_occupied} unit (no current resident) -- counted for occupancy, not imported as a lease",
+            })
+            continue
         if not _is_real_tenant_name(tenant_raw):
             skipped_rows.append({
                 "row": row_num,
@@ -553,11 +857,22 @@ def parse_rent_roll_rows(
             continue
 
         rent = _parse_import_currency(cell("rent_amount"))
+        if "tenant_portion" in column_mapping and "hap" in column_mapping:
+            # Section 8: with no contract-rent column, the lease rent is the
+            # resident's portion plus the HAP. A "rent" column that is only
+            # the resident's portion would understate every voucher unit.
+            portion = _parse_import_currency(cell("tenant_portion"))
+            hap = _parse_import_currency(cell("hap"))
+            if "rent_amount" not in column_mapping or (rent is not None and portion is not None and abs(rent - portion) < 0.005):
+                if portion is not None or hap is not None:
+                    rent = round((portion or 0.0) + (hap or 0.0), 2)
+        elif rent is None and "tenant_portion" in column_mapping:
+            rent = _parse_import_currency(cell("tenant_portion"))
         landlord_str = _cell_to_str(cell("landlord"))
         unit_str = _cell_to_str(cell("unit"))
         sqft_str = _cell_to_str(cell("square_footage"))
-        start_str = _cell_to_str(cell("lease_start_date"))
-        end_str = _cell_to_str(cell("lease_end_date"))
+        start_str = _date_cell_to_str(cell("lease_start_date"))
+        end_str = _date_cell_to_str(cell("lease_end_date"))
 
         # A row with a "tenant" cell that isn't blank/a known non-tenant
         # keyword (so it passed the check above) but has NO rent and NO
@@ -642,11 +957,35 @@ def parse_rent_roll_rows(
             set_field("concessions", f"${abs(concession):,.2f}/mo", _cell_to_str(cell("concessions")))
 
         display_name = f"{tenant_raw} - {address}" if address else tenant_raw
+        identity = tuple((fields[n]["value"] or "") for n in FIELD_NAMES)
+        if identity in seen_rows:
+            # A verbatim repeat (an export glitch) -- importing it again
+            # would double the unit's rent and every finding on it.
+            skipped_rows.append({"row": row_num, "reason": f"exact duplicate of row {seen_rows[identity]} -- counted once"})
+            continue
+        seen_rows[identity] = row_num
         parsed_leases.append({"extracted_fields": fields, "display_name": display_name})
+        if effective_base:
+            _summary_for(effective_base)["occupied_units"] += 1
 
+    if not parsed_leases and rows:
+        non_occupied = sum(len(v["vacant_units"]) + len(v["down_units"]) for v in unit_summary.values())
+        if non_occupied:
+            raise RentRollImportError(
+                f"Every unit in this file is vacant or down ({non_occupied} unit(s)) -- there are no occupied "
+                "units with a resident and rent to import. If that's wrong, check the tenant and status columns."
+            )
+        raise RentRollImportError(
+            f"Found the column headers but no tenant rows could be imported ({len(skipped_rows)} row(s) skipped: "
+            "totals, blanks or rows with no rent or dates). Check that the rows under the header list each "
+            "unit's resident and rent."
+        )
+    if not rows:
+        raise RentRollImportError("This file has a header row but no rows under it -- no units to import.")
     return {
         "leases": parsed_leases,
         "skipped_rows": skipped_rows,
+        "unit_summary": unit_summary,
         "column_mapping": column_mapping,
     }
 
@@ -669,15 +1008,31 @@ def _parse_from_numbered_rows(
         raise RentRollImportError(empty_message)
 
     row_contents = [row for _, row in numbered_rows]
-    header_idx = _find_header_row(row_contents)
-    headers = row_contents[header_idx]
-    data_entries = numbered_rows[header_idx + 1:]
+    headers, header_idx, data_start = _find_header(row_contents)
+    data_entries = numbered_rows[data_start:]
     data_rows = [row for _, row in data_entries]
     data_row_numbers = [n for n, _ in data_entries]
     return parse_rent_roll_rows(
         headers, data_rows, filename, base_property_address,
         header_row_offset=header_idx, row_numbers=data_row_numbers,
     )
+
+
+def _sniff_delimiter(text: str, default: str = ",") -> str:
+    lines = [l for l in text.splitlines() if l.strip()][:8]
+    if not lines:
+        return default
+    best, best_score = default, 0
+    for cand in (",", ";", "\t", "|"):
+        rows = list(csv.reader(lines, delimiter=cand))
+        widths = [len(r) - 1 for r in rows]
+        multi = [w for w in widths if w > 0]
+        if len(multi) < max(1, len(widths) // 2):
+            continue
+        score = min(multi)
+        if score > best_score:
+            best, best_score = cand, score
+    return best
 
 
 def parse_csv_rent_roll(
@@ -695,7 +1050,10 @@ def parse_csv_rent_roll(
     the caller decide by extension. A .tsv whose rows still have no tab
     is retried as comma-separated before giving up.
     """
-    text = file_bytes.decode("utf-8-sig", errors="replace")  # utf-8-sig strips a leading BOM, common from Excel's own CSV export
+    try:
+        text = decode_text_upload(file_bytes)  # UTF-8/BOM, UTF-16 (Excel "Unicode Text"), or Windows-1252
+    except BinaryTextUploadError as exc:
+        raise RentRollImportError(str(exc))
 
     def _rows_for(delim):
         reader = csv.reader(io.StringIO(text), delimiter=delim)
@@ -707,7 +1065,14 @@ def parse_csv_rent_roll(
         # shift every later row's citation off by one.
         return [(i, row) for i, row in enumerate(reader, start=1) if any(cell.strip() for cell in row)]
 
-    numbered_rows = _rows_for(delimiter or ",")
+    if delimiter is None or delimiter == ",":
+        # Go by the separator the file actually uses: a .txt is usually
+        # Excel's tab-delimited save, and a European-locale Excel writes
+        # "CSV" with semicolons. The winner is the separator present the
+        # most times on EVERY one of the first lines (a "1,200.00" rent
+        # inside a semicolon file mustn't make it look comma-separated).
+        delimiter = _sniff_delimiter(text, default=delimiter or ",")
+    numbered_rows = _rows_for(delimiter)
     # A .tsv that came through with no tabs at all (someone renamed a
     # .csv) collapses to one column -- retry as comma before failing.
     if delimiter == "\t" and numbered_rows and max(len(r) for _, r in numbered_rows) == 1:
@@ -762,12 +1127,11 @@ def parse_xlsx_rent_roll(file_bytes: bytes, filename: str, base_property_address
         any_sheet_had_rows = True
 
         row_contents = [row for _, row in numbered_rows]
-        header_idx = _find_header_row(row_contents)
-        headers = row_contents[header_idx]
-        if "tenant" not in _match_columns(headers) or "rent_amount" not in _match_columns(headers):
+        headers, header_idx, data_start = _find_header(row_contents)
+        if "tenant" not in _match_columns(headers) or not _has_rent_column(_match_columns(headers)):
             continue  # this sheet has no usable header row -- try the next one
 
-        data_entries = numbered_rows[header_idx + 1:]
+        data_entries = numbered_rows[data_start:]
         data_rows = [row for _, row in data_entries]
         data_row_numbers = [n for n, _ in data_entries]
         return parse_rent_roll_rows(
@@ -815,10 +1179,14 @@ def parse_rent_roll_file(
     """
     ext = _extension_of(filename)
 
+    from app.t12_import import PASSWORD_PROTECTED_MESSAGE, is_password_protected_office_file
+    if is_password_protected_office_file(file_bytes):
+        raise RentRollImportError(PASSWORD_PROTECTED_MESSAGE)
+
     if ext in ("csv", "tsv", "txt"):
         result = parse_csv_rent_roll(
             file_bytes, filename, base_property_address,
-            delimiter="\t" if ext == "tsv" else ",",
+            delimiter={"tsv": "\t", "csv": ","}.get(ext),
         )
         result.setdefault("source_kind", "delimited")
         result.setdefault("warnings", [])
@@ -862,6 +1230,20 @@ def parse_rent_roll_file(
 
     result["source_kind"] = table.source_kind
     result["warnings"] = list(table.warnings)
+    if table.source_kind in ("pdf-ocr", "image-ocr"):
+        # OCR drops digits ("$1,475.00" -> "$1.00"). A monthly rent between
+        # $0 and $100 can't be a real apartment rent: treat it as unreadable
+        # rather than letting the report price a phantom rent mismatch on it.
+        for lease in result["leases"]:
+            entry = lease["extracted_fields"].get("rent_amount") or {}
+            value = parse_currency(entry.get("value") or "")
+            if value is not None and 0 < abs(value) < 100:
+                row = (entry.get("source") or {}).get("row")
+                result["warnings"].append(
+                    f"Row {row}: rent read as {entry['value']} -- almost certainly an OCR misread, so it was left "
+                    "blank. Check this unit against the original."
+                )
+                lease["extracted_fields"]["rent_amount"] = {"value": None, "source": entry.get("source"), "confidence": "low"}
     if table.ocr_confidence is not None:
         result["ocr_confidence"] = table.ocr_confidence
     return result
