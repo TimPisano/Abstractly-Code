@@ -34,18 +34,16 @@ venv/bin/python tests/test_section8_sample_data.py
 `test_section8_sample_data.py` fails if any fixture file's sha256 no
 longer matches what the capture recorded.
 
-**Re-capture after these merge** (as of 2026-10-13 neither is on `main`):
+**Capture history:**
 
-- **`feature/lease-intelligence` (P1).** `main`'s regex extractor splits each
-  Section 8 lease PDF (lease + addendum + acknowledgment) into three
-  "leases" and reads the tenant from the utilities table ("Gas"). P1 fixes
-  both.
-- **`qa/overnight-gauntlet` (P2).** It adds Section 8 tenant-share and HAP
-  rent-roll columns. RealPage's `Bldg/Unit` column also isn't read as a
-  unit on `main` today.
+- **2026-10-13: re-captured after `qa/overnight-gauntlet` (P2) merged** (`b63927d`). RealPage
+  `Bldg/Unit` is now read, so Bellmont rows carry their unit.
+- **Still to re-capture: after `feature/lease-intelligence` (P1) merges.** On `main` today the regex
+  extractor splits each Section 8 lease PDF (lease + addendum + acknowledgment) into three
+  "leases" and reads the tenant from the utilities table ("Gas"). P1 fixes both.
 
 `dropped_rows` in the JSON lists importer rows that matched no unit and
 were left out. Today that's one row: the AppFolio **Total** row, which the
 importer reads as a tenant called "16 occupied / 18 units". That's an
-importer bug, tracked in TASKS.md, and it's present on the gauntlet branch
-as well.
+importer bug, tracked in TASKS.md, and it is still present on `main` after the
+gauntlet merge.
