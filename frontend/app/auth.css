@@ -15,15 +15,15 @@
 :root {
     --auth-bg: var(--lux-black);
     --auth-panel: rgba(23, 23, 26, 0.72);
-    --auth-line: rgba(246, 243, 236, 0.14);
+    --auth-line: var(--lux-line-dark);
     --auth-line-strong: rgba(246, 243, 236, 0.26);
     --auth-text: var(--lux-ivory);
     --auth-muted: rgba(246, 243, 236, 0.66);
     --auth-faint: rgba(246, 243, 236, 0.46);
     --auth-input-bg: rgba(255, 255, 255, 0.05);
     --auth-accent: var(--lux-accent);
-    --auth-accent-rgb: 182, 138, 78;
-    --auth-error: #e5a5a0;
+    --auth-accent-rgb: var(--lux-accent-rgb);
+    --auth-error: var(--lux-error-on-dark);
     --auth-success: #9fcfb2;
     --auth-radius: 6px;
 }
@@ -343,7 +343,7 @@ body.auth-page {
     font-size: 1rem;
     font-weight: 600;
     letter-spacing: 0.01em;
-    color: #fff;
+    color: var(--white);
     background: var(--lux-accent-text);
     border: 1px solid transparent;
     border-radius: var(--auth-radius);
@@ -378,7 +378,7 @@ body.auth-page {
     width: 16px;
     height: 16px;
     border: 2px solid rgba(255, 255, 255, 0.35);
-    border-top-color: #fff;
+    border-top-color: var(--white);
     border-radius: 50%;
     animation: auth-spin 0.7s linear infinite;
 }
@@ -508,7 +508,7 @@ body.auth-page {
 }
 
 a.auth-button { text-decoration: none; }
-a.auth-button:hover { color: #fff; }
+a.auth-button:hover { color: var(--white); }
 a.auth-button.is-secondary:hover { color: var(--auth-text); }
 
 .auth-spinner-inline {

@@ -22,7 +22,7 @@
        this ring. */
     outline: none;
     border-color: var(--primary-color);
-    box-shadow: 0 0 0 3px rgba(182, 138, 78, 0.18);
+    box-shadow: 0 0 0 3px var(--lux-accent-ring);
 }
 
 /* ---- Login gate ---- */
@@ -534,6 +534,6 @@
     text-transform: uppercase;
     letter-spacing: 0.03em;
 }
-.quality-tier-strong { background: #e3f1e8; color: #2f6b4f; }
+.quality-tier-strong { background: #e3f1e8; color: var(--success-color); }
 .quality-tier-mixed  { background: #fdf0dc; color: #8a5a1c; }
-.quality-tier-weak   { background: #f7e0e0; color: #9a3b3b; }
+.quality-tier-weak   { background: #f7e0e0; color: var(--error-color); }
