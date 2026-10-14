@@ -1,0 +1,8 @@
+metric,value,units,source,notes
+Total US CRE properties (estimate),500000,properties,PLACEHOLDER,Estimate: replace with CoStar / Census / CBRE data
+Addressable property subset (target),100000,properties,PLACEHOLDER,Properties where rent-roll + signed lease docs are available
+Average annual contract value (ACV),30000,USD,PLACEHOLDER,Example: subscription + per-upload fees; update from pricing research
+Annual penetration (SAM->SOM conservative),0.01,percent,ASSUMPTION,1% initial penetration of addressable market
+Potential customers (SOM),1000,customers,calculated,= Addressable * penetration
+Potential ARR at SOM,30000000,USD,calculated,= Potential customers * ACV
+Notes, , , ,"Replace placeholders with sourced values; add low/medium/high scenario columns as needed"
