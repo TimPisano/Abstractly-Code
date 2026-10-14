@@ -149,9 +149,16 @@ def load_section8_sample(team_id: int) -> dict:
         return _load_section8_sample(team_id, created, lease_ids)
     except Exception:
         _undo_partial_load(team_id, created, lease_ids)
-        if section8_sample_loaded(team_id):
+        # Lost a race: the other load has claimed the sample's properties,
+        # or got as far as its PHA (unique per team name) and not yet those.
+        if section8_sample_loaded(team_id) or _sample_pha_exists(team_id):
             raise SampleAlreadyLoaded()
         raise
+
+
+def _sample_pha_exists(team_id: int) -> bool:
+    name = _load_s8_fixture()["records"]["pha"]["name"]
+    return any(p["name"] == name for p in database.list_section8_records("phas", team_id, include_archived=True))
 
 
 def _load_section8_sample(team_id, created, lease_ids):

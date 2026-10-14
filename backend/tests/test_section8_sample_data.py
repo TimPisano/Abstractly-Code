@@ -265,6 +265,18 @@ def test_concurrent_second_load_is_409_not_500_and_adds_nothing():
     print("✓ test_concurrent_second_load_is_409_not_500_and_adds_nothing: PASS")
 
 
+def test_race_lost_at_the_pha_claim_is_409_not_500():
+    """Regression (re-review, low): the other request has created the sample PHA but not its properties yet. The loser's PHA insert hits the unique name -- that must be a 409 and leave nothing behind, not a 500."""
+    with _Env() as env:
+        sample_pha = CAPTURE["records"]["pha"]["name"]
+        database.create_section8_record("phas", env.team_id, {"name": sample_pha})  # the winner's half-done claim
+        resp = env.analyst.post("/sample-deal/load")
+        assert resp.status_code == 409, (resp.status_code, resp.get_json())
+        assert database.get_all_leases(env.team_id, document_type=None) == []
+        assert _s8_counts(env.team_id)["properties"] == 0
+    print("✓ test_race_lost_at_the_pha_claim_is_409_not_500: PASS")
+
+
 def test_viewer_cannot_load_either_sample():
     with _Env() as env:
         assert env.viewer.post("/sample-deal/load").status_code == 403
@@ -346,6 +358,7 @@ if __name__ == "__main__":
     test_second_load_is_409_and_inserts_nothing()
     test_failure_mid_load_leaves_nothing_behind_and_retry_is_clean()
     test_concurrent_second_load_is_409_not_500_and_adds_nothing()
+    test_race_lost_at_the_pha_claim_is_409_not_500()
     test_viewer_cannot_load_either_sample()
     test_single_sample_lease_is_the_voucher_control_when_flag_on()
     test_demo_seed_and_reset_with_section8_mode()
