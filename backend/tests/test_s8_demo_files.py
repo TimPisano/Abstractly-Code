@@ -4,12 +4,14 @@ Validation for the synthetic Section 8 demo property (Oak Hollow Apartments).
 This test guards the demo data fixtures in backend/benchmark_data/s8_demo/:
   - expected_findings.json totals match the sum of findings by category;
   - every finding's cited page and PDF exists and is readable;
-  - the findings are internally consistent.
+  - the findings are internally consistent;
+  - the generator reproduces byte-identical outputs (except .xlsx).
 
 No network, no Anthropic API.
 """
 import json
 import os
+import subprocess
 import sys
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -145,6 +147,58 @@ def test_clean_units_exist():
         ), f"Clean control unit {clean_unit} should have no findings but does"
 
 
+def test_generator_reproducibility():
+    """Confirm that regenerating produces byte-identical outputs.
+
+    The generator is the source of truth. Running it again with no code changes
+    must produce identical PDFs, CSV, README, and JSON (Excel differs only by timestamp).
+    """
+    # Read current files before regeneration
+    with open(os.path.join(DEMO_DIR, "expected_findings.json"), "rb") as f:
+        json_before = f.read()
+    with open(os.path.join(DEMO_DIR, "README.md"), "rb") as f:
+        readme_before = f.read()
+
+    # List all PDFs and CSV before
+    files_dir = os.path.join(DEMO_DIR, "tenant_files")
+    rent_roll_dir = os.path.join(DEMO_DIR, "rent_roll")
+    pdfs_before = {}
+    for fname in os.listdir(files_dir):
+        if fname.endswith(".pdf"):
+            with open(os.path.join(files_dir, fname), "rb") as f:
+                pdfs_before[fname] = f.read()
+
+    with open(os.path.join(rent_roll_dir, "oak_hollow_rent_roll_40unit.csv"), "rb") as f:
+        csv_before = f.read()
+
+    # Regenerate
+    backend_dir = os.path.dirname(os.path.dirname(DEMO_DIR))
+    result = subprocess.run(
+        [sys.executable, "benchmark_data/s8_demo/generate_s8_demo.py"],
+        cwd=backend_dir,
+        capture_output=True,
+    )
+    assert result.returncode == 0, f"Generator failed: {result.stderr.decode()}"
+
+    # Compare files after regeneration
+    with open(os.path.join(DEMO_DIR, "expected_findings.json"), "rb") as f:
+        json_after = f.read()
+    assert json_before == json_after, "expected_findings.json changed after regeneration"
+
+    with open(os.path.join(DEMO_DIR, "README.md"), "rb") as f:
+        readme_after = f.read()
+    assert readme_before == readme_after, "README.md changed after regeneration"
+
+    for fname in pdfs_before:
+        with open(os.path.join(files_dir, fname), "rb") as f:
+            pdf_after = f.read()
+        assert pdfs_before[fname] == pdf_after, f"PDF {fname} changed after regeneration"
+
+    with open(os.path.join(rent_roll_dir, "oak_hollow_rent_roll_40unit.csv"), "rb") as f:
+        csv_after = f.read()
+    assert csv_before == csv_after, "CSV rent roll changed after regeneration"
+
+
 if __name__ == "__main__":
     test_expected_findings_totals()
     print("✓ test_expected_findings_totals")
@@ -154,5 +208,8 @@ if __name__ == "__main__":
 
     test_clean_units_exist()
     print("✓ test_clean_units_exist")
+
+    test_generator_reproducibility()
+    print("✓ test_generator_reproducibility")
 
     print("\nAll tests passed.")
