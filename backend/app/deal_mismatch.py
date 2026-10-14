@@ -85,11 +85,15 @@ from .concessions import (
 )
 from .database import get_all_effective_leases
 from .discrepancies import _severity_for_monthly_impact
-from .normalize import parse_currency, parse_date
+import re
+
+from .normalize import parse_currency, parse_date, parse_escalation_schedule, parse_percent
 from .portfolio import (
     _is_rent_roll_import,
     _normalize_address,
     _normalize_for_matching,
+    _operative_documents,
+    _same_tenant,
     _RENT_DISAGREEMENT_TOLERANCE_ABS,
     _RENT_DISAGREEMENT_TOLERANCE_PCT,
     field_value,
@@ -131,7 +135,7 @@ def _display_unit(rr_lease: Optional[Dict[str, Any]], doc_lease: Optional[Dict[s
     return None
 
 
-def _address_groups(leases: List[Dict[str, Any]]) -> Dict[str, Dict[str, List[Dict[str, Any]]]]:
+def _address_groups(leases: List[Dict[str, Any]], today: Optional[date] = None) -> Dict[str, Dict[str, List[Dict[str, Any]]]]:
     """
     Same grouping compute_rent_roll_reconciliation builds internally
     (portfolio.py), rebuilt here rather than imported since that
@@ -154,6 +158,9 @@ def _address_groups(leases: List[Dict[str, Any]]) -> Dict[str, Dict[str, List[Di
         if address is None:
             continue
         groups.setdefault(address, {"rent_roll": [], "lease_document": []})["lease_document"].append(lease)
+    today = today or date.today()
+    for group in groups.values():
+        group["lease_document"] = _operative_documents(group["lease_document"], today)
     return groups
 
 
@@ -208,6 +215,35 @@ def _rr_concession_monthly(rr_lease: Dict[str, Any]) -> Optional[float]:
     return abs(amount) if amount is not None else None
 
 
+def _rent_in_effect(doc_lease: Dict[str, Any], base_rent: float, today: date):
+    """
+    (monthly rent in effect on `today`, escalation_unpriced) for a lease
+    document. Reads the extracted rent_escalation: a year table ("Year 1:
+    $1,500.00; Year 2: $1,545.00") or a percentage ("3% annually"),
+    counted in lease years from lease_start_date. No escalation -> the
+    base rent. An escalation that's stated but can't be priced (no start
+    date, unrecognized wording) -> the base rent, with escalation_unpriced
+    True so the caller doesn't present a step-up as an overstatement.
+    """
+    text = field_value(doc_lease, "rent_escalation")
+    if not text:
+        return base_rent, False
+    start = parse_date(field_value(doc_lease, "lease_start_date"))
+    if start is None:
+        return base_rent, True
+    if today < start:
+        return base_rent, False  # not started yet: still the first-year rent
+    lease_year = (today.year - start.year) - ((today.month, today.day) < (start.month, start.day)) + 1
+    schedule = parse_escalation_schedule(text)
+    if schedule:
+        in_effect = [amount for year, amount in schedule if year <= lease_year]
+        return (in_effect[-1] if in_effect else base_rent), False
+    pct = parse_percent(text)
+    if pct is not None and re.search(r"annual|anniversar|each year|per year|yearly", text, re.I):
+        return round(base_rent * (1 + pct / 100.0) ** (lease_year - 1), 2), False
+    return base_rent, True
+
+
 def detect_rent_mismatch(leases: List[Dict[str, Any]], today: Optional[date] = None) -> List[Dict[str, Any]]:
     """
     Rent roll rent vs. the lease's rent, effective-rent aware: when the
@@ -223,17 +259,23 @@ def detect_rent_mismatch(leases: List[Dict[str, Any]], today: Optional[date] = N
     """
     today = today or date.today()
     rows: List[Dict[str, Any]] = []
-    for group in _address_groups(leases).values():
+    for group in _address_groups(leases, today).values():
         if not group["rent_roll"] or not group["lease_document"]:
             continue
         for rr_lease in group["rent_roll"]:
             for doc_lease in group["lease_document"]:
                 rr_rent = parse_currency(field_value(rr_lease, "rent_amount"))
-                doc_rent = parse_currency(field_value(doc_lease, "rent_amount"))
-                if rr_rent is None or doc_rent is None or rr_rent == doc_rent:
+                base_rent = parse_currency(field_value(doc_lease, "rent_amount"))
+                if rr_rent is None or base_rent is None:
                     continue
-                if _same_amount(rr_rent, doc_rent):
+                # Compare against the rent IN EFFECT on the as-of date: a
+                # scheduled step-up ("Year 2: $1,545") makes a correct rent
+                # roll differ from the year-1 rent (AUDIT.md §6.11).
+                in_effect, escalation_unpriced = _rent_in_effect(doc_lease, base_rent, today)
+                doc_rent = in_effect
+                if rr_rent == doc_rent or _same_amount(rr_rent, doc_rent):
                     continue
+                matches_older_version = any(_same_amount(rr_rent, v) for v in doc_lease.get("_rent_versions") or [])
                 effective = effective_rent_for_lease(doc_lease, today)
                 if effective and rent_reflects_concession(
                     rr_rent, effective, _RENT_DISAGREEMENT_TOLERANCE_ABS, _RENT_DISAGREEMENT_TOLERANCE_PCT
@@ -242,13 +284,15 @@ def detect_rent_mismatch(leases: List[Dict[str, Any]], today: Optional[date] = N
                 diff_abs = abs(rr_rent - doc_rent)
 
                 monthly_impact = diff_abs
-                rows.append({
+                row = {
                     "discrepancy_type": "rent_mismatch",
                     "unit": _display_unit(rr_lease, doc_lease),
                     "field": "rent_amount",
                     "rent_roll_value": field_value(rr_lease, "rent_amount"),
-                    "lease_value": field_value(doc_lease, "rent_amount"),
-                    "source": _field_source(doc_lease, "rent_amount"),
+                    "lease_value": field_value(doc_lease, "rent_amount") if doc_rent == base_rent
+                    else f"${doc_rent:,.2f} (scheduled step-up from {field_value(doc_lease, 'rent_amount')})",
+                    "source": _field_source(doc_lease, "rent_amount") if doc_rent == base_rent
+                    else (_field_source(doc_lease, "rent_escalation") or _field_source(doc_lease, "rent_amount")),
                     "severity": _severity_for_monthly_impact(monthly_impact),
                     "monthly_dollar_impact": round(monthly_impact, 2),
                     "annual_dollar_impact": round(monthly_impact * 12, 2),
@@ -256,7 +300,25 @@ def detect_rent_mismatch(leases: List[Dict[str, Any]], today: Optional[date] = N
                     "rent_roll_lease_id": rr_lease.get("id"),
                     "lease_document_id": doc_lease.get("id"),
                     "effective_rent": _effective_rent_summary(effective),
-                })
+                }
+                if matches_older_version:
+                    # The rent roll matches an EARLIER version of this lease
+                    # (another document with the same tenant and term) but
+                    # not the latest one on file. Which is in force can't be
+                    # told from the documents alone -- flag it, don't price it.
+                    row.update(monthly_dollar_impact=None, annual_dollar_impact=None, income_direction=None,
+                               severity="medium",
+                               note="The rent roll matches an earlier version of this lease on file, not the latest "
+                                    "one (e.g. an amendment changed the rent). Check which rent is in force.")
+                elif escalation_unpriced and rr_rent > doc_rent:
+                    # The lease states an increase we couldn't price: the
+                    # rent roll may simply show the stepped-up rent. Flag
+                    # it, but don't count it as an overstatement.
+                    row.update(monthly_dollar_impact=None, annual_dollar_impact=None, income_direction=None,
+                               severity="medium",
+                               note="The lease states a rent escalation that couldn't be priced -- the rent roll "
+                                    "may reflect a scheduled increase. Check the escalation clause.")
+                rows.append(row)
     return rows
 
 
@@ -273,7 +335,7 @@ def detect_expired_but_occupied(leases: List[Dict[str, Any]], today: Optional[da
     """
     today = today or date.today()
     rows: List[Dict[str, Any]] = []
-    for group in _address_groups(leases).values():
+    for group in _address_groups(leases, today).values():
         if not group["rent_roll"] or not group["lease_document"]:
             continue
         for doc_lease in group["lease_document"]:
@@ -302,7 +364,7 @@ def detect_expired_but_occupied(leases: List[Dict[str, Any]], today: Optional[da
     return rows
 
 
-def detect_unit_no_lease(leases: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def detect_unit_no_lease(leases: List[Dict[str, Any]], today: Optional[date] = None) -> List[Dict[str, Any]]:
     """
     A rent-roll row with no lease PDF on file at all for its unit --
     compute_rent_roll_reconciliation (portfolio.py) explicitly skips
@@ -314,7 +376,7 @@ def detect_unit_no_lease(leases: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     roll's number is too HIGH or too LOW, only that it's unconfirmed.
     """
     rows: List[Dict[str, Any]] = []
-    for group in _address_groups(leases).values():
+    for group in _address_groups(leases, today).values():
         if group["lease_document"]:
             continue
         for rr_lease in group["rent_roll"]:
@@ -336,7 +398,7 @@ def detect_unit_no_lease(leases: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return rows
 
 
-def detect_lease_no_unit(leases: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def detect_lease_no_unit(leases: List[Dict[str, Any]], today: Optional[date] = None) -> List[Dict[str, Any]]:
     """
     A lease PDF whose unit never appears on the rent roll at all -- the
     mirror image of unit_no_lease. Unlike that case, this one DOES have
@@ -345,7 +407,7 @@ def detect_lease_no_unit(leases: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     that lease's rent.
     """
     rows: List[Dict[str, Any]] = []
-    for group in _address_groups(leases).values():
+    for group in _address_groups(leases, today).values():
         if group["rent_roll"]:
             continue
         for doc_lease in group["lease_document"]:
@@ -402,7 +464,7 @@ def detect_concession_missing(leases: List[Dict[str, Any]], today: Optional[date
     """
     today = today or date.today()
     rows: List[Dict[str, Any]] = []
-    for group in _address_groups(leases).values():
+    for group in _address_groups(leases, today).values():
         if not group["rent_roll"] or not group["lease_document"]:
             continue
         for doc_lease in group["lease_document"]:
@@ -498,7 +560,7 @@ def detect_concession_mismatch(leases: List[Dict[str, Any]], today: Optional[dat
     """
     today = today or date.today()
     rows: List[Dict[str, Any]] = []
-    for group in _address_groups(leases).values():
+    for group in _address_groups(leases, today).values():
         if not group["rent_roll"] or not group["lease_document"]:
             continue
         for doc_lease in group["lease_document"]:
@@ -581,7 +643,7 @@ def detect_concession_expiring(leases: List[Dict[str, Any]], today: Optional[dat
     """
     today = today or date.today()
     rows: List[Dict[str, Any]] = []
-    for group in _address_groups(leases).values():
+    for group in _address_groups(leases, today).values():
         if not group["rent_roll"] or not group["lease_document"]:
             continue
         for doc_lease in group["lease_document"]:
@@ -644,7 +706,7 @@ def detect_concession_expiring(leases: List[Dict[str, Any]], today: Optional[dat
     return rows
 
 
-def detect_dates_mismatch(leases: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def detect_dates_mismatch(leases: List[Dict[str, Any]], today: Optional[date] = None) -> List[Dict[str, Any]]:
     """
     lease_start_date and lease_end_date, zero tolerance on both -- same
     "no meaningful close enough for a date" stance
@@ -658,7 +720,7 @@ def detect_dates_mismatch(leases: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     rather than a fabricated number.
     """
     rows: List[Dict[str, Any]] = []
-    for group in _address_groups(leases).values():
+    for group in _address_groups(leases, today).values():
         if not group["rent_roll"] or not group["lease_document"]:
             continue
         for rr_lease in group["rent_roll"]:
@@ -685,7 +747,7 @@ def detect_dates_mismatch(leases: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return rows
 
 
-def detect_tenant_mismatch(leases: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def detect_tenant_mismatch(leases: List[Dict[str, Any]], today: Optional[date] = None) -> List[Dict[str, Any]]:
     """
     Any tenant-name disagreement at all is flagged -- same "no close
     enough for whether it's the same tenant" stance
@@ -694,7 +756,7 @@ def detect_tenant_mismatch(leases: List[Dict[str, Any]]) -> List[Dict[str, Any]]
     No dollar amount is assignable to a naming disagreement on its own.
     """
     rows: List[Dict[str, Any]] = []
-    for group in _address_groups(leases).values():
+    for group in _address_groups(leases, today).values():
         if not group["rent_roll"] or not group["lease_document"]:
             continue
         for rr_lease in group["rent_roll"]:
@@ -703,7 +765,7 @@ def detect_tenant_mismatch(leases: List[Dict[str, Any]]) -> List[Dict[str, Any]]
                 doc_tenant = field_value(doc_lease, "tenant")
                 rr_norm = _normalize_for_matching(rr_tenant)
                 doc_norm = _normalize_for_matching(doc_tenant)
-                if not rr_norm or not doc_norm or rr_norm == doc_norm:
+                if not rr_norm or not doc_norm or _same_tenant(rr_tenant, doc_tenant):
                     continue
                 rows.append({
                     "discrepancy_type": "tenant_mismatch",
@@ -720,6 +782,57 @@ def detect_tenant_mismatch(leases: List[Dict[str, Any]]) -> List[Dict[str, Any]]
                     "lease_document_id": doc_lease.get("id"),
                 })
     return rows
+
+
+def _occupied_and_total(leases: List[Dict[str, Any]], unit_counts: Optional[Dict[str, int]]):
+    """
+    (occupied units, total units) on the rent roll. Prefers the import's
+    own unit counts (which include the vacant and down units the importer
+    skips as leases -- see _rent_roll_unit_counts); without them every
+    imported row is occupied by construction, so this degrades to the old
+    "N of N" count.
+    """
+    if unit_counts and unit_counts.get("total"):
+        return unit_counts["occupied"], unit_counts["total"]
+    occupied = sum(1 for l in leases if _is_rent_roll_import(l) and field_value(l, "tenant"))
+    total = sum(1 for l in leases if _is_rent_roll_import(l))
+    return occupied, total
+
+
+def _rent_roll_unit_counts(team_id: int, leases: List[Dict[str, Any]]) -> Optional[Dict[str, int]]:
+    """
+    Occupied/total units for the rent-roll rows in scope, from the team's
+    stored import summaries (database.get_rent_roll_unit_summaries -- team-
+    scoped). For each building in scope, the newest summary whose file is
+    one of the rent-roll files actually on file for that building; None if
+    there is none (e.g. rows imported before summaries existed).
+    """
+    from .database import get_rent_roll_unit_summaries
+    from .portfolio import _normalize_building_address
+
+    files_by_building: Dict[str, set] = {}
+    for lease in leases:
+        if _is_rent_roll_import(lease):
+            key = _normalize_building_address(field_value(lease, "property_address"))
+            if key:
+                files_by_building.setdefault(key, set()).add(lease.get("filename"))
+    if not files_by_building:
+        return None
+    # Newest summary per (building, file), summed over every rent-roll file
+    # on record for the building -- a property delivered as several files
+    # (one per building) counts all of them (review finding).
+    occupied = total = 0
+    used = set()
+    for summary in get_rent_roll_unit_summaries(team_id):
+        key = _normalize_building_address(summary["property_address"])
+        pair = (key, summary["filename"])
+        if key in files_by_building and pair not in used and summary["filename"] in files_by_building[key]:
+            used.add(pair)
+            occupied += summary["occupied_units"]
+            total += summary["occupied_units"] + len(summary["vacant_units"]) + len(summary["down_units"])
+    if not used:
+        return None
+    return {"occupied": occupied, "total": total}
 
 
 def detect_t12_income_gap(
@@ -759,7 +872,10 @@ def detect_t12_income_gap(
 
     # For simplicity, compare against the first (and typically only) building in the scope
     first_building_key = list(building_rents.keys())[0]
-    first_building_rent = sum(building_rents[first_building_key])
+    # Rent roll rents are MONTHLY; the T-12 figure is ANNUAL. Comparing the
+    # raw monthly sum meant the check could never fire (overnight
+    # gauntlet / tester-pack bug #2).
+    first_building_rent = round(sum(building_rents[first_building_key]) * 12, 2)
 
     diff_abs = first_building_rent - t12_annual
     if diff_abs <= 0:
@@ -775,8 +891,8 @@ def detect_t12_income_gap(
         "discrepancy_type": "t12_income_gap",
         "unit": "Building (T12-based)",
         "field": "rental_income_collected",
-        "rent_roll_value": f"${first_building_rent:,.2f}",
-        "lease_value": f"${t12_annual:,.2f} (T12)",
+        "rent_roll_value": f"${first_building_rent:,.2f}/yr (rent roll x 12)",
+        "lease_value": f"${t12_annual:,.2f}/yr (T12)",
         "source": rental_income.get("source"),
         "severity": _severity_for_monthly_impact(diff_abs / 12),
         "monthly_dollar_impact": round(diff_abs / 12, 2),
@@ -790,7 +906,8 @@ def detect_t12_income_gap(
 
 def detect_t12_occupancy_mismatch(
     leases: List[Dict[str, Any]], t12_data: Optional[Dict[str, Any]] = None,
-    materiality_pct: float = _T12_MATERIALITY_THRESHOLD_PCT_DEFAULT
+    materiality_pct: float = _T12_MATERIALITY_THRESHOLD_PCT_DEFAULT,
+    unit_counts: Optional[Dict[str, int]] = None,
 ) -> List[Dict[str, Any]]:
     """
     Rent-roll-implied occupancy vs. T-12-implied occupancy.
@@ -806,17 +923,17 @@ def detect_t12_occupancy_mismatch(
     if gpr is None or vl is None or gpr.get("annual") is None or vl.get("annual") is None:
         return []
 
-    gpr_annual = gpr["annual"]
-    vl_annual = vl["annual"]
+    # Loss lines are printed NEGATIVE on most T-12s ("(17,100.00)"); the
+    # math needs magnitudes, or occupancy comes out above 100%.
+    gpr_annual = abs(gpr["annual"])
+    vl_annual = abs(vl["annual"])
 
     if gpr_annual <= 0:
         return []
 
     t12_occupancy = (1.0 - vl_annual / gpr_annual) * 100
 
-    # Rent roll occupancy: count occupied vs. total
-    occupied = sum(1 for l in leases if _is_rent_roll_import(l) and field_value(l, "tenant"))
-    total = sum(1 for l in leases if _is_rent_roll_import(l))
+    occupied, total = _occupied_and_total(leases, unit_counts)
 
     if total == 0:
         return []
@@ -861,8 +978,9 @@ def detect_t12_concession_gap(
     concessions = t12_data["concessions"]
     annual = concessions.get("annual")
 
-    if annual is None:
-        return []
+    if annual is None or round(abs(annual), 2) == 0:
+        return []  # no concessions on the T-12 -> nothing to point out
+    annual = abs(annual)  # printed negative on most T-12s
 
     rows: List[Dict[str, Any]] = []
     rows.append({
@@ -884,7 +1002,8 @@ def detect_t12_concession_gap(
 
 def detect_t12_bad_debt_trend(
     leases: List[Dict[str, Any]], t12_data: Optional[Dict[str, Any]] = None,
-    materiality_pct: float = _T12_MATERIALITY_THRESHOLD_PCT_DEFAULT
+    materiality_pct: float = _T12_MATERIALITY_THRESHOLD_PCT_DEFAULT,
+    unit_counts: Optional[Dict[str, int]] = None,
 ) -> List[Dict[str, Any]]:
     """
     Building-level bad debt trend: flags sustained upward trend
@@ -903,7 +1022,11 @@ def detect_t12_bad_debt_trend(
 
     # Compute trailing-12 average and last-3 average
     _MONTH_IDS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
-    monthly_values = [monthly.get(m) for m in _MONTH_IDS if monthly.get(m) is not None]
+    # Oldest -> newest in the statement's own column order: a trailing T-12
+    # (Oct..Sep) is not in calendar order, and "last 3 months" must mean
+    # the most recent three, not Oct/Nov/Dec by name.
+    order = bad_debt.get("month_order") or _MONTH_IDS
+    monthly_values = [abs(monthly.get(m)) for m in order if monthly.get(m) is not None]  # magnitudes: bad debt is often printed negative
 
     if len(monthly_values) < 12:
         return []
@@ -920,8 +1043,7 @@ def detect_t12_bad_debt_trend(
         return []
 
     # Check rent roll for vacancies/non-current units
-    occupied = sum(1 for l in leases if _is_rent_roll_import(l) and field_value(l, "tenant"))
-    total = sum(1 for l in leases if _is_rent_roll_import(l))
+    occupied, total = _occupied_and_total(leases, unit_counts)
 
     if total == 0 or occupied < total:
         return []  # There are actual vacancies, so the pattern is less anomalous
@@ -961,6 +1083,12 @@ _DETECTORS = [
 # `today` so a report run with an explicit as-of date is consistent across
 # every row.
 _DATE_AWARE_DETECTORS = {
+    # Every detector that pairs rent-roll rows with lease documents is
+    # date-aware: which lease is operative depends on the as-of date.
+    detect_unit_no_lease,
+    detect_lease_no_unit,
+    detect_dates_mismatch,
+    detect_tenant_mismatch,
     detect_rent_mismatch,
     detect_expired_but_occupied,
     detect_concession_missing,
@@ -1047,8 +1175,12 @@ def build_deal_mismatch_report_data(
     # T12 detectors
     t12_rows: List[Dict[str, Any]] = []
     if t12_data:
+        unit_counts = _rent_roll_unit_counts(team_id, leases)
         for detector in _T12_DETECTORS:
-            t12_rows.extend(detector(leases, t12_data, materiality_threshold_pct))
+            if detector in (detect_t12_occupancy_mismatch, detect_t12_bad_debt_trend):
+                t12_rows.extend(detector(leases, t12_data, materiality_threshold_pct, unit_counts=unit_counts))
+            else:
+                t12_rows.extend(detector(leases, t12_data, materiality_threshold_pct))
 
     signed_annual_impacts = [
         row["annual_dollar_impact"] if row["income_direction"] == "overstate" else -row["annual_dollar_impact"]

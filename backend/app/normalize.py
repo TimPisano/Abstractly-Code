@@ -193,6 +193,31 @@ def parse_date(value: Optional[str]) -> Optional[date]:
         return None
     value = value.strip()
 
+    # ISO "2026-03-01" / "2026/03/01" (optionally with a midnight time, as
+    # spreadsheet/database exports write it), and Excel's default text
+    # date "01-Mar-2026" / "1-Mar-26" / "1 March 2026". Rent-roll exports
+    # use these constantly; they used to parse to None, silently dropping
+    # every lease date in the file (overnight gauntlet, 2026-10-05).
+    match = re.match(r"^(\d{4})[/-](\d{1,2})[/-](\d{1,2})(?:[ T]00:00(?::00)?)?$", value)
+    if match:
+        return _safe_date(int(match.group(1)), int(match.group(2)), int(match.group(3)))
+    match = re.match(r"^(\d{1,2})[\s-]([A-Za-z]{3,9})\.?[\s-](\d{2}|\d{4})$", value)
+    if match:
+        month = MONTHS_MAP.get(match.group(2).lower())
+        year = int(match.group(3))
+        if year < 100:
+            year += 2000 if year < 70 else 1900
+        return _safe_date(year, month, int(match.group(1))) if month else None
+
+    # "31.03.2027": dotted dates are the European day.month.year
+    # convention (a US export never uses dots), so read day-first.
+    match = re.match(r"^(\d{1,2})\.(\d{1,2})\.(\d{2}|\d{4})$", value)
+    if match:
+        year = int(match.group(3))
+        if year < 100:
+            year += 2000 if year < 70 else 1900
+        return _safe_date(year, int(match.group(2)), int(match.group(1)))
+
     # MM/DD/YYYY or M-D-YY etc. -- this app's existing, documented
     # convention (US-style, month first) for the genuinely ambiguous
     # case where both readings would be valid (e.g. "03/04/2024").
@@ -372,3 +397,63 @@ def escalation_rate_consistency(value: Optional[str]):
         "max_rate": max(rates),
         "spread": max(rates) - min(rates),
     }
+
+
+class BinaryTextUploadError(ValueError):
+    """A file uploaded as delimited text (.csv/.tsv/.txt) is actually binary."""
+
+
+def decode_text_upload(file_bytes: bytes) -> str:
+    """
+    Decodes an uploaded CSV/TSV/TXT the way the person's spreadsheet app
+    actually wrote it, instead of assuming UTF-8:
+
+      - UTF-16 with a BOM (Excel "Unicode Text"), or BOM-less UTF-16 that
+        is obviously so (every other byte NUL);
+      - UTF-8 (BOM stripped) when the bytes are valid UTF-8;
+      - otherwise Windows-1252 (Excel "CSV" on Windows), which is what
+        turned "José Peña" into "Jos� Pe�a" -- and then into a false
+        tenant mismatch -- when everything was forced through UTF-8.
+
+    Raises BinaryTextUploadError when the result still contains NUL or
+    other control bytes, i.e. the "CSV" is really an image, a workbook or
+    some other binary file (the csv module crashed on those with
+    "line contains NUL", a 500 for the user). Overnight gauntlet, 2026-10-05.
+    """
+    if file_bytes[:2] in (b"\xff\xfe", b"\xfe\xff"):
+        text = file_bytes.decode("utf-16", errors="replace")
+    elif len(file_bytes) >= 4 and file_bytes[1:20:2].count(0) >= min(8, len(file_bytes[1:20:2])) and 0 not in file_bytes[0:20:2]:
+        text = file_bytes.decode("utf-16-le", errors="replace")
+    else:
+        try:
+            text = file_bytes.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            text = file_bytes.decode("cp1252", errors="replace")
+    sample = text[:4096]
+    control = sum(1 for ch in sample if ord(ch) < 32 and ch not in "\r\n\t\f")
+    if "\x00" in text or (sample and control / len(sample) > 0.01):
+        raise BinaryTextUploadError(
+            "This file doesn't look like a text/CSV file -- it contains binary data. If it's an Excel "
+            "workbook, upload it with its real .xlsx/.xls extension; if it's a PDF or a photo of a rent "
+            "roll, upload that file as it is."
+        )
+    return text
+
+
+_DECIMAL_COMMA_AMOUNT = re.compile(
+    r"^(?P<pre>[^\d\-]*?)(?P<neg>-\s*)?(?P<num>\d{1,3}(?:\.\d{3})+,\d{1,2}|\d+,\d{1,2})(?P<post>[^\d]*)$")
+
+
+def normalize_decimal_comma(text: str) -> str:
+    """
+    "1.250,00" / "1250,00" / "€ 1.250,50" (European-locale spreadsheets) ->
+    "1250.00" / "1250.00" / "€ 1250.50". Only the unambiguous shapes: a
+    comma followed by 1-2 final digits. US "1,250" / "1,250.00" are
+    returned unchanged. Without this "1.250,00" read as 1.25 and "1250,00"
+    as 125,000 (AUDIT.md §6.5).
+    """
+    m = _DECIMAL_COMMA_AMOUNT.match(text.strip())
+    if not m:
+        return text
+    num = m.group("num").replace(".", "").replace(",", ".")
+    return f"{m.group('pre')}{m.group('neg') or ''}{num}{m.group('post')}"

@@ -7474,3 +7474,35 @@ there's nothing to back up; after adding a disk, Render gives daily
 disk snapshots (coarse), and the real answer is a scheduled
 `sqlite3 .backup` copy to external storage (or migrating to Render
 Postgres). Restore steps written out. See DEPLOYMENT.md.
+
+
+## Unit matching ignores designator wording ("Suite 104" == "Apt 104") -- 2026-10-05, qa/overnight-gauntlet
+
+**Reverses** the stance in `test_rent_roll_import.py`'s
+`test_unit_designator_preservation_is_intentional` docstring (assertions
+unchanged). `portfolio._normalize_address` -- the "same unit" key used by
+the Deal Mismatch Report, rent roll reconciliation, cross-lease checks and
+portfolio history -- now keys on (building with street suffixes
+canonicalized, unit number) instead of the literal address text.
+
+Why: the rent-roll importer writes `"<typed address>, Suite <unit>"` for a
+bare unit number, while multifamily leases say "Apt 204, Austin, TX". Under
+the literal rule a correct rent roll and a correct lease could never be
+paired: the overnight gauntlet saw every unit of such a property reported as
+a false `unit_no_lease` + `lease_no_unit` pair, and every real rent/date/
+concession check on it silently lost. The feared false match (a building
+with both a "Suite 104" and a different "Apt 104") is not a realistic
+multifamily case. The unit number itself still must match. **User should
+confirm** this trade-off; reverting is one function.
+
+## Rent-roll re-import replaces the earlier file only when it covers the same units -- 2026-10-06, qa/overnight-gauntlet
+
+AUDIT.md §6.11: importing the seller's updated rent roll used to double
+every unit. Now an import supersedes (marks `superseded`, never deletes)
+this team's earlier rent-roll rows for the same property **only from files
+whose units mostly (>= half) reappear in the new file**. A property
+delivered as several files with disjoint units (Building A file, Building
+B file, same street address) keeps every file, and occupancy adds up
+across them. New rows are inserted before anything is superseded. The
+response reports `replaced_previous_rows`; **the upload screen doesn't show
+it yet** (frontend follow-up). User should confirm this rule.

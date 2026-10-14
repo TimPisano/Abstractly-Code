@@ -34,11 +34,13 @@ _CATEGORY_ALIASES = {
     "gross_potential_rent": [
         "gross potential rent", "potential rent", "potential income",
         "scheduled gross income", "market rent income",
+        "gross rent potential", "potential gross rent", "gross scheduled rent", "gpr",
     ],
     "rental_income_collected": [
         "total rental income", "rental income", "gross rental income",
         "base rental income", "total rent income", "rent revenue",
         "scheduled rent income", "total rent revenue",
+        "rental revenue", "net rental revenue", "net rent revenue", "net rents", "rent collected",
     ],
     "concessions": [
         "concessions", "rent concessions", "loss to lease - concessions",
@@ -51,7 +53,7 @@ _CATEGORY_ALIASES = {
         "bad debt", "bad debt expense", "collection loss", "uncollectible rent",
     ],
     "other_income": [
-        "other income", "miscellaneous income", "ancillary income",
+        "other income", "miscellaneous income", "ancillary income", "other revenue", "total other revenue",
     ],
 }
 
@@ -90,12 +92,22 @@ def _row_annual_total(row: List[Any], column_mapping: Dict[str, Any]) -> Optiona
     if len(months) < 12:
         return None
     total = 0.0
+    found = False
     for idx in months.values():
         if idx < len(row):
             value = _parse_t12_currency(row[idx])
             if value is not None:
                 total += value
-    return total
+                found = True
+    return total if found else None  # an all-blank row has no total, not a $0 one
+
+
+def _row_has_any_amount(row: List[Any], column_mapping: Dict[str, Any]) -> bool:
+    """True if any month or total cell in this row holds a number."""
+    indexes = list(column_mapping.get("months", {}).values())
+    if "total" in column_mapping:
+        indexes.append(column_mapping["total"])
+    return any(i < len(row) and _parse_t12_currency(row[i]) is not None for i in indexes)
 
 
 def parse_t12_statement_rows(
@@ -104,9 +116,15 @@ def parse_t12_statement_rows(
     filename: str,
     header_row_offset: int = 0,
     row_numbers: Optional[List[int]] = None,
+    ocr: bool = False,
 ) -> Dict[str, Any]:
     """
-    Core parsing logic, independent of file format. Scans every data row's first
+    Core parsing logic, independent of file format.
+
+    `ocr=True` (a scanned T-12): a line is kept only when its 12 monthly
+    figures add up to its Total within 1% -- OCR drops digits and decimal
+    points, and a garbled figure must not drive a confident finding
+    (AUDIT.md §6.13). If no line survives, it's a T12ImportError. Scans every data row's first
     cell for each of the six category aliases, extracting monthly and annual values.
 
     Returns {
@@ -168,6 +186,11 @@ def parse_t12_statement_rows(
             # Found a match for this category
             monthly = _row_monthly_values(row, column_mapping)
             annual = _row_annual_total(row, column_mapping)
+            if not _row_has_any_amount(row, column_mapping):
+                # A SECTION HEADER ("Rental Income", "Other Income") with
+                # no numbers -- it must not claim the category, or the
+                # real line below it ("Net Rental Income") is never read.
+                continue
 
             if row_numbers is not None:
                 row_num = row_numbers[row_index]
@@ -176,10 +199,42 @@ def parse_t12_statement_rows(
 
             result[category] = {
                 "monthly": monthly,
+                # The statement's own column order (oldest -> newest). A
+                # trailing T-12 runs e.g. Oct..Sep, so calendar order would
+                # put its oldest months last.
+                "month_order": [m for m, _ in sorted(column_mapping.get("months", {}).items(), key=lambda kv: kv[1])],
                 "annual": annual,
                 "source": {"row": row_num, "file": filename, "quote": label_str} if annual is not None or monthly else None,
             }
 
+    if ocr:
+        dropped = []
+        for category, entry in result.items():
+            if entry is None:
+                continue
+            months = [v for v in (entry.get("monthly") or {}).values() if v is not None]
+            total = entry.get("annual")
+            consistent = (len(months) == 12 and total is not None and "total" in column_mapping
+                          and abs(sum(months) - total) <= max(1.0, abs(total) * 0.01))
+            if not consistent:
+                dropped.append(category)
+                result[category] = None
+        if all(v is None for v in result.values()):
+            raise T12ImportError(
+                "This T-12 is a scan, and OCR couldn't read its figures reliably -- the monthly amounts "
+                "don't add up to the totals on any line. Upload the T-12 as an Excel or CSV export, or a "
+                "digital (not scanned) PDF."
+            )
+
+    if all(v is None for v in result.values()):
+        # Nothing recognizable at all -- most likely not a T-12 (a rent roll
+        # or budget dropped into the T-12 slot). Saying so beats a report
+        # that silently has no T-12 section.
+        raise T12ImportError(
+            "This doesn't look like a T-12 operating statement: none of its rows is a recognizable income "
+            "line (Gross Potential Rent, Rental Income, Vacancy Loss, Concessions, Bad Debt, Other Income). "
+            "Check that you uploaded the trailing-12-month income statement, not a rent roll or budget."
+        )
     return result
 
 
@@ -206,32 +261,28 @@ def parse_csv_t12_statement(file_bytes: bytes, filename: str) -> Dict[str, Any]:
 
 
 def parse_xlsx_t12_statement(file_bytes: bytes, filename: str) -> Dict[str, Any]:
-    """Parses an .xlsx T12 statement. Raises T12ImportError for empty or unreadable file."""
-    from openpyxl import load_workbook
-    try:
-        workbook = load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
-    except Exception as exc:
-        raise T12ImportError(f"Couldn't read this file as an Excel workbook: {exc}")
-
-    sheet = workbook.active
-    numbered_rows = [
-        (i, list(row)) for i, row in enumerate(sheet.iter_rows(values_only=True), start=1)
-        if any(cell is not None and str(cell).strip() for cell in row)
-    ]
-
-    if not numbered_rows:
-        raise T12ImportError("This Excel file is empty -- nothing to import.")
-
-    row_contents = [row for _, row in numbered_rows]
-    header_idx = _find_t12_header_row(row_contents)
-    headers = row_contents[header_idx]
-    data_entries = numbered_rows[header_idx + 1:]
-    data_rows = [row for _, row in data_entries]
-    data_row_numbers = [n for n, _ in data_entries]
-    return parse_t12_statement_rows(
-        list(headers), data_rows, filename,
-        header_row_offset=header_idx, row_numbers=data_row_numbers,
-    )
+    """
+    Parses an .xlsx/.xls T12 statement from the first worksheet that has a
+    T-12 header row and at least one recognized line item (a "Summary"
+    tab first no longer hides the detail sheet; .xls is read with xlrd).
+    Raises T12ImportError for an empty, unreadable or encrypted file.
+    """
+    from app.t12_import import _t12_sheet_candidates
+    candidates = _t12_sheet_candidates(file_bytes)
+    if not candidates:
+        raise T12ImportError(
+            "Couldn't find any month columns in this file's header row -- "
+            "expected either a \"Total\"/\"Annual\" column, or at least some month columns "
+            "(Jan through Dec), on any sheet of this workbook."
+        )
+    first = None
+    for headers, data_rows, header_idx, row_numbers in candidates:
+        parsed = parse_t12_statement_rows(headers, data_rows, filename, header_row_offset=header_idx, row_numbers=row_numbers)
+        if first is None:
+            first = parsed
+        if any(v is not None for v in parsed.values()):
+            return parsed
+    return first
 
 
 def parse_pdf_t12_statement(file_bytes: bytes, filename: str) -> Dict[str, Any]:
@@ -243,7 +294,7 @@ def parse_pdf_t12_statement(file_bytes: bytes, filename: str) -> Dict[str, Any]:
     import tempfile
     import os
     import pdfplumber
-    from pdf2image import convert_from_path
+    from pdf2image import convert_from_bytes
     import pytesseract
 
     # Try pdfplumber table extraction first
@@ -263,47 +314,28 @@ def parse_pdf_t12_statement(file_bytes: bytes, filename: str) -> Dict[str, Any]:
     except Exception:
         pass
 
-    # Fall back to OCR
-    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
-        tmp.write(file_bytes)
-        tmp_path = tmp.name
-
+    # Fall back to OCR -- through the same grid reconstruction the rent-roll
+    # importer uses (header detection, column gutters from the data rows,
+    # orientation + deskew). Splitting each OCR line on spaces broke every
+    # multi-word label ("Gross Potential Rent") apart, so a scanned T-12
+    # yielded almost nothing (overnight gauntlet, 2026-10-05).
+    from app.rent_roll_table_extract import _ocr_image_to_rows, _MAX_OCR_PDF_PAGES
     try:
-        images = convert_from_path(tmp_path)
-        if not images:
-            raise T12ImportError("Couldn't convert PDF pages to images for OCR.")
-
-        all_text = []
-        for image in images:
-            try:
-                text = pytesseract.image_to_string(image)
-                all_text.append(text)
-            except Exception as exc:
-                raise T12ImportError(
-                    f"OCR failed on this PDF: {exc}. If this is a scanned T12, "
-                    "try uploading a digital PDF or CSV/Excel export instead."
-                )
-
-        combined_text = "\n".join(all_text)
-        if not combined_text.strip():
-            raise T12ImportError(
-                "This PDF appears to be blank or unreadable by OCR. "
-                "If it's a scanned T12, ensure the scan is legible."
-            )
-
-        # Parse OCR'd text as CSV-like
-        lines = [line.strip() for line in combined_text.split("\n") if line.strip()]
-        if len(lines) < 2:
-            raise T12ImportError("PDF OCR produced too little text to parse a T12.")
-
-        # Convert lines to rows (splitting on spaces for simplicity -- OCR'd tables are messy)
-        rows = [line.split() for line in lines]
-        if len(rows) < 2:
-            raise T12ImportError("Couldn't parse the OCR'd PDF as a table.")
-
-        return parse_t12_statement_rows(
-            rows[0], rows[1:], filename, header_row_offset=0
+        images = convert_from_bytes(file_bytes, dpi=300, last_page=_MAX_OCR_PDF_PAGES)
+    except Exception as exc:
+        raise T12ImportError(
+            "This looks like a scanned T-12, and it couldn't be converted to images for OCR. "
+            "Upload the T-12 as an Excel or CSV export instead."
+        ) from exc
+    if not images:
+        raise T12ImportError("Couldn't convert PDF pages to images for OCR.")
+    rows: List[List[Any]] = []
+    for image in images:
+        page_rows, _conf = _ocr_image_to_rows(image)
+        rows.extend(page_rows)
+    if len(rows) < 2:
+        raise T12ImportError(
+            "This PDF appears to be blank or unreadable by OCR. If it's a scanned T-12, ensure the scan is legible."
         )
-    finally:
-        if os.path.exists(tmp_path):
-            os.unlink(tmp_path)
+    header_idx = _find_t12_header_row(rows)
+    return parse_t12_statement_rows(rows[header_idx], rows[header_idx + 1:], filename, header_row_offset=header_idx, ocr=True)
