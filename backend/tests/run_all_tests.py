@@ -108,6 +108,8 @@ UNIT_TESTS = [
     # Demo deal rent-roll/lease/T12/report polish pass (2026-10) -- data-
     # driven regression guard, see its own module docstring.
     "test_demo_deal_regression.py",
+    # Section 8 demo property (Oak Hollow Apartments) fixture validation.
+    "test_s8_demo_files.py",
 ]
 
 LIVE_API_TESTS = [
