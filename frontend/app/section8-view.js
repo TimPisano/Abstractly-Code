@@ -217,6 +217,7 @@ const S8_UNIT_FIELDS = (properties) => [
 
 const S8UnitsView = {
     role: 'viewer',
+    _loadToken: 0,
     units: [],
     properties: [],
     phas: [],
@@ -226,6 +227,7 @@ const S8UnitsView = {
     async load() {
         if (!(await S8Common.guard())) return;
         const content = document.getElementById('s8UnitsContent');
+        const token = ++this._loadToken;
         S8Common.loading(content, 'Loading units...');
         try {
             const [role, units, tenancies, properties, phas] = await Promise.all([
@@ -235,6 +237,7 @@ const S8UnitsView = {
                 Api.s8.properties.list(),
                 Api.s8.phas.list(),
             ]);
+            if (token !== this._loadToken) return; // a newer load() won the race
             this.role = role;
             this.units = units;
             this.properties = properties;
@@ -245,6 +248,7 @@ const S8UnitsView = {
             this.renderActions();
             this.render();
         } catch (err) {
+            if (token !== this._loadToken) return;
             document.getElementById('s8UnitsActions').innerHTML = '';
             S8Common.error(content, err);
         }
@@ -332,7 +336,7 @@ const S8UnitsView = {
             return `
                 <tr data-unit-id="${u.id}" tabindex="0" aria-label="Open unit ${s8Attr(u.unit_label)}">
                     <td><strong>${escapeHtml(u.unit_label)}</strong></td>
-                    <td>${u.bedrooms === null || u.bedrooms === undefined ? '—' : u.bedrooms}</td>
+                    <td>${s8Text(u.bedrooms)}</td>
                     <td>${s8Pill(S8_LABELS.unitStatus[u.status] || 'Unknown')}</td>
                     <td>${t ? s8Text(t.head_of_household) : '<span class="muted">No current tenancy</span>'}</td>
                     <td>${pha ? escapeHtml(pha.short_name || pha.name) : '—'}</td>
@@ -503,6 +507,12 @@ const S8UnitFileView = {
         }
     },
 
+    // After a save, re-render only if the user is still looking at the same
+    // unit -- otherwise a slow save would paint the old unit over the new one.
+    async reloadIfOpen(unitId) {
+        if (currentViewName === 's8unit' && this.unitId === unitId) await this.load({ unitId });
+    },
+
     phaName(id) {
         const p = this.phas.find((x) => x.id === id);
         return p ? (p.short_name || p.name) : null;
@@ -514,7 +524,7 @@ const S8UnitFileView = {
         const content = document.getElementById('s8UnitContent');
         const subtitle = [
             this.property ? escapeHtml(this.property.name) : null,
-            u.bedrooms === null || u.bedrooms === undefined ? null : `${u.bedrooms} bed`,
+            u.bedrooms === null || u.bedrooms === undefined ? null : `${escapeHtml(u.bedrooms)} bed`,
         ].filter(Boolean).join(' · ');
         content.innerHTML = `
             <button type="button" class="btn-text s8-back" data-action="back">← Units</button>
@@ -656,6 +666,7 @@ const S8UnitFileView = {
     },
 
     bind(content) {
+        const unitId = this.unit.id;
         const on = (action, fn) => content.querySelectorAll(`[data-action="${action}"]`).forEach((el) => el.addEventListener('click', () => fn(el)));
         on('back', () => showView('s8units'));
         on('edit-unit', () => this.editUnit());
@@ -675,12 +686,13 @@ const S8UnitFileView = {
                 } catch (err) {
                     showError(err.message);
                 }
-                await this.load();
+                await this.reloadIfOpen(unitId);
             });
         });
     },
 
     editUnit() {
+        const unitId = this.unit.id;
         const slot = document.getElementById('s8UnitEditSlot');
         slot.innerHTML = `<div class="panel"><div class="panel-header"><h2>Edit unit</h2></div>${s8FormHtml('s8UnitEditForm', S8_UNIT_EDIT_FIELDS, this.unit, 'Save')}</div>`;
         s8BindForm(slot, 's8UnitEditForm', S8_UNIT_EDIT_FIELDS, {
@@ -689,12 +701,13 @@ const S8UnitFileView = {
             onSubmit: async (body) => {
                 await Api.s8.units.update(this.unit.id, body);
                 showToast('Unit updated.', 'success');
-                await this.load();
+                await this.reloadIfOpen(unitId);
             },
         });
     },
 
     tenancyForm(isNew) {
+        const unitId = this.unit.id;
         const slot = document.getElementById('s8TenancySlot');
         const fields = S8_TENANCY_FIELDS(this.phas);
         const current = this.unit.current_tenancy;
@@ -720,12 +733,13 @@ const S8UnitFileView = {
                     await Api.s8.tenancies.create({ ...body, unit_id: this.unit.id, end_current: !!current });
                     showToast('Tenancy recorded.', 'success');
                 }
-                await this.load();
+                await this.reloadIfOpen(unitId);
             },
         });
     },
 
     hapForm() {
+        const unitId = this.unit.id;
         const slot = document.getElementById('s8HapSlot');
         const fields = S8_HAP_FIELDS(this.phas);
         const t = this.unit.current_tenancy;
@@ -742,12 +756,13 @@ const S8UnitFileView = {
             onSubmit: async (body) => {
                 await Api.s8.hapContracts.create({ ...body, unit_id: this.unit.id, property_id: this.unit.property_id });
                 showToast('HAP contract added.', 'success');
-                await this.load();
+                await this.reloadIfOpen(unitId);
             },
         });
     },
 
     async linkForm() {
+        const unitId = this.unit.id;
         const slot = document.getElementById('s8DocSlot');
         slot.innerHTML = '<p class="loading-inline" role="status"><span class="spinner-small"></span> Loading your uploads...</p>';
         let leases;
@@ -776,12 +791,13 @@ const S8UnitFileView = {
             onSubmit: async (body) => {
                 await Api.s8.linkUnitDocument(this.unit.id, body);
                 showToast('Document linked.', 'success');
-                await this.load();
+                await this.reloadIfOpen(unitId);
             },
         });
     },
 
     async unlink(linkId) {
+        const unitId = this.unit.id;
         const ok = await confirmDialog({
             title: 'Unlink this document?',
             message: 'It stays in your uploads; it just won’t show in this unit file.',
@@ -794,7 +810,7 @@ const S8UnitFileView = {
         } catch (err) {
             showError(err.message);
         }
-        await this.load();
+        await this.reloadIfOpen(unitId);
     },
 };
 
@@ -816,23 +832,27 @@ const S8_PHA_FIELDS = [
 
 const S8PhasView = {
     role: 'viewer',
+    _loadToken: 0,
     phas: [],
     showArchived: false,
 
     async load() {
         if (!(await S8Common.guard())) return;
         const content = document.getElementById('s8PhasContent');
+        const token = ++this._loadToken;
         S8Common.loading(content, 'Loading housing authorities...');
         try {
             const [role, phas] = await Promise.all([
                 S8Common.role(),
                 Api.s8.phas.list(this.showArchived ? { include_archived: 'true' } : {}),
             ]);
+            if (token !== this._loadToken) return; // a newer load() won the race
             this.role = role;
             this.phas = phas;
             this.renderActions();
             this.render();
         } catch (err) {
+            if (token !== this._loadToken) return;
             document.getElementById('s8PhasActions').innerHTML = '';
             S8Common.error(content, err);
         }
@@ -866,7 +886,7 @@ const S8PhasView = {
                         <td>${s8Text(p.jurisdiction)}</td>
                         <td>${s8Text(p.inspection_standard)}</td>
                         <td>${s8Text(p.payment_day)}</td>
-                        <td>${p.rent_increase_notice_days === null || p.rent_increase_notice_days === undefined ? '—' : `${p.rent_increase_notice_days} days`}</td>
+                        <td>${p.rent_increase_notice_days === null || p.rent_increase_notice_days === undefined ? '—' : `${escapeHtml(p.rent_increase_notice_days)} days`}</td>
                         <td>${contact || '—'}</td>
                         <td>${portal ? `<a href="${s8Attr(portal)}" target="_blank" rel="noopener noreferrer">Open</a>` : '—'}</td>
                         ${canEdit ? `<td><span class="s8-row-actions">
