@@ -300,8 +300,8 @@ def _has_rent_column(mapping: Dict[str, int]) -> bool:
             or ("charge_code" in mapping and "charge_amount" in mapping))
 
 
-# Section 8 contract rent = tenant share + HAP. HUD rounds both to whole
-# dollars, so a stated contract rent within $1 of their sum agrees.
+# Section 8 contract rent = tenant share + HAP. Rent rolls often round to
+# whole dollars, so a stated contract rent within $1 of their sum is accepted.
 _SECTION8_TOLERANCE = 1.00
 
 # Share-column labels that can only mean "the tenant's part of the rent".
@@ -364,13 +364,24 @@ def _resolve_section8_rent(column_mapping, headers, row, cell):
     stated = rent  # the rent column's own figure, kept for the check record
     check = {"rent_column": stated, "tenant_share": share, "hap": hap}
 
+    # Flag negative tenant share or HAP as a problem (same treatment as a mismatch)
+    if (share is not None and share < 0) or (hap is not None and hap < 0):
+        detail = ""
+        if share is not None and share < 0:
+            detail = f"negative tenant share {_money(share)}"
+        if hap is not None and hap < 0:
+            if detail:
+                detail += " and "
+            detail += f"negative HAP {_money(hap)}"
+        return None, None, "low", {**check, "kind": "negative_amount", "detail": detail}
+
     if has_hap and hap_raw is not None and hap is None:
         # "pending", "see PHA" -- not a dollar amount, and not $0 either.
         if rent is not None:
             return rent, quote, "low", {**check, "kind": "hap_unreadable", "hap_text": hap_raw}
         return None, None, None, {**check, "kind": "hap_unreadable", "hap_text": hap_raw}
 
-    if has_hap and (share is not None or hap is not None):
+    if has_share and has_hap and (share is not None or hap is not None):
         # A blank HAP is $0 (a market unit in a mixed roll); a blank
         # share next to a real HAP is unusual enough to flag.
         contract = round((share or 0.0) + (hap or 0.0), 2)
@@ -441,6 +452,8 @@ def _section8_warnings(checks: List[Dict[str, Any]]) -> List[str]:
         "tenant_share_missing": "A HAP amount is shown but the tenant's share is blank -- rent was taken as the HAP "
                                 "alone; confirm the tenant pays $0",
         "hap_unreadable": "The HAP cell isn't a dollar amount, so contract rent couldn't be checked",
+        "negative_amount": "Negative tenant share or HAP amounts are invalid; rent was marked low confidence and "
+                          "should be verified against the lease",
     }
     out = []
     for kind, intro in intros.items():
@@ -466,6 +479,8 @@ def _section8_detail(check: Dict[str, Any]) -> str:
         return f"file shows {_money(share)} ({check['indicator']})"
     if kind == "tenant_share_missing":
         return f"HAP {_money(hap)}"
+    if kind == "negative_amount":
+        return check.get("detail", "negative amount")
     return f'HAP cell reads "{check["hap_text"]}"'
 
 
@@ -831,6 +846,23 @@ def _is_real_tenant_name(tenant_raw: Optional[str]) -> bool:
     return not any(normalized.startswith(keyword + " ") for keyword in _NON_TENANT_KEYWORDS)
 
 
+def _is_summary_row(unit_or_tenant: Optional[str]) -> bool:
+    """
+    Returns True if the cell appears to be a summary/totals row label
+    (e.g., "Total", "Subtotal", "Unit Total", "16 units - Total Occupied").
+    Matches whole words only, so "Totaro" or "Totally" won't trigger.
+    """
+    if not unit_or_tenant:
+        return False
+    text = _cell_to_str(unit_or_tenant)
+    if not text:
+        return False
+    normalized = re.sub(r"[^\w\s]", " ", text.lower())
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+    # Check if any of the summary keywords appear as a whole word (word boundary)
+    return any(re.search(rf"\b{keyword}\b", normalized) for keyword in _NON_TENANT_KEYWORDS)
+
+
 _VACANT_WORDS = {"vacant", "vacancy", "available", "unrented", "unoccupied", "empty"}
 _DOWN_WORDS = {"down", "model", "offline", "renovation", "reno", "uninhabitable", "nonrevenue", "non revenue", "unavailable"}
 # Whole-cell placeholders some exports put in the tenant column of an
@@ -1034,9 +1066,15 @@ def parse_rent_roll_rows(
 
         # Section 8: the rent is the contract rent (tenant share + HAP),
         # checked against any stated rent -- see _resolve_section8_rent.
-        rent, rent_quote, rent_confidence, s8_check = _resolve_section8_rent(column_mapping, headers, row, cell)
+        # Skip the check for totals/summary rows.
+        unit_str_raw = _cell_to_str(cell("unit"))
+        if _is_summary_row(unit_str_raw) or _is_summary_row(tenant_raw):
+            rent, rent_quote, rent_confidence, s8_check = _resolve_section8_rent(column_mapping, headers, row, cell)
+            s8_check = None  # discard any check for summary rows
+        else:
+            rent, rent_quote, rent_confidence, s8_check = _resolve_section8_rent(column_mapping, headers, row, cell)
         landlord_str = _cell_to_str(cell("landlord"))
-        unit_str = _cell_to_str(cell("unit"))
+        unit_str = unit_str_raw  # reuse the assignment from above
         sqft_str = _cell_to_str(cell("square_footage"))
         start_str = _date_cell_to_str(cell("lease_start_date"))
         end_str = _date_cell_to_str(cell("lease_end_date"))

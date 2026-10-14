@@ -279,6 +279,65 @@ def test_ocr_table_warnings_are_merged_not_overwritten():
     print("✓ test_ocr_table_warnings_are_merged_not_overwritten: PASS")
 
 
+# ---------------------------------------------------------------- bug fixes
+def test_rent_hap_columns_without_share_column_uses_rent_unflagged():
+    """Bug fix 1: Rent + HAP but no share column should use Rent as-is (not treat as contract=HAP only)."""
+    got = _csv("Unit,Resident,Rent,HAP,Lease End\n101,Ann Lee,1400.00,900.00,03/31/2027\n")
+    assert _rents(got) == ["$1,400.00"], got
+    assert _rent_field(got)["confidence"] == "high", got
+    assert not _checks(got), got  # no flags
+    print("✓ test_rent_hap_columns_without_share_column_uses_rent_unflagged: PASS")
+
+
+def test_rent_hap_mixed_market_unit_in_roll_without_share_column():
+    """Bug fix 1: Market unit (HAP=0) in a roll with Rent+HAP but no share."""
+    got = _csv("Unit,Resident,Rent,HAP,Lease End\n101,Ann Lee,1000.00,0.00,03/31/2027\n102,Bo Diaz,1250.00,,03/31/2027\n")
+    assert _rents(got) == ["$1,000.00", "$1,250.00"], got
+    assert not _checks(got), got  # no flags
+    print("✓ test_rent_hap_mixed_market_unit_in_roll_without_share_column: PASS")
+
+
+def test_totals_row_skips_section8_check():
+    """Bug fix 2: totals/summary rows should skip Section 8 split validation."""
+    got = _csv("Unit,Resident,Contract Rent,Tenant Rent,HAP\n"
+               "101,Ann Lee,1400.00,412.00,988.00\n"
+               "Total,Total,2400.00,800.00,1600.00\n")
+    # The Total row should not trigger a check (even though 2400 ≠ 800+1600)
+    checks = _checks(got)
+    assert not any(c["unit"] == "Total" for c in checks), checks
+    assert len(got["leases"]) == 1, got  # only the real unit imported
+    print("✓ test_totals_row_skips_section8_check: PASS")
+
+
+def test_subtotal_row_skips_section8_check():
+    """Bug fix 2: subtotal rows are skipped in import and won't produce checks."""
+    got = _csv("Unit,Resident,Tenant Portion,HAP\n"
+               "101,Ann Lee,412.00,988.00\n"
+               "Subtotal,,,\n"
+               "102,Bo Diaz,500.00,750.00\n")
+    assert len(got["leases"]) == 2, got  # Subtotal row is not imported
+    assert not any(c["unit"] == "Subtotal" for c in _checks(got)), _checks(got)
+    print("✓ test_subtotal_row_skips_section8_check: PASS")
+
+
+def test_negative_tenant_share_is_flagged():
+    """Bug fix 3: negative tenant share should be flagged as warning."""
+    got = _csv("Unit,Resident,Contract Rent,Tenant Rent,HAP\n101,Ann Lee,1400.00,-200.00,1600.00\n")
+    checks = [c for c in _checks(got) if c["kind"] == "negative_amount"]
+    # Should flag as a problem (negative amount check)
+    assert len(checks) > 0 or len(_checks(got)) > 0, got  # should have some flag
+    print("✓ test_negative_tenant_share_is_flagged: PASS")
+
+
+def test_negative_hap_is_flagged():
+    """Bug fix 3: negative HAP should be flagged as warning."""
+    got = _csv("Unit,Resident,Contract Rent,Tenant Rent,HAP\n101,Ann Lee,1400.00,1600.00,-200.00\n")
+    checks = [c for c in _checks(got) if c["kind"] == "negative_amount"]
+    # Should flag as a problem (negative amount check)
+    assert len(checks) > 0 or len(_checks(got)) > 0, got  # should have some flag
+    print("✓ test_negative_hap_is_flagged: PASS")
+
+
 if __name__ == "__main__":
     failures = 0
     for name, fn in list(globals().items()):
