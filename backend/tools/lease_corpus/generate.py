@@ -130,6 +130,7 @@ class Case:
     changes: List[Dict[str, Any]] = field(default_factory=list)  # renewal/amendment
     scanned: bool = False
     scanned_attachments: bool = False             # typed lease, attachments are scanned images
+    share_in_lease: bool = False                  # Section 8: lease body states only the tenant's share
     second_lease: Optional["Case"] = None        # a genuinely separate lease in the same file
 
     # -- derived ------------------------------------------------------
@@ -223,6 +224,9 @@ def _parties_clause(c: Case) -> str:
 
 def _rent_sentence(c: Case, who: str, owner_word: str) -> str:
     r = c.rent
+    if c.share_in_lease and c.section8:
+        return (f"{who} will pay {money(c.section8['tenant_rent'])} per month as {who}'s share of the rent; the "
+                f"balance is paid by the housing authority under the HAP contract.")
     if c.rent_in_words_only:
         return (f"{who} shall pay {owner_word} the sum of {words(int(r))} Dollars per month as rent, "
                 f"due on or before the first (1st) day of each month.")
@@ -250,7 +254,8 @@ def lease_doc(c: Case) -> List[Doc]:
             ("p", f"{c.unit_label} {c.unit}" if c.unit_label != "Unit" else f"Unit: {c.unit}"),
             ("p", f"Lease Start Date: {c.d(c.start)}"),
             ("p", f"Lease End Date: {c.d(c.end)}"),
-            ("p", (f"Monthly Rent: {money(c.rent)}" if not c.rent_in_words_only
+            ("p", (f"Monthly Rent: {money(c.section8['tenant_rent'])} (Resident's share)" if c.share_in_lease and c.section8
+                   else f"Monthly Rent: {money(c.rent)}" if not c.rent_in_words_only
                    else f"Monthly Rent: {words(int(c.rent))} Dollars")),
             ("p", f"Security Deposit: {money(c.deposit)}"),
         ]
@@ -666,6 +671,10 @@ def build_cases(seed: int) -> List[Case]:
         c = add(f.base("section8")); f.section8(c)
     c = add(f.base("section8_with_charges")); f.section8(c); f.pet(c); f.utilities(c, False, True)
     c = add(f.base("section8_renewal")); f.section8(c); f.renewal(c)
+    # The lease body states only the family's share as "rent"; the contract
+    # rent is in the HAP contract (regression, 2026-10-06).
+    for _ in range(2):
+        c = add(f.base("section8_share_in_lease", share_in_lease=True)); f.section8(c)
     # Renewals / amendments
     for _ in range(3):
         c = add(f.base("renewal")); f.renewal(c)

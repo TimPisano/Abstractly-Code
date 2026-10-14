@@ -557,8 +557,16 @@ def parse_lease_changes(pages: List[Dict[str, Any]]) -> Entry:
     sources = []
     for kind, doc_pages in _change_docs(pages):
         d = _Doc(doc_pages)
+        # A renewal OFFER letter isn't in force until the resident accepts it.
+        opening = re.sub(r"\s+", " ", (doc_pages[0].get("text") or ""))[:80]
+        is_letter = bool(re.search(r"\bdear\b", opening, re.IGNORECASE))
+        accepted = (not is_letter) or bool(re.search(
+            r"\baccepted\b|\bI\s+(?:agree|accept)\b|/s/|\bsigned\b|\bsignature\b", d.text, re.IGNORECASE))
         eff = d.first([rf"[Ee]ffective\s+(?:as\s+of\s+)?(?:on\s+)?{DATE}", rf"term\s+beginning\s+(?:on\s+)?{DATE}",
-                       rf"commenc\w+\s+(?:on\s+)?{DATE}", rf"\bfrom\s+{DATE}(?={RANGE_SEP}{DATE_NC})"])
+                       rf"commenc\w+\s+(?:on\s+)?{DATE}", rf"\bfrom\s+{DATE}(?={RANGE_SEP}{DATE_NC})",
+                       # "...a renewal term of June 1, 2026 through May 31, 2027": the
+                       # first date of the new term's range is when it takes effect.
+                       rf"{DATE}(?={RANGE_SEP}{DATE_NC})"])
         rent, m_rent = d.amount([
             # Section 8 notices: the contract rent (total), not "New tenant rent".
             rf"contract\s+rent(?:\s+to\s+owner)?{NEAR}{CUR}",
@@ -596,6 +604,12 @@ def parse_lease_changes(pages: List[Dict[str, Any]]) -> Entry:
             title, re.IGNORECASE,
         ):
             continue
+        # No figures to quote (e.g. "add Sloane Whitlock as a resident") --
+        # cite the change document's own opening instead.
+        source = d.source([eff, m_rent, end, m_tr, m_hap]) or {
+            "page": doc_pages[0]["page"],
+            "quote": re.sub(r"\s+", " ", (doc_pages[0].get("text") or "").strip())[:200],
+        }
         changes.append({
             "kind": kind,
             "effective_date": eff.group(1) if eff else None,
@@ -604,17 +618,17 @@ def parse_lease_changes(pages: List[Dict[str, Any]]) -> Entry:
             "new_tenant_rent": tenant_rent,
             "new_hap_amount": hap,
             "page": doc_pages[0]["page"],
+            "quote": source["quote"],
+            # False only for an offer letter with no acceptance on it: listed
+            # as a change, but never applied to the in-force terms.
+            "accepted": accepted,
         })
-        # No figures to quote (e.g. "add Sloane Whitlock as a resident") --
-        # cite the change document's own opening instead.
-        sources.append(d.source([eff, m_rent, end, m_tr, m_hap]) or {
-            "page": doc_pages[0]["page"],
-            "quote": re.sub(r"\s+", " ", (doc_pages[0].get("text") or "").strip())[:200],
-        })
+        sources.append(source)
     if not changes:
         return _not_found()
     value = "; ".join(
-        f"{c['kind'].capitalize()}" + (f" effective {c['effective_date']}" if c["effective_date"] else "")
+        f"{c['kind'].capitalize()}" + ("" if c.get("accepted", True) else " offer (not accepted in this file)")
+        + (f" effective {c['effective_date']}" if c["effective_date"] else "")
         + ("" if any(c[k] is not None for k in ("new_rent", "new_end_date", "new_tenant_rent", "new_hap_amount"))
            else " (no rent or term change stated)")
         + (f": rent {_money(c['new_rent'])}" if c["new_rent"] is not None else "")
@@ -747,3 +761,63 @@ def attach_ai_details(fields: Dict[str, Entry], pages: List[Dict[str, Any]]) -> 
     out["current_rent_amount"] = _current(fields.get("rent_amount"), changes, "new_rent", _money)
     out["current_lease_end_date"] = _current(fields.get("lease_end_date"), changes, "new_end_date", _display_date)
     return out
+
+
+# ----------------------------------------------------------------------
+# In-force terms (always on -- not behind the multifamily flag)
+# ----------------------------------------------------------------------
+
+def is_subsidized(text: str) -> bool:
+    """Section 8 / HCV / HUD-assisted tenancy wording anywhere in the text."""
+    return bool(_S8_CUE.search(text or ""))
+
+
+def stated_tenant_rent(pages: List[Dict[str, Any]]) -> Optional[float]:
+    """The tenant's own share of a subsidized rent, as the document states it (never computed)."""
+    doc = _Doc(pages)
+    if not is_subsidized(doc.text):
+        return None
+    return (parse_section_8(doc).get("details") or {}).get("tenant_rent")
+
+
+def apply_lease_changes(fields: Dict[str, Entry], pages: List[Dict[str, Any]]) -> None:
+    """
+    Make the core terms the ones IN FORCE under this document: a renewal,
+    amendment or housing-authority rent change in the same file updates
+    rent_amount, lease_end_date and -- for a renewal that starts a new
+    term -- lease_start_date, latest change last. Same rule the database
+    applies to separately uploaded amendments (get_effective_fields:
+    latest stated value wins), so one PDF and a lease-plus-amendment
+    upload give the same answer.
+
+    Why: the Deal Mismatch Report compares these fields to the rent roll,
+    and a rent roll shows what is in force today. Reporting the original
+    lease's rent and term for a renewed unit produced a false rent
+    mismatch, two false date mismatches and a false "expired but
+    occupied" for every renewal in the file.
+
+    The original entry is kept in details.original, so nothing is lost.
+    Runs with or without LEASE_MULTIFAMILY_FIELDS.
+    """
+    changes = (parse_lease_changes(pages).get("details") or {}).get("changes") or []
+    for c in changes:
+        if c.get("accepted") is False:
+            continue
+        source = {"page": c.get("page"), "quote": c.get("quote")}
+        updates = {}
+        if c.get("new_rent") is not None:
+            updates["rent_amount"] = _money(c["new_rent"])
+        if c.get("new_end_date"):
+            updates["lease_end_date"] = _display_date(c["new_end_date"])
+            # A renewal that sets a new end starts a new term on its
+            # effective date; a mid-term amendment never moves the start.
+            if c.get("kind") == "renewal" and c.get("effective_date"):
+                updates["lease_start_date"] = _display_date(c["effective_date"])
+        for name, value in updates.items():
+            entry = fields.get(name) or _not_found()
+            details = dict(entry.get("details") or {})
+            # Keep the FIRST (original lease) value, not an intermediate one.
+            if "original" not in details:
+                details["original"] = {"value": entry.get("value"), "source": entry.get("source")}
+            details.update({"changed_by": c.get("kind"), "effective_date": c.get("effective_date")})
+            fields[name] = {"value": value, "source": source, "confidence": "high", "details": details}

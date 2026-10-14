@@ -119,6 +119,30 @@ def ok_value(v: Any) -> bool:
     return v not in (None, "", [], {}, False, 0, 0.0)
 
 
+def in_force_expectations(case: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    The core fields are graded as the terms IN FORCE (2026-10-06 fix): a
+    renewal, amendment or rent change in the file sets rent_amount and the
+    term, exactly as an uploaded amendment does. Every manifest already
+    records the in-force values as current_rent_amount /
+    current_lease_end_date; a renewal that moves the end date starts its
+    new term the day after the original lease ended (true of every renewal
+    in these corpora).
+    """
+    exp = dict(case["fields"])
+    if exp.get("current_rent_amount"):
+        exp["rent_amount"] = exp["current_rent_amount"]
+    original_end = exp.get("lease_end_date")
+    current_end = exp.get("current_lease_end_date")
+    if current_end and original_end and parse_date(current_end) != parse_date(original_end):
+        exp["lease_end_date"] = current_end
+        if any(ch.get("kind") == "renewal" for ch in case.get("lease_changes") or []):
+            from datetime import timedelta
+            d = parse_date(original_end) + timedelta(days=1)
+            exp["lease_start_date"] = f"{d.strftime('%B')} {d.day}, {d.year}"
+    return exp
+
+
 def grade_case(case: Dict[str, Any], leases: List[Dict[str, Any]], status: Optional[str]) -> List[Dict[str, Any]]:
     checks: List[Dict[str, Any]] = []
 
@@ -137,7 +161,7 @@ def grade_case(case: Dict[str, Any], leases: List[Dict[str, Any]], status: Optio
     add("structure", "processed", status or "ok", "ok", status in (None, "ok", "completed"))
 
     fields = leases[0]["fields"] if leases else {}
-    exp = case["fields"]
+    exp = in_force_expectations(case)
     for name in BASE_FIELDS + MF_FIELDS:
         entry = fields.get(name)
         got = _value(entry)

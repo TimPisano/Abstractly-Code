@@ -46,11 +46,14 @@ DEFAULT_MODEL = os.environ.get("LEASE_EXTRACTION_MODEL", "claude-sonnet-5")
 # line can be attributed to a specific prompt revision. History of what
 # changed each version lives in AI_PIPELINE_LOG.md (Phase 4).
 # v2: added the multifamily `concessions` field.
-# v3: residential / Section 8 aware prompt; rent_amount is the original
-#     lease's dwelling rent (Section 8: contract rent); termination_options
-#     added so both engines return the same keys; multifamily fields when
-#     LEASE_MULTIFAMILY_FIELDS is on (version reported as "v3+mf").
-PROMPT_VERSION = "v3"
+# v3: residential / Section 8 aware prompt; rent_amount is the dwelling
+#     rent (Section 8: contract rent); termination_options added so both
+#     engines return the same keys; multifamily fields when
+#     LEASE_MULTIFAMILY_FIELDS is on (version reported with a "+mf" suffix).
+# v4: core rent/dates are the terms IN FORCE after any renewal/amendment
+#     in the file (as uploaded amendments already are), not the original's;
+#     Section 8 contract rent wherever the file states it.
+PROMPT_VERSION = "v4"
 
 # Generous: a long lease produces a lot of output tokens (15 fields,
 # each with a value + a verbatim source quote that can be a full
@@ -163,7 +166,7 @@ Non-negotiable rules:
    Do not use "high" as a default. If you are reporting a value mainly because you expect the field to exist, that is "low" at best.
 4. NEVER GUESS BETWEEN CANDIDATES. If two different values could each be "the rent" (e.g. an initial rate and a later escalated rate), report the one the lease establishes as the current/base value and note the ambiguity in source_text context; lower the confidence accordingly.
 5. NORMALIZE VALUES to clean display strings (details per field below). Keep source_text raw.
-6. ONE FILE, SEVERAL DOCUMENTS. The document may be the lease followed by addenda (pet, parking, utility, HUD Tenancy Addendum), a HAP contract, renewals, amendments, or a housing authority's rent change notice. The core fields (rent, dates) describe the ORIGINAL lease. Later renewals, amendments and rent change notices are never folded into the core fields; when lease_changes is requested, record them there.
+6. ONE FILE, SEVERAL DOCUMENTS. The document may be the lease followed by addenda (pet, parking, utility, HUD Tenancy Addendum), a HAP contract, renewals, amendments, or a housing authority's rent change notice. The core fields describe the lease AS IN FORCE under the latest of these documents: a renewal's or amendment's new rent and term replace the original lease's (a renewal's new term also sets the start date). Quote the document that sets the value. When lease_changes is requested, also list every change there.
 7. RESIDENTIAL WORDING. Apartment leases call the parties "Resident(s)" and "Owner"/"Management"; treat these as tenant and landlord. A managing agent signing for the owner is not the landlord.
 
 You will always call the record_lease_abstraction tool exactly once. Never reply with prose."""
@@ -175,9 +178,9 @@ You will always call the record_lease_abstraction tool exactly once. Never reply
 FIELD_GUIDANCE = {
     "tenant": "The tenant / lessee / renter / resident party. The entity or person leasing the space, not the owner. Full legal name including entity suffix (\"Blue Sky Coffee Roasters, Inc.\"). Exclude defined-term boilerplate like \"a Delaware corporation\". If several residents are named (co-tenants), value is the FIRST-named resident only; quote the clause naming all of them in source_text.",
     "landlord": "The landlord / lessor / owner party. The owner/grantor of the leasehold -- not a managing agent acting for it. Full legal name as above.",
-    "rent_amount": "The base / minimum monthly rent for the dwelling or premises under the ORIGINAL lease, as a monthly figure. Display as \"$6,250.00\". If the lease states an annual figure, convert to monthly and say so in source_text context. Do NOT return a later escalated year's rent (that belongs in rent_escalation), a renewal's or amendment's new rent, or a rent change notice's figure. Residential: exclude pet rent, parking/garage fees, utility charges and other monthly fees; if the lease only gives a total of rent plus charges, use the base rent line. Section 8: the CONTRACT RENT / rent to owner (tenant portion + housing assistance payment), never the tenant's portion alone.",
-    "lease_start_date": "The commencement date of the ORIGINAL lease term (not the execution/signing date unless they are the same, and not a renewal term's start). Display as \"April 1, 2025\".",
-    "lease_end_date": "The expiration date of the ORIGINAL lease's initial term (before any renewal option or renewal agreement). Display as \"March 31, 2030\".",
+    "rent_amount": "The base / minimum monthly rent for the dwelling or premises currently in force: the original lease's, or the latest renewal's / amendment's / rent change notice's new rent if the file includes one. A monthly figure, displayed as \"$6,250.00\". If the lease states an annual figure, convert to monthly and say so in source_text context. Do NOT return a later escalated year's rent from a schedule (that belongs in rent_escalation). Residential: exclude pet rent, parking/garage fees, utility charges and other monthly fees; if the lease only gives a total of rent plus charges, use the base rent line. Section 8: the CONTRACT RENT / rent to owner (tenant portion + housing assistance payment), wherever the file states it (lease, Tenancy Addendum or HAP contract) -- never the tenant's / family's share alone, even when the lease body calls that figure \"rent\".",
+    "lease_start_date": "The commencement date of the term currently in force: the original lease's, or a renewal agreement's new term start if the file includes one (not the execution/signing date unless they are the same). Display as \"April 1, 2025\".",
+    "lease_end_date": "The expiration date of the term currently in force: the original lease's initial term, or the latest renewal / extension in the file (an unexercised renewal OPTION does not count). Display as \"March 31, 2030\".",
     "property_address": "The street address of the leased premises (the apartment or suite), not an owner's notice or payment address. Include suite/unit if given. Exclude the \"(the “Premises”)\" defined-term tail.",
     "security_deposit": "The security deposit amount held by the landlord. Display as \"$12,500.00\". Not the first month's rent unless the lease explicitly equates them.",
     "cam_charges": "Common Area Maintenance / operating expense contribution. The amount or the basis (e.g. \"$3.50 per sq ft annually\", \"$1,200.00 per month\", \"pro-rata share of 12.5%\"). Verbatim enough that a human can price it.",
@@ -421,11 +424,45 @@ def _attach_concession_items(entry: Dict[str, Any], pages: List[Dict[str, Any]])
     return entry
 
 
+def _guard_section8_rent(fields: Dict[str, Any], pages: List[Dict[str, Any]]) -> None:
+    """
+    Section 8: if the model's rent is exactly the figure the file calls the
+    tenant's share, replace it with the contract rent the file states (found
+    by the regex engine's contract-rent patterns), or report it not found --
+    never the tenant's share as the rent.
+    """
+    entry = fields.get("rent_amount") or {}
+    rent = entry.get("value")
+    tenant_rent = multifamily_charges.stated_tenant_rent(pages)
+    if rent is None or tenant_rent is None:
+        return
+    from .normalize import parse_currency
+    found = parse_currency(rent if str(rent).startswith("$") else f"${rent}")
+    if found is None or abs(found - tenant_rent) >= 0.01:
+        return
+    from .field_extractor import FieldExtractor
+    fe = FieldExtractor()
+    contract = fe._search_ordered(pages, fe._CONTRACT_RENT_PATTERNS, ["high", "high"])
+    if contract:
+        value = contract["value"] if contract["value"].startswith("$") else "$" + contract["value"]
+        fields["rent_amount"] = {**contract, "value": value, "engine": "ai",
+                                 "validation_note": "The model reported the tenant's share; replaced with the "
+                                                    "contract rent the file states."}
+    else:
+        fields["rent_amount"] = {**_not_found_entry(), "engine": "ai",
+                                 "validation_note": f"Section 8 lease: {rent} is the tenant's share, and no contract rent "
+                                                    f"(rent to owner) is stated in this file -- check the HAP contract."}
+
+
 def _parse_tool_payload(payload: Dict[str, Any], pages: List[Dict[str, Any]]) -> Dict[str, Any]:
     result = {}
     for name in active_fields():
         result[name] = _coerce_field_entry(payload.get(name), pages)
     result["concessions"] = _attach_concession_items(result["concessions"], pages)
+    # The same deterministic rules the regex engine applies, so the two
+    # engines can't disagree on what the report compares to the rent roll:
+    _guard_section8_rent(result, pages)
+    multifamily_charges.apply_lease_changes(result, pages)
     if multifamily_charges.enabled():
         try:
             result.update(multifamily_charges.attach_ai_details(result, pages))

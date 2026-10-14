@@ -182,7 +182,12 @@ def is_attachment_page(text: str) -> bool:
 _NON_DWELLING_RENT_RE = re.compile(
     r"\b(?:pet|pets|animal|animals|parking|garage|carport|storage|tenant\s+rent|tenant'?s\s+portion|"
     r"family\s+share|portion\s+of\s+(?:the\s+)?rent|late\s+(?:fee|charge)|total\s+monthly|prorated|pro-rated|"
-    r"concession|free|discount|credit|off)\b",
+    r"concession|free|discount|credit|off|"
+    # Section 8: the family's share is never "the rent" -- "Resident's share
+    # of the rent", "(tenant portion)", "payable by Tenant", "the balance
+    # paid by the PHA", "the PHA pays the remainder".
+    r"(?:tenant|resident|family)'?s?\s+(?:share|portion)|payable\s+by\s+(?:the\s+)?(?:tenant|resident|family)|"
+    r"balance|remainder|PHA\s+pays|housing\s+authority\s+pays|housing\s+assistance)\b",
     re.IGNORECASE,
 )
 
@@ -314,6 +319,10 @@ class FieldExtractor:
         }
 
         self._split_co_residents(result["tenant"], pages)
+        # In-force terms: a renewal / amendment / rent change notice in this
+        # file updates rent and term (originals kept in details.original).
+        # Always on -- see multifamily_charges.apply_lease_changes.
+        _multifamily.apply_lease_changes(result, pages)
         self._apply_confidence_validation(result, pages)
 
         # Multifamily terms (unit, pet/parking/utility charges, Section 8
@@ -1317,9 +1326,33 @@ class FieldExtractor:
         confidences = ["high", "high", "high", "high", "high", "high", "high", "high", "high", "medium",
                        "medium", "medium", "medium", "low", "low"]
 
-        result = self._search_ordered(self._base_lease_pages(pages), patterns, confidences, accept=_is_dwelling_rent)
+        full_text, _ = _concat_pages(pages)
+        subsidized = _multifamily.is_subsidized(full_text)
+        result = None
+        if subsidized:
+            # Section 8: the rent is the CONTRACT RENT (rent to owner), wherever
+            # the file states it -- lease, Tenancy Addendum or HAP contract. The
+            # lease body of a voucher tenancy routinely states only the family's
+            # share ("Resident will pay $312.00 per month"), so searching the
+            # lease pages first reported $312 and the report showed a false
+            # $1,138/mo rent mismatch against the rent roll's $1,450.
+            result = self._search_ordered(pages, self._CONTRACT_RENT_PATTERNS, ["high", "high"])
+        if not result:
+            result = self._search_ordered(self._base_lease_pages(pages), patterns, confidences, accept=_is_dwelling_rent)
         if not result:
             result = self._search_ordered(pages, patterns, confidences, accept=_is_dwelling_rent)
+        if result and subsidized:
+            tenant_rent = _multifamily.stated_tenant_rent(pages)
+            found = parse_currency(result["value"] if result["value"].startswith("$") else "$" + result["value"])
+            if tenant_rent is not None and found is not None and abs(found - tenant_rent) < 0.01:
+                # No contract rent anywhere, and the only "rent" is the figure
+                # the document itself calls the tenant's share: an honest gap
+                # beats a confidently wrong rent.
+                entry = _not_found()
+                entry["validation_note"] = (
+                    f"Section 8 lease: {result['value']} is the tenant's share, and no contract rent (rent to owner) "
+                    f"is stated in this file -- check the HAP contract.")
+                return entry
         if result:
             value = result["value"]
             if not value.startswith("$"):
@@ -1345,6 +1378,12 @@ class FieldExtractor:
             }
 
         return _not_found()
+
+    _CONTRACT_RENT_PATTERNS = [
+        rf"(?:contract\s+rent(?:\s+to\s+owner)?|(?:initial\s+)?rent\s+to\s+(?:the\s+)?owner|gross\s+rent\s+to\s+owner)"
+        rf"(?:\s+(?:for\s+the\s+unit\s+)?(?:is|shall\s+be))?[:\s|]+{CURRENCY_REGEX}",
+        rf"contract\s+rent{GAP}{CURRENCY_REGEX}",
+    ]
 
     def _base_lease_pages(self, pages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """

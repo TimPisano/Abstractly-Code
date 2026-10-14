@@ -149,13 +149,15 @@ def test_lease_changes_and_current_terms():
     )
     with mock.patch.dict(os.environ, {mf.FLAG_ENV: "1"}):
         f = FieldExtractor().extract_fields(pages)
-    assert f["rent_amount"]["value"] == "$1,450.00"  # base lease unchanged
+    # The renewal is in force (the original rent is kept in details.original).
+    assert f["rent_amount"]["value"] == "$1,510.00", f["rent_amount"]
+    assert f["rent_amount"]["details"]["original"]["value"] == "$1,450.00"
     changes = f["lease_changes"]["details"]["changes"]
     assert len(changes) == 1 and changes[0]["kind"] == "renewal" and changes[0]["new_rent"] == 1510.0, changes
     assert f["current_rent_amount"]["value"] == "$1,510.00", f["current_rent_amount"]
     assert f["current_rent_amount"]["source"]["page"] == 2
     assert f["current_lease_end_date"]["value"] == "February 29, 2028", f["current_lease_end_date"]
-    print("✓ In-document renewal: change listed, current rent/end follow it, base untouched: PASS")
+    print("✓ In-document renewal: change listed, rent/current rent/end follow it, original kept: PASS")
 
 
 def test_lease_page_mentioning_renewal_options_is_not_a_change():
@@ -300,9 +302,18 @@ def test_blind_set_section_8_and_changes():
     letter = "March 20, 2026\nDear Mr. Rutherford,\nYour lease for Apt 22 expires on May 31, 2026. If you renew, your new " \
              "monthly rent will be $1,360.00 for a renewal term of June 1, 2026 through May 31, 2027."
     with mock.patch.dict(os.environ, {mf.FLAG_ENV: "1"}):
-        f = FieldExtractor().extract_fields(_pages(lease, letter))
-    assert (f["lease_start_date"]["value"], f["lease_end_date"]["value"]) == ("June 1, 2025", "May 31, 2026"), f
+        f = FieldExtractor().extract_fields(_pages(lease, letter + "\nACCEPTED: I agree to renew on these terms. /s/ Anselm Rutherford"))
+    # An ACCEPTED renewal letter is in force: its new term (start AND end --
+    # never a June 2025 start with a May 2027 end) and its rent.
+    assert (f["lease_start_date"]["value"], f["lease_end_date"]["value"]) == ("June 1, 2026", "May 31, 2027"), f
+    assert f["rent_amount"]["value"] == "$1,360.00", f["rent_amount"]
+    assert f["lease_start_date"]["details"]["original"]["value"] == "June 1, 2025"
     assert f["current_rent_amount"]["value"] == "$1,360.00", f["current_rent_amount"]
+    # The same letter never signed is only an offer: listed, not applied.
+    with mock.patch.dict(os.environ, {mf.FLAG_ENV: "1"}):
+        f = FieldExtractor().extract_fields(_pages(lease, letter + "\nPlease sign and return this letter by April 15."))
+    assert (f["rent_amount"]["value"], f["lease_end_date"]["value"]) == ("$1,310.00", "May 31, 2026"), f["rent_amount"]
+    assert "offer (not accepted" in f["lease_changes"]["value"], f["lease_changes"]
     assert f["current_lease_end_date"]["value"] == "May 31, 2027", f["current_lease_end_date"]
 
     ch = mf.parse_lease_changes(_pages(lease, "Addendum No. 1 - Transfer to Unit 204\nEffective October 1, 2025 Tenant will "

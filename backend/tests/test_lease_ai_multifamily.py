@@ -58,8 +58,8 @@ def test_flag_off_schema_is_core_fields_plus_termination():
         assert set(tool["input_schema"]["properties"]) == set(ai_extraction.LEASE_FIELDS)
         assert "termination_options" in tool["input_schema"]["properties"]
         assert not set(mf.MF_FIELDS) & set(tool["input_schema"]["properties"])
-        assert ai_extraction.prompt_version() == "v3"
-    print("✓ Flag off: core fields + termination_options only, prompt v3: PASS")
+        assert ai_extraction.prompt_version() == "v4"
+    print("✓ Flag off: core fields + termination_options only, prompt v4: PASS")
 
 
 def test_prompt_is_residential_and_section_8_aware():
@@ -75,7 +75,7 @@ def test_flag_on_schema_asks_for_mf_fields_but_not_derived_ones():
         props = set(ai_extraction._build_tool()["input_schema"]["properties"])
         assert set(ai_extraction.MF_FIELDS) <= props
         assert "current_rent_amount" not in props and "current_lease_end_date" not in props
-        assert ai_extraction.prompt_version() == "v3+mf"
+        assert ai_extraction.prompt_version() == "v4+mf"
     print("✓ Flag on: MF fields requested, current_* derived not asked: PASS")
 
 
@@ -105,8 +105,10 @@ def test_details_come_from_the_quote_not_the_models_arithmetic():
     assert f["lease_changes"]["details"]["changes"][0]["new_rent"] == 1510.0
     assert f["current_rent_amount"]["value"] == "$1,510.00"
     assert f["current_lease_end_date"]["value"] == "February 29, 2028"
-    assert f["rent_amount"]["value"] == "$1,450.00"
-    assert f["_ai_meta"]["prompt_version"] == "v3+mf"
+    # The renewal in the file is in force (v4); the original is kept.
+    assert f["rent_amount"]["value"] == "$1,510.00", f["rent_amount"]
+    assert f["rent_amount"]["details"]["original"]["value"] == "$1,450.00"
+    assert f["_ai_meta"]["prompt_version"] == "v4+mf"
     print("✓ AI multifamily details parsed from the verbatim quote; current_* derived: PASS")
 
 

@@ -39,24 +39,37 @@ def test_pet_rent_is_not_the_rent():
     print("✓ Pet rent never reported as the apartment rent: PASS")
 
 
-def test_renewal_rent_does_not_replace_base_rent():
+def test_renewal_in_the_file_sets_the_in_force_rent_and_term():
     f = _f(
         "APARTMENT LEASE CONTRACT\nThe initial term of the Lease begins on March 1, 2026 and ends at 11:59 p.m. on "
         "February 28, 2027.\nThe Owner and Resident agree to a monthly rent described in the rent schedule.",
         "FIRST AMENDMENT TO LEASE\nEffective July 1, 2026, monthly rent is changed to $2,040.00 per month.",
         "RENT SCHEDULE\nMonthly Rent: $2,115.00",
     )
-    # With no rent stated on the lease pages, fall back to the whole
-    # document -- but "ends at 11:59 p.m." must still give the lease's end.
+    # "ends at 11:59 p.m." still gives the lease's end; the amendment's
+    # rent is the one in force; a mid-term amendment never moves the start.
     assert f["lease_end_date"]["value"] == "February 28, 2027", f["lease_end_date"]
+    assert f["rent_amount"]["value"] == "$2,040.00", f["rent_amount"]
+    assert f["lease_start_date"]["value"] == "March 1, 2026", f["lease_start_date"]
+    # Regression (reviewer, 2026-10-06): the core fields used to keep the
+    # ORIGINAL lease's rent and term, so every renewed unit showed a false
+    # rent mismatch, two false date mismatches and a false "expired but
+    # occupied" against a rent roll showing the renewal.
     f = _f(
-        "APARTMENT LEASE CONTRACT\nMonthly Rent: $2,115.00\nLease End Date: February 28, 2027",
+        "APARTMENT LEASE CONTRACT\nMonthly Rent: $2,115.00\nLease Start Date: March 1, 2026\nLease End Date: February 28, 2027",
         "LEASE RENEWAL AGREEMENT\nThe Lease is renewed for a term beginning March 1, 2027 and ending "
         "February 29, 2028. Effective March 1, 2027, the monthly rent shall be $2,200.00.",
     )
-    assert f["rent_amount"]["value"] == "$2,115.00", f["rent_amount"]
-    assert f["lease_end_date"]["value"] == "February 28, 2027", f["lease_end_date"]
-    print("✓ Renewal rent/end date don't overwrite the base lease's: PASS")
+    assert f["rent_amount"]["value"] == "$2,200.00", f["rent_amount"]
+    assert f["rent_amount"]["source"]["page"] == 2
+    assert f["lease_start_date"]["value"] == "March 1, 2027", f["lease_start_date"]
+    assert f["lease_end_date"]["value"] == "February 29, 2028", f["lease_end_date"]
+    # The original lease's terms are kept, with their own citation.
+    original = f["rent_amount"]["details"]["original"]
+    assert original["value"] == "$2,115.00" and original["source"]["page"] == 1, original
+    assert f["lease_end_date"]["details"]["original"]["value"] == "February 28, 2027"
+    assert f["rent_amount"]["details"]["changed_by"] == "renewal"
+    print("✓ A renewal/amendment in the file sets the in-force rent and term; originals kept: PASS")
 
 
 def test_end_date_with_clock_time():
@@ -87,7 +100,7 @@ def test_rent_in_words_only():
 if __name__ == "__main__":
     test_apartment_prose_rent()
     test_pet_rent_is_not_the_rent()
-    test_renewal_rent_does_not_replace_base_rent()
+    test_renewal_in_the_file_sets_the_in_force_rent_and_term()
     test_end_date_with_clock_time()
     test_section8_contract_rent_not_tenant_portion()
     test_rent_in_words_only()
