@@ -6,6 +6,7 @@ bad file leaves the previously loaded year in place.
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 from datetime import date
 from typing import Callable, Optional
@@ -14,6 +15,8 @@ from urllib.parse import urlparse
 from . import config, store
 from .models import DATASET_FMR, DATASET_LABELS, DATASETS
 from .parsers import parse_file
+
+logger = logging.getLogger(__name__)
 
 ALLOWED_HOSTS = ("www.huduser.gov", "huduser.gov")
 MAX_DOWNLOAD_BYTES = 50 * 1024 * 1024
@@ -27,10 +30,14 @@ class HudRefreshError(RuntimeError):
 def default_effective_date(dataset: str, year: int) -> date:
     """
     When a year's numbers take effect, absent an explicit date:
-    FMRs are fiscal-year figures effective October 1 of the prior
-    calendar year (FY2026 → 2025-10-01); income limits and MTSP limits
-    have been effective around April 1 of their year. HUD sets the real
-    date in each year's release — pass --effective-date when it differs.
+    - FMRs are fiscal-year figures effective October 1 of the prior
+      calendar year (FY2026 → 2025-10-01).
+    - Income Limits and MTSP (LIHTC) limits are typically effective around
+      April 1 of their calendar year.
+
+    HUD sets the actual effective date in each release; the 45-day LIHTC
+    applicability rule and hold-harmless provisions are NOT modeled here.
+    Pass --effective-date when the real date differs from the default.
     """
     if dataset == DATASET_FMR:
         return date(year - 1, 10, 1)
@@ -65,7 +72,18 @@ def refresh(
         filename, source = os.path.basename(urlparse(url).path), url
 
     parsed = parse_file(dataset, content, filename, year)
+    date_was_defaulted = effective_date is None
     eff_date = effective_date or default_effective_date(dataset, year)
+
+    if date_was_defaulted:
+        msg = (
+            f"Effective date defaulted to {eff_date.isoformat()} for {dataset} {year}. "
+            f"Verify this matches HUD's release (LIHTC/IL are typically April 1, FMR Oct 1 of prior year). "
+            f"Use --effective-date to override."
+        )
+        print(f"⚠️  {msg}")
+        logger.warning(msg)
+
     count = store.replace_year(
         parsed, year, eff_date, source, hashlib.sha256(content).hexdigest()
     )

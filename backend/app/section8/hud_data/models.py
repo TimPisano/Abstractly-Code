@@ -68,6 +68,11 @@ class LihtcLimits:
     median_income: Optional[int]
     limit_50: Dict[int, int]
     limit_60: Dict[int, int]
+    limit_20: Optional[Dict[int, int]] = None
+    limit_30: Optional[Dict[int, int]] = None
+    limit_40: Optional[Dict[int, int]] = None
+    limit_70: Optional[Dict[int, int]] = None
+    limit_80: Optional[Dict[int, int]] = None
 
     def to_dict(self) -> dict:
         return _to_dict(self)

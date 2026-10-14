@@ -49,7 +49,7 @@ _IL_RES = {
     "low": re.compile(r"^l80_([1-8])$"),
 }
 _FMR_RE = re.compile(r"^fmr_?([0-4])$")
-_MTSP_RE = re.compile(r"^lim(50|60)_(\d{2})?p([1-8])$")
+_MTSP_RE = re.compile(r"^lim(20|30|40|50|60|70|80)_(\d{2})?p([1-8])$")
 
 
 def parse_file(dataset: str, content: bytes, filename: str, year: int) -> ParsedDataset:
@@ -168,7 +168,7 @@ class _Columns:
         self.median = self._median()
         self.il = {key: self._indexed(rx) for key, rx in _IL_RES.items()}
         self.fmr = self._indexed(_FMR_RE)
-        self.mtsp = {"50": {}, "60": {}}
+        self.mtsp = {"20": {}, "30": {}, "40": {}, "50": {}, "60": {}, "70": {}, "80": {}}
         for pos, name in enumerate(self.header):
             m = _MTSP_RE.match(name)
             if m:
@@ -243,16 +243,52 @@ class _Columns:
         return {"by_bedrooms": {n: self._amount(row, self.fmr[n], line_no) for n in BEDROOM_SIZES}}
 
     def mtsp_row(self, row: list, line_no: int) -> dict:
-        return {
+        result = {
             "median_income": self._optional_amount(row, self.median, line_no),
             "limit_50": self._by_household_size(row, self.mtsp["50"], line_no),
             "limit_60": self._by_household_size(row, self.mtsp["60"], line_no),
         }
+        for pct in ("20", "30", "40", "70", "80"):
+            if self.mtsp[pct]:
+                values = self._optional_by_household_size(row, self.mtsp[pct], line_no)
+                if values is not None:
+                    result[f"limit_{pct}"] = values
+        return result
 
     def _by_household_size(self, row: list, positions: Dict[int, int], line_no: int) -> Dict[int, int]:
         # HUD income limits never fall as a household grows; a dip means
         # shifted or mislabeled columns.
         values = {n: self._amount(row, positions[n], line_no) for n in HOUSEHOLD_SIZES}
+        for n in range(2, 9):
+            if values[n] < values[n - 1]:
+                raise HudDataParseError(
+                    f"Row {line_no}: {self.header[positions[n]]!r} ({values[n]}) is lower than "
+                    f"{self.header[positions[n - 1]]!r} ({values[n - 1]})"
+                )
+        return values
+
+    def _optional_by_household_size(self, row: list, positions: Dict[int, int], line_no: int) -> Optional[Dict[int, int]]:
+        # Like _by_household_size but returns None if all values are blank (for optional LIHTC levels).
+        values = {}
+        all_blank = True
+        for n in HOUSEHOLD_SIZES:
+            val = self._optional_amount(row, positions[n], line_no)
+            if val is not None:
+                all_blank = False
+            values[n] = val
+
+        if all_blank:
+            return None
+
+        # If we got here, at least one value is present. All must be present.
+        for n in HOUSEHOLD_SIZES:
+            if values[n] is None:
+                raise HudDataParseError(
+                    f"Row {line_no}: {self.header[positions[n]]!r} is blank; "
+                    f"if an AMI level is present, all household sizes must have values"
+                )
+
+        # Check monotonicity
         for n in range(2, 9):
             if values[n] < values[n - 1]:
                 raise HudDataParseError(

@@ -334,28 +334,43 @@ def test_lihtc_limits_and_derived_rents():
         lim = lookup_lihtc_limits("06037", year=2025)
         assert lim.limit_50[1] == 50000 and lim.limit_60[1] == 60000 and lim.limit_60[2] == 68580
         assert lim.median_income == 101000
+        # Check that published levels for all AMI percentages are present
+        assert lim.limit_20 is not None and lim.limit_20[1] == 21000
+        assert lim.limit_30 is not None and lim.limit_30[1] == 30500
+        assert lim.limit_40 is not None and lim.limit_40[1] == 40500
+        assert lim.limit_70 is not None and lim.limit_70[1] == 70500
+        assert lim.limit_80 is not None and lim.limit_80[1] == 81000
 
+        # All income limits return the published HUD figures, not scaled values
         assert lihtc_income_limit(lim, 1, 50) == 50000
-        assert lihtc_income_limit(lim, 1, 60) == 60000       # published figure, not derived
-        assert lihtc_income_limit(lim, 1, 40) == 40000       # 50000 * 40/50
-        assert lihtc_income_limit(lim, 2, 80) == 91440       # 57150 * 80/50
-        assert lihtc_income_limit(lim, 3, 30) == 38580       # 64300 * 30/50
+        assert lihtc_income_limit(lim, 1, 60) == 60000
+        assert lihtc_income_limit(lim, 1, 40) == 40500  # published, not 50000 * 40/50 = 40000
+        assert lihtc_income_limit(lim, 2, 80) == 92000  # published, not 57150 * 80/50 = 91440
+        assert lihtc_income_limit(lim, 3, 30) == 38500  # published, not 64300 * 30/50 = 38580
+        assert lihtc_income_limit(lim, 1, 20) == 21000
 
-        # Studio: 1 person.      60000 * 30% / 12 = 1500
+        # Rent limits derive from published income limits
+        # Studio (1 person) at 60%: 60000 * 30% / 12 = 1500
         assert lihtc_rent_limit(lim, 0, 60) == 1500
-        # 1BR: 1.5 persons -> avg(60000, 68580) = 64290 * 30% / 12 = 1607.25 -> 1607
+        # 1BR (1.5 persons) at 60%: avg(60000, 68580) = 64290 * 30% / 12 = 1607.25 -> 1607
         assert lihtc_rent_limit(lim, 1, 60) == 1607
-        # 2BR: 3 persons.        77160 * 30% / 12 = 1929
+        # 2BR (3 persons) at 60%: 77160 * 30% / 12 = 1929
         assert lihtc_rent_limit(lim, 2, 60) == 1929
-        # 1BR at 40% AIT: avg(40000, 45720) = 42860 * 30% / 12 = 1071.5 -> 1071 (floored)
-        assert lihtc_rent_limit(lim, 1, 40) == 1071
-        # 5BR: 7.5 persons -> avg of sizes 7 and 8 at 50%: (88550 + 94250)/2 * .3 / 12 = 2285
+        # 1BR (1.5 persons) at 40%: avg(40500, 46500) = 43500 * 30% / 12 = 1087.5 -> 1087
+        assert lihtc_rent_limit(lim, 1, 40) == 1087
+        # 5BR (7.5 persons) at 50%: avg(88550, 94250)/2 * .3 / 12 = 2285
         assert lihtc_rent_limit(lim, 5, 50) == 2285
 
+        # Errors for invalid inputs
         expect(ValueError, lihtc_income_limit, lim, 9, 50)
         expect(ValueError, lihtc_income_limit, lim, 1, 55)
         expect(ValueError, lihtc_rent_limit, lim, 6, 60)
         expect(ValueError, lihtc_rent_limit, lim, 1, 90)
+
+        # Error when requesting an unpublished AMI level (Alabama only has 50 and 60)
+        al_lim = lookup_lihtc_limits("01001", year=2025)
+        expect(HudDataNotFound, lihtc_income_limit, al_lim, 1, 20)
+        expect(HudDataNotFound, lihtc_income_limit, al_lim, 1, 40)
     print("✓ test_lihtc_limits_and_derived_rents: PASS")
 
 
