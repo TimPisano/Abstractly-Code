@@ -111,10 +111,10 @@ those by taking **main's** TASKS.md, not the branch's.
 
 #### feature/s8-sample-data
 - Worktree: ~/dev/projects/abstractly-s8-sample
-- Goal: with SECTION8_MODE on, "Load sample deal" and the DEMO_MODE seed load a Section 8 sample portfolio built from the qa/section8-fixtures set; flag off = Maple Ridge, unchanged.
-- Loop step: 4 — building (plan approved 2026-10-13; open questions answered in the plan)
+- Goal: with SECTION8_MODE on, "Load sample deal", /leases/sample and the DEMO_MODE seed load the Section 8 sample portfolio built from qa/section8-fixtures; flag off unchanged.
+- Loop step: 5–6 — built and pushed (`9ae1be2`); full suite + headless UI check running
 - Last update: 2026-10-13 by the s8-sample session
-- Next action: build per plan; capture uses main's rent-roll importer (qa/overnight-gauntlet NOT merged as of 2026-10-13 — re-run the capture after it merges)
+- Next action: confirm suite + screenshots, then /ship-branch (reviewer + security-auditor). Merge only AFTER feature/s8-data-model (T1). Re-run the capture after P1 (lease-intelligence) and P2 (gauntlet) merge.
 
 #### fix/section8-tenant-share
 - Worktree: ~/dev/projects/abstractly-s8-tenant-share
@@ -226,6 +226,7 @@ loan-underwriting. (`landing-positioning` dropped — superseded.)
 
 ## Up next
 
+- **Rent-roll importer reads a totals row as a tenant** (found 2026-10-13 by `feature/s8-sample-data`): the Section 8 fixture `juniper_row_rent_roll_2026-10-01_appfolio.csv` has a final row `Total,,16 occupied / 18 units,...`; `parse_csv_rent_roll` imports it as tenant "16 occupied / 18 units" at $20,785.00, unit "Suite Total". Reproduced on `main` and on `qa/overnight-gauntlet` `906eaab`. Own `fix/` branch + regression test; then re-run `capture_section8_sample.py`.
 - **Test suite fails 8 files in the primary checkout only** (found 2026-10-05 during the auth-flow merge): `backend/tests/_session_users.py` inserts test users whose email collides with the first admin that `backend/.env` seeds (`ADMIN_EMAIL`), `UNIQUE constraint failed: users.email`. Clean worktrees (no `.env`) pass 83/83. Same on pre-merge main. Small fix, own branch.
 
 1. ~~Push local `main`~~ — done (`f68a287`).
