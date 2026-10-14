@@ -172,10 +172,10 @@ those by taking **main's** TASKS.md, not the branch's.
 
 #### qa/overnight-gauntlet
 - Worktree: ~/dev/projects/abstractly-gauntlet
-- Goal: overnight reliability gauntlet — synthetic messy rent rolls/T-12s/leases graded against a manifest through the full local pipeline; fix root causes with regression tests; QA_REPORT.md per cycle.
-- Loop step: 8/9 done — reviewer MERGE (re-review after 4 FIX FIRST items), security-auditor MERGE; all follow-ups fixed. Lease extraction OUT of scope (feature/lease-intelligence).
-- Last update: 2026-10-06 overnight — cycle 8 pushed. 175/190 cases pass (22/132 at baseline); 1,979/1,979 planted mismatches caught; 19 false alarms (lease extraction / OCR char misreads); 61 Fix commits each with a regression test; suite 83/83. AUDIT.md §6.11 dollar bugs fixed with golden fixtures.
-- Next action: USER decides 3 items in QA_REPORT.md (unit-wording matching; rent_roll_unit_summaries table; re-import supersede rule), then `/merge-branch qa/overnight-gauntlet`. Frontend follow-ups (show replaced_previous_rows/unit_summary; .txt in picker) are separate tasks.
+- Loop step: 11 — MERGED LOCALLY, NOT PUSHED. Merge commit `b63927d` on local `main` (user approved 2026-10-13: "approve merge qa/overnight-gauntlet"). Only conflict: `run_all_tests.py` list (kept both entries).
+- Suite on merged main: **85/85** in a clean detached worktree (no `backend/.env`). In the primary checkout it gave 77/85 (known non-hermetic env, see Decisions log) and sent one real email (demo-request notification to the user's own Gmail).
+- `git push origin main` was DENIED by the Claude Code auto-mode permission classifier — not retried. Merge lock still held by session 10959d5d so no other session pushes this merge by accident.
+- Next action: USER pushes main (or allows the push), then smoke-test tester, move row to Done, remove worktree, release lock.
 
 #### chore/repo-layout
 - Worktree: `~/dev/projects/abstractly-repo-layout`
@@ -350,6 +350,8 @@ Claim with `/start-task <branch>`; read PIVOT_PLAN.md Step 4 first (`git show pi
 | (docs) | `64af20a`, `d55fef9`, `70ed972` | First CLAUDE.md / TASKS.md / agents / skills. |
 
 ## Decisions log
+
+- **2026-10-13 — qa/overnight-gauntlet QA_REPORT decisions: all three accepted as built (user).** (1) Unit matching ignores designator wording (Suite = Apt = Unit; Building A + Apt 101 = A-101) — reverses the old `test_unit_designator_preservation_is_intentional` docstring stance; revert is one function (`portfolio._normalize_address`). (2) New team-scoped table `rent_roll_unit_summaries` (vacant/down unit counts for occupancy). (3) Re-import supersedes an earlier rent-roll file only when ≥ half its units reappear; "replaced N rows" not shown in the upload UI yet (frontend follow-up).
 
 - **2026-10-12 — Section 8 PII = data minimization; deadline rules per PHA (user, PIVOT_PLAN Q5/Q4).** Store only tenant name, unit, tenant share, HAP, contract rent, recert + inspection dates; never SSNs, full income documents, or bank details; all team-scoped. Deadline rules configurable per PHA with defaults, labelled "Verify with your PHA", defaults checked by the user's Section 8 contacts before launch. Detail under Up next → Section 8 pivot.
 
