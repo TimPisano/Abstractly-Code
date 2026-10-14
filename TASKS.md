@@ -191,7 +191,7 @@ those by taking **main's** TASKS.md, not the branch's.
 #### qa/overnight-gauntlet
 - Worktree: ~/dev/projects/abstractly-gauntlet
 - Loop step: 11 — MERGED LOCALLY, NOT PUSHED. Merge commit `b63927d` on local `main` (user approved 2026-10-13: "approve merge qa/overnight-gauntlet"). Only conflict: `run_all_tests.py` list (kept both entries).
-- Suite on merged main: **85/85** in a clean detached worktree (no `backend/.env`). In the primary checkout it gave 77/85 (known non-hermetic env, see Decisions log) and sent one real email (demo-request notification to the user's own Gmail).
+- Suite on merged main: **85/85** in a clean detached worktree (no `backend/.env`). In the primary checkout it gave 77/85 (known non-hermetic env, see Decisions log). (Earlier note said a real email was sent — WRONG: the "Email sent … via smtp.gmail.com" log line comes from test_demo_request.py's mocked SMTP; nothing left the machine.)
 - `git push origin main` was DENIED by the Claude Code auto-mode permission classifier — not retried. Merge lock still held by session 10959d5d so no other session pushes this merge by accident.
 - Next action: USER pushes main (or allows the push), then smoke-test tester, move row to Done, remove worktree, release lock.
 
