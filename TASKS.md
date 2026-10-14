@@ -95,6 +95,7 @@ those by taking **main's** TASKS.md, not the branch's.
 
 | Branch | Worktree | +/− main | State |
 |---|---|---|---|
+| `feature/s8-pii-guard` | `~/dev/projects/abstractly-s8-pii-guard` | — | **T0 of the Section 8 pivot.** Branched off `main` 2026-10-13. Mask/drop SSN, DOB and bank numbers before storage (extraction quotes, date candidates, free-text notes) and before Anthropic; scrub tracebacks from alert emails; per-team "AI processing off" switch (Q5 decision). Must merge before testers upload real tenant docs. **Plan written, awaiting user approval** — `docs/plans/feature-s8-pii-guard.md`. |
 | `feature/s8-sample-data` | `~/dev/projects/abstractly-s8-sample` | — | T13 of the Section 8 pivot. Branched off `feature/s8-data-model` `b6caf9a` (T1, unmerged) + `main` merged in, 2026-10-12. "Load sample deal" and the `DEMO_MODE` seed switch to the Section 8 fixtures (`backend/tests/fixtures/section8/`) when `SECTION8_MODE` is on; Maple Ridge unchanged with the flag off. **Must merge after T1.** **Plan approved, building** — `docs/plans/feature-s8-sample-data.md`. |
 | `feature/s8-unit-file-and-phas` | `~/dev/projects/abstractly-s8-unit-file` | — | Branched off **`feature/s8-data-model` `b6caf9a`** (stacked — T1 unmerged) 2026-10-12. **T9 of the Section 8 pivot:** Units list + Unit file page + Housing Authorities (PHA) directory/settings UI in the customer app, behind `SECTION8_MODE`. **Plan written, awaiting user approval** — `docs/plans/feature-s8-unit-file-and-phas.md`. Cannot merge before T1. |
 | `fix/quick-wins` | `~/dev/projects/abstractly-quick-wins` | — | Branched off `main` 2026-10-06. (1) lease detail cards cut off on the right at 375px + sweep every page at 375px; (2) upgrade Pillow and every dependency with a known security advisory, full suite green. **Plan approved, building** — `docs/plans/fix-quick-wins.md`. |
@@ -108,6 +109,13 @@ those by taking **main's** TASKS.md, not the branch's.
 
 
 ### Handoff blocks
+
+#### feature/s8-pii-guard
+- Worktree: ~/dev/projects/abstractly-s8-pii-guard
+- Goal: SSNs, dates of birth and bank numbers never stored and never sent to Anthropic; alert emails carry no tracebacks; a team can turn AI processing off.
+- Loop step: 3 — plan written, waiting for user approval
+- Last update: 2026-10-13 by start-task
+- Next action: user reviews docs/plans/feature-s8-pii-guard.md (answer its open questions)
 
 #### feature/s8-sample-data
 - Worktree: ~/dev/projects/abstractly-s8-sample
