@@ -52,9 +52,7 @@ consistent numbers and nothing planted.
 
 ## Planted errors
 
-Totals as of 10/01/2026: **$1,451 confirmed** (tenant
-overcharges owed back, plus HAP overpaid on the duplicate dependent), and **$17,981 potential** subsidy at risk
-(HAP that HUD could recover, or understated rent if the EIV wages hold up).
+Totals as of 10/01/2026: **$1,451 confirmed** (tenant overcharges owed back, plus HAP overpaid on the duplicate dependent), **$13,465 potential** subsidy at risk (HAP that HUD could recover, or understated rent if the EIV wages hold up), and **$4,516 exposure** (HAP at risk due to procedural issues where normal remedies may not involve recovery—e.g., obtaining missing signatures).
 
 ### E1 - Unit 105: Spouse did not sign the annual certification
 
