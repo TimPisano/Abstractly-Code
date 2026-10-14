@@ -1,0 +1,1438 @@
+"""
+Regression tests for bugs found by the overnight reliability gauntlet
+(backend/tools/gauntlet/, branch qa/overnight-gauntlet). One test (or a
+small group) per fix; each was confirmed failing before its fix landed.
+
+Pure-function tests where possible (the detectors in deal_mismatch.py take
+plain lease dicts), so these run in milliseconds and need no fixtures.
+"""
+import os
+import sys
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from app.portfolio import FIELD_NAMES, _normalize_address, _normalize_building_address
+from app import deal_mismatch as dm
+from datetime import date
+
+TODAY = date(2026, 10, 5)
+
+
+def _fields(**overrides):
+    out = {}
+    for name in FIELD_NAMES:
+        v = overrides.get(name)
+        out[name] = ({"value": v, "source": {"page": 1, "quote": str(v)}, "confidence": "high"} if v is not None
+                     else {"value": None, "source": None, "confidence": None})
+    return out
+
+
+_ids = iter(range(1, 10_000))
+
+
+def _rr(**f):
+    return {"id": next(_ids), "filename": "rent_roll.csv", "extracted_fields": _fields(**f)}
+
+
+def _doc(**f):
+    return {"id": next(_ids), "filename": "lease.pdf", "extracted_fields": _fields(**f)}
+
+
+def _client_with_fresh_db(team_id=1):
+    """Fresh temp DB + an analyst session on a real team (real routes, real scoping)."""
+    import tempfile
+    from app.api import app
+    from app import database, usage_limits
+    from _session_users import sync_session_user
+    tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+    tmp.close()
+    database.configure(tmp.name)
+    database.init_db()
+    usage_limits._reset_extraction_rate_limit_for_tests()
+    client = app.test_client()
+    with client.session_transaction() as s:
+        s["user_id"] = 7
+        s["team_id"] = team_id
+        s["email"] = "gauntlet-test@abstractly.test"
+        s["name"] = "Gauntlet Test"
+        s["role"] = "analyst"
+        sync_session_user(s)
+    return client, tmp.name
+
+
+def _post(client, url, filename, data, form=None):
+    import io
+    payload = dict(form or {})
+    payload["file"] = (io.BytesIO(data), filename)
+    return client.post(url, data=payload, content_type="multipart/form-data")
+
+
+def _types(rows):
+    return sorted(r["discrepancy_type"] for r in rows)
+
+
+# ---------------------------------------------------------------- unit matching
+def test_same_unit_matches_across_designator_wording():
+    """
+    The rent-roll importer turns a bare "101" into "<typed address>, Suite 101";
+    a multifamily lease says "Apt 101" (or "Unit 101", "#101") with the city
+    after it. Same unit -- before the fix every such pair was reported as a
+    false unit_no_lease + lease_no_unit and every real check on it was lost.
+    """
+    rr = "1450 Cedar Bend Dr, Austin, TX 78745, Suite 101"
+    for lease in ("1450 Cedar Bend Dr, Apt 101, Austin, TX 78745",
+                  "1450 Cedar Bend Dr, Unit 101, Austin, TX 78745",
+                  "1450 Cedar Bend Dr #101, Austin, TX 78745",
+                  "1450 Cedar Bend Dr, Apartment No. 101, Austin, TX 78745",
+                  "1450 Cedar Bend Dr, Apt #101, Austin, TX 78745",
+                  "1450 Cedar Bend Drive, Austin, TX 78745, Suite 101",
+                  "1450 Cedar Bend Dr, Austin, TX 78745, Suite 0101"):
+        assert _normalize_address(rr) == _normalize_address(lease), (lease, _normalize_address(rr), _normalize_address(lease))
+    print("✓ test_same_unit_matches_across_designator_wording: PASS")
+
+
+def test_different_units_and_buildings_still_do_not_match():
+    a = "1450 Cedar Bend Dr, Austin, TX 78745, Suite 101"
+    for other in ("1450 Cedar Bend Dr, Austin, TX 78745, Suite 102",
+                  "1450 Cedar Bend Dr, Austin, TX 78745, Suite 1010",
+                  "1452 Cedar Bend Dr, Austin, TX 78745, Suite 101",
+                  "1450 Cedar Bend Dr, Austin, TX 78745",
+                  "1450 Cedar Bend Ct, Austin, TX 78745, Suite 101"):
+        assert _normalize_address(a) != _normalize_address(other), other
+    # "Unity" is a street name, not "Unit y".
+    assert _normalize_building_address("12 Unity Ave, Suite 3") == _normalize_building_address("12 Unity Ave, Suite 4")
+    assert _normalize_building_address("12 Unity Ave") != _normalize_building_address("12 Ave")
+    print("✓ test_different_units_and_buildings_still_do_not_match: PASS")
+
+
+def test_report_pairs_apt_lease_with_suite_rent_roll_row():
+    rr = _rr(tenant="Greta Fairbanks", rent_amount="$1,600.00", property_address="1450 Cedar Bend Dr, Austin, TX 78745, Suite 101",
+             lease_start_date="04/01/2026", lease_end_date="03/31/2027")
+    doc = _doc(tenant="Greta Fairbanks", rent_amount="$1,450.00", property_address="1450 Cedar Bend Dr, Apt 101, Austin, TX 78745",
+               lease_start_date="April 1, 2026", lease_end_date="March 31, 2027")
+    rows = []
+    for det in dm._DETECTORS:
+        rows += det([rr, doc], TODAY) if det in dm._DATE_AWARE_DETECTORS else det([rr, doc])
+    assert _types(rows) == ["rent_mismatch"], _types(rows)
+    print("✓ test_report_pairs_apt_lease_with_suite_rent_roll_row: PASS")
+
+
+def test_typed_long_street_suffix_matches_abbreviated_lease_building():
+    """Uploader typed "Drive", the leases say "Dr": same building for report scoping."""
+    assert _normalize_building_address("1450 Cedar Bend Drive, Austin, TX 78745") == \
+        _normalize_building_address("1450 Cedar Bend Dr., Apt 101, Austin, TX 78745")
+    print("✓ test_typed_long_street_suffix_matches_abbreviated_lease_building: PASS")
+
+
+# ---------------------------------------------------------------- tenant names
+def test_tenant_name_order_and_co_residents_are_not_a_mismatch():
+    """
+    Yardi/AppFolio export "SORENSEN, CELESTE"; the lease says "Celeste
+    Sorensen". A rent roll lists "A & B" where the lease names "A and B" (or
+    only one of them). None of these is a different tenant -- before the fix
+    each was a high-severity tenant_mismatch.
+    """
+    same = [("SORENSEN, CELESTE", "Celeste Sorensen"),
+            ("Noor Bellweather & Lucia Xenakis", "Noor Bellweather and Lucia Xenakis"),
+            ("Noor Bellweather & Lucia Xenakis", "Lucia Xenakis"),
+            ("Smith, John Q.", "John Q. Smith"),
+            ("John Smith", "John Q. Smith")]
+    for rr_name, lease_name in same:
+        rr = _rr(tenant=rr_name, rent_amount="$1,000.00", property_address="1 A St, Suite 1")
+        doc = _doc(tenant=lease_name, rent_amount="$1,000.00", property_address="1 A St, Apt 1")
+        assert dm.detect_tenant_mismatch([rr, doc]) == [], (rr_name, lease_name)
+    different = [("Mateo Nakamura", "Malik Nakamura"), ("NAKAMURA, MATEO", "Mateo Ingram"),
+                 ("Avery Fairbanks", "Greta Okafor"), ("Jordan Lee & Sam Lee", "Pat Lee")]
+    for rr_name, lease_name in different:
+        rr = _rr(tenant=rr_name, rent_amount="$1,000.00", property_address="1 A St, Suite 1")
+        doc = _doc(tenant=lease_name, rent_amount="$1,000.00", property_address="1 A St, Apt 1")
+        assert _types(dm.detect_tenant_mismatch([rr, doc])) == ["tenant_mismatch"], (rr_name, lease_name)
+    print("✓ test_tenant_name_order_and_co_residents_are_not_a_mismatch: PASS")
+
+
+# ---------------------------------------------------------------- CSV decoding
+def test_csv_rent_roll_decoding_cp1252_utf16_and_binary():
+    """
+    Excel on Windows saves CSV as Windows-1252 ("José Peña" became
+    "Jos\ufffd Pe\ufffda" and then a false tenant_mismatch); Excel's
+    "Unicode Text" is UTF-16 with a BOM; and a PNG renamed .csv crashed the
+    import route with a 500 (_csv.Error: line contains NUL).
+    """
+    from app.rent_roll_import import parse_rent_roll_file, RentRollImportError
+    rows = "Unit,Tenant,Rent\r\n101,José Peña,\"$1,200.00\"\r\n102,Zoë Lefèvre,1300\r\n"
+    got = parse_rent_roll_file(rows.encode("cp1252"), "rr.csv", "1 A St")
+    assert [l["extracted_fields"]["tenant"]["value"] for l in got["leases"]] == ["José Peña", "Zoë Lefèvre"], got["leases"]
+    got = parse_rent_roll_file(rows.encode("utf-8"), "rr.csv", "1 A St")
+    assert [l["extracted_fields"]["tenant"]["value"] for l in got["leases"]] == ["José Peña", "Zoë Lefèvre"]
+    got = parse_rent_roll_file(rows.encode("utf-16"), "rr.csv", "1 A St")
+    assert len(got["leases"]) == 2 and got["leases"][0]["extracted_fields"]["tenant"]["value"] == "José Peña"
+    png = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00(\x00\x00\x00(\x08\x02\x00\x00\x00"
+    try:
+        parse_rent_roll_file(png, "rr.csv", "1 A St")
+        raise AssertionError("binary file accepted")
+    except RentRollImportError as e:
+        assert "text" in str(e).lower(), str(e)
+    print("✓ test_csv_rent_roll_decoding_cp1252_utf16_and_binary: PASS")
+
+
+# ---------------------------------------------------------------- rent-roll rows vs lease documents
+def test_rent_roll_rows_are_rent_roll_rows_whatever_the_file_format():
+    """
+    Whether a record is a rent-roll row or a lease document was decided by
+    the file EXTENSION (only .csv/.xlsx counted as rent rolls). A rent roll
+    imported from .tsv/.txt/.xls/.docx/.pdf was therefore treated as a pile
+    of LEASES by the Deal Mismatch Report: every unit came back as
+    lease_no_unit and nothing was compared. The importer now marks its rows.
+    """
+    from app.portfolio import _is_rent_roll_import
+    client, db = _client_with_fresh_db()
+    try:
+        tsv = "Unit\tTenant\tRent\n101\tAvery Ashgrove\t1200\n102\tJordan Bellweather\t1300\n".encode()
+        r = _post(client, "/leases/import-rent-roll", "rent_roll.tsv", tsv, {"property_address": "9 Elm St, Austin, TX 78701"})
+        assert r.status_code == 201, r.get_json()
+        r = client.post("/portfolio/deal-mismatch-report", data={"property_address": "9 Elm St, Austin, TX 78701"},
+                        content_type="multipart/form-data")
+        types = sorted(row["discrepancy_type"] for row in r.get_json()["discrepancies"])
+        assert types == ["unit_no_lease", "unit_no_lease"], types
+    finally:
+        os.unlink(db)
+    assert _is_rent_roll_import({"filename": "rent_roll.pdf", "source_kind": "rent_roll"})
+    assert not _is_rent_roll_import({"filename": "lease_abstract.xlsx", "source_kind": "document"})
+    assert _is_rent_roll_import({"filename": "legacy_rent_roll.csv"})  # rows from before the marker existed
+    print("✓ test_rent_roll_rows_are_rent_roll_rows_whatever_the_file_format: PASS")
+
+
+def test_excel_unicode_text_txt_rent_roll_imports():
+    """Excel's "Unicode Text" save: .txt, UTF-16, TAB-delimited. The route refused .txt outright."""
+    client, db = _client_with_fresh_db()
+    try:
+        txt = "Unit\tTenant\tRent\r\n101\tAvery Ashgrove\t1,200.00\r\n102\tJosé Peña\t1,300.00\r\n".encode("utf-16")
+        r = _post(client, "/leases/import-rent-roll", "rent_roll.txt", txt, {"property_address": "9 Elm St"})
+        assert r.status_code == 201, r.get_json()
+        body = r.get_json()
+        assert body["imported_count"] == 2, body
+        names = sorted(l.get("display_name", "") for l in body["leases"])
+        assert any("José Peña" in n for n in names), names
+    finally:
+        os.unlink(db)
+    print("✓ test_excel_unicode_text_txt_rent_roll_imports: PASS")
+
+
+# ---------------------------------------------------------------- T-12 parsing
+_T12_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+
+def _t12_csv(rows, months=None):
+    import csv, io
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["Account"] + (months or _T12_MONTHS) + ["Total"])
+    for label, monthly in rows:
+        if monthly is None:
+            w.writerow([label] + [""] * 13)
+        else:
+            w.writerow([label] + [f"{v:.2f}" for v in monthly] + [f"{sum(monthly):.2f}"])
+    return buf.getvalue().encode()
+
+
+def test_t12_section_header_rows_do_not_hide_the_real_line():
+    """
+    A T-12's "Rental Income" / "Other Income" SECTION HEADERS (label, no
+    numbers) claimed those categories first, so the real "Net Rental
+    Income" / "Total Other Income" lines below were never read and the
+    T-12 cross-check had no collections figure at all.
+    """
+    from app.t12_statement import parse_csv_t12_statement
+    data = _t12_csv([("INCOME", None), ("Rental Income", None), ("Gross Potential Rent", [10000.0] * 12),
+                     ("Vacancy Loss", [-500.0] * 12), ("Net Rental Income", [9500.0] * 12),
+                     ("Other Income", None), ("Utility Reimbursement", [300.0] * 12), ("Total Other Income", [300.0] * 12)])
+    got = parse_csv_t12_statement(data, "t12.csv")
+    assert got["rental_income_collected"] and got["rental_income_collected"]["annual"] == 114000.0, got["rental_income_collected"]
+    assert got["other_income"] and got["other_income"]["annual"] == 3600.0, got["other_income"]
+    assert got["gross_potential_rent"]["annual"] == 120000.0
+    print("✓ test_t12_section_header_rows_do_not_hide_the_real_line: PASS")
+
+
+def test_t12_month_headers_with_years_and_numeric_months():
+    """
+    Real T-12 exports label months "Oct 2025", "Oct-25", "10/2025",
+    "October 2025", or put real Excel dates in the header row. Only bare
+    "Oct"/"October" were recognized, so every one of these failed with
+    "Couldn't find any month columns".
+    """
+    from datetime import datetime
+    from io import BytesIO
+    from openpyxl import Workbook
+    from app.t12_statement import parse_csv_t12_statement, parse_xlsx_t12_statement
+    from app.t12_import import parse_csv_t12
+    period = [(2025, 10), (2025, 11), (2025, 12)] + [(2026, m) for m in range(1, 10)]
+    names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    longs = ["January", "February", "March", "April", "May", "June", "July", "August", "September",
+             "October", "November", "December"]
+    styles = {
+        "mon_year": [f"{names[m - 1]} {y}" for y, m in period],
+        "mon_dash_yy": [f"{names[m - 1]}-{str(y)[2:]}" for y, m in period],
+        "mm_yyyy": [f"{m:02d}/{y}" for y, m in period],
+        "long_year": [f"{longs[m - 1]} {y}" for y, m in period],
+        "yyyy_mm": [f"{y}-{m:02d}" for y, m in period],
+    }
+    rows = [("Gross Potential Rent", [1000.0] * 12), ("Net Rental Income", [900.0] * 12)]
+    for style, months in styles.items():
+        got = parse_csv_t12_statement(_t12_csv(rows, months), "t12.csv")
+        assert got["gross_potential_rent"] and got["gross_potential_rent"]["annual"] == 12000.0, (style, got["gross_potential_rent"])
+        assert sum(v is not None for v in got["gross_potential_rent"]["monthly"].values()) == 12, style
+        assert parse_csv_t12(_t12_csv(rows, months), "t12.csv")["annual_rental_income"] == 10800.0, style
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["Account"] + [datetime(y, m, 1) for y, m in period] + ["Total"])
+    ws.append(["Gross Potential Rent"] + [1000.0] * 12 + [12000.0])
+    buf = BytesIO()
+    wb.save(buf)
+    got = parse_xlsx_t12_statement(buf.getvalue(), "t12.xlsx")
+    assert sum(v is not None for v in got["gross_potential_rent"]["monthly"].values()) == 12, got["gross_potential_rent"]
+    # Words that merely contain a month name are still not month columns.
+    from app.t12_import import _match_t12_columns
+    assert _match_t12_columns(["Account", "Mayfield Rd", "Decor", "Marketing", "Total"])["months"] == {}
+    print("✓ test_t12_month_headers_with_years_and_numeric_months: PASS")
+
+
+def test_t12_blank_row_is_not_a_zero_total():
+    """
+    With no Total column, the annual figure is the sum of the 12 months --
+    and a blank section-header row summed to $0.00. The T-12 cross-check
+    route (t12_import) then took "Rental Income" (the header) as $0 of
+    collections instead of reading "Net Rental Income" below it.
+    """
+    import csv, io
+    from app.t12_import import parse_csv_t12, _row_annual_total, _match_t12_columns
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["Account"] + _T12_MONTHS)
+    w.writerow(["Rental Income"] + [""] * 12)
+    w.writerow(["Net Rental Income"] + ["900.00"] * 12)
+    assert parse_csv_t12(buf.getvalue().encode(), "t12.csv")["annual_rental_income"] == 10800.0
+    mapping = _match_t12_columns(["Account"] + _T12_MONTHS)
+    assert _row_annual_total(["Rental Income"] + [""] * 12, mapping) is None
+    print("✓ test_t12_blank_row_is_not_a_zero_total: PASS")
+
+
+# ---------------------------------------------------------------- T-12 detectors
+def _t12_cat(annual, monthly=None):
+    return {"annual": annual, "monthly": monthly, "source": {"row": 5, "file": "t12.csv", "quote": "x"}}
+
+
+def test_t12_income_gap_compares_annual_to_annual():
+    """
+    The rent roll's MONTHLY rent total was compared to the T-12's ANNUAL
+    collections, so a rent roll overstating income by 17% was never
+    flagged (tester-pack OVERNIGHT_REPORT bug #2).
+    """
+    leases = [_rr(tenant=f"T{i}", rent_amount="$1,000.00", property_address=f"9 Elm St, Austin, TX 78701, Suite {i}") for i in range(10)]
+    t12 = {"rental_income_collected": _t12_cat(100000.0)}
+    rows = dm.detect_t12_income_gap(leases, t12, 3.0)
+    assert [r["annual_dollar_impact"] for r in rows] == [20000.0], rows
+    assert rows[0]["income_direction"] == "overstate"
+    # Collections within 3% of the rent roll: no finding.
+    assert dm.detect_t12_income_gap(leases, {"rental_income_collected": _t12_cat(118500.0)}, 3.0) == []
+    print("✓ test_t12_income_gap_compares_annual_to_annual: PASS")
+
+
+def test_t12_loss_lines_are_read_as_magnitudes():
+    """
+    T-12s print vacancy loss / bad debt as NEGATIVE lines ("(17,100.00)").
+    The occupancy check computed 1 - (-17,100 / 171,000) = 110% occupancy,
+    and the bad-debt trend compared negative averages (never "rising").
+    """
+    leases = [_rr(tenant=f"T{i}", rent_amount="$1,000.00", property_address=f"9 Elm St, Suite {i}") for i in range(10)]
+    rows = dm.detect_t12_occupancy_mismatch(leases, {"gross_potential_rent": _t12_cat(100000.0),
+                                                     "vacancy_loss": _t12_cat(-20000.0)}, 3.0)
+    assert len(rows) == 1 and rows[0]["lease_value"].startswith("80.0%"), rows
+    months = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
+    rising = dict(zip(months, [-100.0] * 9 + [-900.0, -1000.0, -1100.0]))
+    rows = dm.detect_t12_bad_debt_trend(leases, {"bad_debt": _t12_cat(sum(rising.values()), rising)}, 3.0)
+    assert [r["discrepancy_type"] for r in rows] == ["t12_bad_debt_trend"], rows
+    print("✓ test_t12_loss_lines_are_read_as_magnitudes: PASS")
+
+
+def test_t12_zero_concessions_is_not_a_finding():
+    """A T-12 whose Concessions line is $0.00 produced a "$0.00 (T12)" concession-gap row."""
+    leases = [_rr(tenant="T", rent_amount="$1,000.00", property_address="9 Elm St, Suite 1")]
+    assert dm.detect_t12_concession_gap(leases, {"concessions": _t12_cat(0.0)}, 3.0) == []
+    rows = dm.detect_t12_concession_gap(leases, {"concessions": _t12_cat(-1800.0)}, 3.0)
+    assert len(rows) == 1 and rows[0]["lease_value"].startswith("$1,800.00"), rows
+    print("✓ test_t12_zero_concessions_is_not_a_finding: PASS")
+
+
+def test_t12_bad_debt_trend_uses_the_statements_own_month_order():
+    """
+    A trailing T-12 runs Oct 2025 .. Sep 2026. "Last 3 months" were taken
+    as Oct/Nov/Dec by calendar name -- the OLDEST months of that statement
+    -- so a real spike in Jul-Sep was missed and an old spike that had
+    since cleared was flagged as "rising".
+    """
+    from app.t12_statement import parse_csv_t12_statement
+    period = ["Oct 2025", "Nov 2025", "Dec 2025"] + [f"{m} 2026" for m in _T12_MONTHS[:9]]
+    leases = [_rr(tenant=f"T{i}", rent_amount="$1,000.00", property_address=f"9 Elm St, Suite {i}") for i in range(10)]
+    recent_spike = [-100.0] * 9 + [-900.0, -1000.0, -1100.0]
+    old_spike = [-1100.0, -1000.0, -900.0] + [-100.0] * 9
+    t12 = parse_csv_t12_statement(_t12_csv([("Bad Debt", recent_spike)], period), "t12.csv")
+    assert _types(dm.detect_t12_bad_debt_trend(leases, t12, 3.0)) == ["t12_bad_debt_trend"]
+    t12 = parse_csv_t12_statement(_t12_csv([("Bad Debt", old_spike)], period), "t12.csv")
+    assert dm.detect_t12_bad_debt_trend(leases, t12, 3.0) == []
+    print("✓ test_t12_bad_debt_trend_uses_the_statements_own_month_order: PASS")
+
+
+_GAUNTLET_FIX = os.path.join(os.path.dirname(__file__), "..", "tools", "gauntlet", "fixtures")
+
+
+def test_t12_workbooks_any_sheet_legacy_xls_and_password():
+    """
+    T-12 workbooks: only the ACTIVE sheet was read (a "Summary" tab first
+    -> "Couldn't find any month columns"); .xls went to openpyxl ("File is
+    not a zip file"); a password-protected file got the same cryptic zip
+    error instead of being told it's encrypted.
+    """
+    from io import BytesIO
+    from openpyxl import Workbook
+    from app.t12_statement import parse_xlsx_t12_statement
+    from app.t12_import import parse_xlsx_t12, T12ImportError
+    wb = Workbook()
+    wb.active.title = "Summary"
+    wb.active.append(["NOI", 123456])
+    ws = wb.create_sheet("T12 Detail")
+    ws.append(["Account"] + _T12_MONTHS + ["Total"])
+    ws.append(["Gross Potential Rent"] + [1000.0] * 12 + [12000.0])
+    ws.append(["Net Rental Income"] + [900.0] * 12 + [10800.0])
+    buf = BytesIO()
+    wb.save(buf)
+    assert parse_xlsx_t12_statement(buf.getvalue(), "t12.xlsx")["rental_income_collected"]["annual"] == 10800.0
+    assert parse_xlsx_t12(buf.getvalue(), "t12.xlsx")["annual_rental_income"] == 10800.0
+    with open(os.path.join(_GAUNTLET_FIX, "t12", "p04__xls__clean.xls"), "rb") as f:
+        xls = f.read()
+    got = parse_xlsx_t12_statement(xls, "t12.xls")
+    assert got["gross_potential_rent"] and got["gross_potential_rent"]["annual"] > 0, got
+    with open(os.path.join(_GAUNTLET_FIX, "t12", "bad__password.xlsx"), "rb") as f:
+        locked = f.read()
+    for fn in (parse_xlsx_t12_statement, parse_xlsx_t12):
+        try:
+            fn(locked, "t12.xlsx")
+            raise AssertionError("encrypted workbook parsed")
+        except T12ImportError as e:
+            assert "password" in str(e).lower(), str(e)
+    print("✓ test_t12_workbooks_any_sheet_legacy_xls_and_password: PASS")
+
+
+def test_password_protected_rent_roll_workbook_says_so():
+    """An encrypted rent-roll .xlsx got "Couldn't read this file as an Excel workbook: File is not a zip file"."""
+    from app.rent_roll_import import parse_rent_roll_file, RentRollImportError
+    with open(os.path.join(_GAUNTLET_FIX, "rent_rolls", "bad__password.xlsx"), "rb") as f:
+        locked = f.read()
+    for name in ("rr.xlsx", "rr.xls"):
+        try:
+            parse_rent_roll_file(locked, name, "1 A St")
+            raise AssertionError("encrypted workbook parsed")
+        except RentRollImportError as e:
+            assert "password" in str(e).lower(), str(e)
+    print("✓ test_password_protected_rent_roll_workbook_says_so: PASS")
+
+
+def test_t12_reconciliation_counts_rent_roll_rows_not_lease_pdfs_too():
+    """
+    compute_t12_reconciliation summed rent from EVERY record at the
+    building -- rent-roll rows AND the lease PDFs for the same units -- so
+    once leases were uploaded the "rent roll annual rent" doubled.
+    """
+    from app.portfolio import compute_t12_reconciliation
+    rr = [_rr(tenant=f"T{i}", rent_amount="$1,000.00", property_address=f"9 Elm St, Austin, TX 78701, Suite {i}") for i in range(1, 4)]
+    docs = [_doc(tenant=f"T{i}", rent_amount="$1,000.00", property_address=f"9 Elm St, Apt {i}, Austin, TX 78701") for i in range(1, 4)]
+    got = compute_t12_reconciliation(rr + docs, "9 Elm St, Austin, TX 78701", 36000.0)
+    assert got["rent_roll_annual_rent"] == 36000.0, got
+    assert got["matched_lease_count"] == 3, got
+    print("✓ test_t12_reconciliation_counts_rent_roll_rows_not_lease_pdfs_too: PASS")
+
+
+# ---------------------------------------------------------------- occupancy (vacant/down units)
+def _rr_with_vacancies_csv():
+    rows = ["Unit,Tenant,Status,Rent"]
+    for i in range(1, 9):
+        rows.append(f"10{i},Resident {chr(64 + i)} Person,Current,1000.00")
+    rows.append("109,VACANT,Vacant-Unrented,")
+    rows.append("110,,Down,")
+    rows.append("Total,,,8000.00")
+    return ("\r\n".join(rows) + "\r\n").encode()
+
+
+def test_vacant_and_down_units_count_toward_rent_roll_occupancy():
+    """
+    Vacant rows were never imported, so the rent roll always looked 100%
+    occupied: the T-12 occupancy check false-alarmed on every property with
+    a vacancy and the bad-debt check's "full occupancy" condition was always
+    true (tester-pack OVERNIGHT_REPORT bug #4). The import now records each
+    building's vacant/down units (team-scoped) and the T-12 checks use them.
+    """
+    import io
+    from app.rent_roll_import import parse_rent_roll_file
+    parsed = parse_rent_roll_file(_rr_with_vacancies_csv(), "rr.csv", "9 Elm St, Austin, TX 78701")
+    summary = parsed["unit_summary"]["9 Elm St, Austin, TX 78701"]
+    assert (summary["occupied_units"], sorted(summary["vacant_units"]), sorted(summary["down_units"])) == (8, ["109"], ["110"]), summary
+    # Placeholder tenant cells are down units, not tenants; a real tenant
+    # whose name merely contains "Model" is still a tenant.
+    csv = b"Unit,Tenant,Rent\r\n101,Ann Lee,1000\r\n102,DOWN UNIT,\r\n103,Down - renovation,\r\n104,MODEL,\r\n105,Model Unit Corp,1500\r\n"
+    p2 = parse_rent_roll_file(csv, "r.csv", "9 Elm St")
+    assert sorted(p2["unit_summary"]["9 Elm St"]["down_units"]) == ["102", "103", "104"], p2["unit_summary"]
+    assert [l["extracted_fields"]["tenant"]["value"] for l in p2["leases"]] == ["Ann Lee", "Model Unit Corp"]
+
+    def t12_csv(vacancy_monthly):
+        months = ",".join(_T12_MONTHS)
+        lines = [f"Account,{months},Total",
+                 "Gross Potential Rent," + ",".join(["10000"] * 12) + ",120000",
+                 "Vacancy Loss," + ",".join([str(-vacancy_monthly)] * 12) + f",{-vacancy_monthly * 12}",
+                 "Net Rental Income," + ",".join(["7900"] * 12) + ",94800"]
+        return ("\r\n".join(lines) + "\r\n").encode()
+
+    client, db = _client_with_fresh_db(team_id=1)
+    try:
+        r = _post(client, "/leases/import-rent-roll", "rr.csv", _rr_with_vacancies_csv(), {"property_address": "9 Elm St, Austin, TX 78701"})
+        assert r.status_code == 201, r.get_json()
+        for vacancy, want_rows in ((2000, []), (200, ["t12_occupancy_mismatch"])):  # T-12 at 80% (agrees) / 98% (disagrees)
+            data = {"property_address": "9 Elm St, Austin, TX 78701", "t12_file": (io.BytesIO(t12_csv(vacancy)), "t12.csv")}
+            rep = client.post("/portfolio/deal-mismatch-report", data=data, content_type="multipart/form-data").get_json()
+            got = sorted(row["discrepancy_type"] for row in rep["rent_roll_vs_actual_collections"]
+                         if row["discrepancy_type"] == "t12_occupancy_mismatch")
+            assert got == want_rows, (vacancy, rep["rent_roll_vs_actual_collections"])
+            if got:
+                assert rep["rent_roll_vs_actual_collections"][0]["rent_roll_value"].startswith("80.0%"), rep
+        # Another team's import of the same address never feeds this team's numbers.
+        from app.api import app
+        from _session_users import sync_session_user
+        other = app.test_client()
+        with other.session_transaction() as s:
+            s.update(user_id=8, team_id=2, email="other@abstractly.test", name="Other", role="analyst")
+            sync_session_user(s)
+        full = "Unit,Tenant,Rent\r\n" + "".join(f"10{i},Other {chr(64 + i)} Resident,1000\r\n" for i in range(1, 9))
+        _post(other, "/leases/import-rent-roll", "rr2.csv", full.encode(), {"property_address": "9 Elm St, Austin, TX 78701"})
+        data = {"property_address": "9 Elm St, Austin, TX 78701", "t12_file": (io.BytesIO(t12_csv(2000)), "t12.csv")}
+        rep = client.post("/portfolio/deal-mismatch-report", data=data, content_type="multipart/form-data").get_json()
+        assert not [x for x in rep["rent_roll_vs_actual_collections"] if x["discrepancy_type"] == "t12_occupancy_mismatch"], rep
+    finally:
+        os.unlink(db)
+    print("✓ test_vacant_and_down_units_count_toward_rent_roll_occupancy: PASS")
+
+
+# ---------------------------------------------------------------- rent-roll headers & rows
+def _parse_csv_text(text, base="9 Elm St"):
+    from app.rent_roll_import import parse_rent_roll_file
+    return parse_rent_roll_file(text.replace("\n", "\r\n").encode(), "rr.csv", base)
+
+
+def _units_of(parsed):
+    from app.portfolio import _normalize_address
+    return [(l["extracted_fields"]["property_address"]["value"], l["extracted_fields"]["tenant"]["value"]) for l in parsed["leases"]]
+
+
+def test_unit_column_headers_from_pms_exports():
+    """Entrata's "Bldg-Unit" (and "Bldg/Unit", "Apt #") weren't recognized, so every row lost its unit number."""
+    for header in ("Bldg-Unit", "Bldg/Unit", "Building/Unit", "Apt #", "Apartment", "Unit ID"):
+        got = _parse_csv_text(f"{header},Resident,Scheduled Rent\nA-101,Ann Lee,1000\n")
+        assert _units_of(got) == [("9 Elm St, Suite A-101", "Ann Lee")], (header, _units_of(got))
+    print("✓ test_unit_column_headers_from_pms_exports: PASS")
+
+
+def test_grand_total_row_is_not_a_tenant():
+    """A broker sheet's "Grand Total" row (in the tenant column) was imported as a tenant paying the whole building's rent."""
+    got = _parse_csv_text("Unit,Tenant,Rent\n101,Ann Lee,1000\n,Grand Total,1000\n,Grand Totals:,1000\n")
+    assert [t for _, t in _units_of(got)] == ["Ann Lee"], _units_of(got)
+    print("✓ test_grand_total_row_is_not_a_tenant: PASS")
+
+
+def test_misspelled_rent_roll_headers_still_map():
+    """
+    Hand-built broker sheets misspell headers ("Lease Strat", "Lease
+    Expiraton", "Tennant"). Those columns silently went unmapped -- no
+    lease dates at all, so expiry/date checks never ran. One typo per long
+    word is tolerated; "Lease Status" must still never become a date.
+    """
+    from app.rent_roll_import import _match_columns
+    m = _match_columns(["Unit No", "Tennant", "Montly Rent", "Lease Strat", "Lease Expiraton"])
+    assert (m.get("tenant"), m.get("rent_amount"), m.get("lease_start_date"), m.get("lease_end_date")) == (1, 2, 3, 4), m
+    m = _match_columns(["Unit", "Tenant", "Rent", "Lease Status", "Lease Stage"])
+    assert "lease_start_date" not in m and "lease_end_date" not in m, m
+    print("✓ test_misspelled_rent_roll_headers_still_map: PASS")
+
+
+def test_tenant_name_column_preferred_over_resident_code():
+    """
+    RealPage's tenant column is headed just "Name" (no "Tenant"): the whole
+    file was rejected. Yardi has "Resident" (an id like t0012345) AND
+    "Name": the id must not become the tenant.
+    """
+    from app.rent_roll_import import _match_columns
+    assert _match_columns(["Bldg/Unit", "Floorplan", "Name", "Lease Rent"]).get("tenant") == 2
+    assert _match_columns(["Unit", "Resident", "Name", "Actual Rent"]).get("tenant") == 2
+    assert _match_columns(["Unit", "Tenant", "Property Name", "Rent"]).get("tenant") == 1
+    assert _match_columns(["Unit", "Floor Plan Name", "Rent"]).get("tenant") is None
+    print("✓ test_tenant_name_column_preferred_over_resident_code: PASS")
+
+
+def test_two_row_rent_roll_header_yardi_style():
+    """
+    Yardi splits each column header over two rows ("Actual" / "Rent",
+    "Lease" / "Expiration"). Neither row alone has a tenant AND rent
+    column, so the file was rejected outright.
+    """
+    from io import BytesIO
+    from openpyxl import Workbook
+    from app.rent_roll_import import parse_rent_roll_file
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["Maple Test Apartments"])
+    ws.append(["Rent Roll"])
+    ws.append(["Unit", "Unit", "Resident", "Name", "Market", "Actual", "Move In", "Lease"])
+    ws.append([None, "Type", None, None, "Rent", "Rent", None, "Expiration"])
+    ws.append(["101", "1x1", "t0001234", "Lee, Ann", 1200, 1150, None, "03/31/2027"])
+    ws.append(["102", "2x2", "VACANT", "VACANT", 1500, 0, None, None])
+    buf = BytesIO()
+    wb.save(buf)
+    got = parse_rent_roll_file(buf.getvalue(), "rr.xlsx", "9 Elm St")
+    assert len(got["leases"]) == 1, got["skipped_rows"]
+    f = got["leases"][0]["extracted_fields"]
+    assert (f["tenant"]["value"], f["rent_amount"]["value"], f["lease_end_date"]["value"]) == ("Lee, Ann", "$1,150.00", "03/31/2027"), f
+    assert got["unit_summary"]["9 Elm St"]["vacant_units"] == ["102"]
+    print("✓ test_two_row_rent_roll_header_yardi_style: PASS")
+
+
+def test_section8_rent_is_contract_rent_not_tenant_portion():
+    """
+    Affordable rent rolls split rent into the resident's portion and the
+    housing authority's HAP. With no contract-rent total column the file
+    was rejected; the right rent is the sum. When a Contract Rent column
+    exists it must win over "Tenant Rent" (which alone would understate
+    every voucher unit's rent and fire a false rent_mismatch).
+    """
+    got = _parse_csv_text("Unit,Resident Name,Tenant Portion,HAP,Lease End\n101,Ann Lee,412.00,988.00,03/31/2027\n102,Bo Diaz,1250.00,0.00,03/31/2027\n")
+    assert [l["extracted_fields"]["rent_amount"]["value"] for l in got["leases"]] == ["$1,400.00", "$1,250.00"], got
+    got = _parse_csv_text("Unit,Resident,Contract Rent,Tenant Rent,HAP Amount\n101,Ann Lee,1400.00,412.00,988.00\n")
+    assert got["leases"][0]["extracted_fields"]["rent_amount"]["value"] == "$1,400.00"
+    got = _parse_csv_text("Unit,Resident,Tenant Rent,Subsidy\n101,Ann Lee,412.00,988.00\n")
+    assert got["leases"][0]["extracted_fields"]["rent_amount"]["value"] == "$1,400.00"
+    print("✓ test_section8_rent_is_contract_rent_not_tenant_portion: PASS")
+
+
+def test_exact_duplicate_rent_roll_row_counted_once():
+    """
+    PMS exports occasionally repeat a row verbatim. It was imported twice:
+    the unit's rent counted double in the T-12 cross-check and every
+    finding for it appeared twice. Two DIFFERENT residents on the same
+    unit are not duplicates and still both import.
+    """
+    got = _parse_csv_text("Unit,Tenant,Rent,Lease End\n101,Ann Lee,1000,03/31/2027\n101,Ann Lee,1000,03/31/2027\n102,Bo Diaz,900,03/31/2027\n")
+    assert [t for _, t in _units_of(got)] == ["Ann Lee", "Bo Diaz"], _units_of(got)
+    assert any("duplicate" in r["reason"] for r in got["skipped_rows"]), got["skipped_rows"]
+    got = _parse_csv_text("Unit,Tenant,Rent\n101,Ann Lee,1000\n101,Cy Ray,1000\n")
+    assert len(got["leases"]) == 2
+    print("✓ test_exact_duplicate_rent_roll_row_counted_once: PASS")
+
+
+def test_yardi_rent_roll_with_lease_charges_layout():
+    """
+    Yardi "Rent Roll with Lease Charges": one row per charge code, unit and
+    resident only on each unit's first row, rent in a generic "Amount"
+    column. Rejected outright before. Rent = the rent charge code only
+    (not trash/pet/Total); a "conc" code is the concession.
+    """
+    text = ("Unit,Unit Type,Resident,Name,Market Rent,Charge Code,Amount,Lease Expiration\n"
+            "101,1x1,t0001,Ann Lee,1200,rent,1150.00,03/31/2027\n"
+            ",,,,,trash,15.00,\n"
+            ",,,,,conc,-75.00,\n"
+            ",,,,,Total,1090.00,\n"
+            "102,2x2,VACANT,VACANT,1500,,,\n"
+            "103,2x2,t0003,Bo Diaz,1500,rent,1475.00,01/31/2027\n"
+            ",,,,,pet,25.00,\n"
+            ",,,,,Total,1500.00,\n")
+    got = _parse_csv_text(text)
+    rows = [(l["extracted_fields"]["tenant"]["value"], l["extracted_fields"]["rent_amount"]["value"],
+             l["extracted_fields"]["concessions"]["value"]) for l in got["leases"]]
+    assert rows == [("Ann Lee", "$1,150.00", "$75.00/mo"), ("Bo Diaz", "$1,475.00", "$0.00/mo")], rows
+    assert got["unit_summary"]["9 Elm St"]["vacant_units"] == ["102"], got["unit_summary"]
+    print("✓ test_yardi_rent_roll_with_lease_charges_layout: PASS")
+
+
+def test_rent_roll_date_formats_from_pms_exports():
+    """
+    ISO dates (Entrata, every database export), "01-Mar-2026"/"01-Mar-26"
+    (Excel's default text date) and "1 March 2026" all parsed to None, so
+    those rent rolls carried no lease dates and expiry/date checks never ran.
+    """
+    from app.normalize import parse_date
+    want = date(2026, 3, 1)
+    for text in ("2026-03-01", "2026/03/01", "01-Mar-2026", "1-Mar-26", "01 Mar 2026", "1 March 2026",
+                 "03/01/2026", "3/1/26", "March 1, 2026", "2026-03-01 00:00:00", "2026-03-01T00:00:00"):
+        assert parse_date(text) == want, (text, parse_date(text))
+    for text in ("2026-13-01", "31-Feb-2026", "Mar-2026", "1 Smarch 2026"):
+        assert parse_date(text) is None, text
+    print("✓ test_rent_roll_date_formats_from_pms_exports: PASS")
+
+
+def test_lease_date_header_synonyms():
+    """'Lease Begin' / 'Term Start' / 'Lease Exp.' / 'Expiration' went unmapped -> no lease dates."""
+    from app.rent_roll_import import _match_columns
+    for start, end in (("Lease Begin", "Lease End"), ("Term Start", "Term End"), ("Begin Date", "Lease Exp."),
+                       ("Lease Start", "Expiration"), ("Start", "Exp Date")):
+        m = _match_columns(["Unit", "Tenant", "Rent", start, end])
+        assert (m.get("lease_start_date"), m.get("lease_end_date")) == (3, 4), (start, end, m)
+    print("✓ test_lease_date_header_synonyms: PASS")
+
+
+def test_file_with_no_t12_line_items_is_rejected_not_silently_empty():
+    """
+    A rent roll dropped into the T-12 slot parsed "successfully" (its Total
+    row looked like a header) with every category empty, so the report
+    quietly had no T-12 section and no error.
+    """
+    from app.t12_statement import parse_csv_t12_statement
+    from app.t12_import import T12ImportError
+    rr_as_t12 = b"Unit,Tenant,Rent,Total\r\n101,Ann Lee,1000,1000\r\nTotal,,1000,1000\r\n"
+    try:
+        parse_csv_t12_statement(rr_as_t12, "t12.csv")
+        raise AssertionError("accepted")
+    except T12ImportError as e:
+        assert "t-12" in str(e).lower() or "income" in str(e).lower(), str(e)
+    print("✓ test_file_with_no_t12_line_items_is_rejected_not_silently_empty: PASS")
+
+
+def test_rent_roll_with_no_occupied_rows_is_a_clear_error():
+    """A header-only or all-vacant file returned 201 "imported 0" with no explanation."""
+    from app.rent_roll_import import RentRollImportError
+    for text, word in (("Unit,Tenant,Rent,Lease Start,Lease End\n", "no "), ("Unit,Tenant,Rent\n101,VACANT,\n102,VACANT,\n", "vacant")):
+        try:
+            _parse_csv_text(text)
+            raise AssertionError("accepted")
+        except RentRollImportError as e:
+            assert word in str(e).lower(), str(e)
+    print("✓ test_rent_roll_with_no_occupied_rows_is_a_clear_error: PASS")
+
+
+def test_garden_community_building_letter_is_part_of_the_unit():
+    """
+    Garden communities: the rent roll says "A-101"; the lease says
+    "Building A, Apartment 101". Same unit -- but the building letter was
+    dropped from the lease's key ("101"), so nothing paired. And
+    "Building B, Apt 101" is a DIFFERENT unit from "A-101".
+    """
+    rr = "3600 Willow Creek Rd, Houston, TX 77064, Suite A-101"
+    assert _normalize_address(rr) == _normalize_address("3600 Willow Creek Rd, Building A, Apartment 101, Houston, TX 77064")
+    assert _normalize_address(rr) == _normalize_address("3600 Willow Creek Rd, Bldg. A, Apt 101, Houston, TX 77064")
+    assert _normalize_address(rr) != _normalize_address("3600 Willow Creek Rd, Building B, Apartment 101, Houston, TX 77064")
+    assert _normalize_address("9 Elm St, Suite 1-204") == _normalize_address("9 Elm St, Building 1, Unit 204")
+    # ...and such a lease is inside the property the uploader typed (report scope).
+    assert _normalize_building_address("3600 Willow Creek Rd, Building A, Apartment 101, Houston, TX 77064") == \
+        _normalize_building_address("3600 Willow Creek Rd, Houston, TX 77064")
+    print("✓ test_garden_community_building_letter_is_part_of_the_unit: PASS")
+
+
+def test_future_resident_rows_are_not_current_rent():
+    """
+    PMS rent rolls list pre-leased applicants ("Future", "Applicant") on
+    units still occupied by the current resident. They were imported as a
+    second tenant on the unit: double rent, plus false tenant/rent/date
+    mismatches against the current resident's lease. A resident "Pending
+    Renewal" or on notice is still the current resident.
+    """
+    got = _parse_csv_text("Unit,Tenant,Status,Rent\n101,Ann Lee,Current,1000\n101,Cy Ray,Future,1050\n"
+                          "102,Bo Diaz,Notice-Rented,900\n102,Ed Fox,Applicant,950\n103,Gil Ho,Pending Renewal,800\n"
+                          "104,Ida Kim,Pending Move-In,850\n")
+    assert [t for _, t in _units_of(got)] == ["Ann Lee", "Bo Diaz", "Gil Ho"], _units_of(got)
+    assert sum("future" in r["reason"] for r in got["skipped_rows"]) == 3, got["skipped_rows"]
+    print("✓ test_future_resident_rows_are_not_current_rent: PASS")
+
+
+def test_semicolon_delimited_csv_rent_roll():
+    """European-locale Excel saves "CSV" with semicolons; every row was one cell and the file was rejected."""
+    got = _parse_csv_text('Unit;Tenant;Rent;Lease End\n101;Ann Lee;"1,200.00";03/31/2027\n102;Bo Diaz;950;03/31/2027\n')
+    assert [(t, l["extracted_fields"]["rent_amount"]["value"]) for (_, t), l in zip(_units_of(got), got["leases"])] == \
+        [("Ann Lee", "$1,200.00"), ("Bo Diaz", "$950.00")], got["leases"]
+    print("✓ test_semicolon_delimited_csv_rent_roll: PASS")
+
+
+def test_rent_roll_header_after_a_long_parameter_block():
+    """
+    Canned PMS reports can open with 20+ rows of report parameters. The
+    header search stopped at row 20 and the file was rejected.
+    """
+    lines = ["Rent Roll Report"] + [f"Parameter {i},value {i}" for i in range(28)] + ["Unit,Tenant,Rent", "101,Ann Lee,1000"]
+    got = _parse_csv_text("\n".join(lines) + "\n")
+    assert [t for _, t in _units_of(got)] == ["Ann Lee"], got
+    print("✓ test_rent_roll_header_after_a_long_parameter_block: PASS")
+
+
+def test_two_row_header_with_merged_group_title():
+    """
+    A merged "Lease" title over "Start" / "End" sub-headers leaves the
+    second column's top cell empty, so it read as plain "End" -> unmapped,
+    and the rent roll lost its lease end dates.
+    """
+    from io import BytesIO
+    from openpyxl import Workbook
+    from app.rent_roll_import import parse_rent_roll_file
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["Unit", "Resident", "Monthly", "Lease", None])
+    ws.append([None, None, "Rent", "Start", "End"])
+    ws.merge_cells("D1:E1")
+    ws.append(["101", "Ann Lee", 1000, "04/01/2026", "03/31/2027"])
+    buf = BytesIO()
+    wb.save(buf)
+    f = parse_rent_roll_file(buf.getvalue(), "rr.xlsx", "9 Elm St")["leases"][0]["extracted_fields"]
+    assert (f["lease_start_date"]["value"], f["lease_end_date"]["value"]) == ("04/01/2026", "03/31/2027"), f
+    print("✓ test_two_row_header_with_merged_group_title: PASS")
+
+
+def test_excel_serial_number_dates_in_rent_roll():
+    """
+    A CSV saved from date cells formatted "General" carries Excel serial
+    numbers (46113 = 2026-04-01). They parsed to nothing, so the rent roll
+    had no lease dates.
+    """
+    from app.normalize import parse_date
+    got = _parse_csv_text("Unit,Tenant,Rent,Lease Start,Lease End\n101,Ann Lee,1000,46113,46477\n102,Bo Diaz,900,46113.0,\n")
+    f = got["leases"][0]["extracted_fields"]
+    assert parse_date(f["lease_start_date"]["value"]) == date(2026, 4, 1), f["lease_start_date"]
+    assert parse_date(f["lease_end_date"]["value"]) == date(2027, 3, 31), f["lease_end_date"]
+    assert parse_date(got["leases"][1]["extracted_fields"]["lease_start_date"]["value"]) == date(2026, 4, 1)
+    print("✓ test_excel_serial_number_dates_in_rent_roll: PASS")
+
+
+def test_t12_label_wording_variants():
+    """"Gross Rent Potential", "Net Rental Revenue", "Total Other Revenue" weren't recognized -> no GPR, no collections."""
+    from app.t12_statement import parse_csv_t12_statement
+    from app.t12_import import parse_csv_t12
+    data = _t12_csv([("Gross Rent Potential", [1000.0] * 12), ("Less: Vacancy", [-100.0] * 12),
+                     ("Net Rental Revenue", [900.0] * 12), ("Total Other Revenue", [50.0] * 12)])
+    got = parse_csv_t12_statement(data, "t12.csv")
+    assert got["gross_potential_rent"]["annual"] == 12000.0, got["gross_potential_rent"]
+    assert got["rental_income_collected"]["annual"] == 10800.0, got["rental_income_collected"]
+    assert got["other_income"]["annual"] == 600.0, got["other_income"]
+    assert parse_csv_t12(data, "t12.csv")["annual_rental_income"] == 10800.0
+    print("✓ test_t12_label_wording_variants: PASS")
+
+
+def test_t12_negative_amounts_keep_their_sign():
+    """
+    T-12 cells without a "$" -- "-1,234.56", "(1,234.56)" -- fell through
+    to a bare-number regex that dropped the sign. A negative Net Operating
+    Income, a gain-to-lease or a reversed charge then read as positive.
+    """
+    from app.t12_import import _parse_t12_currency
+    for text, want in (("-1,234.56", -1234.56), ("(1,234.56)", -1234.56), ("- 50", -50.0), ("1,234.56", 1234.56),
+                       ("$1,234.56", 1234.56), ("($1,234.56)", -1234.56), ("-$1,234.56", -1234.56), ("1,234.56-", -1234.56)):
+        assert _parse_t12_currency(text) == want, (text, _parse_t12_currency(text))
+    assert _parse_t12_currency("n/a") is None and _parse_t12_currency("") is None
+    print("✓ test_t12_negative_amounts_keep_their_sign: PASS")
+
+
+def test_t12_actual_vs_budget_columns_read_actuals():
+    """
+    Budget-comparison T-12s pair "Oct 2025 Actual" with "Oct 2025 Budget".
+    No month column was recognized at all (rejected); budget, variance and
+    prior-year columns must never be read as the month or the total.
+    """
+    import csv, io
+    from app.t12_import import _match_t12_columns, parse_csv_t12
+    from app.t12_statement import parse_csv_t12_statement
+    months = ["Oct 2025", "Nov 2025", "Dec 2025"] + [f"{m} 2026" for m in _T12_MONTHS[:9]]
+    hdr = ["Account"]
+    for m in months:
+        hdr += [f"{m} Actual", f"{m} Budget", f"{m} Var %"]
+    hdr += ["Total Budget", "Total Actual"]
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(hdr)
+    row = ["Net Rental Income"]
+    for _ in months:
+        row += ["900.00", "1000.00", "-10%"]
+    row += ["12000.00", "10800.00"]
+    w.writerow(row)
+    data = buf.getvalue().encode()
+    mapping = _match_t12_columns(hdr)
+    assert len(mapping["months"]) == 12 and all(hdr[i].endswith("Actual") for i in mapping["months"].values()), mapping
+    assert hdr[mapping["total"]] == "Total Actual", mapping
+    assert parse_csv_t12_statement(data, "t12.csv")["rental_income_collected"]["annual"] == 10800.0
+    assert parse_csv_t12(data, "t12.csv")["annual_rental_income"] == 10800.0
+    assert _match_t12_columns(["Account", "Oct 2025 Budget", "Nov 2025 Budget", "Budget Total"]) == {"months": {}}
+    print("✓ test_t12_actual_vs_budget_columns_read_actuals: PASS")
+
+
+# ---------------------------------------------------------------- AUDIT.md §6.11: operative lease per unit
+def _report_rows(leases, today=TODAY):
+    rows = []
+    for det in dm._DETECTORS:
+        rows += det(leases, today) if det in dm._DATE_AWARE_DETECTORS else det(leases)
+    return rows
+
+
+def test_original_lease_plus_renewal_compares_only_the_operative_lease():
+    """
+    AUDIT.md §6.11 (CRITICAL): a unit's folder holds the expired 2025
+    original ($1,800) and the current 2026 renewal ($2,100); the rent roll
+    correctly shows $2,100. The report compared the rent roll against BOTH
+    leases: a $3,600 rent_mismatch plus a $25,200 expired_but_occupied --
+    $28,800/yr of phantom overstatement on a correct unit.
+    """
+    addr_rr = "100 Oak St, Austin, TX 78701, Suite 101"
+    rr = _rr(tenant="Ann Lee", rent_amount="$2,100.00", property_address=addr_rr,
+             lease_start_date="01/01/2026", lease_end_date="12/31/2026")
+    original = _doc(tenant="Ann Lee", rent_amount="$1,800.00", property_address="100 Oak St, Apt 101, Austin, TX 78701",
+                    lease_start_date="January 1, 2025", lease_end_date="December 31, 2025")
+    renewal = _doc(tenant="Ann Lee", rent_amount="$2,100.00", property_address="100 Oak St, Apt 101, Austin, TX 78701",
+                   lease_start_date="January 1, 2026", lease_end_date="December 31, 2026")
+    for docs in ([original, renewal], [renewal, original]):
+        assert _report_rows([rr] + docs) == [], [(r["discrepancy_type"], r["annual_dollar_impact"]) for r in _report_rows([rr] + docs)]
+    # A real gap against the CURRENT lease is still caught, priced against it.
+    rr_high = dict(rr, extracted_fields=_fields(tenant="Ann Lee", rent_amount="$2,300.00", property_address=addr_rr,
+                                                lease_start_date="01/01/2026", lease_end_date="12/31/2026"))
+    rows = _report_rows([rr_high, original, renewal])
+    assert [(r["discrepancy_type"], r["annual_dollar_impact"]) for r in rows] == [("rent_mismatch", 2400.0)], rows
+    # Only the expired original on file (no renewal): still expired_but_occupied.
+    rows = _report_rows([rr, original])
+    assert "expired_but_occupied" in _types(rows), rows
+    # A lease document for a unit missing from the rent roll is ONE lease_no_unit, priced at the current lease.
+    other_rr = _rr(tenant="Bo Diaz", rent_amount="$900.00", property_address="100 Oak St, Austin, TX 78701, Suite 102")
+    rows = dm.detect_lease_no_unit([other_rr, original, renewal], TODAY)
+    assert [(r["discrepancy_type"], r["annual_dollar_impact"]) for r in rows] == [("lease_no_unit", 25200.0)], rows
+    print("✓ test_original_lease_plus_renewal_compares_only_the_operative_lease: PASS")
+
+
+def test_rent_roll_reconciliation_also_uses_the_operative_lease():
+    """Same renewal-chain bug in the rent-roll reconciliation view: the old lease's rent and dates were flagged."""
+    from app.portfolio import compute_rent_roll_reconciliation
+    rr = _rr(tenant="Ann Lee", rent_amount="$2,100.00", property_address="100 Oak St, Austin, TX 78701, Suite 101",
+             lease_start_date="01/01/2026", lease_end_date="12/31/2026")
+    original = _doc(tenant="Ann Lee", rent_amount="$1,800.00", property_address="100 Oak St, Apt 101, Austin, TX 78701",
+                    lease_start_date="January 1, 2025", lease_end_date="December 31, 2025")
+    renewal = _doc(tenant="Ann Lee", rent_amount="$2,100.00", property_address="100 Oak St, Apt 101, Austin, TX 78701",
+                   lease_start_date="January 1, 2026", lease_end_date="December 31, 2026")
+    got = compute_rent_roll_reconciliation([rr, original, renewal], today=TODAY)
+    assert got["mismatches"] == [], got["mismatches"]
+    print("✓ test_rent_roll_reconciliation_also_uses_the_operative_lease: PASS")
+
+
+def test_reimporting_an_updated_rent_roll_replaces_the_old_one():
+    """
+    AUDIT.md §6.11: importing the seller's UPDATED rent roll kept the old
+    rows too, so every unit was doubled (two rents per unit, duplicated
+    findings, double T-12 total). A re-import for a building now
+    supersedes that building's previous rent-roll rows; another building's
+    rows and another team's rows are untouched.
+    """
+    client, db = _client_with_fresh_db(team_id=1)
+    try:
+        v1 = b"Unit,Tenant,Rent\r\n101,Ann Lee,1000\r\n102,Bo Diaz,900\r\n"
+        v2 = b"Unit,Tenant,Rent\r\n101,Ann Lee,1050\r\n102,Bo Diaz,900\r\n"
+        other = b"Unit,Tenant,Rent\r\n1,Cy Ray,700\r\n"
+        assert _post(client, "/leases/import-rent-roll", "rr_v1.csv", v1, {"property_address": "100 Oak St, Austin, TX 78701"}).status_code == 201
+        assert _post(client, "/leases/import-rent-roll", "other.csv", other, {"property_address": "5 Pine Ave, Austin, TX 78701"}).status_code == 201
+        r = _post(client, "/leases/import-rent-roll", "rr_v2.csv", v2, {"property_address": "100 Oak Street, Austin, TX 78701"})
+        assert r.status_code == 201 and r.get_json().get("replaced_previous_rows") == 2, r.get_json()
+        from app import database
+        rows = database.get_all_effective_leases(1)
+        got = sorted((l["filename"], l["extracted_fields"]["rent_amount"]["value"]) for l in rows)
+        assert got == [("other.csv", "$700.00"), ("rr_v2.csv", "$1,050.00"), ("rr_v2.csv", "$900.00")], got
+    finally:
+        os.unlink(db)
+    print("✓ test_reimporting_an_updated_rent_roll_replaces_the_old_one: PASS")
+
+
+def test_scheduled_rent_step_up_is_the_rent_in_effect():
+    """
+    AUDIT.md §6.11 (HIGH): a 2-year lease steps from $1,500 to $1,545 in
+    year 2; in year 2 the rent roll correctly shows $1,545 and was flagged
+    as a $540/yr overstatement (compared to the year-1 rent only).
+    """
+    addr = "100 Oak St, Austin, TX 78701, Suite 101"
+    lease_addr = "100 Oak St, Apt 101, Austin, TX 78701"
+    in_year_2 = date(2026, 12, 1)
+
+    def run(rr_rent, escalation, today=in_year_2):
+        rr = _rr(tenant="Ann Lee", rent_amount=rr_rent, property_address=addr)
+        doc = _doc(tenant="Ann Lee", rent_amount="$1,500.00", property_address=lease_addr, rent_escalation=escalation,
+                   lease_start_date="November 1, 2025", lease_end_date="October 31, 2027")
+        return dm.detect_rent_mismatch([rr, doc], today)
+
+    assert run("$1,545.00", "Year 1: $1,500.00; Year 2: $1,545.00") == []
+    assert run("$1,545.00", "3% annually") == []
+    # Still year 1 on the as-of date: $1,545 IS an overstatement of the rent in effect.
+    rows = run("$1,545.00", "Year 1: $1,500.00; Year 2: $1,545.00", today=date(2026, 6, 1))
+    assert [(r["annual_dollar_impact"], r["income_direction"]) for r in rows] == [(540.0, "overstate")], rows
+    # A real gap in year 2 is priced against the stepped-up rent, not the year-1 rent.
+    rows = run("$1,645.00", "Year 1: $1,500.00; Year 2: $1,545.00")
+    assert [r["annual_dollar_impact"] for r in rows] == [1200.0], rows
+    # Escalation stated but not priceable: flagged, not priced as an overstatement.
+    rows = run("$1,545.00", "rent increases per the attached schedule")
+    assert len(rows) == 1 and rows[0]["annual_dollar_impact"] is None and rows[0]["income_direction"] is None, rows
+    assert "scheduled increase" in rows[0].get("note", ""), rows
+    print("✓ test_scheduled_rent_step_up_is_the_rent_in_effect: PASS")
+
+
+# ---------------------------------------------------------------- concessions (AUDIT.md §6.11 / §6.16)
+def test_first_month_percent_off_is_one_month_not_the_whole_term():
+    """
+    "First month 50% off" was parsed as a 50% discount for EVERY month of
+    the lease (duration assumed), pricing a $600 concession on a $1,200
+    rent as $7,200 -- a 12x overstatement of the concession.
+    """
+    from app.concessions import parse_concession_text, effective_rent_for_lease
+    for text in ("First month 50% off.", "Resident receives 50% off the first month's rent.",
+                 "50% off first month rent as a move-in special."):
+        items = parse_concession_text(text)
+        assert len(items) == 1 and items[0]["months"] == 1 and not items[0]["full_term"], (text, items)
+    lease = _doc(tenant="Ann Lee", rent_amount="$1,200.00", property_address="1 A St, Apt 1",
+                 lease_start_date="January 1, 2026", lease_end_date="December 31, 2026")
+    from app.concessions import build_field_entry
+    lease["extracted_fields"]["concessions"] = build_field_entry(parse_concession_text("First month 50% off."))
+    eff = effective_rent_for_lease(lease, TODAY)
+    assert eff["total_concession_value"] == 600.0 and eff["annualized_concession_value"] == 600.0, eff
+    # Unchanged: an explicit multi-month or full-term percentage.
+    assert parse_concession_text("10% off rent for the first three months.")[0]["months"] == 3.0
+    assert parse_concession_text("5% off monthly rent for the full lease term.")[0]["full_term"] is True
+    print("✓ test_first_month_percent_off_is_one_month_not_the_whole_term: PASS")
+
+
+def test_property_name_prefix_does_not_break_the_address_key():
+    """
+    AUDIT.md §6.11: a lease (or typed address) that leads with the property
+    name -- "Maple Ridge Apartments, 100 Oak St, Unit 101, Austin, TX" --
+    never matched "100 Oak St, Austin, TX, Suite 101": a real rent gap
+    turned into two unpriced unit_no_lease / lease_no_unit rows.
+    """
+    a = "100 Oak St, Austin, TX 78701, Suite 101"
+    for b in ("Maple Ridge Apartments, 100 Oak St, Unit 101, Austin, TX 78701",
+              "The Maple Ridge, 100 Oak Street, Apt 101, Austin, TX 78701"):
+        assert _normalize_address(a) == _normalize_address(b), (b, _normalize_address(a), _normalize_address(b))
+        assert _normalize_building_address(a) == _normalize_building_address(b), b
+    # A name with no street number anywhere is left alone (nothing to anchor on).
+    assert _normalize_building_address("Maple Ridge Apartments") == "maple ridge apartments"
+    # Two different street numbers still differ.
+    assert _normalize_building_address("Maple Ridge, 100 Oak St") != _normalize_building_address("Maple Ridge, 102 Oak St")
+    print("✓ test_property_name_prefix_does_not_break_the_address_key: PASS")
+
+
+def test_report_t12_without_property_address_uses_the_single_rent_roll_building():
+    """
+    AUDIT.md §6.1(a): the report page posts a T-12 with no property_address
+    and always got 400 "t12_file requires property_address" -- the T-12
+    cross-check was unreachable from the UI. With one building on the
+    team's rent roll, that building is the scope; with several, the error
+    names them.
+    """
+    import io
+    client, db = _client_with_fresh_db(team_id=1)
+    try:
+        rr = b"Unit,Tenant,Rent\r\n101,Ann Lee,1000\r\n102,Bo Diaz,1000\r\n"
+        _post(client, "/leases/import-rent-roll", "rr.csv", rr, {"property_address": "100 Oak St, Austin, TX 78701"})
+        t12 = _t12_csv([("Gross Potential Rent", [2000.0] * 12), ("Net Rental Income", [1500.0] * 12)])
+        for path in ("/portfolio/deal-mismatch-report", "/portfolio/deal-mismatch-report.pdf", "/portfolio/deal-mismatch-report.xlsx"):
+            r = client.post(path, data={"t12_file": (io.BytesIO(t12), "t12.csv")}, content_type="multipart/form-data")
+            assert r.status_code == 200, (path, r.status_code, r.data[:200])
+        body = client.post("/portfolio/deal-mismatch-report", data={"t12_file": (io.BytesIO(t12), "t12.csv")},
+                           content_type="multipart/form-data").get_json()
+        assert [x["discrepancy_type"] for x in body["rent_roll_vs_actual_collections"]] == ["t12_income_gap"], body
+        _post(client, "/leases/import-rent-roll", "rr2.csv", b"Unit,Tenant,Rent\r\n1,Cy Ray,700\r\n", {"property_address": "5 Pine Ave, Austin, TX 78701"})
+        r = client.post("/portfolio/deal-mismatch-report", data={"t12_file": (io.BytesIO(t12), "t12.csv")}, content_type="multipart/form-data")
+        assert r.status_code == 400 and "5 Pine Ave" in r.get_json()["error"] and "100 Oak St" in r.get_json()["error"], r.get_json()
+    finally:
+        os.unlink(db)
+    print("✓ test_report_t12_without_property_address_uses_the_single_rent_roll_building: PASS")
+
+
+# ---------------------------------------------------------------- scanned rent rolls (OCR)
+def _ocr_import(fixture):
+    import json
+    from app.rent_roll_import import parse_rent_roll_file
+    with open(os.path.join(_GAUNTLET_FIX, "manifest.json")) as f:
+        m = json.load(f)
+    want = next(r for r in m["rent_rolls"] if r["file"] == f"rent_rolls/{fixture}")["expected_rent_roll"]
+    with open(os.path.join(_GAUNTLET_FIX, "rent_rolls", fixture), "rb") as f:
+        got = parse_rent_roll_file(f.read(), fixture, "1 A St")
+    from app.normalize import parse_currency
+    rents = {}
+    for l in got["leases"]:
+        unit = (l["extracted_fields"]["property_address"]["value"] or "").rsplit("Suite ", 1)[-1]
+        rents[unit] = parse_currency(l["extracted_fields"]["rent_amount"]["value"] or "")
+    right = sum(1 for u, w in want["occupied"].items() if rents.get(u) == w["rent"])
+    return got, want, right
+
+
+def test_scanned_rent_roll_columns_rebuilt_from_data_rows():
+    """
+    Scanned rent rolls: the OCR grid took its column anchors from the FIRST
+    text line -- the page title -- so each data row collapsed into one or
+    two cells and the file was rejected (or imported with "Avery Marchetti
+    Occupied 1,010" as the tenant). Columns now come from the header line
+    and the gutters every data row agrees on; speckle and edge junk
+    ("\u201c1102", "1203.") are cleaned. OCR still misreads the odd digit, so this
+    asserts most units, not all.
+    """
+    for fixture, min_right in (("p13__pdf_scanned.pdf", 9), ("p04__pdf_scanned.pdf", 7)):
+        got, want, right = _ocr_import(fixture)
+        assert right >= min_right, (fixture, right, len(want["occupied"]))
+        summary = next(iter(got["unit_summary"].values()))
+        assert sorted(summary["vacant_units"]) == sorted(want["vacant"]), (fixture, summary)
+    print("✓ test_scanned_rent_roll_columns_rebuilt_from_data_rows: PASS")
+
+
+def test_sideways_and_tilted_rent_roll_photo_is_turned_upright():
+    """
+    A rent roll scanned or photographed sideways (landscape page fed
+    portrait), and a little tilted, was OCR'd as-is and rejected. Tesseract's
+    orientation detection turns it upright and a projection-profile search
+    straightens the tilt before the grid is rebuilt.
+    """
+    import io, json
+    from pdf2image import convert_from_bytes
+    from app.rent_roll_import import parse_rent_roll_file
+    from app.normalize import parse_currency
+    with open(os.path.join(_GAUNTLET_FIX, "rent_rolls", "p00__pdf_text.pdf"), "rb") as f:
+        page = convert_from_bytes(f.read(), dpi=200)[0].convert("L")
+    sideways = page.rotate(1.0, expand=True, fillcolor=255).rotate(90, expand=True, fillcolor=255)
+    buf = io.BytesIO()
+    sideways.save(buf, format="PNG")
+    got = parse_rent_roll_file(buf.getvalue(), "rent_roll_photo.png", "1 A St")
+    with open(os.path.join(_GAUNTLET_FIX, "manifest.json")) as f:
+        want = next(r for r in json.load(f)["rent_rolls"] if r["file"] == "rent_rolls/p00__pdf_text.pdf")["expected_rent_roll"]
+    rents = {(l["extracted_fields"]["property_address"]["value"] or "").rsplit("Suite ", 1)[-1]:
+             parse_currency(l["extracted_fields"]["rent_amount"]["value"] or "") for l in got["leases"]}
+    right = sum(1 for u, w in want["occupied"].items() if rents.get(u) == w["rent"])
+    assert right >= len(want["occupied"]) - 1, (right, rents)
+    print("✓ test_sideways_and_tilted_rent_roll_photo_is_turned_upright: PASS")
+
+
+def test_tenant_names_ignore_accents_and_a_lost_space():
+    """
+    A rent roll from a scan, or typed on a US keyboard, writes "Francois
+    Delacroix" / "EzraQuintero" for the lease's "François Delacroix" /
+    "Ezra Quintero" -- flagged as a high-severity tenant mismatch.
+    """
+    from app.portfolio import _same_tenant
+    for a, b in (("Francois Delacroix", "François Delacroix"), ("Soren Agard", "Søren Ågård"),
+                 ("EzraQuintero", "Ezra Quintero"), ("QUINTERO, EZRA", "Ezra Quintero"), ("Renee Cote", "Renée Côté")):
+        assert _same_tenant(a, b), (a, b)
+    for a, b in (("Mateo Nakamura", "Malik Nakamura"), ("Ann Lee", "Anna Lee"), ("EzraQuintero", "Ezra Quinn")):
+        assert not _same_tenant(a, b), (a, b)
+    print("✓ test_tenant_names_ignore_accents_and_a_lost_space: PASS")
+
+
+def test_ocr_rent_that_cannot_be_a_rent_is_unreadable_not_a_finding():
+    """
+    OCR read a scan's "$1,475.00" as "$1.00"; the report priced a
+    $17,700/yr rent_mismatch on it. On OCR imports a rent between $0 and
+    $100 is treated as unreadable (no value, plus a warning naming the row).
+    """
+    from app import rent_roll_import as rri
+    from app.rent_roll_table_extract import ExtractedTable
+    rows = [["Unit", "Tenant", "Rent"], ["101", "Ann Lee", "$1.00"], ["102", "Bo Diaz", "$1,200.00"], ["103", "Cy Ray", "$0.00"]]
+    real = rri.__dict__.get("extract_rent_roll_table")
+    import app.rent_roll_table_extract as rte
+    orig = rte.extract_rent_roll_table
+    rte.extract_rent_roll_table = lambda b, f: ExtractedTable(rows, "image-ocr", ocr_confidence=80.0, warnings=["ocr"])
+    try:
+        got = rri.parse_rent_roll_file(b"x", "scan.png", "1 A St")
+    finally:
+        rte.extract_rent_roll_table = orig
+    rents = [l["extracted_fields"]["rent_amount"]["value"] for l in got["leases"]]
+    assert rents == [None, "$1,200.00", "$0.00"], rents
+    assert any("$1.00" in w for w in got["warnings"]), got["warnings"]
+    print("✓ test_ocr_rent_that_cannot_be_a_rent_is_unreadable_not_a_finding: PASS")
+
+
+def test_comma_decimal_amounts_are_read_correctly():
+    """
+    AUDIT.md §6.5: a European-locale spreadsheet writes 1.250,00 / 1250,00.
+    The rent-roll parser read "1.250,00" as $1.25 and "1250,00" as
+    $125,000 -- every unit an absurd rent mismatch. US "1,250" / "1,250.00"
+    are unchanged.
+    """
+    from app.rent_roll_import import _parse_import_currency
+    from app.t12_import import _parse_t12_currency
+    for fn in (_parse_import_currency, _parse_t12_currency):
+        for text, want in (("1.250,00", 1250.0), ("1250,00", 1250.0), ("€ 1.250,50", 1250.5), ("-1.250,00", -1250.0),
+                           ("12.500,00", 12500.0), ("1,250", 1250.0), ("1,250.00", 1250.0), ("$1,250.00", 1250.0),
+                           ("1,25", 1.25), ("125,000", 125000.0)):
+            assert fn(text) == want, (fn.__name__, text, fn(text))
+    print("✓ test_comma_decimal_amounts_are_read_correctly: PASS")
+
+
+def test_dotted_european_dates():
+    """European-locale exports write 31.03.2027 (day.month.year); parsed to None -> no lease dates."""
+    from app.normalize import parse_date
+    assert parse_date("31.03.2027") == date(2027, 3, 31)
+    assert parse_date("01.04.2026") == date(2026, 4, 1)   # dots mean day-first, even when both readings are valid
+    assert parse_date("1.4.26") == date(2026, 4, 1)
+    assert parse_date("31.13.2027") is None
+    print("✓ test_dotted_european_dates: PASS")
+
+
+def test_t24_reads_the_latest_twelve_months():
+    """
+    A T-24 (two years side by side, Oct 2024..Sep 2026) was parsed from the
+    FIRST column of each month name -- the older year -- so every T-12
+    figure was a year stale; "Trailing 12 Total" wasn't seen as the total.
+    """
+    import csv, io
+    from app.t12_statement import parse_csv_t12_statement
+    from app.t12_import import parse_csv_t12
+    older = ["Oct 2024", "Nov 2024", "Dec 2024"] + [f"{m} 2025" for m in _T12_MONTHS[:9]]
+    latest = ["Oct 2025", "Nov 2025", "Dec 2025"] + [f"{m} 2026" for m in _T12_MONTHS[:9]]
+    for with_total in (True, False):
+        buf = io.StringIO()
+        w = csv.writer(buf)
+        w.writerow(["Account"] + older + latest + (["Trailing 12 Total"] if with_total else []))
+        w.writerow(["Net Rental Income"] + ["800.00"] * 12 + ["900.00"] * 12 + (["10800.00"] if with_total else []))
+        data = buf.getvalue().encode()
+        got = parse_csv_t12_statement(data, "t24.csv")["rental_income_collected"]
+        assert got["annual"] == 10800.0 and got["month_order"][0] == "oct", (with_total, got)
+        assert parse_csv_t12(data, "t24.csv")["annual_rental_income"] == 10800.0, with_total
+    print("✓ test_t24_reads_the_latest_twelve_months: PASS")
+
+
+def test_two_copies_of_the_same_lease_count_once():
+    """
+    A buyer's folder often holds the same lease twice (signed and unsigned
+    copy, different bytes, so upload de-dup doesn't catch it). A real $60/mo
+    rent gap was then reported twice -- $1,440/yr counted instead of $720.
+    """
+    rr = _rr(tenant="Ann Lee", rent_amount="$1,060.00", property_address="1 A St, Suite 1")
+    copy_a = _doc(tenant="Ann Lee", rent_amount="$1,000.00", property_address="1 A St, Apt 1",
+                  lease_start_date="January 1, 2026", lease_end_date="December 31, 2026")
+    copy_b = _doc(tenant="Ann Lee", rent_amount="$1,000.00", property_address="1 A St, Apt 1",
+                  lease_start_date="January 1, 2026", lease_end_date="December 31, 2026")
+    rows = _report_rows([rr, copy_a, copy_b])
+    assert [(r["discrepancy_type"], r["annual_dollar_impact"]) for r in rows] == [("rent_mismatch", 720.0)], rows
+    print("✓ test_two_copies_of_the_same_lease_count_once: PASS")
+
+
+def test_rent_amendment_on_file_is_not_a_rent_mismatch():
+    """
+    A mid-term rent amendment uploaded as its own document reads as the
+    same tenant and term with the new rent. The rent roll correctly shows
+    the amended rent and was flagged against the ORIGINAL rent. Same tenant
+    + same term = versions of one lease: matching any version is fine, and
+    findings aren't duplicated across versions.
+    """
+    rr = _rr(tenant="Ann Lee", rent_amount="$1,935.00", property_address="1 A St, Suite 1",
+             lease_start_date="05/01/2026", lease_end_date="04/30/2027")
+    original = _doc(tenant="Ann Lee", rent_amount="$1,875.00", property_address="1 A St, Apt 1",
+                    lease_start_date="May 1, 2026", lease_end_date="April 30, 2027")
+    amendment = _doc(tenant="Ann Lee", rent_amount="$1,935.00", property_address="1 A St, Apt 1",
+                     lease_start_date="May 1, 2026", lease_end_date="April 30, 2027")
+    assert _report_rows([rr, original, amendment]) == []
+    # Reviewer follow-up: only the CURRENT version (latest upload) excuses a
+    # rent. A rent roll matching an OLDER version -- e.g. an amendment
+    # LOWERED the rent and the rent roll still shows the old one -- is
+    # flagged, unpriced, rather than silently accepted.
+    original_uploaded_last = _doc(tenant="Ann Lee", rent_amount="$1,875.00", property_address="1 A St, Apt 1",
+                                  lease_start_date="May 1, 2026", lease_end_date="April 30, 2027")
+    rows = _report_rows([rr, amendment, original_uploaded_last])
+    assert [(r["discrepancy_type"], r["annual_dollar_impact"], r["income_direction"]) for r in rows] == \
+        [("rent_mismatch", None, None)], rows
+    assert "earlier version" in rows[0]["note"], rows
+    # A rent matching neither version is ONE finding, priced against the latest upload (the amendment).
+    rr2 = _rr(tenant="Ann Lee", rent_amount="$2,035.00", property_address="1 A St, Suite 1",
+              lease_start_date="05/01/2026", lease_end_date="04/30/2027")
+    rows = _report_rows([rr2, original, amendment])
+    assert [(r["discrepancy_type"], r["annual_dollar_impact"]) for r in rows] == [("rent_mismatch", 1200.0)], rows
+    from app.portfolio import compute_rent_roll_reconciliation
+    assert compute_rent_roll_reconciliation([rr, original, amendment], today=TODAY)["mismatches"] == []
+    assert compute_rent_roll_reconciliation([rr, amendment, original_uploaded_last], today=TODAY)["mismatches"] != []
+    print("✓ test_rent_amendment_on_file_is_not_a_rent_mismatch: PASS")
+
+
+def test_ocr_t12_lines_that_dont_add_up_are_not_trusted():
+    """
+    AUDIT.md §6.13: OCR'd T-12 numbers were trusted like typed ones. On a
+    noisy scan, "Net Rental Income" came back as $10.81 for the year, which
+    would drive a huge false income-gap finding. An OCR'd line is now kept
+    only when its 12 months add up to its Total (within 1%); a scan where
+    nothing survives is a clear error, not a wrong report.
+    """
+    from app.t12_statement import parse_t12_statement_rows
+    from app.t12_import import T12ImportError
+    hdr = ["Account"] + _T12_MONTHS + ["Total"]
+    good = ["Gross Potential Rent"] + ["1,000.00"] * 12 + ["12,000.00"]
+    bad = ["Net Rental Income"] + ["900.00"] * 11 + ["9.00"] + ["10.81"]
+    got = parse_t12_statement_rows(hdr, [good, bad], "scan.pdf", ocr=True)
+    assert got["gross_potential_rent"]["annual"] == 12000.0
+    assert got["rental_income_collected"] is None, got["rental_income_collected"]
+    # Typed (non-OCR) files are unchanged.
+    assert parse_t12_statement_rows(hdr, [good, bad], "t12.csv")["rental_income_collected"]["annual"] == 10.81
+    try:
+        parse_t12_statement_rows(hdr, [bad], "scan.pdf", ocr=True)
+        raise AssertionError("garbage OCR T-12 accepted")
+    except T12ImportError as e:
+        assert "scan" in str(e).lower() or "ocr" in str(e).lower(), str(e)
+    print("✓ test_ocr_t12_lines_that_dont_add_up_are_not_trusted: PASS")
+
+
+def test_failed_reimport_leaves_the_previous_rent_roll_active():
+    """
+    Security-audit follow-up: re-import superseded the old rows BEFORE
+    inserting the new ones, so a failure mid-import left the building with
+    no active rent roll at all. New rows are now inserted first.
+    """
+    from app import database
+    client, db = _client_with_fresh_db(team_id=1)
+    real_insert = database.insert_lease
+    try:
+        v1 = b"Unit,Tenant,Rent\r\n101,Ann Lee,1000\r\n102,Bo Diaz,900\r\n"
+        assert _post(client, "/leases/import-rent-roll", "rr_v1.csv", v1, {"property_address": "100 Oak St"}).status_code == 201
+        calls = {"n": 0}
+
+        def flaky_insert(*a, **k):
+            calls["n"] += 1
+            if calls["n"] == 2:
+                raise RuntimeError("disk full")
+            return real_insert(*a, **k)
+
+        database.insert_lease = flaky_insert
+        import app.api as api_module
+        api_module.app.config["PROPAGATE_EXCEPTIONS"] = False
+        r = _post(client, "/leases/import-rent-roll", "rr_v2.csv", b"Unit,Tenant,Rent\r\n101,Ann Lee,1050\r\n102,Bo Diaz,900\r\n",
+                  {"property_address": "100 Oak St"})
+        assert r.status_code >= 500
+        database.insert_lease = real_insert
+        active = [l["filename"] for l in database.get_all_effective_leases(1)]
+        assert active.count("rr_v1.csv") == 2, active
+    finally:
+        database.insert_lease = real_insert
+        os.unlink(db)
+    print("✓ test_failed_reimport_leaves_the_previous_rent_roll_active: PASS")
+
+
+def test_huge_rent_roll_image_is_refused_and_tesseract_calls_have_timeouts():
+    """
+    Security-audit follow-up (medium/low): a <16 MB image can decode to
+    tens of millions of pixels, and OCR now makes extra full-size copies
+    (upright/deskew) -- enough to OOM a 512 MB worker. Decoding is capped;
+    every tesseract call has a timeout.
+    """
+    import io
+    from PIL import Image
+    from app.rent_roll_import import parse_rent_roll_file, RentRollImportError
+    buf = io.BytesIO()
+    Image.new("L", (7000, 7000), 255).save(buf, format="PNG")
+    try:
+        parse_rent_roll_file(buf.getvalue(), "huge.png", "1 A St")
+        raise AssertionError("huge image accepted")
+    except RentRollImportError as e:
+        assert "too large" in str(e).lower(), str(e)
+    import pytesseract
+    import app.rent_roll_table_extract as rte
+    seen = {}
+    real_data, real_osd = pytesseract.image_to_data, pytesseract.image_to_osd
+
+    def fake_data(img, **kw):
+        seen["data"] = kw.get("timeout")
+        return real_data(img, **kw)
+
+    def fake_osd(img, **kw):
+        seen["osd"] = kw.get("timeout")
+        raise RuntimeError("no osd")
+
+    pytesseract.image_to_data, pytesseract.image_to_osd = fake_data, fake_osd
+    try:
+        rte._ocr_image_to_rows(Image.new("RGB", (400, 200), "white"))
+    finally:
+        pytesseract.image_to_data, pytesseract.image_to_osd = real_data, real_osd
+    assert seen.get("data") and seen.get("osd"), seen
+    print("✓ test_huge_rent_roll_image_is_refused_and_tesseract_calls_have_timeouts: PASS")
+
+
+def test_review_unit_keys_never_merge_different_units():
+    """
+    Reviewer FIX FIRST #1/#2: "Unit 5, 100 Oak St" and "Unit 6, 100 Oak St"
+    both lost the unit (a leading unit segment was dropped as a "property
+    name"); "Bldg 1, Apt 12" and "Apt 112" collapsed to the same key.
+    """
+    assert _normalize_address("Unit 5, 100 Oak St, Austin") != _normalize_address("Unit 6, 100 Oak St, Austin")
+    assert _normalize_address("Unit 5, 100 Oak St, Austin") == _normalize_address("100 Oak St, Austin, Suite 5")
+    assert _normalize_address("100 Oak St, Building 1, Apt 12") != _normalize_address("100 Oak St, Apt 112")
+    assert _normalize_address("100 Oak St, Building 1, Apt 12") == _normalize_address("100 Oak St, Suite 1-12")
+    # Still equal: letter buildings with or without a dash, leading zeros, the garden-community form.
+    assert _normalize_address("9 Elm St, Suite A101") == _normalize_address("9 Elm St, Suite A-101")
+    assert _normalize_address("9 Elm St, Suite A-101") == _normalize_address("9 Elm St, Building A, Apartment 101")
+    assert _normalize_address("9 Elm St, Suite 0101") == _normalize_address("9 Elm St, Apt 101")
+    assert _normalize_building_address("Unit 5, 100 Oak St, Austin") == _normalize_building_address("100 Oak St, Austin")
+    print("✓ test_review_unit_keys_never_merge_different_units: PASS")
+
+
+def test_review_tenant_match_is_not_too_permissive():
+    """
+    Reviewer FIX FIRST #4: one shared roommate ("Alice Wong & Bob Lee" vs
+    "Alice Wong & Carl Diaz") or a generational suffix ("John Smith" vs
+    "John Smith Jr") counted as the same household, hiding real tenant
+    turnover. Every person on the smaller side must match someone on the
+    other side, and Jr/Sr/II/III must agree.
+    """
+    from app.portfolio import _same_tenant
+    for a, b in (("Alice Wong & Bob Lee", "Alice Wong & Carl Diaz"), ("John Smith", "John Smith Jr"),
+                 ("John Smith Sr.", "John Smith Jr."), ("John Smith III", "John Smith")):
+        assert not _same_tenant(a, b), (a, b)
+    for a, b in (("Alice Wong & Bob Lee", "Bob Lee"), ("Alice Wong & Bob Lee", "Bob Lee and Alice Wong"),
+                 ("SMITH, JOHN JR", "John Smith Jr."), ("John Q. Smith", "John Smith")):
+        assert _same_tenant(a, b), (a, b)
+    print("✓ test_review_tenant_match_is_not_too_permissive: PASS")
+
+
+def test_review_split_rent_roll_files_do_not_replace_each_other():
+    """
+    Reviewer FIX FIRST #3: a property's rent roll delivered as two files
+    (Building A units, Building B units -- same street address) was treated
+    as a re-import: the second file silently superseded the first, losing
+    half the units. A file only replaces an earlier one that covers the
+    same units; occupancy adds up across the files on record.
+    """
+    from app import database
+    from app.deal_mismatch import _rent_roll_unit_counts
+    client, db = _client_with_fresh_db(team_id=1)
+    try:
+        addr = {"property_address": "100 Oak St, Austin, TX 78701"}
+        a = b"Unit,Tenant,Rent\r\nA-101,Ann Lee,1000\r\nA-102,Bo Diaz,900\r\nA-103,VACANT,\r\n"
+        b = b"Unit,Tenant,Rent\r\nB-101,Cy Ray,950\r\nB-102,Di Fox,975\r\n"
+        assert _post(client, "/leases/import-rent-roll", "bldg_a.csv", a, addr).status_code == 201
+        r = _post(client, "/leases/import-rent-roll", "bldg_b.csv", b, addr)
+        assert r.status_code == 201 and r.get_json()["replaced_previous_rows"] == 0, r.get_json()
+        rows = database.get_all_effective_leases(1)
+        assert sorted(l["filename"] for l in rows) == ["bldg_a.csv", "bldg_a.csv", "bldg_b.csv", "bldg_b.csv"]
+        assert _rent_roll_unit_counts(1, rows) == {"occupied": 4, "total": 5}
+        # An updated Building A file replaces Building A only.
+        a2 = b"Unit,Tenant,Rent\r\nA-101,Ann Lee,1050\r\nA-102,Bo Diaz,900\r\nA-103,VACANT,\r\n"
+        r = _post(client, "/leases/import-rent-roll", "bldg_a_oct.csv", a2, addr)
+        assert r.get_json()["replaced_previous_rows"] == 2, r.get_json()
+        rows = database.get_all_effective_leases(1)
+        assert sorted(l["filename"] for l in rows) == ["bldg_a_oct.csv", "bldg_a_oct.csv", "bldg_b.csv", "bldg_b.csv"]
+        assert _rent_roll_unit_counts(1, rows) == {"occupied": 4, "total": 5}
+    finally:
+        os.unlink(db)
+    print("✓ test_review_split_rent_roll_files_do_not_replace_each_other: PASS")
+
+
+def test_pms_initials_and_truncated_names_match_the_lease():
+    """
+    PMS exports show "BELLWEATHER, D." or cut long names at the column
+    width ("Bastian Brightwa"); each was a high-severity tenant mismatch
+    against the lease's full name.
+    """
+    from app.portfolio import _same_tenant
+    for a, b in (("BELLWEATHER, D.", "Desmond Bellweather"), ("D. Bellweather", "Desmond Bellweather"),
+                 ("Bastian Brightwa", "Bastian Brightwater"), ("KOWALCZYK-BRIGHTW", "Kowalczyk-Brightwater")):
+        assert _same_tenant(a, b), (a, b)
+    for a, b in (("BELLWEATHER, M.", "Desmond Bellweather"), ("Bellweather", "Desmond Bellweather"),
+                 ("Ann Lee", "Ann Leeds"), ("BELLWEATHER, D. JR", "Desmond Bellweather")):
+        assert not _same_tenant(a, b), (a, b)
+    print("✓ test_pms_initials_and_truncated_names_match_the_lease: PASS")
+
+
+if __name__ == "__main__":
+    for name, fn in list(globals().items()):
+        if name.startswith("test_") and callable(fn):
+            fn()
+    print("\nAll gauntlet regression tests passed.")

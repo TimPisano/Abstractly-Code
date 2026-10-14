@@ -1,0 +1,17 @@
+Copper Canyon
+Rent Roll
+Report Date: 2026-10-05
+Bldg-Unit,Floor Plan,Resident,Status,Lease Start,Lease End,Market Rent,Scheduled Rent,Concession,Balance
+101,3x2,,Vacant,,,"1,900.00",,,
+102,1x1,,Vacant,,,"1,150.00",,,
+103,2x2,Theo Pemberton,Current,5/1/26,4/30/27,"1,475.00","1,450.00",0.00,0.00
+104,1x1,Bastian Drummond,Current,01-Jan-2026,31-Dec-2026,"1,250.00","1,250.00",0.00,0.00
+201,1x1,Hannah Zeller,Current,03/01/2026,02/28/2027,"1,225.00","1,225.00",0.00,0.00
+202,1x1,Renée Côté,Current,2026-02-01,2027-01-31,"1,200.00","1,200.00",0.00,0.00
+203,2x2,Callum Okafor,Current,3/1/26,2/28/27,"1,525.00","1,525.00",0.00,0.00
+204,3x2,Marisol Lindqvist,Current,01-Apr-2026,31-Mar-2027,"1,875.00","1,825.00",0.00,0.00
+301,2x2,Hannah Juarez,Current,01/01/2026,12/31/2026,"1,525.00","1,475.00",0.00,0.00
+302,1x1,,Down/Model,,,"1,175.00",,,
+303,2x2,Odette Dunmore,Current,4/1/26,3/31/27,"1,550.00","1,430.00",0.00,0.00
+
+Totals:,,,,,,,"11,380.00",,

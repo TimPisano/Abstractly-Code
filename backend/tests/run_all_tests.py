@@ -111,6 +111,10 @@ UNIT_TESTS = [
     # Demo deal rent-roll/lease/T12/report polish pass (2026-10) -- data-
     # driven regression guard, see its own module docstring.
     "test_demo_deal_regression.py",
+    "test_section8_fixtures.py",
+    # Overnight reliability gauntlet (qa/overnight-gauntlet, 2026-10-05):
+    # one regression test per bug the gauntlet found.
+    "test_gauntlet_regressions.py",
     # Section 8 pivot T1 (feature/s8-data-model).
     "test_section8_data_model.py",
 ]

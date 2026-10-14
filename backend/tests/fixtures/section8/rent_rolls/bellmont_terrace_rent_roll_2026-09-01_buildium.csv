@@ -1,0 +1,15 @@
+Property,Unit,Tenants,Status,Lease Start,Lease End,Rent,Tenant Payment,Housing Assistance Payment,Program,Recertification
+Bellmont Terrace,1A,Gideon Larchmont,Occupied,03/01/2026,02/28/2027,1105.00,275.00,830.00,Sec 8 PBRA,03/01/2027
+Bellmont Terrace,1B,Philippa Durnstone,Occupied,01/01/2026,12/31/2026,1105.00,240.00,865.00,Sec 8 PBRA,01/01/2027
+Bellmont Terrace,1C,Ezra Moffatt-Kell,Occupied,12/01/2025,11/30/2026,1265.00,390.00,875.00,Sec 8 PBRA,12/01/2026
+Bellmont Terrace,1D,Saoirse Benwick,Occupied,04/01/2026,03/31/2027,1265.00,318.00,947.00,Sec 8 PBRA,04/01/2027
+Bellmont Terrace,1E,Hollis Brandreth,Occupied,07/01/2026,06/30/2027,1150.00,1150.00,0.00,,
+Bellmont Terrace,2A,Abigail Thornquist,Occupied,08/01/2025,07/31/2026,1210.00,290.00,920.00,PBV,08/01/2026
+Bellmont Terrace,2B,Rufus Elverson,Occupied,02/01/2026,01/31/2027,1210.00,350.00,860.00,PBV,02/01/2027
+Bellmont Terrace,2C,Mireille Vantongeren,Occupied,04/01/2026,03/31/2027,1210.00,265.00,945.00,PBV,04/01/2027
+Bellmont Terrace,2D,Cassius Wrenfield,Occupied,05/01/2026,04/30/2027,1395.00,1395.00,0.00,,
+Bellmont Terrace,3A,Lorna Glasspool,Occupied,03/01/2026,02/28/2027,1240.00,400.00,840.00,PBV,03/01/2027
+Bellmont Terrace,3B,Tobias Ferncastle,Occupied,07/01/2026,06/30/2027,1240.00,287.00,953.00,PBV,07/01/2027
+Bellmont Terrace,3C,,Vacant,,,0.00,0.00,0.00,PBV,
+Bellmont Terrace,3D,Henrietta Quarles-Bain,Occupied,01/01/2026,12/31/2026,1240.00,330.00,910.00,PBV,01/01/2027
+Bellmont Terrace,3E,Percival Hartsough,Occupied,09/01/2026,08/31/2027,1495.00,1495.00,0.00,,
