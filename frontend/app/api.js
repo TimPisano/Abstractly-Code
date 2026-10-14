@@ -784,4 +784,46 @@ const Api = {
             body: JSON.stringify({ password }),
         });
     },
+
+    // Public flags (GET /config). section8_mode reveals the Section 8 nav;
+    // the /section8/* routes enforce the flag themselves.
+    getConfig() {
+        return apiRequest('/config');
+    },
+
+    // ---- Section 8 records (feature/s8-data-model's /section8/* routes:
+    // 404 unless SECTION8_MODE is on; viewer reads, analyst writes, admin
+    // backfill). Money goes in and comes out as dollar strings. No deletes:
+    // archive with update(id, { archived: true }). ----
+    s8: (() => {
+        const json = (method, body) => ({
+            method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body || {}),
+        });
+        const query = (filters) => {
+            const params = new URLSearchParams();
+            Object.entries(filters || {}).forEach(([k, v]) => {
+                if (v !== undefined && v !== null && v !== '') params.set(k, v);
+            });
+            const qs = params.toString();
+            return qs ? `?${qs}` : '';
+        };
+        const resource = (path) => ({
+            list: (filters) => apiRequest(`/section8/${path}${query(filters)}`),
+            get: (id) => apiRequest(`/section8/${path}/${id}`),
+            create: (body) => apiRequest(`/section8/${path}`, json('POST', body)),
+            update: (id, body) => apiRequest(`/section8/${path}/${id}`, json('PATCH', body)),
+        });
+        return {
+            phas: resource('phas'),
+            properties: resource('properties'),
+            units: resource('units'),
+            tenancies: resource('tenancies'),
+            hapContracts: resource('hap-contracts'),
+            linkUnitDocument: (unitId, body) => apiRequest(`/section8/units/${unitId}/documents`, json('POST', body)),
+            updateUnitDocument: (linkId, body) => apiRequest(`/section8/unit-documents/${linkId}`, json('PATCH', body)),
+            backfill: (apply) => apiRequest('/section8/backfill', json('POST', { apply: !!apply })),
+        };
+    })(),
 };
