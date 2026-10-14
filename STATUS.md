@@ -5,6 +5,16 @@ Times are CDT.
 
 ## TL;DR
 
+> **Update 23:20:** while this session worked, the merger session (`10959d5d`,
+> holds the merge lock) merged `qa/overnight-gauntlet` into **local** `main`
+> as `b63927d` (you approved it there). Its `git push origin main` was blocked
+> by the auto-mode permission classifier, so **it is not live yet**: push
+> `main` yourself (`git -C ~/dev/projects/lease-abstraction push origin main`).
+> T9's reviewer also found a **T1 bug**: unlinking a document and then
+> re-linking it returns 409 (`unit_documents` UNIQUE counts archived rows).
+> So `feature/s8-data-model` is **FIX FIRST** until that's fixed on T1 with a
+> regression test. The table and order below are updated for both.
+
 - **Nothing was merged into `main` and `main` was not pushed by this session.**
   Two reasons, both hard stops in this repo:
   1. Other sessions were **still running**. `feature/s8-unit-file-and-phas` (T9)
@@ -31,9 +41,9 @@ Times are CDT.
 
 | Branch | On origin/main? | Tip | Tests | Review | Merge-ready? |
 |---|---|---|---|---|---|
-| `qa/overnight-gauntlet` | **No** | `906eaab` | 88/88 combined | reviewer + security-auditor MERGE (TASKS) | Yes, merge **1st** |
+| `qa/overnight-gauntlet` | **Merged locally `b63927d`, NOT pushed** | `906eaab` | 88/88 combined; 85/85 on merged main (merger session) | reviewer + security-auditor MERGE | Done; **push `main`** |
 | `fix/section8-tenant-share` | **No** | `5fa9e5f` | 88/88 combined | reviewer MERGE (TASKS) | Yes, **2nd** |
-| `feature/s8-data-model` (T1) | **No** | `b6caf9a` | 88/88 combined | security-auditor MERGE; reviewer FIX FIRST done (TASKS) | Yes, **3rd** |
+| `feature/s8-data-model` (T1) | **No** | `b6caf9a` | 88/88 combined | security-auditor MERGE; **new FIX FIRST: unlink → re-link 409** (found by T9's reviewer) | **No, fix first** |
 | `feature/s8-unit-file-and-phas` (T9) | No | `d893c56` (moving) | 88/88 combined | **none yet**; TASKS still says "plan awaiting approval" | **No: still being built** |
 | `feature/s8-sample-data` (T13) | No | `9ae1be2` + 1 unpushed local commit | 88/88 combined | **none yet** | **No: still being built** |
 | `feature/s8-marketing-copy` (new, this session) | No | `f205979` | 84/84 | reviewer FIX FIRST → fixed (see Part 3) | Yes, **after** `fix/section8-tenant-share` |
@@ -247,11 +257,12 @@ copy live) and `curl -s -o /dev/null -w "%{http_code}" https://abstractly-demo-a
 
 1. Glance at Part 3's copy; it's your public positioning.
 2. In **one** session (only one may merge at a time), type, one per message:
-   - `/merge-branch qa/overnight-gauntlet`
+   - ~~`/merge-branch qa/overnight-gauntlet`~~: already merged locally;
+     **push `main`** and let the merger session finish and release its lock
    - `/merge-branch fix/section8-tenant-share`
-   - `/merge-branch feature/s8-data-model` (resolve `database.py` as described
-     in Part 1)
-   - `/merge-branch feature/s8-marketing-copy`
+   - `/merge-branch feature/s8-marketing-copy` (does **not** need T1)
+   - `/merge-branch feature/s8-data-model` only **after** the unlink/re-link
+     fix lands on it (resolve `database.py` as described in Part 1)
    - `/merge-branch docs/launch-status`
    Each merge pushes `main`, which redeploys **all three** services. Merging
    them back to back, then pushing once, avoids three rebuilds of the free
