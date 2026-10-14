@@ -64,7 +64,10 @@ def test_config_reports_local_dev_mode_off_by_default():
     with mock.patch("app.api.LOCAL_DEV_MODE", False):
         resp = app.test_client().get("/config")
         assert resp.status_code == 200
-        assert resp.get_json() == {"local_dev_mode": False}
+        body = resp.get_json()
+        assert body["local_dev_mode"] is False
+        # Public endpoint: only these boolean flags, nothing else (section8_mode: test_section8_data_model.py).
+        assert set(body) == {"local_dev_mode", "section8_mode"}, body
     print("✓ test_config_reports_local_dev_mode_off_by_default: PASS")
 
 
@@ -72,7 +75,10 @@ def test_config_reports_local_dev_mode_on_when_set():
     with mock.patch("app.api.LOCAL_DEV_MODE", True):
         resp = app.test_client().get("/config")
         assert resp.status_code == 200
-        assert resp.get_json() == {"local_dev_mode": True}
+        body = resp.get_json()
+        assert body["local_dev_mode"] is True
+        # Public endpoint: only these boolean flags, nothing else (section8_mode: test_section8_data_model.py).
+        assert set(body) == {"local_dev_mode", "section8_mode"}, body
     print("✓ test_config_reports_local_dev_mode_on_when_set: PASS")
 
 
