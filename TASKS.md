@@ -95,6 +95,7 @@ those by taking **main's** TASKS.md, not the branch's.
 
 | Branch | Worktree | +/− main | State |
 |---|---|---|---|
+| `feature/s8-inspections` | `~/dev/projects/abstractly-s8-inspections` | — | **T6 of the Section 8 pivot.** Stacked on `feature/s8-data-model` (T1, unmerged) + `main`, 2026-10-13. Team-scoped `inspections` + `inspection_items`, manual entry + PHA inspection-report import, cure-deadline / reinspection tracking with per-PHA rule defaults, expected-abatement context for T5. Behind `SECTION8_MODE`. **Merge only after T1.** **Plan written, awaiting user approval** — `docs/plans/feature-s8-inspections.md`. |
 | `feature/s8-hap-payment-import` | `~/dev/projects/abstractly-s8-hap-payments` | — | **T4 of the Section 8 pivot.** Stacked on `feature/s8-data-model` (T1, unmerged) + `main`, 2026-10-13. Parse PHA HAP payment registers (CSV/XLSX/PDF) into a team-scoped `hap_payments` table behind `SECTION8_MODE`. **Merge only after T1.** **Plan written, awaiting user approval** — `docs/plans/feature-s8-hap-payment-import.md`. |
 | `feature/s8-pii-guard` | `~/dev/projects/abstractly-s8-pii-guard` | — | **T0 of the Section 8 pivot.** Branched off `main` 2026-10-13. Mask/drop SSN, DOB and bank numbers before storage (extraction quotes, date candidates, free-text notes) and before Anthropic; scrub tracebacks from alert emails; per-team "AI processing off" switch (Q5 decision). Must merge before testers upload real tenant docs. **Plan written, awaiting user approval** — `docs/plans/feature-s8-pii-guard.md`. |
 | `feature/s8-unit-file-and-phas` | `~/dev/projects/abstractly-s8-unit-file` | +5 / −0 | **Built, pushed `d893c56`; reviewer FIX FIRST on a T1 bug (see handoff).** T9 of the Section 8 pivot, stacked on `feature/s8-data-model` `b6caf9a` (T1, unmerged). Section 8 nav group (above Overview; hidden unless `GET /config` → `section8_mode: true`) with Units list (grouped by property, household/PHA/program/contract/tenant/HAP), unit file (current tenancy edit + record new w/ `end_current`, HAP contracts, documents link/kind/unlink → lease detail, past tenancies), Housing Authorities directory (add/edit/archive, show archived), admin “Group uploads into units” backfill with dry-run preview. Only backend change: `/config` boolean. Suite **84/84** on `d893c56`. security-auditor **MERGE**. Headless click-through + screenshots 1440/768/375 looked at (flag on/off, viewer read-only, no horizontal overflow). **Cannot merge before T1.** |
@@ -109,6 +110,13 @@ those by taking **main's** TASKS.md, not the branch's.
 
 
 ### Handoff blocks
+
+#### feature/s8-inspections
+- Worktree: ~/dev/projects/abstractly-s8-inspections
+- Goal: track every unit's inspections, deficiencies, cure deadlines and reinspections (per-PHA rules), and expose expected HAP abatement for T5, behind SECTION8_MODE.
+- Loop step: 3 — plan written, waiting for user approval
+- Last update: 2026-10-13 by start-task
+- Next action: user reviews docs/plans/feature-s8-inspections.md (base = T1; merge after T1)
 
 #### feature/s8-hap-payment-import
 - Worktree: ~/dev/projects/abstractly-s8-hap-payments
