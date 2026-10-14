@@ -373,7 +373,10 @@ def _resolve_section8_rent(column_mapping, headers, row, cell):
             if detail:
                 detail += " and "
             detail += f"negative HAP {_money(hap)}"
-        return None, None, "low", {**check, "kind": "negative_amount", "detail": detail}
+        flagged = {**check, "kind": "negative_amount", "detail": detail}
+        if rent is not None:
+            return rent, quote, "low", flagged
+        return None, None, None, flagged
 
     if has_hap and hap_raw is not None and hap is None:
         # "pending", "see PHA" -- not a dollar amount, and not $0 either.

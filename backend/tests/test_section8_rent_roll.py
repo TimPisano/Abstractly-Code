@@ -323,19 +323,30 @@ def test_subtotal_row_skips_section8_check():
 def test_negative_tenant_share_is_flagged():
     """Bug fix 3: negative tenant share should be flagged as warning."""
     got = _csv("Unit,Resident,Contract Rent,Tenant Rent,HAP\n101,Ann Lee,1400.00,-200.00,1600.00\n")
-    checks = [c for c in _checks(got) if c["kind"] == "negative_amount"]
-    # Should flag as a problem (negative amount check)
-    assert len(checks) > 0 or len(_checks(got)) > 0, got  # should have some flag
+    # -200 + 1600 = 1400 adds up, so only the negative-amount check can flag it.
+    assert [c["kind"] for c in _checks(got)] == ["negative_amount"], _checks(got)
+    assert got["leases"][0]["extracted_fields"]["rent_amount"]["confidence"] == "low", got
     print("✓ test_negative_tenant_share_is_flagged: PASS")
 
 
 def test_negative_hap_is_flagged():
     """Bug fix 3: negative HAP should be flagged as warning."""
     got = _csv("Unit,Resident,Contract Rent,Tenant Rent,HAP\n101,Ann Lee,1400.00,1600.00,-200.00\n")
-    checks = [c for c in _checks(got) if c["kind"] == "negative_amount"]
-    # Should flag as a problem (negative amount check)
-    assert len(checks) > 0 or len(_checks(got)) > 0, got  # should have some flag
+    assert [c["kind"] for c in _checks(got)] == ["negative_amount"], _checks(got)
+    assert got["leases"][0]["extracted_fields"]["rent_amount"]["confidence"] == "low", got
     print("✓ test_negative_hap_is_flagged: PASS")
+
+
+def test_appfolio_total_row_gives_no_section8_warning():
+    """The AppFolio export's footer row (unit "Total", blank tenant, sums
+    that don't add up) used to produce "Unit Total (row N) ... off by $30".
+    Mirrors qa/section8-fixtures' juniper_row_rent_roll_2026-10-01_appfolio.csv."""
+    got = _csv("Unit,BD/BA,Tenant,Status,Move-in,Lease From,Lease To,Market Rent,Rent,Tenant Portion,HAP,Subsidy,Next Recert\n"
+               "210,3BR/2BA,Kestrel Imbody,Occupied,09/01/2023,09/01/2025,08/31/2026,1410.00,1380.00,380.00,1000.00,HCV Voucher,09/01/2026\n"
+               "Total,,16 occupied / 18 units,,,,,23060.00,20785.00,13092.00,7663.00,,\n")
+    assert not any("Total" in str(c.get("unit")) for c in _checks(got)), _checks(got)
+    assert not any("Total" in w for w in got.get("warnings", [])), got.get("warnings")
+    print("✓ test_appfolio_total_row_gives_no_section8_warning: PASS")
 
 
 if __name__ == "__main__":
