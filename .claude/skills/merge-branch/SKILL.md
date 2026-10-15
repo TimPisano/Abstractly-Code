@@ -1,6 +1,6 @@
 ---
 name: merge-branch
-description: Merge one reviewed branch into main, push main, smoke test, update TASKS.md, remove the worktree. Loop steps 11-13. User-only — the user types /merge-branch <branch> in the designated merger session; that typed command is the approval.
+description: Merge one reviewed branch into main, run tests, update TASKS.md, remove the worktree, then stop and remind the user to push main themselves; smoke test after they push. User-only — the user types /merge-branch <branch> in the designated merger session; that typed command is the approval.
 argument-hint: "<branch>"
 disable-model-invocation: true
 ---
@@ -14,7 +14,7 @@ disable-model-invocation: true
 Branch to merge: **$ARGUMENTS**
 
 The user typing `/merge-branch <branch>` in this session is the approval
-(CLAUDE.md rule 2). The project hooks recorded it for this session only,
+(CLAUDE.md → Git). The project hooks recorded it for this session only,
 for 2 hours, and they enforce a **single repo-wide merge lock**: if
 another session is merging, every main-changing command here is blocked.
 Don't work around a block — report it and wait.
@@ -61,15 +61,31 @@ P=$(git rev-parse --path-format=absolute --git-common-dir); P=${P%/.git}   # pri
 cd $P && backend/venv/bin/python backend/tests/run_all_tests.py
 ```
 
-Any non-OCR failure → **don't push**. Report it; ask whether to revert the
-merge (`git -C $P reset --hard ORIG_HEAD`, needs the user's yes).
+Any non-OCR failure → report it and stop; tell the user not to push.
+Ask whether to revert the merge (`git -C $P reset --hard ORIG_HEAD`,
+needs the user's yes).
 
-## 4. Push
+## 4. Clean up and release (never push main)
 
-Tell the user in one line: "Pushing main redeploys prod, tester, and demo
-on Render." Then `git -C $P push origin main`.
+The user pushes `main` themselves (CLAUDE.md → Git). This skill never
+runs `git push origin main`.
 
-## 5. Smoke test (headless only — never open a browser)
+- TASKS.md (primary): move the row to **Done** with the merge SHA,
+  marked "merged locally, awaiting user push"; delete its handoff block;
+  add a Decisions log line for any non-mechanical choice. Commit
+  `-- TASKS.md` on main.
+- `git -C $P worktree remove ${P%/*}/abstractly-<topic>` (only if
+  clean — if dirty, ask) and `git -C $P branch -d <branch>`.
+- **Always** release the lock, including after a failure:
+  `python3 $P/.claude/hooks/guard.py merge-lock release ${CLAUDE_SESSION_ID}`
+
+## 5. Stop and remind the user to push
+
+Show `git -C $P log --oneline origin/main..main` (everything a push
+would ship), then end with: "Pushing main redeploys prod, tester, and
+demo on Render. When ready, run: `! git push origin main`". Stop here.
+
+## 6. Smoke test (only after the user says they pushed; headless only)
 
 After Render redeploys (poll `curl -s https://abstractly-tester-api.onrender.com/health`
 every ~30s, up to 10 min), check the tester deployment with `curl` and
@@ -77,14 +93,4 @@ every ~30s, up to 10 min), check the tester deployment with `curl` and
 (Read the PNGs). Cover: `/health`, login, Maple Ridge lease + rent roll
 upload, Deal Mismatch Report, PDF/Excel export, T-12 cross-check — as
 far as possible without real credentials; say which steps need the user.
-
-## 6. Clean up and release
-
-- TASKS.md (primary): move the row to **Done** with the merge SHA and
-  smoke-test result; delete its handoff block; add a Decisions log line
-  for any non-mechanical choice. Commit `-- TASKS.md` and push main
-  again (still covered by this session's approval).
-- `git -C $P worktree remove ${P%/*}/abstractly-<topic>` (only if
-  clean — if dirty, ask) and `git -C $P branch -d <branch>`.
-- **Always** release the lock, including after a failure:
-  `python3 $P/.claude/hooks/guard.py merge-lock release ${CLAUDE_SESSION_ID}`
+Record the result in TASKS.md (TASKS.md-only commit; don't push).
