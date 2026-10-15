@@ -1,0 +1,17 @@
+metric,value,units,source,notes
+Total US commercial buildings (CBECS 2018),5900000,buildings,https://www.eia.gov/consumption/commercial/,EIA CBECS 2018 reported ~5.9M commercial buildings (use as high-level population anchor)
+Addressable institutional properties - low,200000,buildings,Estimate (CBRE/JLL/CoStar proxies),Conservative: professionally-managed properties where lease docs & rent-rolls exist
+Addressable institutional properties - mid,350000,buildings,Estimate (CBRE/JLL/CoStar proxies),Base-case
+Addressable institutional properties - high,500000,buildings,Estimate (CBRE/JLL/CoStar proxies),Optimistic
+Average units per customer,200,units,Assumption,Average portfolio size used to convert properties->customers
+Estimated customers (low),=200000/200,customers,calculated,= Addressable_low / units_per_customer -> 1,000
+Estimated customers (mid),=350000/200,customers,calculated,= Addressable_mid / units_per_customer -> 1,750
+Estimated customers (high),=500000/200,customers,calculated,= Addressable_high / units_per_customer -> 2,500
+ACV - conservative,15000,USD,Assumption,Subscription + per-upload fees (conservative)
+ACV - base,30000,USD,Assumption,Base pricing assumption used in memo
+ACV - upside,45000,USD,Assumption,Enterprise + services bundle
+SOM ARR - low,15000000,USD,calculated,= Estimated_customers_low * ACV_conservative -> 1,000 * 15k
+SOM ARR - mid,52500000,USD,calculated,= Estimated_customers_mid * ACV_base -> 1,750 * 30k
+SOM ARR - high,112500000,USD,calculated,= Estimated_customers_high * ACV_upside -> 2,500 * 45k
+PMS market reference (global 2025),3600000000,USD,https://www.grandviewresearch.com/industry-analysis/property-management-software-market,Grand View Research property-management software market (2025 base)
+Notes,, , ,"Replace estimate rows with direct CBRE/CoStar/Trepp counts where available; run sensitivity analysis by changing units/customer and ACV"
