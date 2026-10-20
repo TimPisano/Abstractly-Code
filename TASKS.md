@@ -95,6 +95,7 @@ those by taking **main's** TASKS.md, not the branch's.
 
 | Branch | Worktree | +/− main | State |
 |---|---|---|---|
+| `feature/tester-ready` | `~/dev/projects/abstractly-tester-ready` | +5 / 0 | Branched off `main` `71889b4` 2026-10-19. Testers log in to **prod** as teams: (1) merge `feature/auth-hardening` ✅ `8125f04`, suite **85/85**; (2) confirm prod DB on the disk + fix stale `render.yaml` isolation comment; (3) team-admin invites by 72h email link behind `TEAM_INVITES_ENABLED`; (4) monthly page limit default 1,000, blocks uploads that *would* go over, before any AI; (5) two-account isolation test; (6) headless click-through. **Owns usage limits** (`usage_limits.py`, `test_usage_limits.py`). Not pushed (user instruction). |
 | `feature/s8-inspections` | `~/dev/projects/abstractly-s8-inspections` | — | **T6 of the Section 8 pivot.** Stacked on `feature/s8-data-model` (T1, unmerged) + `main`, 2026-10-13. Team-scoped `inspections` + `inspection_items`, manual entry + PHA inspection-report import, cure-deadline / reinspection tracking with per-PHA rule defaults, expected-abatement context for T5. Behind `SECTION8_MODE`. **Merge only after T1.** **Plan written, awaiting user approval** — `docs/plans/feature-s8-inspections.md`. |
 | `feature/s8-hap-payment-import` | `~/dev/projects/abstractly-s8-hap-payments` | — | **T4 of the Section 8 pivot.** Stacked on `feature/s8-data-model` (T1, unmerged) + `main`, 2026-10-13. Parse PHA HAP payment registers (CSV/XLSX/PDF) into a team-scoped `hap_payments` table behind `SECTION8_MODE`. **Merge only after T1.** **Plan written, awaiting user approval** — `docs/plans/feature-s8-hap-payment-import.md`. |
 | `feature/s8-pii-guard` | `~/dev/projects/abstractly-s8-pii-guard` | — | **T0 of the Section 8 pivot.** Branched off `main` 2026-10-13. Mask/drop SSN, DOB and bank numbers before storage (extraction quotes, date candidates, free-text notes) and before Anthropic; scrub tracebacks from alert emails; per-team "AI processing off" switch (Q5 decision). Must merge before testers upload real tenant docs. **Plan written, awaiting user approval** — `docs/plans/feature-s8-pii-guard.md`. |
@@ -110,6 +111,16 @@ those by taking **main's** TASKS.md, not the branch's.
 
 
 ### Handoff blocks
+
+#### feature/tester-ready
+- Worktree: ~/dev/projects/abstractly-tester-ready (venv symlinked to the primary checkout's)
+- Goal: testers sign in to prod as teams, invite teammates by email, share one team's data, and stay inside a monthly page limit.
+- Loop step: 4 — building, one step at a time; user reviews a diff + test results after each step and approves every edit. Step 1 done (`8125f04`, suite 85/85).
+- Last update: 2026-10-19 by the tester-ready session
+- Decisions (user, 2026-10-19): testers use prod, not the tester server; "team owner" = team `admin` role, "me as admin" = platform owner console; removing a member = deactivate; invites behind `TEAM_INVITES_ENABLED` (default off); `DEFAULT_MONTHLY_PAGE_QUOTA` 2000 → 1000 is the only edit allowed in `usage_limits_config.py`; step 6 runs headless Playwright, no visible browser; no push, no deploy.
+- Usage-limit bugs this branch fixes: `check_team_quota` blocks only teams already at/over (must block uploads that would go over); `check_file_limits` never counts PDF pages (`extract_pages(..., None)` raises and is swallowed).
+- Follow-up, not this branch: 2 GB chunked resumable direct-to-R2 uploads (local storage fallback, R2 setup doc) as a new branch stacked on `feature/large-files-any-type`, after that branch lands. It calls this branch's page check before any AI. Suggested per-file limits with `LARGE_FILE_UPLOADS` on (documented only, not applied): `MAX_PAGES_PER_FILE` 1000, `MAX_FILE_SIZE_MB` 2048, `LEASE_EXTRACTION_JOB_TIMEOUT_SECONDS` 3600 (measure on Render first).
+- Next action: step 2 — confirm prod DB path on the disk, then propose the `render.yaml` comment fix for approval
 
 #### feature/s8-inspections
 - Worktree: ~/dev/projects/abstractly-s8-inspections
