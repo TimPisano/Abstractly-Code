@@ -1,6 +1,6 @@
 # Affordable-Housing Extraction: Baseline
 
-**Date:** 2026-10-19 · **Branch:** `research/affordable-housing` · **Engine measured:** regex (the default; offline) · **AI engine:** not run (see "Not measured")
+**Date:** 2026-10-19 · **Branch:** `research/affordable-housing` · **Engine measured:** regex (the default; offline) · **AI engine:** attempted 2026-10-19, blocked by API billing (see "Regex vs AI")
 **Harness:** [`tests/eval/affordable/`](../../tests/eval/affordable/README.md) · raw results: [`results/regex.json`](../../tests/eval/affordable/results/regex.json)
 
 ## What was measured
@@ -26,6 +26,20 @@
 \* All five scan "hits" are addresses that only pass the matcher's substring rule. The extracted value carries trailing label text, e.g. "2250 Magnolia Ferry Road, … Unit Number: 114 #Bedrooms: 1". A strict matcher would score them wrong.
 
 **In one line:** the text gets through, but the extractor doesn't read forms, and when it's wrong it says "high confidence".
+
+## Regex vs AI
+
+| Variant | Lease fields right: regex | Lease fields right: AI (`claude-sonnet-5`, prompt v2) | Program fields extracted: regex | Program fields extracted: AI |
+|---|---|---|---|---|
+| clean | 0 / 48 (0%) | **not run** | 0% | not run (0% by construction) |
+| acroform | 0 / 24 (0%) | **not run** | 0% | not run (0% by construction) |
+| scan | 5 / 48 (10%) | **not run** | 0% | not run (0% by construction) |
+
+- **Why the AI column is empty.** The run was approved and attempted. The first call returned HTTP 400, "Your credit balance is too low to access the Anthropic API" (request `req_011CgChTW6Ezbv7PeSfEmsb2`). I stopped there: no retries, no other key. The runner now records a failed AI call as a failed upload instead of crashing.
+- **To fill it in once credits are added** (41 calls, all variants):
+  `backend/venv/bin/python -I tests/eval/affordable/run_eval.py --engine ai`
+  It writes `results/ai.json`, with the model, call count and token totals.
+- **What to expect.** The AI engine fills the same 15 lease fields, so **program fields stay at 0% whatever it scores**. It also reads the same text, so on unflattened fillable forms it starts from the same 21% of values. Its lease-field score is the open question: it decides how much form-specific work the plan needs ([affordable-extraction-plan.md](../plans/affordable-extraction-plan.md), step 0).
 
 ## Accuracy by document type
 
@@ -100,8 +114,7 @@ Lease-field recall is right / stated. "Program text" is the share of program val
 
 ## Not measured, and limits
 
-- **The AI engine wasn't run.** It sends each document to the Anthropic API, and CLAUDE.md says to ask before live API calls. It's likely to do far better on forms, but its schema has the same 15 lease fields, so program fields would still be 0%. To run it (clean only, about 16 calls):
-  `ANTHROPIC_API_KEY=… backend/venv/bin/python -I tests/eval/affordable/run_eval.py --engine ai --variants clean`
+- **The AI engine is unmeasured.** It was blocked on API billing; see "Regex vs AI" for the error and the rerun command.
 - **Synthetic fills.** Values are typed in Helvetica: no handwriting, no stamps, no real-world mess. Scans are simulated, not from a real scanner. One household per form.
 - **Answer keys are our own.** The mapping of form fields to lease fields is a judgment call; for example, TIC tenant rent counts as `rent_amount`, and move-in date doesn't count as lease start. Change the key and rerun if you disagree.
 - **Matcher looseness.**
