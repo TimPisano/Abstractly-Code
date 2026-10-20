@@ -794,4 +794,25 @@ const Api = {
             body: JSON.stringify({ password }),
         });
     },
+
+    // ---- Team invites (backend: /team/invites, behind TEAM_INVITES_ENABLED) ----
+    listTeamInvites() {
+        return apiRequest('/team/invites');
+    },
+
+    createTeamInvite({ email, name, role }) {
+        return apiRequest('/team/invites', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, name, role }),
+        });
+    },
+
+    resendTeamInvite(inviteId) {
+        return apiRequest(`/team/invites/${inviteId}/resend`, { method: 'POST' });
+    },
+
+    revokeTeamInvite(inviteId) {
+        return apiRequest(`/team/invites/${inviteId}/revoke`, { method: 'POST' });
+    },
 };

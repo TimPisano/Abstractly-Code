@@ -3040,6 +3040,18 @@
     display: none;
 }
 
+/* Present for password managers (the username a new password is saved
+   under), invisible on screen. Same rule as auth.css's, for the pages
+   that load this stylesheet instead (team-setup.html). */
+.visually-hidden {
+    position: absolute !important;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+}
+
 /* When the dead-link recovery link IS showing, it and "Back to sign in"
    are two separate destinations and must not run together on one line. */
 #resetRequestNewLink:not([hidden]) {

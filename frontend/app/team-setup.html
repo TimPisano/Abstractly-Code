@@ -37,9 +37,12 @@
                 <span>Abstractly</span>
             </div>
 
-            <h1>Set your password</h1>
-            <p class="access-gate-subtitle">Your workspace is ready. Choose a password to finish setting up your login — at least 8 characters. Nobody at Abstractly will see it.</p>
+            <h1 id="setupHeading">Set your password</h1>
+            <p class="access-gate-subtitle" id="setupSubtitle">Your workspace is ready. Choose a password to finish setting up your login — at least 8 characters. Nobody at Abstractly will see it.</p>
             <form id="setupForm">
+                <!-- Invite links only (team-setup.js fills it): the email a
+                     password manager saves the new password under. -->
+                <input type="email" id="username" name="username" autocomplete="username" class="visually-hidden" tabindex="-1" aria-hidden="true" readonly>
                 <input type="password" id="setupPassword" class="text-input" placeholder="New password" required autocomplete="new-password" minlength="8" aria-label="New password">
                 <input type="password" id="setupPasswordConfirm" class="text-input" placeholder="Confirm new password" required autocomplete="new-password" minlength="8" aria-label="Confirm new password">
                 <button type="submit" class="btn-primary" id="setupSubmitBtn">Set password and continue</button>
@@ -51,6 +54,7 @@
             <p class="access-gate-link" id="setupDeadLinkNote" hidden>Ask whoever set up your team to invite you again.</p>
         </div>
     </main><script src="../config.js"></script>
-    <script src="team-setup.js"></script>
+    <script src="auth-common.js?v=1"></script>
+    <script src="team-setup.js?v=2"></script>
 </body>
 </html>
