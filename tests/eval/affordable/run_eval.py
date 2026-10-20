@@ -82,8 +82,13 @@ def run_pipeline(pdf_path: Path, engine: str):
     sub_pages = [p for p in pages if start <= p["page"] <= end]
     if engine == "ai":
         from app import ai_extraction
-        fields = ai_extraction.extract_lease_fields(sub_pages)
-        fields.pop("_ai_meta", None)
+        try:
+            fields = ai_extraction.extract_lease_fields(sub_pages)
+        except ai_extraction.AIExtractionError as e:
+            # The app shows the upload as failed; score it as nothing extracted.
+            out.update(status="ai_error", ai_error=str(e)[:300])
+            return out
+        out["ai_meta"] = fields.pop("_ai_meta", None)
     else:
         fields = fx.extract_fields(sub_pages)
     out["fields"] = fields
@@ -223,6 +228,8 @@ def evaluate(key: dict, engine: str, variant: str = "clean") -> dict:
         "lease_ranges": result["ranges"],
         "pages": len(result["pages"]),
         "mean_ocr_confidence": round(sum(ocr) / len(ocr), 1) if ocr else None,
+        "ai_meta": result.get("ai_meta"),
+        "ai_error": result.get("ai_error"),
         "lease_fields": {
             "stated": len(stated),
             "correct": sum(1 for s in stated if s["correct"]),
@@ -319,6 +326,17 @@ def main(argv=None):
                if any(d["variant"] == v for d in docs)}
     report = {"engine": args.engine, "run_date": date.today().isoformat(), "summary": summary,
               "skipped": skipped, "documents": docs}
+    if args.engine == "ai":
+        from app import ai_extraction
+        metas = [d["ai_meta"] for d in docs if d.get("ai_meta")]
+        report["ai"] = {
+            "model": ai_extraction.DEFAULT_MODEL,
+            "prompt_version": ai_extraction.PROMPT_VERSION,
+            "calls": len(metas),
+            "errors": sum(1 for d in docs if d.get("ai_error")),
+            "input_tokens": sum(m.get("input_tokens") or 0 for m in metas),
+            "output_tokens": sum(m.get("output_tokens") or 0 for m in metas),
+        }
 
     RESULTS.mkdir(exist_ok=True)
     out = RESULTS / f"{args.engine}.json"
