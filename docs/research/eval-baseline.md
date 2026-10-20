@@ -3,6 +3,8 @@
 **Date:** 2026-10-19 · **Branch:** `research/affordable-housing` · **Engine measured:** regex (the default; offline) · **AI engine:** attempted 2026-10-19, blocked by API billing (see "Regex vs AI")
 **Harness:** [`tests/eval/affordable/`](../../tests/eval/affordable/README.md) · raw results: [`results/regex.json`](../../tests/eval/affordable/results/regex.json)
 
+> **Update, third pass (branch `feature/affordable-forms`).** The non-AI fixes from the plan were built as a standalone module, `backend/app/affordable/`. On the 16 forms, lease fields went from **0% to 94%** on flattened forms, both on the development copies and on a holdout set the mappings were never tuned on. Program fields (HAP, TTP, limits…) went from **0% to 89–92%**. Scans are weaker (88% dev, 56–58% holdout). Before/after scores per fix are in the last section, "After: the non-AI fixes". Everything above that section is the "before" picture and is unchanged.
+
 ## What was measured
 
 - **16 public blank forms** (HUD, IRS, five state housing agencies), each filled with fictional but internally consistent values, with a JSON answer key. Examples: HAP contract rent = tenant share + HAP, and TIC income stays under the computed AMI limit.
@@ -123,3 +125,87 @@ Lease-field recall is right / stated. "Program text" is the share of program val
   - $0 amounts were left out of keys.
 - **Edition and form-identity caveats.** The HUD-50059 is the 2014 edition (expired 2017; layout only). The IHDA TIC is **Illinois** (joint with Chicago and Cook County), not Indiana; eval-docs.md is corrected.
 - **Unchanged areas.** Nothing in `backend/` was modified. No program-field extractor exists yet, so this is the "before" picture.
+
+---
+
+## After: the non-AI fixes (`feature/affordable-forms`)
+
+**Date:** 2026-10-19 · **Code:** `backend/app/affordable/` (new; nothing in the upload pipeline or `ai_extraction.py` was touched; flag `AFFORDABLE_FORMS_MODE`, default off) · **Raw results:** [`results/`](../../tests/eval/affordable/results/) (`regex.json`, `regex+acroform.json`, `regex+layout.json`, `affordable.json`)
+
+### How it was measured
+
+- **Same 16 forms and answer keys, now in five variants (73 runs per engine):**
+  - **clean, acroform, scan:** as above.
+  - **holdout (new):** every value redrawn shifted ±2.5 pt, in Helvetica, Times or Courier, at 85–112% size, with dates and amounts reformatted ("Dec. 1, 2026", "1325.00").
+  - **holdout_scan (new):** a scanned copy of the holdout.
+- **The guard against tuning to the test set:**
+  - The form mappings were written from the *blank* forms and debugged only on clean, acroform and scan.
+  - The holdout files were never opened while writing mappings.
+  - The holdout was scored once at the end. One setting (OCR resolution) changed afterwards, for a reason found on the dev scans; both measurements are shown.
+- **Each fix measured on its own, as a separate engine in `run_eval.py`:**
+  - `regex`: today's upload path.
+  - `regex+acroform`: fix 1, reading fillable-form values.
+  - `regex+layout`: fixes 1 + 2, adding reading-order text from word positions and OCR.
+  - `affordable`: fixes 1 + 2 + 3, adding per-form field mappings.
+  - The first three still use today's regex extractor; only the last reads program fields.
+
+### Before and after, by fix
+
+Lease-field recall (tenant, owner, rent, dates, address, deposit) / program-field accuracy (HAP, TTP, limits, household, IDs…):
+
+| Engine | clean | acroform | scan | holdout | holdout_scan |
+|---|---|---|---|---|---|
+| `regex` (before) | 0% / 0% | 0% / 0% | 10% / 0% | 0% / 0% | 6% / 0% |
+| `regex+acroform` (fix 1) | 0% / 0% | 8% / 0% | 10% / 0% | 0% / 0% | 6% / 0% |
+| `regex+layout` (fixes 1+2) | 10% / 0% | 8% / 0% | 13% / 0% | 10% / 0% | 6% / 0% |
+| **`affordable` (fixes 1+2+3)** | **94% / 92%** | **92% / 95%** | **88% / 85%** | **94% / 89%** | **56% / 58%**\* |
+
+\* The first holdout-scan measurement, with OCR at 300 dpi, was **58% / 63%**. OCR was then lowered to 200 dpi (the app's own setting) because dev scans improved (program 81% → 85%, values recovered 89% → 95%). On the holdout scans it went the other way, and two TICs stopped being recognised. Both numbers are reported; see "What's left".
+
+**What each fix did:**
+1. **Reading fillable-form values** (`acroform.py`). On unflattened forms, the share of values the extractor can see went from **21% to 100%** of lease values and **98%** of program values. The regex extractor still can't use them (0% → 8% recall), because it doesn't read forms. With the per-form mappings, unflattened forms score **92% / 95%**, the best of any variant.
+2. **Layout-aware text** (`layout.py`). Values now sit beside their labels in the page text. On its own it lifts the regex extractor only **0% → 10%** (clean and holdout). That confirms the baseline finding: text order was a minor cause, and the regex patterns were the major one.
+3. **Per-form field mapping** (`extract.py` + `forms/`). 13 mappings cover all 16 forms: RFTA, HAP contract 52641 (both PHA re-saves), PBV 52530A/B, 50059, 52670, 52697, the SC/LA/NJ TIC template, the Illinois TIC, IRS 8609/8823/8586, and a partial CHFA LURA. This is the fix that moves the scores: **0% → 94%** lease and **0% → 89–92%** program on flattened forms, dev and holdout alike.
+
+**Confidence is now honest.**
+- Before: today's engine produced **46** wrong or invented lease values across clean, acroform and scan, all marked **"high"**.
+- After: the new module invents **none**. It is wrong on **11** lease values across all 73 runs, all marked **"medium"**: typed or OCR'd values are "medium"; only values read from form fields are "high".
+- The 11 are almost all OCR punctuation noise on scans ("1450. Maple Ridge Drive", "enata Quillfeather", "Cedar Hollow. Housing LP").
+
+### By document type (`affordable` engine)
+
+Lease right/stated · program right/total:
+
+| Doc type | clean | acroform | scan | holdout | holdout_scan |
+|---|---|---|---|---|---|
+| RFTA (52517) | 6/6 · 10/10 | 6/6 · 10/10 | 6/6 · 10/10 | 6/6 · 10/10 | 5/6 · 10/10 |
+| HAP contracts (52641 ×2, 52530A/B) | 16/18 · 47/54 | 4/6 · 22/26 | 15/18 · 40/54 | 16/18 · 47/54 | 11/18 · 39/54 |
+| PBRA certification (50059) | 4/4 · 37/38 | 4/4 · 36/38 | 4/4 · 37/38 | 4/4 · 37/38 | 2/4 · 21/38 |
+| PBRA voucher (52670) | none stated · 19/19 | none stated · 19/19 | none stated · 18/19 | none stated · 19/19 | none stated · 17/19 |
+| HUD LIHTC tenant data (52697) | 1/1 · 23/24 | n/a | 1/1 · 21/24 | 1/1 · 20/24 | 0/1 · 19/24 |
+| LIHTC TICs (SC, LA, NJ, IL) | 12/12 · 129/140 | 3/3 · 34/35 | 11/12 · 119/140 | 12/12 · 126/140 | 4/12 · 56/140 |
+| IRS 8609 / 8823 / 8586 | 5/5 · 39/40 | 5/5 · 39/40 | 4/5 · 36/40 | 5/5 · 38/40 | 4/5 · 29/40 |
+| CHFA LURA (partial) | 1/2 · 7/14 | n/a | 1/2 · 7/14 | 1/2 · 6/14 | 1/2 · 5/14 |
+
+**The ceiling.** 13 of the 339 program values are dates of birth, which the module refuses to extract (PII). So the maximum is 96.2%, and clean's 92% is 95% of what's allowed.
+
+### Worst fields after the fixes
+
+| Field | Misses | Why |
+|---|---|---|
+| Dates of birth (TIC members, 50059, 52697) | every time | **By design.** DOB is never extracted until the PII masking work lands |
+| PBV `contract_number`, `project`, and so `property_address` | 10/10 | Part 1 of the 52530A/B has no printed field for them (Exhibit A, a separate attachment, lists units). The samples typed them in the margin |
+| LURA owner, project, dates, contacts, signers | 7 of 14 fields | Prose with inline blanks; label anchors don't fit. This is the AI route's job |
+| 52641 `payee_address` | 8/8 | Returns street *and* city; the answer key holds only the street line. A key choice, not a reading error |
+| 8609 `building_name` | 5/10 | Returns "Cedar Hollow Apartments (Building 1)", which the form shows; the key has the shorter name |
+| PBV `initial_term` | 4/10 | Returns "years" without the number on some copies |
+| Scans: short numbers (initial HAP 712 → 742, 0 → 9) | a few per scan | OCR misreads; the module doesn't check plausibility yet |
+
+### What's left (ordered)
+
+1. **Holdout scans: 56–58% lease and program.**
+   - Form detection uses exact text, so an OCR-garbled title (TENANT INCOME CERTIFICATION in small serif type) means the form isn't recognised. Two TICs at 200 dpi.
+   - Fix: fuzzy detection on OCR pages, and OCR at the scan's native image resolution instead of re-rendering at a fixed dpi.
+2. **OCR punctuation noise in names and addresses** ("1450. Maple"). Strip a period glued between a number and a word, and a lone leading or trailing period.
+3. **Nothing calls this module yet.** Wiring it into uploads is a separate change for `api.py` and `document_extractor`, files another session was editing tonight. It goes behind `AFFORDABLE_FORMS_MODE`.
+4. **The AI engine is still unmeasured** (billing). Once credits are added, the useful comparison is AI vs this module on the LURA and the holdout scans, the two places the module is weakest.

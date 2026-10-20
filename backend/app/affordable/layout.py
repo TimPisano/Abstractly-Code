@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 Source = Union[bytes, str]
 
-OCR_DPI = 300
+OCR_DPI = 200            # same as the app's OCR (pdf_extractor); typical scanner resolution, so no upsampling blur
 MIN_TEXT_CHARS = 30         # below this a page is treated as a scan and OCR'd
 LINE_TOLERANCE = 3.0        # points; words whose vertical centres are this close share a line
 REGION_MIN_CONFIDENCE = 60.0   # Tesseract word confidence needed for a re-read box to count
