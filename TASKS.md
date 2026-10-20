@@ -115,12 +115,12 @@ those by taking **main's** TASKS.md, not the branch's.
 #### feature/tester-ready
 - Worktree: ~/dev/projects/abstractly-tester-ready (venv symlinked to the primary checkout's)
 - Goal: testers sign in to prod as teams, invite teammates by email, share one team's data, and stay inside a monthly page limit.
-- Loop step: 4 — building, one step at a time; user reviews a diff + test results after each step and approves every edit. Step 1 done (`8125f04`, suite 85/85).
+- Loop step: 4 — building, one step at a time; user reviews a diff + test results after each step and approves every edit. Step 1 done (`8125f04`, 85/85). Step 2 done (`10c3ef1`, 85/85): prod DB confirmed on the disk by config + code; stale isolation comments fixed in render.yaml, DEPLOYMENT.md, TESTER_VERIFICATION_CHECKLIST.md. Step 3 done (`92ae950`, 86/86): invites behind `TEAM_INVITES_ENABLED`, removal bumps session_version.
 - Last update: 2026-10-19 by the tester-ready session
 - Decisions (user, 2026-10-19): testers use prod, not the tester server; "team owner" = team `admin` role, "me as admin" = platform owner console; removing a member = deactivate; invites behind `TEAM_INVITES_ENABLED` (default off); `DEFAULT_MONTHLY_PAGE_QUOTA` 2000 → 1000 is the only edit allowed in `usage_limits_config.py`; step 6 runs headless Playwright, no visible browser; no push, no deploy.
 - Usage-limit bugs this branch fixes: `check_team_quota` blocks only teams already at/over (must block uploads that would go over); `check_file_limits` never counts PDF pages (`extract_pages(..., None)` raises and is swallowed).
 - Follow-up, not this branch: 2 GB chunked resumable direct-to-R2 uploads (local storage fallback, R2 setup doc) as a new branch stacked on `feature/large-files-any-type`, after that branch lands. It calls this branch's page check before any AI. Suggested per-file limits with `LARGE_FILE_UPLOADS` on (documented only, not applied): `MAX_PAGES_PER_FILE` 1000, `MAX_FILE_SIZE_MB` 2048, `LEASE_EXTRACTION_JOB_TIMEOUT_SECONDS` 3600 (measure on Render first).
-- Next action: step 2 — confirm prod DB path on the disk, then propose the `render.yaml` comment fix for approval
+- Next action: user reviews step 3; then step 4 (monthly page limit: default 1,000, block uploads that would go over, fix PDF page count)
 
 #### feature/s8-inspections
 - Worktree: ~/dev/projects/abstractly-s8-inspections
