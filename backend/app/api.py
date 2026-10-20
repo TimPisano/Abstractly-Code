@@ -2500,8 +2500,11 @@ def auth_team_setup():
     token = (body.get("token") or "").strip() if isinstance(body.get("token"), str) else ""
     new_password = body.get("new_password") if isinstance(body.get("new_password"), str) else ""
 
+    # `link_status` marks a dead link, so team-setup.html can tell "this
+    # link can never work" from "pick a different password" without
+    # reading the error text.
     if not token:
-        return jsonify({"error": "This setup link is invalid or has expired. Ask your admin for a new one."}), 400
+        return jsonify({"error": "This setup link is invalid or has expired. Ask your admin for a new one.", "link_status": "invalid"}), 400
     token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
     status, setup_user_id = database.get_password_reset_token_status(token_hash, _TEAM_SETUP_TOKEN_TTL_SECONDS, purpose="setup")
     setup_user = database.get_user(setup_user_id) if status == "valid" else None
@@ -2515,7 +2518,8 @@ def auth_team_setup():
     # redeemable here under the 7-day setup limit.
     user_id = database.consume_password_reset_token(token_hash, _TEAM_SETUP_TOKEN_TTL_SECONDS, purpose="setup")
     if user_id is None:
-        return jsonify({"error": "This setup link is invalid or has expired. Ask your admin for a new one."}), 400
+        status, _ = database.get_password_reset_token_status(token_hash, _TEAM_SETUP_TOKEN_TTL_SECONDS, purpose="setup")
+        return jsonify({"error": "This setup link is invalid or has expired. Ask your admin for a new one.", "link_status": status if status != "valid" else "invalid"}), 400
 
     database.update_user_password(user_id, hash_password(new_password))
     return jsonify({"status": "password_updated"}), 200

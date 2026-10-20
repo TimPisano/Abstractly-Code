@@ -127,16 +127,11 @@ setupFormEl.addEventListener('submit', async (e) => {
         confirmInput.focus();
         return;
     }
-    if (isInvite) {
-        const problems = Auth.passwordProblems(password, invitee.email, invitee.name);
-        if (problems.length) {
-            setupMessageEl.textContent = PASSWORD_PROBLEM_MESSAGES[problems[0]];
-            setupMessageEl.classList.add('is-error');
-            passwordInput.focus();
-            return;
-        }
-    } else if (password.length < 8) {
-        setupMessageEl.textContent = 'Password must be at least 8 characters.';
+    // Same rules the server applies (password_rules.py) for both kinds of
+    // link, so a too-short password is caught here, not by the server.
+    const problems = Auth.passwordProblems(password, invitee.email, invitee.name);
+    if (problems.length) {
+        setupMessageEl.textContent = PASSWORD_PROBLEM_MESSAGES[problems[0]];
         setupMessageEl.classList.add('is-error');
         passwordInput.focus();
         return;
@@ -165,10 +160,13 @@ setupFormEl.addEventListener('submit', async (e) => {
 
         if (!response.ok) {
             const err = new Error(data.error || 'Something went wrong. Please try again.');
-            // A 400 here means the token itself is dead (invalid,
-            // already used, or expired) -- retrying with the same link
-            // can never succeed.
-            err.tokenDead = response.status === 400 && !data.error?.includes('8 characters');
+            // Only the server's `link_status` means the link itself is
+            // dead (invalid, used, expired) -- retrying it can never
+            // succeed. Any other 400 is about the password: the link
+            // still works, so the form stays up. (Deciding this from the
+            // error text once sent people with a 9-character password to
+            // a "this link is dead" screen.)
+            err.tokenDead = Boolean(data.link_status);
             throw err;
         }
 

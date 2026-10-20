@@ -84,6 +84,7 @@ UNIT_TESTS = [
     "test_team_isolation.py",
     "test_team_isolation_fixes.py",
     "test_team_invites.py",
+    "test_team_setup_link.py",
     "test_owner_console.py",
     "test_assistant.py",
     "test_messaging.py",
