@@ -58,12 +58,47 @@ RESULTS = HERE / "results"
 # pipeline (mirrors api.py's upload path)
 # ---------------------------------------------------------------------------
 
+ENGINES = ("regex", "regex+acroform", "regex+layout", "affordable", "ai")
+
+
 def run_pipeline(pdf_path: Path, engine: str):
+    """
+    regex           today's upload path, unchanged
+    regex+acroform  same, but each page's text also gets its fillable-form
+                    values (app.affordable.acroform) -- fix 1 on its own
+    regex+layout    same regex extractor, fed reading-order text rebuilt
+                    from word positions / OCR, plus form values
+                    (app.affordable.layout) -- fixes 1 + 2
+    affordable      the per-form extractor (app.affordable.extract):
+                    recognises the form, reads it whole, and returns
+                    program fields too -- fixes 1 + 2 + 3
+    ai              today's upload path with the AI engine
+    """
     data = pdf_path.read_bytes()
-    with tempfile.NamedTemporaryFile(suffix=".pdf") as tmp:
-        tmp.write(data)
-        tmp.flush()
-        pages = document_extractor.extract_pages(data, pdf_path.name, tmp.name)
+    if engine == "affordable":
+        from app.affordable import extract_document, layout_pages
+        res = extract_document(data)
+        return {
+            "pages": layout_pages(data, include_acroform=True),
+            "status": "ok" if res["form_id"] else "unrecognised",
+            "ranges": 1,
+            "fields": res["lease_fields"],
+            "program_fields": res["program_fields"],
+            "form_id": res["form_id"],
+        }
+    if engine == "regex+layout":
+        from app.affordable import layout_pages
+        pages = layout_pages(data, include_acroform=True)
+    else:
+        with tempfile.NamedTemporaryFile(suffix=".pdf") as tmp:
+            tmp.write(data)
+            tmp.flush()
+            pages = document_extractor.extract_pages(data, pdf_path.name, tmp.name)
+        if engine == "regex+acroform":
+            from app.affordable import acroform_page_text, read_acroform
+            extra = acroform_page_text(read_acroform(data))
+            pages = [{**p, "text": (p.get("text") or "") + ("\n" + extra[p["page"]] if p["page"] in extra else "")}
+                     for p in pages]
 
     out = {"pages": pages, "status": "ok", "ranges": 0, "fields": {}}
     low = document_extractor.find_low_text_pages(pages)
@@ -176,7 +211,32 @@ def in_text(value: str, vtype: str, text: str) -> bool:
 # scoring
 # ---------------------------------------------------------------------------
 
-VARIANTS = ("clean", "acroform", "scan")
+def program_match(vtype: str, got: str, expected: str) -> bool:
+    """Strict, type-aware: numbers and dates by value, text by normalised
+    equality (allowing only trailing/leading extras up to 20% of length)."""
+    if vtype == "money":
+        a, b = money_value(got), money_value(expected)
+        return a is not None and b is not None and abs(a - b) <= 0.5
+    if vtype == "date":
+        a, b = _as_date(got), _as_date(expected)
+        return a is not None and a == b
+    if vtype in ("int", "pct"):
+        a = re.sub(r"[^\d.]", "", got).rstrip(".")
+        b = re.sub(r"[^\d.]", "", expected).rstrip(".")
+        try:
+            return a != "" and b != "" and abs(float(a) - float(b)) < 1e-6
+        except ValueError:
+            return False
+    a, b = _norm_text(got), _norm_text(expected)
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    short, long_ = sorted((a, b), key=len)
+    return short in long_ and len(short) >= 0.8 * len(long_)
+
+
+VARIANTS = ("clean", "acroform", "scan", "holdout", "holdout_scan")
 
 
 def sample_path(key: dict, variant: str) -> Path:
@@ -203,16 +263,21 @@ def evaluate(key: dict, engine: str, variant: str = "clean") -> dict:
         lease_scores.append(s)
 
     program_scores = []
+    extracted_program = result.get("program_fields") or {}
     for name, entry in key["program_fields"].items():
         if entry["type"] == "checkbox":
             continue
         shown = entry.get("shown_as", entry["value"])
+        got = (extracted_program.get(name) or {}).get("value")
+        correct = got is not None and program_match(entry["type"], got, str(entry["value"]))
         program_scores.append({
             "field": name,
             "type": entry["type"],
             "expected": entry["value"],
-            "extracted": None,              # no engine field exists for it
-            "correct": False,
+            "extracted": got,               # None for engines without program fields
+            "method": (extracted_program.get(name) or {}).get("method"),
+            "correct": correct,
+            "kind": "correct" if correct else ("missed" if got is None else "wrong"),
             "in_text_layer": in_text(str(shown), entry["type"], text),
         })
 
@@ -241,7 +306,7 @@ def evaluate(key: dict, engine: str, variant: str = "clean") -> dict:
         },
         "program_fields": {
             "total": len(program_scores),
-            "correct": 0,
+            "correct": sum(1 for s in program_scores if s["correct"]),
             "in_text_layer": sum(1 for s in program_scores if s["in_text_layer"]),
             "scores": program_scores,
         },
@@ -263,6 +328,7 @@ def summarize(docs):
             t[f"lease_{k}"] += d["lease_fields"][k]
         t["program_total"] += d["program_fields"]["total"]
         t["program_in_text"] += d["program_fields"]["in_text_layer"]
+        t["program_correct"] += d["program_fields"]["correct"]
         for s in d["lease_fields"]["scores"]:
             if s["expected"] is None:
                 continue
@@ -276,14 +342,16 @@ def summarize(docs):
             f = field_misses[f"program.{s['field']}"]
             f["stated"] += 1
             f["text"] += bool(s["in_text_layer"])
-            if not s["in_text_layer"]:
-                f["docs_wrong"].append(f"{d['id']} (not in text layer)")
+            f["correct"] += bool(s["correct"])
+            if not s["correct"]:
+                f["docs_wrong"].append(f"{d['id']} ({s['kind']}: got {s['extracted']!r})")
     types = {}
     for name, t in sorted(by_type.items()):
         types[name] = dict(t)
         types[name]["lease_recall_pct"] = _pct(t["lease_correct"], t["lease_stated"])
         types[name]["lease_text_layer_pct"] = _pct(t["lease_in_text_layer"], t["lease_stated"])
         types[name]["program_text_layer_pct"] = _pct(t["program_in_text"], t["program_total"])
+        types[name]["program_extraction_pct"] = _pct(t["program_correct"], t["program_total"])
     fields = {k: {**v, "recall_pct": _pct(v["correct"], v["stated"]), "text_layer_pct": _pct(v["text"], v["stated"])}
               for k, v in field_misses.items()}
     tot = lambda k: sum(t[k] for t in by_type.values())  # noqa: E731
@@ -292,7 +360,7 @@ def summarize(docs):
         "lease_recall_pct": _pct(tot("lease_correct"), tot("lease_stated")),
         "lease_spurious": tot("lease_spurious"),
         "lease_text_layer_pct": _pct(tot("lease_in_text_layer"), tot("lease_stated")),
-        "program_extraction_pct": 0.0,
+        "program_extraction_pct": _pct(tot("program_correct"), tot("program_total")),
         "program_text_layer_pct": _pct(tot("program_in_text"), tot("program_total")),
     }
     return {"overall": overall, "by_doc_type": types, "by_field": fields}
@@ -300,12 +368,13 @@ def summarize(docs):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("--engine", choices=("regex", "ai"), default="regex")
+    ap.add_argument("--engine", choices=ENGINES, default="regex")
     ap.add_argument("--only", nargs="*", help="answer-key ids to run")
     ap.add_argument("--variants", nargs="*", choices=VARIANTS, default=list(VARIANTS),
                     help="clean = filled and flattened; acroform = values left in unflattened form fields "
                          "(AcroForm documents only); scan = image-only copy from make_scans.py. "
                          "A variant with no file for a document is skipped and listed.")
+    ap.add_argument("--out", help="results file name (default: results/<engine>.json)")
     args = ap.parse_args(argv)
 
     if args.engine == "ai" and not os.environ.get("ANTHROPIC_API_KEY"):
@@ -339,18 +408,18 @@ def main(argv=None):
         }
 
     RESULTS.mkdir(exist_ok=True)
-    out = RESULTS / f"{args.engine}.json"
+    out = RESULTS / (args.out or f"{args.engine}.json")
     out.write_text(json.dumps(report, indent=2, default=str) + "\n")
 
     print(f"engine={args.engine}  runs={len(docs)}  -> {out.relative_to(REPO)}")
     if skipped:
         print(f"skipped (no file): {', '.join(skipped)}")
-    print(f"{'document':22} {'variant':7} {'status':21} {'rng':>3} {'lease ok/stated':>15} {'spur':>4} {'lease txt':>9} {'prog txt':>9} {'ocr':>5}")
+    print(f"{'document':22} {'variant':12} {'status':21} {'rng':>3} {'lease ok/stated':>15} {'spur':>4} {'lease txt':>9} {'prog txt':>9} {'prog ok':>9} {'ocr':>5}")
     for d in docs:
         lf, pf = d["lease_fields"], d["program_fields"]
-        print(f"{d['id']:22} {d['variant']:7} {d['pipeline_status']:21} {d['lease_ranges']:>3} "
+        print(f"{d['id']:22} {d['variant']:12} {d['pipeline_status']:21} {d['lease_ranges']:>3} "
               f"{lf['correct']:>7}/{lf['stated']:<7} {lf['spurious']:>4} "
-              f"{lf['in_text_layer']:>4}/{lf['stated']:<4} {pf['in_text_layer']:>4}/{pf['total']:<4} "
+              f"{lf['in_text_layer']:>4}/{lf['stated']:<4} {pf['in_text_layer']:>4}/{pf['total']:<4} {pf['correct']:>4}/{pf['total']:<4} "
               f"{d['mean_ocr_confidence'] if d['mean_ocr_confidence'] is not None else '':>5}")
     for variant, s in summary.items():
         o = s["overall"]

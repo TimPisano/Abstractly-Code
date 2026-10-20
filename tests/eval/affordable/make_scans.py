@@ -43,16 +43,21 @@ def make_scan(src: Path) -> Path:
     rng = random.Random(zlib.crc32(src.stem.encode()))
     pdf = pdfium.PdfDocument(str(src))
     images = [scan_page(pdf[i], rng) for i in range(len(pdf))]
-    out = src.with_name(f"{src.stem}.scan.pdf")
+    # <id>.pdf -> <id>.scan.pdf ; <id>.holdout.pdf -> <id>.holdout_scan.pdf
+    base = src.name[: -len(".pdf")]
+    name = f"{base[: -len('.holdout')]}.holdout_scan.pdf" if base.endswith(".holdout") else f"{base}.scan.pdf"
+    out = src.with_name(name)
     images[0].save(out, "PDF", resolution=DPI, save_all=True, append_images=images[1:])
     return out
 
 
 def main(argv):
+    """Scans the clean samples and, when present, the holdout copies."""
     wanted = set(argv)
-    sources = [p for p in sorted(SAMPLES.glob("*.pdf")) if not p.name.endswith(".scan.pdf")]
+    sources = [p for p in sorted(SAMPLES.glob("*.pdf"))
+               if p.name.count(".") == 1 or p.name.endswith(".holdout.pdf")]
     if wanted:
-        sources = [p for p in sources if p.stem in wanted]
+        sources = [p for p in sources if p.name.split(".")[0] in wanted]
     for src in sources:
         out = make_scan(src)
         print(f"{out.relative_to(HERE)}  ({out.stat().st_size // 1024} KB)")
