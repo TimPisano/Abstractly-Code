@@ -119,6 +119,7 @@ UNIT_TESTS = [
     "test_file_types.py",
     "test_large_file_extraction.py",
     "test_ai_chunked_extraction.py",
+    "test_upload_jobs.py",
 ]
 
 LIVE_API_TESTS = [

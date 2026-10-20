@@ -1058,6 +1058,36 @@ def init_db() -> None:
                 created_at TEXT NOT NULL
             )
         """)
+        # Background processing of one uploaded file (app/upload_jobs.py,
+        # behind LARGE_FILE_UPLOADS). The row is the job's whole state: the
+        # web process creates it, the worker advances it, the browser polls
+        # it. `stored_path` is a server-generated name, never the user's
+        # filename; the file is deleted when the job finishes either way.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS upload_jobs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                team_id INTEGER NOT NULL,
+                user_id INTEGER,
+                kind TEXT NOT NULL,
+                filename TEXT NOT NULL,
+                stored_path TEXT,
+                size_bytes INTEGER,
+                content_hash TEXT,
+                detected_type TEXT,
+                options TEXT,
+                status TEXT NOT NULL DEFAULT 'queued',
+                stage TEXT,
+                progress_current INTEGER,
+                progress_total INTEGER,
+                message TEXT,
+                result TEXT,
+                error TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                finished_at TEXT
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_upload_jobs_team ON upload_jobs(team_id, created_at)")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS training_rounds (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -4762,3 +4792,180 @@ def get_rent_roll_unit_summaries(team_id: int) -> List[Dict[str, Any]]:
         d["down_units"] = json.loads(d["down_units"])
         out.append(d)
     return out
+
+
+# ----------------------------------------------------------------------
+# Upload jobs (app/upload_jobs.py)
+# ----------------------------------------------------------------------
+
+_UPLOAD_JOB_JSON_COLUMNS = ("options", "result")
+_UPLOAD_JOB_UPDATABLE = {"status", "stage", "progress_current", "progress_total", "message", "result", "error",
+                         "finished_at", "stored_path", "detected_type"}
+
+
+def _upload_job_row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
+    job = dict(row)
+    for column in _UPLOAD_JOB_JSON_COLUMNS:
+        job[column] = json.loads(job[column]) if job.get(column) else None
+    return job
+
+
+def create_upload_job(team_id: int, user_id: Optional[int], kind: str, filename: str, stored_path: str,
+                      size_bytes: int, content_hash: str, detected_type: str,
+                      options: Optional[Dict[str, Any]] = None) -> int:
+    now = datetime.now(timezone.utc).isoformat()
+    conn = get_connection()
+    try:
+        cur = conn.execute(
+            "INSERT INTO upload_jobs (team_id, user_id, kind, filename, stored_path, size_bytes, content_hash, "
+            "detected_type, options, status, stage, message, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', 'queued', ?, ?, ?)",
+            (team_id, user_id, kind, filename, stored_path, size_bytes, content_hash, detected_type,
+             json.dumps(options or {}), "Waiting to start", now, now),
+        )
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def get_upload_job(job_id: int, team_id: int) -> Optional[Dict[str, Any]]:
+    """One upload job, only if it belongs to `team_id` -- never another firm's job."""
+    conn = get_connection()
+    try:
+        row = conn.execute("SELECT * FROM upload_jobs WHERE id = ? AND team_id = ?", (job_id, team_id)).fetchone()
+        return _upload_job_row_to_dict(row) if row else None
+    except OverflowError:
+        # Same as get_lease: an id outside SQLite's 64-bit range can't match a row.
+        return None
+    finally:
+        conn.close()
+
+
+def get_upload_job_for_worker(job_id: int) -> Optional[Dict[str, Any]]:
+    """
+    Unscoped read for the background runner only: a job id is all an RQ
+    message carries, and the row it returns carries its own team_id, which
+    the runner then scopes every write by. Never call this from a route.
+    """
+    conn = get_connection()
+    try:
+        row = conn.execute("SELECT * FROM upload_jobs WHERE id = ?", (job_id,)).fetchone()
+        return _upload_job_row_to_dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def update_upload_job(job_id: int, **fields: Any) -> None:
+    """Set any of _UPLOAD_JOB_UPDATABLE on a job; always bumps updated_at (the runner's heartbeat)."""
+    unknown = set(fields) - _UPLOAD_JOB_UPDATABLE
+    if unknown:
+        raise ValueError(f"not updatable: {sorted(unknown)}")
+    sets, params = ["updated_at = ?"], [datetime.now(timezone.utc).isoformat()]
+    for column, value in fields.items():
+        sets.append(f"{column} = ?")
+        params.append(json.dumps(value) if column in _UPLOAD_JOB_JSON_COLUMNS and value is not None else value)
+    params.append(job_id)
+    conn = get_connection()
+    try:
+        conn.execute(f"UPDATE upload_jobs SET {', '.join(sets)} WHERE id = ?", params)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def fail_stale_upload_jobs(team_id: int, processing_before_iso: str, queued_before_iso: str, message: str) -> int:
+    """
+    Marks this team's jobs that stopped making progress as failed: still
+    'processing' with no heartbeat since `processing_before_iso`, or still
+    'queued' since `queued_before_iso` (a longer window -- a queued job can
+    legitimately wait behind another file's long OCR run). Returns how many.
+    """
+    now = datetime.now(timezone.utc).isoformat()
+    conn = get_connection()
+    try:
+        cur = conn.execute(
+            "UPDATE upload_jobs SET status = 'failed', stage = 'failed', error = ?, message = ?, "
+            "updated_at = ?, finished_at = ? "
+            "WHERE team_id = ? AND ((status = 'processing' AND updated_at < ?) OR (status = 'queued' AND updated_at < ?))",
+            (message, message, now, now, team_id, processing_before_iso, queued_before_iso),
+        )
+        conn.commit()
+        return cur.rowcount
+    finally:
+        conn.close()
+
+
+def set_lease_content_hash(lease_ids: List[int], content_hash: str, team_id: int) -> None:
+    """Stamps the uploaded file's SHA-256 on the leases made from it (usage_limits.find_duplicate_upload matches on it)."""
+    if not lease_ids:
+        return
+    conn = get_connection()
+    try:
+        placeholders = ",".join("?" * len(lease_ids))
+        conn.execute(f"UPDATE leases SET content_hash = ? WHERE team_id = ? AND id IN ({placeholders})",
+                     [content_hash, team_id, *lease_ids])
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def insert_leases_bulk(rows: List[Dict[str, Any]], team_id: int) -> List[int]:
+    """
+    insert_lease for many rows in ONE connection and ONE transaction -- all
+    rows or none. Each row takes insert_lease's keyword arguments
+    (filename, extracted_fields, document_type, display_name, source_kind,
+    date_candidates, source_page_start, source_page_end, processing_status,
+    processing_error); the columns written are exactly insert_lease's.
+
+    Exists because a 5,000-row rent roll spent ~10 s opening a connection
+    and committing once per row, and ~17 s re-reading each row back.
+    """
+    now = datetime.now(timezone.utc).isoformat()
+    conn = get_connection()
+    ids: List[int] = []
+    try:
+        for row in rows:
+            cur = conn.execute(
+                "INSERT INTO leases (filename, uploaded_at, extracted_fields, document_type, base_lease_id, "
+                "date_candidates, display_name, source_page_start, source_page_end, status, supersedes_lease_id, version_number, processing_status, processing_error, team_id, source_kind) "
+                "VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, 'active', NULL, 1, ?, ?, ?, ?)",
+                (
+                    row["filename"],
+                    now,
+                    json.dumps(row["extracted_fields"]),
+                    row.get("document_type", "lease"),
+                    json.dumps(row["date_candidates"]) if row.get("date_candidates") is not None else None,
+                    row.get("display_name"),
+                    row.get("source_page_start"),
+                    row.get("source_page_end"),
+                    row.get("processing_status", "complete"),
+                    row.get("processing_error"),
+                    team_id,
+                    row.get("source_kind"),
+                ),
+            )
+            ids.append(cur.lastrowid)
+        conn.commit()
+        return ids
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def get_leases_by_ids(lease_ids: List[int], team_id: int) -> List[Dict[str, Any]]:
+    """These leases (this team's only), in the order given, read with one query."""
+    if not lease_ids:
+        return []
+    conn = get_connection()
+    try:
+        placeholders = ",".join("?" * len(lease_ids))
+        rows = conn.execute(
+            f"SELECT * FROM leases WHERE team_id = ? AND id IN ({placeholders})", [team_id, *lease_ids]
+        ).fetchall()
+    finally:
+        conn.close()
+    by_id = {row["id"]: _row_to_dict(row) for row in rows}
+    return [by_id[i] for i in lease_ids if i in by_id]
