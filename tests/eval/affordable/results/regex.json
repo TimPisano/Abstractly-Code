@@ -1,0 +1,431 @@
+{
+  "engine": "regex",
+  "run_date": "2026-10-19",
+  "summary": {
+    "overall": {
+      "docs": 1,
+      "lease_recall_pct": 0.0,
+      "lease_spurious": 0,
+      "lease_text_layer_pct": 100.0,
+      "program_extraction_pct": 0.0,
+      "program_text_layer_pct": 100.0
+    },
+    "by_doc_type": {
+      "rfta": {
+        "docs": 1,
+        "ocr_needed": 0,
+        "lease_stated": 6,
+        "lease_correct": 0,
+        "lease_wrong": 1,
+        "lease_missed": 5,
+        "lease_spurious": 0,
+        "lease_in_text_layer": 6,
+        "program_total": 10,
+        "program_in_text": 10,
+        "lease_recall_pct": 0.0,
+        "lease_text_layer_pct": 100.0,
+        "program_text_layer_pct": 100.0
+      }
+    },
+    "by_field": {
+      "lease.tenant": {
+        "stated": 1,
+        "correct": 0,
+        "text": 1,
+        "docs_wrong": [
+          "hud_52517_rfta (missed: got None)"
+        ],
+        "recall_pct": 0.0,
+        "text_layer_pct": 100.0
+      },
+      "lease.landlord": {
+        "stated": 1,
+        "correct": 0,
+        "text": 1,
+        "docs_wrong": [
+          "hud_52517_rfta (missed: got None)"
+        ],
+        "recall_pct": 0.0,
+        "text_layer_pct": 100.0
+      },
+      "lease.rent_amount": {
+        "stated": 1,
+        "correct": 0,
+        "text": 1,
+        "docs_wrong": [
+          "hud_52517_rfta (missed: got None)"
+        ],
+        "recall_pct": 0.0,
+        "text_layer_pct": 100.0
+      },
+      "lease.lease_start_date": {
+        "stated": 1,
+        "correct": 0,
+        "text": 1,
+        "docs_wrong": [
+          "hud_52517_rfta (missed: got None)"
+        ],
+        "recall_pct": 0.0,
+        "text_layer_pct": 100.0
+      },
+      "lease.property_address": {
+        "stated": 1,
+        "correct": 0,
+        "text": 1,
+        "docs_wrong": [
+          "hud_52517_rfta (wrong: got 'of Unit (street address, unit #, city, state, zip code)')"
+        ],
+        "recall_pct": 0.0,
+        "text_layer_pct": 100.0
+      },
+      "lease.security_deposit": {
+        "stated": 1,
+        "correct": 0,
+        "text": 1,
+        "docs_wrong": [
+          "hud_52517_rfta (missed: got None)"
+        ],
+        "recall_pct": 0.0,
+        "text_layer_pct": 100.0
+      },
+      "program.pha_name": {
+        "stated": 1,
+        "correct": 0,
+        "text": 1,
+        "docs_wrong": [],
+        "recall_pct": 0.0,
+        "text_layer_pct": 100.0
+      },
+      "program.unit_address": {
+        "stated": 1,
+        "correct": 0,
+        "text": 1,
+        "docs_wrong": [],
+        "recall_pct": 0.0,
+        "text_layer_pct": 100.0
+      },
+      "program.requested_lease_start": {
+        "stated": 1,
+        "correct": 0,
+        "text": 1,
+        "docs_wrong": [],
+        "recall_pct": 0.0,
+        "text_layer_pct": 100.0
+      },
+      "program.bedrooms": {
+        "stated": 1,
+        "correct": 0,
+        "text": 1,
+        "docs_wrong": [],
+        "recall_pct": 0.0,
+        "text_layer_pct": 100.0
+      },
+      "program.year_constructed": {
+        "stated": 1,
+        "correct": 0,
+        "text": 1,
+        "docs_wrong": [],
+        "recall_pct": 0.0,
+        "text_layer_pct": 100.0
+      },
+      "program.proposed_rent": {
+        "stated": 1,
+        "correct": 0,
+        "text": 1,
+        "docs_wrong": [],
+        "recall_pct": 0.0,
+        "text_layer_pct": 100.0
+      },
+      "program.security_deposit": {
+        "stated": 1,
+        "correct": 0,
+        "text": 1,
+        "docs_wrong": [],
+        "recall_pct": 0.0,
+        "text_layer_pct": 100.0
+      },
+      "program.date_unit_available": {
+        "stated": 1,
+        "correct": 0,
+        "text": 1,
+        "docs_wrong": [],
+        "recall_pct": 0.0,
+        "text_layer_pct": 100.0
+      },
+      "program.owner_name": {
+        "stated": 1,
+        "correct": 0,
+        "text": 1,
+        "docs_wrong": [],
+        "recall_pct": 0.0,
+        "text_layer_pct": 100.0
+      },
+      "program.household_head": {
+        "stated": 1,
+        "correct": 0,
+        "text": 1,
+        "docs_wrong": [],
+        "recall_pct": 0.0,
+        "text_layer_pct": 100.0
+      }
+    }
+  },
+  "documents": [
+    {
+      "id": "hud_52517_rfta",
+      "form": "HUD-52517 Request for Tenancy Approval (exp. 04/30/2026)",
+      "program": "HCV",
+      "doc_type": "rfta",
+      "pipeline_status": "ok",
+      "lease_ranges": 1,
+      "pages": 2,
+      "lease_fields": {
+        "stated": 6,
+        "correct": 0,
+        "wrong": 1,
+        "missed": 5,
+        "spurious": 0,
+        "in_text_layer": 6,
+        "scores": [
+          {
+            "field": "tenant",
+            "expected": "Renata Quillfeather",
+            "extracted": null,
+            "confidence": null,
+            "correct": false,
+            "kind": "missed",
+            "asserted_wrong": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "landlord",
+            "expected": "Maple Ridge Housing Partners LP",
+            "extracted": null,
+            "confidence": null,
+            "correct": false,
+            "kind": "missed",
+            "asserted_wrong": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "rent_amount",
+            "expected": "$1,325.00",
+            "extracted": null,
+            "confidence": null,
+            "correct": false,
+            "kind": "missed",
+            "asserted_wrong": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "lease_start_date",
+            "expected": "12/01/2026",
+            "extracted": null,
+            "confidence": null,
+            "correct": false,
+            "kind": "missed",
+            "asserted_wrong": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "lease_end_date",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "in_text_layer": null
+          },
+          {
+            "field": "property_address",
+            "expected": "1450 Maple Ridge Drive, Apt 2B, Riverbend, IN 46990",
+            "extracted": "of Unit (street address, unit #, city, state, zip code)",
+            "confidence": "high",
+            "correct": false,
+            "kind": "wrong",
+            "asserted_wrong": true,
+            "in_text_layer": true
+          },
+          {
+            "field": "security_deposit",
+            "expected": "$1,000.00",
+            "extracted": null,
+            "confidence": null,
+            "correct": false,
+            "kind": "missed",
+            "asserted_wrong": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "cam_charges",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "in_text_layer": null
+          },
+          {
+            "field": "rent_escalation",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "in_text_layer": null
+          },
+          {
+            "field": "renewal_options",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "in_text_layer": null
+          },
+          {
+            "field": "permitted_use",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "in_text_layer": null
+          },
+          {
+            "field": "exclusivity_clause",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "in_text_layer": null
+          },
+          {
+            "field": "insurance_requirements",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "in_text_layer": null
+          },
+          {
+            "field": "default_cure_period",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "in_text_layer": null
+          },
+          {
+            "field": "square_footage",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "in_text_layer": null
+          }
+        ]
+      },
+      "program_fields": {
+        "total": 10,
+        "correct": 0,
+        "in_text_layer": 10,
+        "scores": [
+          {
+            "field": "pha_name",
+            "type": "text",
+            "expected": "Riverbend Housing Authority",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "unit_address",
+            "type": "text",
+            "expected": "1450 Maple Ridge Drive, Apt 2B, Riverbend, IN 46990",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "requested_lease_start",
+            "type": "date",
+            "expected": "12/01/2026",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "bedrooms",
+            "type": "int",
+            "expected": "2",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "year_constructed",
+            "type": "int",
+            "expected": "1998",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "proposed_rent",
+            "type": "money",
+            "expected": "$1,325.00",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "security_deposit",
+            "type": "money",
+            "expected": "$1,000.00",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "date_unit_available",
+            "type": "date",
+            "expected": "11/01/2026",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "owner_name",
+            "type": "text",
+            "expected": "Maple Ridge Housing Partners LP",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "household_head",
+            "type": "text",
+            "expected": "Renata Quillfeather",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          }
+        ]
+      }
+    }
+  ]
+}

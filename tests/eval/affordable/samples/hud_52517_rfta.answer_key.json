@@ -1,0 +1,69 @@
+{
+  "id": "hud_52517_rfta",
+  "form": "HUD-52517 Request for Tenancy Approval (exp. 04/30/2026)",
+  "program": "HCV",
+  "doc_type": "rfta",
+  "source_file": "sources/hud_52517_rfta.pdf",
+  "sample_file": "samples/hud_52517_rfta.pdf",
+  "synthetic": true,
+  "notes": "Same fictional HCV unit as the hud_52641_* HAP contract samples (requested rent = contract rent).",
+  "lease_fields": {
+    "tenant": "Renata Quillfeather",
+    "landlord": "Maple Ridge Housing Partners LP",
+    "rent_amount": "$1,325.00",
+    "lease_start_date": "12/01/2026",
+    "lease_end_date": null,
+    "property_address": "1450 Maple Ridge Drive, Apt 2B, Riverbend, IN 46990",
+    "security_deposit": "$1,000.00"
+  },
+  "program_fields": {
+    "pha_name": {
+      "value": "Riverbend Housing Authority",
+      "type": "text"
+    },
+    "unit_address": {
+      "value": "1450 Maple Ridge Drive, Apt 2B, Riverbend, IN 46990",
+      "type": "text"
+    },
+    "requested_lease_start": {
+      "value": "12/01/2026",
+      "type": "date"
+    },
+    "bedrooms": {
+      "value": "2",
+      "type": "int"
+    },
+    "year_constructed": {
+      "value": "1998",
+      "type": "int"
+    },
+    "proposed_rent": {
+      "value": "$1,325.00",
+      "type": "money"
+    },
+    "security_deposit": {
+      "value": "$1,000.00",
+      "type": "money"
+    },
+    "date_unit_available": {
+      "value": "11/01/2026",
+      "type": "date"
+    },
+    "owner_name": {
+      "value": "Maple Ridge Housing Partners LP",
+      "type": "text"
+    },
+    "household_head": {
+      "value": "Renata Quillfeather",
+      "type": "text"
+    },
+    "structure_type": {
+      "value": "Low-rise apartment building",
+      "type": "checkbox"
+    },
+    "heating_fuel": {
+      "value": "Natural gas, paid by tenant",
+      "type": "checkbox"
+    }
+  }
+}

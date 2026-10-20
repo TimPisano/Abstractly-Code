@@ -1,0 +1,22 @@
+{
+  "retrieved": "2026-10-19",
+  "note": "Blank public forms downloaded unmodified from the issuing agency (or a PHA's public copy of a HUD form). US federal works are public domain (17 USC 105); state forms are public agency records. None contain personal data: all were checked blank (CHFA LURA is a template with placeholders).",
+  "files": {
+    "hud_52641_rhanc.pdf": "https://rhanc.gov/wp-content/uploads/2025/01/HUD-52641_2023_HAP_CONTRACT.pdf",
+    "hud_52641_tarrant.pdf": "https://www.tarrantcountytx.gov/content/dam/main/housing-assistance/Documents/HUD-52641CompleteHAPContract_Parts%20A_B_C-EXP04-30-2026.pdf",
+    "hud_52530b_pt1.pdf": "https://www.hud.gov/sites/dfiles/OCHCO/documents/52530Bpt1.pdf",
+    "hud_52530a.pdf": "https://www.hud.gov/sites/dfiles/OCHCO/documents/52530A_PBV.pdf",
+    "hud_52517_rfta.pdf": "https://sfha.org/files/documents/52517ENG.pdf",
+    "hud_50059.pdf": "https://www.hud.gov/sites/documents/50059.pdf",
+    "hud_52670.pdf": "https://www.hud.gov/sites/documents/52670.pdf",
+    "hud_52697.pdf": "https://www.hud.gov/sites/dfiles/OCHCO/documents/52697.pdf",
+    "irs_8609.pdf": "https://www.irs.gov/pub/irs-pdf/f8609.pdf",
+    "irs_8823.pdf": "https://www.irs.gov/pub/irs-access/f8823_accessible.pdf",
+    "irs_8586.pdf": "https://www.irs.gov/pub/irs-access/f8586_accessible.pdf",
+    "tic_in_ihda.pdf": "https://www.ihda.org/wp-content/uploads/2025/11/Tenant-Income-Certification-11-2025-FINAL.pdf",
+    "tic_sc.pdf": "https://www.schousing.sc.gov/sites/schousing/files/Documents/Development/Manuals%20and%20Forms/Tenant-Income-Certification-FINAL-2024.pdf",
+    "tic_nj_scan.pdf": "https://www.nj.gov/dca/hmfa/developers/docs/lihtc/compliance/compliance_forms/tc_comp_tenant_income_cert.pdf",
+    "tic_la_lhc.pdf": "https://www.lhc.la.gov/hubfs/Document%20Libraries/Housing%20Development/Compliance/HOTMA%20Forms/Tenant%20Income%20Certification.pdf",
+    "lura_co_chfa.pdf": "https://www.chfainfo.com/getattachment/65a277c7-954c-4ca9-840d-c3df67c11c44/LURA-sample.pdf"
+  }
+}

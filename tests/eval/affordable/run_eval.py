@@ -1,0 +1,288 @@
+"""
+Measure Abstractly's extraction on the synthetic affordable-housing samples.
+
+  python -I tests/eval/affordable/run_eval.py                  # regex engine (default, offline)
+  python -I tests/eval/affordable/run_eval.py --engine ai      # AI engine: calls the Anthropic API
+  python -I tests/eval/affordable/run_eval.py --only tic_sc hud_50059
+
+Reads samples/*.answer_key.json, runs each sample PDF through the same steps
+as an upload (backend/app/api.py): document_extractor.extract_pages, the
+low-text "ocr_needed" gate, the rent-roll-table gate, lease boundary
+detection, then field extraction on the first lease range. It does not
+change any extraction code; it only measures it.
+
+Two scores per document:
+
+  1. Lease fields: our engine's 15 lease fields vs the answer key's
+     expected values, using backend/app/extraction_scoring.py (the same
+     matcher the training harness uses). Recall = right / fields the
+     form actually states; spurious = values asserted where the form
+     states nothing.
+  2. Program fields (HAP, TTP, AMI limit, household size, contract
+     number, ...): the engine has no field for these, so extraction
+     accuracy is 0 by construction. What we do measure is whether each
+     value survives into the extracted page text ("text-layer recall"),
+     i.e. whether a future extractor could find it at all.
+
+Writes results/<engine>.json and prints a summary.
+"""
+
+import argparse
+import json
+import os
+import re
+import sys
+import tempfile
+from collections import defaultdict
+from datetime import date
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+REPO = HERE.parents[2]
+sys.path.insert(0, str(REPO / "backend"))
+
+from app import document_extractor  # noqa: E402
+from app.extraction_scoring import ALL_FIELDS, score_field  # noqa: E402
+from app.field_extractor import FieldExtractor, looks_like_rent_roll_table  # noqa: E402
+from app.normalize import parse_currency, parse_date  # noqa: E402
+
+SAMPLES = HERE / "samples"
+RESULTS = HERE / "results"
+
+
+# ---------------------------------------------------------------------------
+# pipeline (mirrors api.py's upload path)
+# ---------------------------------------------------------------------------
+
+def run_pipeline(pdf_path: Path, engine: str):
+    data = pdf_path.read_bytes()
+    with tempfile.NamedTemporaryFile(suffix=".pdf") as tmp:
+        tmp.write(data)
+        tmp.flush()
+        pages = document_extractor.extract_pages(data, pdf_path.name, tmp.name)
+
+    out = {"pages": pages, "status": "ok", "ranges": 0, "fields": {}}
+    low = document_extractor.find_low_text_pages(pages)
+    if low:
+        # The app saves the document as 'ocr_needed' with all fields empty.
+        out.update(status="ocr_needed", low_text_pages=[p["page"] for p in low])
+        return out
+    if looks_like_rent_roll_table(pages):
+        out.update(status="rejected_as_rent_roll")
+        return out
+
+    fx = FieldExtractor()
+    boundaries = fx.detect_lease_boundaries(pages)
+    out["ranges"] = len(boundaries)
+    start, end = boundaries[0]
+    sub_pages = [p for p in pages if start <= p["page"] <= end]
+    if engine == "ai":
+        from app import ai_extraction
+        fields = ai_extraction.extract_lease_fields(sub_pages)
+        fields.pop("_ai_meta", None)
+    else:
+        fields = fx.extract_fields(sub_pages)
+    out["fields"] = fields
+    return out
+
+
+# ---------------------------------------------------------------------------
+# text-layer recall
+# ---------------------------------------------------------------------------
+
+MONEY_RE = re.compile(r"\$?\s?\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?|\$?\s?\d+(?:\.\d{1,2})?")
+DATE_RES = [
+    re.compile(r"\b\d{1,2}\s*/\s*\d{1,2}\s*/\s*\d{2,4}\b"),
+    re.compile(r"\b\d{4}-\d{2}-\d{2}\b"),
+    re.compile(r"\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2},?\s+\d{4}\b", re.I),
+]
+
+
+def _norm_text(s: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", s.lower()).strip()
+
+
+def _as_date(s: str):
+    d = parse_date(s)
+    if isinstance(d, date):
+        return d
+    m = re.match(r"^\s*(\d{1,2})\s*/\s*(\d{1,2})\s*/\s*(\d{2,4})\s*$", s)
+    if m:
+        mo, dd, yy = (int(g) for g in m.groups())
+        yy = yy + 2000 if yy < 100 else yy
+        try:
+            return date(yy, mo, dd)
+        except ValueError:
+            return None
+    return None
+
+
+def in_text(value: str, vtype: str, text: str) -> bool:
+    if vtype == "money":
+        want = parse_currency(value)
+        if want is None:
+            return False
+        for tok in MONEY_RE.findall(text):
+            got = parse_currency(tok.replace(" ", ""))
+            if got is not None and abs(got - want) <= 0.5:
+                return True
+        return False
+    if vtype == "date":
+        want = _as_date(value)
+        if want is None:
+            return _norm_text(value) in _norm_text(text)
+        for rx in DATE_RES:
+            for tok in rx.findall(text):
+                if _as_date(tok) == want:
+                    return True
+        return False
+    if vtype in ("int", "pct"):
+        n = re.sub(r"[^\d.]", "", value)
+        return re.search(rf"(?<![\d.,]){re.escape(n)}(?![\d])", text.replace(",", "")) is not None
+    return _norm_text(value) in _norm_text(text)
+
+
+# ---------------------------------------------------------------------------
+# scoring
+# ---------------------------------------------------------------------------
+
+def evaluate(key: dict, engine: str) -> dict:
+    result = run_pipeline(HERE / key["sample_file"], engine)
+    text = "\n".join(p.get("text") or "" for p in result["pages"])
+
+    lease_scores = []
+    for field in ALL_FIELDS:
+        expected = key["lease_fields"].get(field)
+        s = score_field(field, result["fields"].get(field), expected)
+        s["in_text_layer"] = None if expected is None else in_text(
+            expected, "money" if field in ("rent_amount", "security_deposit", "cam_charges")
+            else "date" if field.endswith("_date") else "text", text)
+        lease_scores.append(s)
+
+    program_scores = []
+    for name, entry in key["program_fields"].items():
+        if entry["type"] == "checkbox":
+            continue
+        shown = entry.get("shown_as", entry["value"])
+        program_scores.append({
+            "field": name,
+            "type": entry["type"],
+            "expected": entry["value"],
+            "extracted": None,              # no engine field exists for it
+            "correct": False,
+            "in_text_layer": in_text(str(shown), entry["type"], text),
+        })
+
+    stated = [s for s in lease_scores if s["expected"] is not None]
+    return {
+        "id": key["id"],
+        "form": key["form"],
+        "program": key["program"],
+        "doc_type": key["doc_type"],
+        "pipeline_status": result["status"],
+        "lease_ranges": result["ranges"],
+        "pages": len(result["pages"]),
+        "lease_fields": {
+            "stated": len(stated),
+            "correct": sum(1 for s in stated if s["correct"]),
+            "wrong": sum(1 for s in stated if s["kind"] == "wrong"),
+            "missed": sum(1 for s in stated if s["kind"] == "missed"),
+            "spurious": sum(1 for s in lease_scores if s["kind"] == "spurious"),
+            "in_text_layer": sum(1 for s in stated if s["in_text_layer"]),
+            "scores": lease_scores,
+        },
+        "program_fields": {
+            "total": len(program_scores),
+            "correct": 0,
+            "in_text_layer": sum(1 for s in program_scores if s["in_text_layer"]),
+            "scores": program_scores,
+        },
+    }
+
+
+def _pct(a, b):
+    return None if not b else round(100.0 * a / b, 1)
+
+
+def summarize(docs):
+    by_type = defaultdict(lambda: defaultdict(int))
+    field_misses = defaultdict(lambda: {"stated": 0, "correct": 0, "text": 0, "docs_wrong": []})
+    for d in docs:
+        t = by_type[d["doc_type"]]
+        t["docs"] += 1
+        t["ocr_needed"] += d["pipeline_status"] == "ocr_needed"
+        for k in ("stated", "correct", "wrong", "missed", "spurious", "in_text_layer"):
+            t[f"lease_{k}"] += d["lease_fields"][k]
+        t["program_total"] += d["program_fields"]["total"]
+        t["program_in_text"] += d["program_fields"]["in_text_layer"]
+        for s in d["lease_fields"]["scores"]:
+            if s["expected"] is None:
+                continue
+            f = field_misses[f"lease.{s['field']}"]
+            f["stated"] += 1
+            f["correct"] += s["correct"]
+            f["text"] += bool(s["in_text_layer"])
+            if not s["correct"]:
+                f["docs_wrong"].append(f"{d['id']} ({s['kind']}: got {s['extracted']!r})")
+        for s in d["program_fields"]["scores"]:
+            f = field_misses[f"program.{s['field']}"]
+            f["stated"] += 1
+            f["text"] += bool(s["in_text_layer"])
+            if not s["in_text_layer"]:
+                f["docs_wrong"].append(f"{d['id']} (not in text layer)")
+    types = {}
+    for name, t in sorted(by_type.items()):
+        types[name] = dict(t)
+        types[name]["lease_recall_pct"] = _pct(t["lease_correct"], t["lease_stated"])
+        types[name]["lease_text_layer_pct"] = _pct(t["lease_in_text_layer"], t["lease_stated"])
+        types[name]["program_text_layer_pct"] = _pct(t["program_in_text"], t["program_total"])
+    fields = {k: {**v, "recall_pct": _pct(v["correct"], v["stated"]), "text_layer_pct": _pct(v["text"], v["stated"])}
+              for k, v in field_misses.items()}
+    tot = lambda k: sum(t[k] for t in by_type.values())  # noqa: E731
+    overall = {
+        "docs": len(docs),
+        "lease_recall_pct": _pct(tot("lease_correct"), tot("lease_stated")),
+        "lease_spurious": tot("lease_spurious"),
+        "lease_text_layer_pct": _pct(tot("lease_in_text_layer"), tot("lease_stated")),
+        "program_extraction_pct": 0.0,
+        "program_text_layer_pct": _pct(tot("program_in_text"), tot("program_total")),
+    }
+    return {"overall": overall, "by_doc_type": types, "by_field": fields}
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap.add_argument("--engine", choices=("regex", "ai"), default="regex")
+    ap.add_argument("--only", nargs="*", help="answer-key ids to run")
+    args = ap.parse_args(argv)
+
+    if args.engine == "ai" and not os.environ.get("ANTHROPIC_API_KEY"):
+        print("--engine ai needs ANTHROPIC_API_KEY in the environment. Nothing was sent.", file=sys.stderr)
+        return 2
+
+    keys = [json.loads(p.read_text()) for p in sorted(SAMPLES.glob("*.answer_key.json"))]
+    if args.only:
+        keys = [k for k in keys if k["id"] in set(args.only)]
+    docs = [evaluate(k, args.engine) for k in keys]
+    report = {"engine": args.engine, "run_date": date.today().isoformat(), "summary": summarize(docs), "documents": docs}
+
+    RESULTS.mkdir(exist_ok=True)
+    out = RESULTS / f"{args.engine}.json"
+    out.write_text(json.dumps(report, indent=2, default=str) + "\n")
+
+    print(f"engine={args.engine}  docs={len(docs)}  -> {out.relative_to(REPO)}")
+    print(f"{'document':24} {'status':12} {'rng':>3} {'lease ok/stated':>15} {'spur':>4} {'lease txt':>9} {'prog txt':>9}")
+    for d in docs:
+        lf, pf = d["lease_fields"], d["program_fields"]
+        print(f"{d['id']:24} {d['pipeline_status']:12} {d['lease_ranges']:>3} "
+              f"{lf['correct']:>7}/{lf['stated']:<7} {lf['spurious']:>4} "
+              f"{lf['in_text_layer']:>4}/{lf['stated']:<4} {pf['in_text_layer']:>4}/{pf['total']:<4}")
+    o = report["summary"]["overall"]
+    print(f"\nOVERALL lease recall {o['lease_recall_pct']}%  spurious {o['lease_spurious']}  "
+          f"lease text-layer {o['lease_text_layer_pct']}%  program text-layer {o['program_text_layer_pct']}%  "
+          f"program extraction {o['program_extraction_pct']}%")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
