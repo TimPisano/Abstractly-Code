@@ -10,6 +10,7 @@ isn't installed, the image test asserts the CLEAN failure message
 instead, and the grid-reconstruction algorithm is tested directly with
 synthetic word boxes (no tesseract needed).
 """
+import _test_env  # noqa: F401  -- first: temp DB, no .env, no real network (see _test_env.py)
 import io
 import os
 import shutil

@@ -2,6 +2,7 @@
 Tests for T12 detectors in deal_mismatch.py
 """
 
+import _test_env  # noqa: F401  -- first: temp DB, no .env, no real network (see _test_env.py)
 import os
 import sys
 import unittest.mock as mock
@@ -13,6 +14,13 @@ from app.deal_mismatch import (
     detect_t12_concession_gap, detect_t12_bad_debt_trend,
     build_deal_mismatch_report_data,
 )
+from app import database
+
+# build_deal_mismatch_report_data reads rent-roll unit summaries from the
+# database. This file used to rely on whatever database sat at the
+# default path (a developer's real one); it now creates the schema in
+# its own temp database (configured by _test_env).
+database.init_db()
 
 
 def _rent_roll_lease(property_address, tenant, rent_amount, lease_id=1):

@@ -18,6 +18,7 @@ are reproducible; relying on today's date would make these tests start
 failing on their own as fixtures aged past their expiration dates.
 """
 
+import _test_env  # noqa: F401  -- first: temp DB, no .env, no real network (see _test_env.py)
 import os
 import sys
 from datetime import date, timedelta

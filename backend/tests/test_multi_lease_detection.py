@@ -28,6 +28,7 @@ existing fixture, individually) and the "must correctly split a real
 merged PDF" checks (several different genuine multi-file merges).
 """
 
+import _test_env  # noqa: F401  -- first: temp DB, no .env, no real network (see _test_env.py)
 import os
 import sys
 

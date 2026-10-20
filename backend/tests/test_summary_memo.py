@@ -17,6 +17,7 @@ dropped the tenant name or a risk flag would still "successfully"
 produce a well-formed PDF file.
 """
 
+import _test_env  # noqa: F401  -- first: temp DB, no .env, no real network (see _test_env.py)
 import io
 import os
 import sys

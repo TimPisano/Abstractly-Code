@@ -7,6 +7,7 @@ test_client(), email captured at email_service._send (never reaches
 SMTP), every rate limiter cleared per test.
 """
 
+import _test_env  # noqa: F401  -- first: temp DB, no .env, no real network (see _test_env.py)
 import hashlib
 import os
 import re

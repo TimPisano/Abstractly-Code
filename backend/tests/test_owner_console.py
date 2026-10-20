@@ -13,6 +13,7 @@ role='admin' must NOT imply is_owner -- a regression here would expose
 account suspension and financial data to every team admin.
 """
 
+import _test_env  # noqa: F401  -- first: temp DB, no .env, no real network (see _test_env.py)
 import os
 import sys
 import tempfile

@@ -9,6 +9,7 @@ Date math is checked against independently-verified expected values
 the code under test) -- see tools/stress_test/generate_lease_fixtures.py
 for the fuller, full-lease-text version of this same discipline.
 """
+import _test_env  # noqa: F401  -- first: temp DB, no .env, no real network (see _test_env.py)
 import os
 import sys
 import tempfile

@@ -17,6 +17,7 @@ Same conventions as test_rent_roll_import_api.py: _fresh_temp_db() +
 Flask test_client(), no live server required.
 """
 
+import _test_env  # noqa: F401  -- first: temp DB, no .env, no real network (see _test_env.py)
 import csv
 import io
 import os

@@ -6,6 +6,7 @@ documents it produces actually flow through the real extraction /
 rent-roll-import pipeline (not just "a file was written").
 """
 
+import _test_env  # noqa: F401  -- first: temp DB, no .env, no real network (see _test_env.py)
 import json
 import os
 import sys

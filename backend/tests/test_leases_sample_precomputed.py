@@ -4,6 +4,7 @@ uses precomputed extraction, not live pipeline calls.
 Plain-script test convention with mocked API.
 """
 
+import _test_env  # noqa: F401  -- first: temp DB, no .env, no real network (see _test_env.py)
 import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))

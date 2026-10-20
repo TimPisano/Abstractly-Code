@@ -24,6 +24,7 @@ every team-scoped table is compared row for row: team A's rows must be
 unchanged, and none of team B's new rows may point at a team A record.
 """
 
+import _test_env  # noqa: F401  -- first: temp DB, no .env, no real network (see _test_env.py)
 import io
 import os
 import re

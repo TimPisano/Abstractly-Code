@@ -42,8 +42,11 @@ import time
 # environment variables instead, load_dotenv() is a silent no-op if
 # there's no .env file to find. Must run before email_service is used
 # (it reads EMAIL_USER/EMAIL_APP_PASSWORD from os.environ), so this
-# happens before that import.
-load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
+# happens before that import. Skipped under the offline test suite
+# (ABSTRACTLY_TESTS=1, set by tests/_test_env.py): a developer's real
+# .env must never reach a test.
+if os.environ.get("ABSTRACTLY_TESTS") != "1":
+    load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
 # Configure logging for the whole process before anything else logs --
 # a single stdout handler + consistent format + optional email-on-error.
