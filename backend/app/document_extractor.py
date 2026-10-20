@@ -23,6 +23,7 @@ network calls, no unbounded loops).
 import csv
 import io
 import logging
+import os
 import re
 from typing import Any, Dict, List
 
@@ -426,3 +427,126 @@ def _extract_plain_text(file_bytes: bytes) -> List[Dict[str, Any]]:
     if not text.strip():
         raise DocumentExtractionError("This text file is empty.")
     return [{"page": 1, "text": text}]
+
+
+# ----------------------------------------------------------------------
+# Large-file entry point (background upload pipeline, app/upload_jobs.py)
+# ----------------------------------------------------------------------
+
+# Longest side an image is OCR'd at. A 48-megapixel phone photo OCRs no
+# better than a 4,000 px one and takes several times as long.
+_MAX_OCR_IMAGE_SIDE = 4000
+_OCR_TIMEOUT_S = 120
+
+
+def extract_pages_from_path(path: str, extension: str, progress=None) -> List[Dict[str, Any]]:
+    """
+    Same contract and same `pages` shape as extract_pages(), for a file
+    that is already on disk and whose `extension` was decided from its
+    content (app/file_types.detect_file_type), not from its name.
+
+    Differences from extract_pages(), only where size matters:
+      - PDF: text layer read page by page; only pages without usable text
+        are OCR'd, one page rasterized at a time
+        (PDFExtractor.extract_text_per_page).
+      - Images: every frame of a multi-page TIFF becomes its own page
+        (extract_pages() only ever read the first frame); HEIC is decoded
+        through pillow-heif; oversized photos are scaled down before OCR.
+      - `progress(done, total)` is called as pages finish, so the upload
+        job can report "page 120 of 300".
+
+    Every other format is small by nature and goes through the existing
+    extractor for it unchanged.
+
+    Raises DocumentExtractionError with a user-facing message, like
+    extract_pages().
+    """
+    if os.path.getsize(path) == 0:
+        raise DocumentExtractionError("This file is empty.")
+
+    if extension == "pdf":
+        pages = _extract_pdf_per_page(path, progress)
+    elif extension in ("jpg", "png", "tiff", "heic", "webp", "bmp"):
+        pages = _extract_image_frames(path, extension, progress)
+    else:
+        with open(path, "rb") as f:
+            file_bytes = f.read()
+        pages = extract_pages(file_bytes, f"document.{extension}", path)
+        if progress:
+            progress(len(pages), len(pages))
+
+    if not pages:
+        raise DocumentExtractionError("This file has no readable content.")
+    return pages
+
+
+def _extract_pdf_per_page(path: str, progress) -> List[Dict[str, Any]]:
+    try:
+        reader = pypdf.PdfReader(path)
+        if reader.is_encrypted and reader.decrypt("") == 0:
+            raise DocumentExtractionError(
+                "This PDF is password-protected. Remove the password (or save an "
+                "unprotected copy) and upload it again."
+            )
+    except DocumentExtractionError:
+        raise
+    except Exception as e:
+        raise DocumentExtractionError("This PDF couldn't be opened. It may be damaged; try saving a fresh copy.") from e
+
+    try:
+        return PDFExtractor().extract_text_per_page(path, progress=progress, ocr_timeout_s=_OCR_TIMEOUT_S)
+    except Exception as e:
+        logger.exception("Per-page PDF extraction failed")
+        raise DocumentExtractionError("Failed to extract text from this PDF. The file may be corrupted or unsupported.") from e
+
+
+def _extract_image_frames(path: str, extension: str, progress) -> List[Dict[str, Any]]:
+    from PIL import ImageSequence
+
+    if extension == "heic":
+        try:
+            import pillow_heif
+            pillow_heif.register_heif_opener()
+        except ImportError as e:
+            raise DocumentExtractionError(
+                "HEIC photos can't be read on this server. On iPhone, use Share > Options > Most Compatible "
+                "(or export as JPG) and upload that."
+            ) from e
+
+    try:
+        image = Image.open(path)
+        frame_count = getattr(image, "n_frames", 1)
+    except Image.DecompressionBombError as e:
+        raise DocumentExtractionError("This image is too large to process. Scale it down or save it as a PDF and try again.") from e
+    except (UnidentifiedImageError, OSError) as e:
+        raise DocumentExtractionError("This image file could not be read -- it may be corrupted or in an unsupported format.") from e
+
+    pages = []
+    extractor = PDFExtractor()
+    try:
+        for index, frame in enumerate(ImageSequence.Iterator(image), start=1):
+            try:
+                page_image = frame.convert("L")
+                if max(page_image.size) > _MAX_OCR_IMAGE_SIDE:
+                    page_image.thumbnail((_MAX_OCR_IMAGE_SIDE, _MAX_OCR_IMAGE_SIDE))
+                text, confidence = extractor._ocr_page_with_confidence(page_image, timeout_s=_OCR_TIMEOUT_S)
+            except Exception:
+                logger.warning("OCR failed on image frame %d", index)
+                text, confidence = "", None
+            entry = {"page": index, "text": text}
+            if confidence is not None:
+                entry["ocr_confidence"] = confidence
+            pages.append(entry)
+            if progress:
+                progress(index, frame_count)
+    except OSError as e:
+        raise DocumentExtractionError("This image file is truncated or damaged. Try exporting it again.") from e
+    finally:
+        image.close()
+
+    if not any((p["text"] or "").strip() for p in pages):
+        raise DocumentExtractionError(
+            "No readable text was found in this image. Make sure it's a clear photo or "
+            "scan of the actual document, not blank or too low-resolution to read."
+        )
+    return pages

@@ -117,6 +117,7 @@ UNIT_TESTS = [
     "test_gauntlet_regressions.py",
     # Large files + any file type (feature/large-files-any-type).
     "test_file_types.py",
+    "test_large_file_extraction.py",
 ]
 
 LIVE_API_TESTS = [

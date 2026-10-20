@@ -143,7 +143,71 @@ class PDFExtractor:
 
         return pages
 
-    def _ocr_page_with_confidence(self, image):
+    def extract_text_per_page(self, pdf_path: str, progress=None, ocr_dpi: int = 200,
+                              min_chars: int = 50, ocr_timeout_s: int = 120) -> List[Dict[str, Any]]:
+        """
+        Large-document variant of extract_text, used by the background
+        upload pipeline (app/upload_jobs.py). Differences, all deliberate:
+
+          - OCR is decided PER PAGE: a page whose text layer has fewer
+            than `min_chars` characters is OCR'd, the rest are not. The
+            whole-document rule in extract_text (OCR only when the entire
+            file has under 100 characters) never fires for a long lease
+            with a few scanned pages in it.
+          - Only ONE page is rasterized at a time (first_page/last_page),
+            grayscale. extract_text's convert_from_path(path) renders every
+            page up front: about 3 GB of RGB bitmaps for 300 pages at
+            200 DPI, against 512 MB of RAM on the API container.
+          - Each page's OCR has a timeout, so one pathological page can't
+            hang the job; that page just comes back without text.
+          - `progress(done, total)` is called after every page.
+
+        Returns the same [{"page", "text", ["ocr_confidence"]}] shape.
+        Raises on a file pypdf can't open at all (the caller turns that
+        into a user-facing message).
+        """
+        reader = pypdf.PdfReader(pdf_path)
+        if reader.is_encrypted:
+            reader.decrypt("")
+        total = len(reader.pages)
+        pages = []
+        for page_num in range(1, total + 1):
+            try:
+                text = reader.pages[page_num - 1].extract_text() or ""
+            except Exception:
+                logger.warning("Text-layer extraction failed on page %d; trying OCR", page_num)
+                text = ""
+            entry = {"page": page_num, "text": text}
+            if len(text.strip()) < min_chars:
+                ocr_text, confidence = self._ocr_single_pdf_page(pdf_path, page_num, ocr_dpi, ocr_timeout_s)
+                if len(ocr_text.strip()) > len(text.strip()):
+                    entry["text"] = ocr_text
+                    if confidence is not None:
+                        entry["ocr_confidence"] = confidence
+            pages.append(entry)
+            if progress:
+                progress(page_num, total)
+        return pages
+
+    def _ocr_single_pdf_page(self, pdf_path: str, page_num: int, dpi: int, timeout_s: int):
+        """(text, mean_confidence) for one page, or ("", None) if rasterizing or OCR fails."""
+        try:
+            images = convert_from_path(pdf_path, dpi=dpi, first_page=page_num, last_page=page_num, grayscale=True)
+        except Exception:
+            logger.exception("Could not rasterize page %d for OCR", page_num)
+            return "", None
+        if not images:
+            return "", None
+        image = images[0]
+        try:
+            return self._ocr_page_with_confidence(image, timeout_s=timeout_s)
+        except Exception:
+            logger.warning("OCR failed or timed out on page %d", page_num)
+            return "", None
+        finally:
+            image.close()
+
+    def _ocr_page_with_confidence(self, image, timeout_s=0):
         """
         Runs tesseract once via image_to_data and returns (text, mean_
         confidence). Text is reconstructed from the word-level data
@@ -159,8 +223,11 @@ class PDFExtractor:
         nothing to do with legibility. Returns (text, None) if nothing
         was recognized at all, so a caller can tell "OCR ran but found
         nothing" apart from "OCR ran and was confident."
+
+        timeout_s > 0 makes pytesseract kill tesseract after that many
+        seconds (raises RuntimeError); 0, the default, means no limit.
         """
-        data = pytesseract.image_to_data(image, output_type=pytesseract.Output.DICT)
+        data = pytesseract.image_to_data(image, output_type=pytesseract.Output.DICT, timeout=timeout_s)
 
         lines: Dict[Any, List[str]] = {}
         confidences: List[float] = []
