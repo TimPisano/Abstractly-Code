@@ -1824,6 +1824,27 @@ def get_lease(lease_id: int, team_id: int) -> Optional[Dict[str, Any]]:
         conn.close()
 
 
+def supersede_leases_bulk(lease_ids: List[int], team_id: int) -> int:
+    """supersede_lease for many leases of one team, in one transaction. Returns how many rows changed."""
+    if not lease_ids:
+        return 0
+    conn = _patient_connection()
+    try:
+        changed = 0
+        for start in range(0, len(lease_ids), 500):  # SQLite's bound-parameter limit
+            batch = lease_ids[start:start + 500]
+            placeholders = ",".join("?" * len(batch))
+            cur = conn.execute(
+                f"UPDATE leases SET status = 'superseded' WHERE team_id = ? AND id IN ({placeholders})",
+                [team_id, *batch],
+            )
+            changed += cur.rowcount
+        conn.commit()
+        return changed
+    finally:
+        conn.close()
+
+
 def get_leases_by_ids(lease_ids: List[int], team_id: int) -> Dict[int, Dict[str, Any]]:
     """Batched version of get_lease for many ids at once — {id: lease}, filtered to team_id so a caller can't smuggle another team's id into a batch. Same OverflowError safety as get_lease (an out-of-range id just won't match any row)."""
     if not lease_ids:
@@ -4798,6 +4819,20 @@ def get_rent_roll_unit_summaries(team_id: int) -> List[Dict[str, Any]]:
 # Upload jobs (app/upload_jobs.py)
 # ----------------------------------------------------------------------
 
+# How long an upload-job write waits for SQLite's write lock before giving
+# up. get_connection()'s default (Python's sqlite3: 5 s) is too short once
+# a team has a few thousand leases: POST /alerts/generate alone holds the
+# lock for 5-9 s at ~5,000 leases (measured; see the large-files report),
+# and a background job must not fail because a dashboard loaded meanwhile.
+UPLOAD_JOB_BUSY_TIMEOUT_MS = 30_000
+
+
+def _patient_connection(busy_timeout_ms: int = UPLOAD_JOB_BUSY_TIMEOUT_MS) -> sqlite3.Connection:
+    conn = get_connection()
+    conn.execute(f"PRAGMA busy_timeout = {int(busy_timeout_ms)}")
+    return conn
+
+
 _UPLOAD_JOB_JSON_COLUMNS = ("options", "result")
 _UPLOAD_JOB_UPDATABLE = {"status", "stage", "progress_current", "progress_total", "message", "result", "error",
                          "finished_at", "stored_path", "detected_type"}
@@ -4814,7 +4849,7 @@ def create_upload_job(team_id: int, user_id: Optional[int], kind: str, filename:
                       size_bytes: int, content_hash: str, detected_type: str,
                       options: Optional[Dict[str, Any]] = None) -> int:
     now = datetime.now(timezone.utc).isoformat()
-    conn = get_connection()
+    conn = _patient_connection()
     try:
         cur = conn.execute(
             "INSERT INTO upload_jobs (team_id, user_id, kind, filename, stored_path, size_bytes, content_hash, "
@@ -4856,8 +4891,13 @@ def get_upload_job_for_worker(job_id: int) -> Optional[Dict[str, Any]]:
         conn.close()
 
 
-def update_upload_job(job_id: int, **fields: Any) -> None:
-    """Set any of _UPLOAD_JOB_UPDATABLE on a job; always bumps updated_at (the runner's heartbeat)."""
+def update_upload_job(job_id: int, busy_timeout_ms: int = UPLOAD_JOB_BUSY_TIMEOUT_MS, **fields: Any) -> None:
+    """
+    Set any of _UPLOAD_JOB_UPDATABLE on a job; always bumps updated_at (the
+    runner's heartbeat). Raises sqlite3.OperationalError if the write lock
+    isn't free within `busy_timeout_ms` -- progress heartbeats pass a short
+    wait and skip on failure; status changes keep the long default.
+    """
     unknown = set(fields) - _UPLOAD_JOB_UPDATABLE
     if unknown:
         raise ValueError(f"not updatable: {sorted(unknown)}")
@@ -4866,7 +4906,7 @@ def update_upload_job(job_id: int, **fields: Any) -> None:
         sets.append(f"{column} = ?")
         params.append(json.dumps(value) if column in _UPLOAD_JOB_JSON_COLUMNS and value is not None else value)
     params.append(job_id)
-    conn = get_connection()
+    conn = _patient_connection(busy_timeout_ms)
     try:
         conn.execute(f"UPDATE upload_jobs SET {', '.join(sets)} WHERE id = ?", params)
         conn.commit()
@@ -4882,8 +4922,14 @@ def fail_stale_upload_jobs(team_id: int, processing_before_iso: str, queued_befo
     legitimately wait behind another file's long OCR run). Returns how many.
     """
     now = datetime.now(timezone.utc).isoformat()
+    stale_clause = "team_id = ? AND ((status = 'processing' AND updated_at < ?) OR (status = 'queued' AND updated_at < ?))"
     conn = get_connection()
     try:
+        # Called on every poll: a plain read in the common case, so polling
+        # never competes for the write lock with the job it's watching.
+        if not conn.execute(f"SELECT 1 FROM upload_jobs WHERE {stale_clause} LIMIT 1",
+                            (team_id, processing_before_iso, queued_before_iso)).fetchone():
+            return 0
         cur = conn.execute(
             "UPDATE upload_jobs SET status = 'failed', stage = 'failed', error = ?, message = ?, "
             "updated_at = ?, finished_at = ? "
@@ -4900,7 +4946,7 @@ def set_lease_content_hash(lease_ids: List[int], content_hash: str, team_id: int
     """Stamps the uploaded file's SHA-256 on the leases made from it (usage_limits.find_duplicate_upload matches on it)."""
     if not lease_ids:
         return
-    conn = get_connection()
+    conn = _patient_connection()
     try:
         placeholders = ",".join("?" * len(lease_ids))
         conn.execute(f"UPDATE leases SET content_hash = ? WHERE team_id = ? AND id IN ({placeholders})",
@@ -4922,7 +4968,7 @@ def insert_leases_bulk(rows: List[Dict[str, Any]], team_id: int) -> List[int]:
     and committing once per row, and ~17 s re-reading each row back.
     """
     now = datetime.now(timezone.utc).isoformat()
-    conn = get_connection()
+    conn = _patient_connection()
     ids: List[int] = []
     try:
         for row in rows:
@@ -4953,19 +4999,3 @@ def insert_leases_bulk(rows: List[Dict[str, Any]], team_id: int) -> List[int]:
         raise
     finally:
         conn.close()
-
-
-def get_leases_by_ids(lease_ids: List[int], team_id: int) -> List[Dict[str, Any]]:
-    """These leases (this team's only), in the order given, read with one query."""
-    if not lease_ids:
-        return []
-    conn = get_connection()
-    try:
-        placeholders = ",".join("?" * len(lease_ids))
-        rows = conn.execute(
-            f"SELECT * FROM leases WHERE team_id = ? AND id IN ({placeholders})", [team_id, *lease_ids]
-        ).fetchall()
-    finally:
-        conn.close()
-    by_id = {row["id"]: _row_to_dict(row) for row in rows}
-    return [by_id[i] for i in lease_ids if i in by_id]

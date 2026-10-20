@@ -610,6 +610,98 @@ def test_config_endpoint_describes_limits_and_types():
     print("✓ test_config_endpoint_describes_limits_and_types: PASS")
 
 
+def test_existing_bulk_routes_keep_working():
+    """
+    Regression: commit 89d9654 appended a second database.get_leases_by_ids
+    (returning a list) that silently replaced the existing one (a dict by
+    id), breaking POST /leases/bulk-delete (500) and /leases/bulk-tag
+    (every lease "not found"). Neither route had an offline test.
+    """
+    db = _fresh_db()
+    try:
+        fields = {"tenant": {"value": "Acme", "source": None, "confidence": "high"}}
+        ids = [database.insert_lease(f"l{n}.pdf", fields, team_id=1) for n in range(3)]
+        other_team = database.insert_lease("theirs.pdf", fields, team_id=2)
+        client = _client()
+        resp = client.post("/leases/bulk-tag", json={"ids": ids[:2] + [other_team], "tag": "Q3"})
+        assert resp.status_code == 200, resp.get_json()
+        body = resp.get_json()
+        assert sorted(body.get("tagged") or []) == sorted(ids[:2]), body
+        assert other_team in (body.get("not_found") or []), "another team's lease is never touched"
+        resp = client.post("/leases/bulk-delete", json={"ids": [ids[0], other_team]})
+        assert resp.status_code == 200, resp.get_json()
+        assert database.get_lease(ids[0], team_id=1) is None
+        assert database.get_lease(other_team, team_id=2) is not None
+    finally:
+        os.unlink(db)
+    print("✓ test_existing_bulk_routes_keep_working: PASS")
+
+
+def test_no_module_defines_the_same_function_twice():
+    """Guard for the bug above: a second top-level def with the same name silently replaces the first."""
+    import ast
+    import collections
+    import glob
+    app_dir = os.path.abspath(os.path.join(TESTS_DIR, "..", "app"))
+    duplicates = {}
+    for path in sorted(glob.glob(os.path.join(app_dir, "*.py"))):
+        with open(path) as f:
+            tree = ast.parse(f.read())
+        counts = collections.Counter(n.name for n in tree.body
+                                     if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)))
+        dupes = sorted(name for name, c in counts.items() if c > 1)
+        if dupes:
+            duplicates[os.path.basename(path)] = dupes
+    assert not duplicates, f"defined more than once: {duplicates}"
+    print("✓ test_no_module_defines_the_same_function_twice: PASS")
+
+
+def test_a_busy_database_does_not_fail_the_job_or_the_poll():
+    """
+    Found while screenshotting: with ~5,000 leases, POST /alerts/generate holds
+    SQLite's write lock for 5-9 s; jobs and polls that waited the default 5 s
+    failed with "database is locked". Here another connection holds the write
+    lock for 6.5 s while a job runs and the browser polls.
+    """
+    import sqlite3
+    import threading
+    db = _fresh_db()
+    try:
+        client = _client()
+        queued = []
+        body = open(os.path.join(TESTS_DIR, "multiformat_lease.txt"), "rb").read()
+        with mock.patch.object(upload_jobs, "start_job", side_effect=queued.append):
+            resp = _post(client, filename="lease.txt", body=body)
+        job_id = queued[0]
+
+        locked, release = threading.Event(), threading.Event()
+
+        def hold_write_lock():
+            conn = sqlite3.connect(database.get_db_path())
+            conn.execute("BEGIN IMMEDIATE")
+            locked.set()
+            release.wait(6.5)
+            conn.rollback()
+            conn.close()
+
+        holder = threading.Thread(target=hold_write_lock)
+        holder.start()
+        locked.wait(5)
+        polls = []
+        poller = threading.Thread(target=lambda: polls.append(client.get(f"/uploads/{job_id}").status_code))
+        poller.start()
+        upload_jobs.run_upload_job(job_id)
+        poller.join()
+        holder.join()
+        assert polls == [200], polls
+        done = client.get(f"/uploads/{job_id}").get_json()["upload"]
+        assert done["status"] == "complete", done
+        assert len(done["result"]["lease_ids"]) == 1
+    finally:
+        os.unlink(db)
+    print("✓ test_a_busy_database_does_not_fail_the_job_or_the_poll: PASS")
+
+
 if __name__ == "__main__":
     try:
         test_flag_off_means_routes_404_and_old_limits_unchanged()
@@ -634,6 +726,9 @@ if __name__ == "__main__":
         test_thread_runner_processes_the_job_in_the_background()
         test_rq_runner_enqueues_the_job_on_the_existing_queue()
         test_config_endpoint_describes_limits_and_types()
+        test_existing_bulk_routes_keep_working()
+        test_no_module_defines_the_same_function_twice()
+        test_a_busy_database_does_not_fail_the_job_or_the_poll()
     finally:
         shutil.rmtree(_UPLOAD_DIR, ignore_errors=True)
     print("\nAll upload job tests passed!")

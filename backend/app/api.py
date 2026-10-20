@@ -1624,9 +1624,10 @@ def _upload_job_view(job, include_result=False):
     }
     if include_result and job["status"] == "complete" and job.get("result"):
         result = dict(job["result"])
-        leases = database.get_leases_by_ids(result.get("lease_ids") or [], team_id=job["team_id"])
+        lease_ids = result.get("lease_ids") or []
+        by_id = database.get_leases_by_ids(lease_ids, team_id=job["team_id"])
         summaries = []
-        for lease in leases:
+        for lease in (by_id[i] for i in lease_ids if i in by_id):
             lease["amendment_count"] = 0
             lease["tags"] = []
             summary = _lease_summary(lease)
@@ -1699,7 +1700,8 @@ def create_upload():
         dup = usage_limits.find_duplicate_upload(team_id, content_hash)
         if dup:
             upload_jobs.remove_file(stored_path)
-            usage_limits.log_usage_event(team_id, user["id"], dup["id"], None, None, event_type="dedup_reuse")
+            upload_jobs._retry_when_locked(usage_limits.log_usage_event, team_id, user["id"], dup["id"], None, None,
+                                           event_type="dedup_reuse")
             return jsonify({
                 "leases": [dup],
                 "split_count": 1,

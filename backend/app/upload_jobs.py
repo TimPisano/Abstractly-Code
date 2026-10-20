@@ -34,6 +34,7 @@ failed the next time anyone polls it (fail_stale_jobs), so nothing sits
 import hashlib
 import logging
 import os
+import sqlite3
 import tempfile
 import threading
 import time
@@ -196,10 +197,32 @@ def start_job(job_id: int) -> None:
 
 
 def fail_stale_jobs(team_id: int) -> int:
+    """Housekeeping on poll. Never fails the poll itself: if the write lock is busy, the next poll tries again."""
     now = datetime.now(timezone.utc)
-    return database.fail_stale_upload_jobs(
-        team_id, (now - PROCESSING_STALE_AFTER).isoformat(), (now - QUEUED_STALE_AFTER).isoformat(), STALE_MESSAGE,
-    )
+    try:
+        return database.fail_stale_upload_jobs(
+            team_id, (now - PROCESSING_STALE_AFTER).isoformat(), (now - QUEUED_STALE_AFTER).isoformat(), STALE_MESSAGE,
+        )
+    except sqlite3.OperationalError:
+        logger.info("Skipped the stale upload-job check: database busy")
+        return 0
+
+
+def _retry_when_locked(fn, *args, attempts: int = 4, wait_s: float = 2.0, **kwargs):
+    """
+    Calls fn, retrying while SQLite reports "database is locked". For the
+    existing helpers this job reuses (usage log, activity feed, unit
+    summaries, AI-run link), which open connections with Python's default
+    5 s lock wait -- shorter than one POST /alerts/generate on a big
+    portfolio holds the lock.
+    """
+    for attempt in range(1, attempts + 1):
+        try:
+            return fn(*args, **kwargs)
+        except sqlite3.OperationalError as e:
+            if "locked" not in str(e) or attempt == attempts:
+                raise
+            time.sleep(wait_s)
 
 
 class _Progress:
@@ -216,14 +239,20 @@ class _Progress:
         final = current is not None and total is not None and current >= total
         if not (stage_changed or final) and now - self._last_write < 0.5:
             return
+        try:
+            # A heartbeat is best-effort: if the database is busy, skip it --
+            # the next page or chunk reports again.
+            database.update_upload_job(self.job_id, busy_timeout_ms=2000, status="processing", stage=stage,
+                                       message=message, progress_current=current, progress_total=total)
+        except sqlite3.OperationalError:
+            logger.info("Skipped a progress update for upload job %s: database busy", self.job_id)
+            return
         self._last_write, self._last_stage = now, stage
-        database.update_upload_job(self.job_id, status="processing", stage=stage, message=message,
-                                   progress_current=current, progress_total=total)
 
 
 def _fail(job_id: int, message: str) -> None:
-    database.update_upload_job(job_id, status="failed", stage="failed", message=message, error=message,
-                               finished_at=datetime.now(timezone.utc).isoformat())
+    _retry_when_locked(database.update_upload_job, job_id, status="failed", stage="failed", message=message,
+                       error=message, finished_at=datetime.now(timezone.utc).isoformat())
 
 
 def run_upload_job(job_id: int) -> None:
@@ -256,8 +285,8 @@ def run_upload_job(job_id: int) -> None:
         else:
             raise UploadJobError("Unknown upload type.")
         result["elapsed_seconds"] = round(time.monotonic() - started, 1)
-        database.update_upload_job(job_id, status="complete", stage="complete", message="Done", result=result,
-                                   finished_at=datetime.now(timezone.utc).isoformat())
+        _retry_when_locked(database.update_upload_job, job_id, status="complete", stage="complete", message="Done",
+                           result=result, finished_at=datetime.now(timezone.utc).isoformat())
         logger.info("Upload job %s complete in %.1fs", job_id, result["elapsed_seconds"])
     except (UploadJobError, DocumentExtractionError, RentRollImportError) as e:
         _fail(job_id, str(e))
@@ -401,6 +430,13 @@ def _process_lease(job: Dict[str, Any], progress) -> Dict[str, Any]:
     return _store_leases(job, results, warnings, page_count=len(pages), ocr_page_count=ocr_page_count)
 
 
+def _best_effort(what: str, fn, *args, **kwargs) -> None:
+    try:
+        _retry_when_locked(fn, *args, **kwargs)
+    except Exception:
+        logger.exception("Upload job bookkeeping failed (%s); the upload itself was saved", what)
+
+
 def _store_leases(job, leases, warnings, page_count, ocr_page_count) -> Dict[str, Any]:
     from app import api, usage_limits
 
@@ -417,17 +453,21 @@ def _store_leases(job, leases, warnings, page_count, ocr_page_count) -> Dict[str
         "processing_error": lease.get("processing_error"),
         "source_kind": "document",
     } for lease in leases], team_id)
+    database.set_lease_content_hash(ids, job["content_hash"], team_id)
+    # The leases are saved; from here on, bookkeeping. Each step retries on a
+    # busy database, and none of them may turn a saved upload into "failed".
     for lease, lease_id in zip(leases, ids):
         if lease.get("ai_run_id"):
-            database.link_ai_extraction_run_to_lease(lease["ai_run_id"], lease_id)
-    database.set_lease_content_hash(ids, job["content_hash"], team_id)
+            _best_effort("link AI telemetry", database.link_ai_extraction_run_to_lease, lease["ai_run_id"], lease_id)
     if job.get("user_id"):
-        usage_limits.log_usage_event(team_id, job["user_id"], ids[0] if ids else None, None, None, event_type="extraction")
-
+        _best_effort("log usage", usage_limits.log_usage_event, team_id, job["user_id"], ids[0] if ids else None,
+                     None, None, event_type="extraction")
     if len(ids) == 1:
-        database.insert_activity("lease_uploaded", f"Uploaded {filename}", team_id, lease_id=ids[0])
+        _best_effort("log activity", database.insert_activity, "lease_uploaded", f"Uploaded {filename}", team_id,
+                     lease_id=ids[0])
     elif ids:
-        database.insert_activity("lease_split", f"Split {filename} into {len(ids)} separate leases", team_id)
+        _best_effort("log activity", database.insert_activity, "lease_split",
+                     f"Split {filename} into {len(ids)} separate leases", team_id)
     api._invalidate_lease_derived_caches()
 
     resubmission = {}
@@ -493,16 +533,17 @@ def _process_rent_roll(job: Dict[str, Any], progress) -> Dict[str, Any]:
             if old_row["id"] not in new_id_set and api._is_rent_roll_import(old_row) and api._normalize_building_address(
                     api.field_value(old_row, "property_address")) in new_buildings:
                 old_by_file.setdefault(old_row.get("filename"), []).append(old_row)
+        to_supersede = []
         for old_rows in old_by_file.values():
             old_units = {api._normalize_address(api.field_value(r, "property_address")) for r in old_rows}
             if old_units and len(old_units & new_units) * 2 >= len(old_units):
-                for old_row in old_rows:
-                    if database.supersede_lease(old_row["id"]):
-                        replaced += 1
+                to_supersede.extend(old_row["id"] for old_row in old_rows)
+        # One transaction instead of the route's one commit per old row.
+        replaced = database.supersede_leases_bulk(to_supersede, team_id)
 
     for building, counts in (parsed.get("unit_summary") or {}).items():
-        database.insert_rent_roll_unit_summary(team_id, filename, building, counts["occupied_units"],
-                                               counts["vacant_units"], counts["down_units"])
+        _retry_when_locked(database.insert_rent_roll_unit_summary, team_id, filename, building,
+                           counts["occupied_units"], counts["vacant_units"], counts["down_units"])
 
     if new_ids:
         api._invalidate_lease_derived_caches()
@@ -513,7 +554,8 @@ def _process_rent_roll(job: Dict[str, Any], progress) -> Dict[str, Any]:
             logger.exception("Auto-reconciliation after a background rent roll import failed (import itself succeeded)")
 
     skipped_note = f" ({len(parsed['skipped_rows'])} row(s) skipped)" if parsed["skipped_rows"] else ""
-    database.insert_activity("rent_roll_imported", f"Imported {len(new_ids)} lease(s) from {filename}{skipped_note}", team_id)
+    _best_effort("log activity", database.insert_activity, "rent_roll_imported",
+                 f"Imported {len(new_ids)} lease(s) from {filename}{skipped_note}", team_id)
 
     warnings = list(parsed.get("warnings", []))
     if options.get("renamed_from"):
