@@ -86,6 +86,10 @@ STALE_MESSAGE = ("Processing stopped unexpectedly (the server restarted while wo
                  "Please upload it again.")
 GENERIC_FAILURE = ("Something went wrong while processing this file. Please try again; "
                    "if it keeps happening, contact support.")
+# An AI error's own text is for operators (it can name the API account's
+# billing state or configuration): it goes to the log, the user gets this.
+AI_FAILURE = ("We couldn't finish reading this file with AI. Please try again in a few minutes; "
+              "if it keeps happening, contact support.")
 
 _COPY_CHUNK_BYTES = 1024 * 1024
 
@@ -342,8 +346,10 @@ def run_upload_job(job_id: int) -> None:
         _fail(job_id, str(e))
     except ai_extraction.AIExtractionError as e:
         from app import api
+        cause = f" (cause: {type(e.__cause__).__name__}: {e.__cause__})" if e.__cause__ else ""
+        logger.warning("Upload job %s (team %s): AI extraction failed: %s%s", job_id, job["team_id"], e, cause)
         api._record_ai_run(None, status="error", error_message=str(e))
-        _fail(job_id, str(e))
+        _fail(job_id, AI_FAILURE)
     except Exception:
         logger.exception("Upload job %s failed unexpectedly", job_id)
         _fail(job_id, GENERIC_FAILURE)

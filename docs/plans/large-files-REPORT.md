@@ -225,9 +225,12 @@ reported "Reading page 7 of 300"; a 17 MB body to the old `POST /leases`
    - A heartbeat can no longer revive a job already marked failed.
    - Text that starts with "BM" or "MZ" or mentions "%PDF-" is no longer
      misread as an image, program or PDF.
-4. **Raw AI error text is shown to the user on failure**, same as
-   `POST /leases` today. Those messages are written to be user-facing
-   (credit balance, service unavailable), so I left them; worth a look.
+4. **AI errors (fixed after review, 2026-10-20):** a background upload
+   whose AI step fails now shows "We couldn't finish reading this file
+   with AI..." and logs the AI error and its cause with the job and team
+   id. Before, the AI error's own text (e.g. the API credit balance) was
+   the job's error. `POST /leases`, the deferred AI job and rent-roll
+   validation on `main` still pass that text through; not changed here.
 5. **Pre-existing UI:** at 375 px, long lease names in the upload results
    run past the card edge (unchanged row markup).
 6. **Dashboard caches** are per-process with a 60 s TTL, so after a

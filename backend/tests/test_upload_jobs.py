@@ -11,6 +11,7 @@ real background thread, and test_rq_runner_* the Redis queue hand-off.
 """
 import _test_env  # noqa: F401  -- first: temp DB, no .env, no real network (see _test_env.py)
 import io
+import json
 import os
 import shutil
 import subprocess
@@ -235,6 +236,31 @@ def test_over_quota_fails_the_job_without_calling_the_model():
     finally:
         os.unlink(db)
     print("✓ test_over_quota_fails_the_job_without_calling_the_model: PASS")
+
+
+def test_ai_failure_shows_a_friendly_message_and_logs_the_details_with_the_team():
+    """Review follow-up: the AI error's own text (billing state, configuration) went to the user as the job error."""
+    ensure_large_fixtures(only=[TEXT_LEASE])
+    db = _fresh_db()
+    try:
+        raw = ("AI processing is unavailable: the API credit balance is too low. "
+               "Add credit (Plans & Billing) and try again.")
+        cause = RuntimeError("request_id=req_test123 status=400")
+        error = ai_extraction.AIExtractionError(raw)
+        error.__cause__ = cause
+        with mock.patch.object(ai_extraction, "resolve_engine", return_value="ai"), \
+             mock.patch.object(ai_extraction, "extract_lease_fields_chunked", side_effect=error), \
+             mock.patch.object(upload_jobs.logger, "warning") as warning:
+            _, done = _upload_and_wait(_client(team_id=1), path_of(TEXT_LEASE))
+        assert done["status"] == "failed" and done["error"] == upload_jobs.AI_FAILURE, done
+        poll = json.dumps(done)
+        assert "credit" not in poll and "req_test123" not in poll, "nothing of the AI error reaches the browser"
+        logged = [call.args[0] % call.args[1:] for call in warning.call_args_list]
+        assert any("team 1" in line and raw in line and "req_test123" in line for line in logged), logged
+        assert database.get_all_effective_leases(team_id=1) == [] and _stored_files() == []
+    finally:
+        os.unlink(db)
+    print("✓ test_ai_failure_shows_a_friendly_message_and_logs_the_details_with_the_team: PASS")
 
 
 def test_120mb_scanned_pdf_is_streamed_not_held_in_memory():
@@ -840,6 +866,7 @@ if __name__ == "__main__":
         test_500_page_text_lease_regex_engine_end_to_end_with_progress()
         test_500_page_lease_ai_engine_quota_checked_before_any_ai_call()
         test_over_quota_fails_the_job_without_calling_the_model()
+        test_ai_failure_shows_a_friendly_message_and_logs_the_details_with_the_team()
         test_120mb_scanned_pdf_is_streamed_not_held_in_memory()
         test_size_limits_are_friendly_and_leave_nothing_behind()
         test_page_limit_is_checked_before_any_ocr()
