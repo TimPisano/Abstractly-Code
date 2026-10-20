@@ -228,6 +228,7 @@ Example structure (illustrative only, not a real limit): a 2-bedroom unit at 60%
 
 - **Form 8823.** The HCA reports noncompliance and building dispositions to the IRS on this form. [P/S: IRS form page was not reachable in this session (404). The form and guide are at IRS.gov.]
 - **Pub 5913 (Guide for Completing Form 8823).** The current version is not confirmed. The most recent copies I found are older state-hosted versions (2009, 2011). [U] Confirm the current revision at [IRS Pub 5913](https://www.irs.gov/pub/irs-pdf/p5913.pdf) (the PDF did not extract to text in this session).
+  - **Update (coordinating session):** the copy at that IRS URL is **Publication 5913 (1-2024)**, "Audit Technique Guide Revision Date: 1/24/2024", 214 pages. Its table of contents includes "I.A.1 IRS Analysis of Forms 8823 Submitted by State Agencies" (p. 19) and line-by-line Form 8823 instructions (p. 36 on). [P: title page and contents read directly.] The category list and credit-loss subset in the body were **not** read, so the [U] items below still stand. Note the 2011 state-hosted guide predates this revision.
 - **Filing.** The form must be filed regardless of whether the owner corrected the noncompliance, per the 2011 guide. [S: [Form 8823 guide (2011 rev.)](https://ohiohome.org/compliance/IRS/8823guide_10-09.pdf) is the 2009 Ohio copy; the 2011 version was seen in search results]. Timing: no later than 45 days after the building was disposed of or the correction period ended, per an older form instruction. [S, U for current form]
 - **Categories.** The 2011 guide's table of contents shows sections for 11a (household income exceeding limit at initial occupancy), 11b (annual recertification / income recertification handling), and 11c (physical inspection violations). [S: search summary of the 2011 guide]. Section8.md says there are 17 possible categories and eight can cause credit loss. **I could not confirm the total or the credit-loss subset.** [U]
 - **Other categories to check against the current Pub 5913:** building-level set-aside failures, residential rental property status, tenant file documentation, and building disposition. [U]
@@ -342,10 +343,10 @@ Other useful checks, lower priority:
 
 1. Current Form 8823 and Pub 5913 (revision date, full category list, credit-loss subset). Needs a readable copy; the IRS PDF did not extract in this session.
 2. Current MTSP release date and the implementation window (45 days or other) for new limits.
-3. Whether any state HCA now requires NSPIRE for LIHTC monitoring, and the effective date.
-4. HERA §2835 text and HUD's current tenant data guidance.
+3. Whether the IRS adopts NSPIRE for §1.42-5 monitoring (NCSHA has asked; no 2025-2026 IRS notice found) and the state HCA transition dates.
+4. HERA §2835 text and HUD's current tenant data submission deadline (OMB renewal notices 2025-09866 / 2025-21929 not read in full).
 5. The 1.5-persons-per-bedroom convention: confirm the primary source (Treasury/IRS or HUD MTSP).
-6. Current Rev. Proc. 2004-38 status and any update to Form 8877.
+6. Current Form 8877 revision (summaries cite 7-2004).
 7. Whether the 2020 AIT proposed regulation has been finalized.
 8. Dollar figures for recapture and 8823 penalties (none verified).
 
