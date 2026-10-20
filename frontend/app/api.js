@@ -125,6 +125,25 @@ const Api = {
         return apiRequest('/leases/batch', { method: 'POST', body: formData });
     },
 
+    // Large-file background uploads (LARGE_FILE_UPLOADS on the server;
+    // see backend/app/upload_jobs.py). getUploadConfig says whether
+    // they're on; startUpload returns 202 with a job to poll via getUpload.
+    getUploadConfig() {
+        return apiRequest('/uploads/config');
+    },
+
+    startUpload(file, kind, propertyAddress) {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('kind', kind);
+        if (propertyAddress) formData.append('property_address', propertyAddress);
+        return apiRequest('/uploads', { method: 'POST', body: formData });
+    },
+
+    getUpload(jobId) {
+        return apiRequest(`/uploads/${encodeURIComponent(jobId)}`);
+    },
+
     importRentRoll(file, propertyAddress) {
         const formData = new FormData();
         formData.append('file', file);

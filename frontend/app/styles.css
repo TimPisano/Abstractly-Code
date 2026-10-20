@@ -1751,6 +1751,67 @@
 .upload-progress-item.pending .upload-progress-status-text { color: var(--text-light); }
 .upload-progress-item.error .upload-progress-status-text { color: var(--error-color); }
 
+/* ---- Background (large-file) uploads: the row reports the server's own
+   progress ("Reading page 120 of 300") with a bar underneath, and its text
+   wraps -- these messages, and their error messages, are longer than one
+   line on a phone. ---- */
+
+.upload-progress-item.has-bar { flex-wrap: wrap; }
+
+.upload-progress-item.has-bar .upload-progress-status-text {
+    flex: 1 1 12rem;
+    min-width: 0;
+    white-space: normal;
+}
+
+.upload-progress-bar {
+    flex-basis: 100%;
+    height: 6px;
+    margin-top: 0.25rem;
+    border-radius: 999px;
+    background-color: var(--border-color);
+    overflow: hidden;
+}
+
+.upload-progress-bar > span {
+    display: block;
+    height: 100%;
+    width: 0;
+    border-radius: inherit;
+    background-color: var(--primary-color);
+    transition: width 0.4s ease;
+}
+
+.upload-progress-bar.indeterminate > span {
+    width: 30%;
+    animation: upload-progress-indeterminate 1.4s ease-in-out infinite;
+}
+
+@keyframes upload-progress-indeterminate {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(340%); }
+}
+
+/* Background-upload failure messages explain what to upload instead;
+   they must be readable in full, not cut off with an ellipsis. */
+.upload-result-item.wrap-detail { flex-wrap: wrap; }
+.upload-result-item.wrap-detail .upload-result-detail {
+    flex: 1 1 14rem;
+    min-width: 0;
+    white-space: normal;
+}
+
+.upload-progress-live-status {
+    margin: 0.25rem 0 0.5rem;
+    font-size: 0.875rem;
+    color: var(--text-medium);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .upload-progress-bar > span { transition: none; }
+    .upload-progress-bar.indeterminate > span { animation: none; width: 100%; opacity: 0.4; }
+}
+
 .upload-result-icon {
     font-weight: 700;
     width: 1.25rem;
