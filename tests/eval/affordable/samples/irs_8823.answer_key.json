@@ -1,0 +1,93 @@
+{
+  "id": "irs_8823",
+  "form": "IRS Form 8823 Low-Income Housing Credit Agencies Report of Noncompliance (Rev. 12-2019)",
+  "program": "LIHTC",
+  "doc_type": "irs_lihtc_form",
+  "source_file": "sources/irs_8823.pdf",
+  "sample_file": "samples/irs_8823.pdf",
+  "synthetic": true,
+  "notes": "Fictional 11a finding (over-income at initial occupancy), corrected. Owner TIN masked.",
+  "lease_fields": {
+    "tenant": null,
+    "landlord": "Cedar Hollow Housing LP",
+    "rent_amount": null,
+    "lease_start_date": null,
+    "lease_end_date": null,
+    "property_address": "2750 Cedar Hollow Lane",
+    "security_deposit": null
+  },
+  "program_fields": {
+    "building_name": {
+      "value": "Cedar Hollow Apartments",
+      "type": "text"
+    },
+    "building_street": {
+      "value": "2750 Cedar Hollow Lane",
+      "type": "text"
+    },
+    "building_city_state_zip": {
+      "value": "Alder Springs, CO 81099",
+      "type": "text"
+    },
+    "bin": {
+      "value": "CO-26-00417",
+      "type": "text"
+    },
+    "owner_name": {
+      "value": "Cedar Hollow Housing LP",
+      "type": "text"
+    },
+    "owner_tin_masked": {
+      "value": "XX-XXX4821",
+      "type": "text"
+    },
+    "total_credit_allocated": {
+      "value": "415,800",
+      "type": "money"
+    },
+    "residential_units": {
+      "value": "46",
+      "type": "int"
+    },
+    "low_income_units": {
+      "value": "44",
+      "type": "int"
+    },
+    "units_with_noncompliance": {
+      "value": "1",
+      "type": "int"
+    },
+    "units_reviewed": {
+      "value": "9",
+      "type": "int"
+    },
+    "date_ceased_to_comply": {
+      "value": "11/01/2026",
+      "type": "date"
+    },
+    "date_noncompliance_corrected": {
+      "value": "05/15/2027",
+      "type": "date"
+    },
+    "noncompliance_category": {
+      "value": "11a Household income above income limit upon initial occupancy (out of compliance + corrected)",
+      "type": "checkbox"
+    },
+    "contact_person": {
+      "value": "Priya Lindqvist-Haber",
+      "type": "text"
+    },
+    "contact_phone": {
+      "value": "(303) 555-0177",
+      "type": "text"
+    },
+    "agency_official": {
+      "value": "Gareth Monroe-Ito",
+      "type": "text"
+    },
+    "signature_date": {
+      "value": "06/02/2027",
+      "type": "date"
+    }
+  }
+}

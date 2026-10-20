@@ -42,7 +42,7 @@ REPO = HERE.parents[2]
 sys.path.insert(0, str(REPO / "backend"))
 
 from app import document_extractor  # noqa: E402
-from app.extraction_scoring import ALL_FIELDS, score_field  # noqa: E402
+from app.extraction_scoring import ALL_FIELDS, MONEY_FIELDS, score_field  # noqa: E402
 from app.field_extractor import FieldExtractor, looks_like_rent_roll_table  # noqa: E402
 from app.normalize import parse_currency, parse_date  # noqa: E402
 
@@ -117,13 +117,27 @@ def _as_date(s: str):
     return None
 
 
+def money_value(s):
+    """Numeric value of a money string, with or without "$". The app's
+    parse_currency returns None for unsigned amounts ("1,325.00",
+    "415,800"), which IRS and HUD forms print all the time, so the eval
+    uses its own parse rather than understate what's on the page."""
+    if s is None:
+        return None
+    got = parse_currency(s)
+    if got is not None:
+        return got
+    m = re.fullmatch(r"\s*\$?\s*(\d{1,3}(?:,\d{3})+|\d+)(\.\d{1,2})?\s*", str(s))
+    return float(m.group(1).replace(",", "") + (m.group(2) or "")) if m else None
+
+
 def in_text(value: str, vtype: str, text: str) -> bool:
     if vtype == "money":
-        want = parse_currency(value)
+        want = money_value(value)
         if want is None:
             return False
         for tok in MONEY_RE.findall(text):
-            got = parse_currency(tok.replace(" ", ""))
+            got = money_value(tok.replace(" ", ""))
             if got is not None and abs(got - want) <= 0.5:
                 return True
         return False
@@ -154,9 +168,13 @@ def evaluate(key: dict, engine: str) -> dict:
     for field in ALL_FIELDS:
         expected = key["lease_fields"].get(field)
         s = score_field(field, result["fields"].get(field), expected)
+        s["app_matcher_correct"] = s["correct"]
+        if field in MONEY_FIELDS and not s["correct"] and s["extracted"] is not None and expected is not None:
+            a, b = money_value(s["extracted"]), money_value(expected)
+            if a is not None and b is not None and abs(a - b) <= 1.0:
+                s.update(correct=True, kind="correct_found", asserted_wrong=False)
         s["in_text_layer"] = None if expected is None else in_text(
-            expected, "money" if field in ("rent_amount", "security_deposit", "cam_charges")
-            else "date" if field.endswith("_date") else "text", text)
+            expected, "money" if field in MONEY_FIELDS else "date" if field.endswith("_date") else "text", text)
         lease_scores.append(s)
 
     program_scores = []
