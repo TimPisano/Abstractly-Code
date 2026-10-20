@@ -106,11 +106,13 @@ Caveat: the 06/2014 edition is labeled "For Personal Records ONLY" with an expir
 | 13 | IRS Form 8586 (Rev. Dec 2023) | LIHTC | Short numeric tax form | Credit line items |
 | 14 | IHDA Indiana TIC (11/2025, fillable) | LIHTC | Current fillable TIC | Household count, income by source, dates, signatures |
 | 15 | SC Housing TIC (2024, 2 pages) | LIHTC | Program checkboxes | LIHTC checkbox, household rows, income total |
-| 16 | NJ HMFA TIC (OCR'd scan) | LIHTC | OCR quality test | Same as #16, plus OCR error rate |
+| 16 | NJ HMFA TIC (OCR'd scan) | LIHTC | OCR quality test | Same as #14, plus OCR error rate |
 | 17 | LHC Louisiana TIC (2 pages) | LIHTC | Compact HOTMA form | Household, gross income, assets |
 | 18 | CA HCD 2026 MTSP regular limits (PDF table) | LIHTC | Printed income table | Limits for 30, 50, 60 percent by household size, one area |
 
 Dropped from v1 because form identity or blank status could not be read from the file (identity from search only): HUD-52580 HQS checklist and HUD-9626 OCAF letter template (both still in the main tables), and HUD-9639 renewal contract. Also dropped on purpose: NYC TIC, NYS HCR TIC, Idaho self-cert and the CHFA LURA (verified to load, but their blank-vs-filled status is not confirmed or they are not the best use of v1 slots). They remain available for a v2 set. Also dropped: the Tucson HAP example, the TDHCA S811 sample tenant file and filled HQS checklists, all of which are on the PII list.
+
+**What v1 can and can't measure (coordinating session note).** All 18 v1 items are blank forms or published data tables. Blank forms test *layout*: can we find each field, checkbox and table on the page? Only the two data tables (#5 UA schedule, #18 MTSP limits) test *value* extraction as they stand. To measure value accuracy on certifications and contracts, fill the blank forms with fictional data (below) and use the existing synthetic fixtures (`qa/section8-fixtures` answer key, Oak Hollow `expected_findings.json`). v1 is mostly a check that our synthetic layouts match the real forms.
 
 ### Building synthetic filled versions of blank forms
 
