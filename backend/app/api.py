@@ -1776,10 +1776,11 @@ def create_upload():
         upload_jobs.remove_file(stored_path)
         return jsonify({"error": str(e)}), 415
 
-    if detected.extension in upload_jobs.IN_MEMORY_EXTENSIONS and size > upload_jobs.MAX_IN_MEMORY_DOCUMENT_MB * 1024 * 1024:
+    limit_mb = upload_jobs.in_memory_limit_mb(detected.extension)
+    if limit_mb and size > limit_mb * 1024 * 1024:
         upload_jobs.remove_file(stored_path)
         return jsonify({"error": upload_jobs.too_large_message(
-            size, upload_jobs.MAX_IN_MEMORY_DOCUMENT_MB, applies_to=f"for a {detected.label}")}), 413
+            size, limit_mb, applies_to=f"for a {detected.label}")}), 413
 
     filename = os.path.basename(file.filename)[:255]
     if kind == 'lease':

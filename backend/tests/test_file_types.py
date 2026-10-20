@@ -257,6 +257,60 @@ def test_zip_bombs_are_refused_from_the_directory_alone():
     print("✓ test_zip_bombs_are_refused_from_the_directory_alone: PASS")
 
 
+def _office_with(data, parts):
+    """`data` (a real .docx/.xlsx) with `parts` {name: bytes} added or replaced."""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(io.BytesIO(data)) as src, zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as dst:
+        for item in src.infolist():
+            if item.filename not in parts:
+                dst.writestr(item, src.read(item.filename))
+        for name, body in parts.items():
+            dst.writestr(name, body)
+    return buf.getvalue()
+
+
+def test_office_xml_that_would_need_too_much_memory_is_refused():
+    """
+    Review follow-up: python-docx needs ~9 MB of RAM per MB of XML, so a
+    0.2 MB .docx under the old 250 MB expansion cap could take ~2 GB on a
+    512 MB server. The XML a parser would build a tree from is capped (and
+    a .docx's element count); it's found by content, so hiding it under an
+    image's name doesn't help.
+    """
+    from app import file_types
+    tmpdir = tempfile.mkdtemp()
+    try:
+        para = b"<w:p><w:r><w:t>Tenant shall pay rent.</w:t></w:r></w:p>"
+        cap = file_types.MAX_ZIP_XML_BYTES["docx"]
+        body = (b'<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>'
+                + para * (cap // len(para) + 1) + b"</w:body></w:document>")
+        big = _office_with(_docx_bytes(), {"word/document.xml": body})
+        assert len(big) < 1024 * 1024, "small on disk"
+        _expect_rejection(tmpdir, "lease.docx", big, "Save it as a PDF")
+        _expect_rejection(tmpdir, "lease.docx", _office_with(_docx_bytes(), {"word/media/image1.png": body}),
+                          "Save it as a PDF")
+        # Dense XML costs more than its size: under the byte cap, but too many elements.
+        dense = (b'<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>'
+                 + b"<w:p/>" * (file_types.MAX_DOCX_ELEMENTS + 1) + b"</w:body></w:document>")
+        assert len(dense) < file_types.MAX_ZIP_XML_BYTES["docx"]
+        _expect_rejection(tmpdir, "lease.docx", _office_with(_docx_bytes(), {"word/document.xml": dense}),
+                          "Save it as a PDF")
+
+        # Real images don't count: 30 MB of photos is a lease with scanned exhibits.
+        png = _image_bytes("PNG")
+        photos = {f"word/media/photo{i}.png": png + os.urandom(3 * 1024 * 1024) for i in range(10)}
+        assert _detect(tmpdir, "lease.docx", _office_with(_docx_bytes(), photos)).extension == "docx"
+
+        cap = file_types.MAX_ZIP_XML_BYTES["xlsx"]
+        strings = b"<sst>" + b"<si><t>Tenant name</t></si>" * (cap // 26 + 1) + b"</sst>"
+        _expect_rejection(tmpdir, "roll.xlsx", _office_with(_xlsx_bytes(), {"xl/sharedStrings.xml": strings}),
+                          "Split it into smaller workbooks", kind="rent_roll")
+        assert _detect(tmpdir, "roll.xlsx", _xlsx_bytes(), kind="rent_roll").extension == "xlsx"
+    finally:
+        shutil.rmtree(tmpdir)
+    print("✓ test_office_xml_that_would_need_too_much_memory_is_refused: PASS")
+
+
 if __name__ == "__main__":
     test_every_supported_format_is_recognized_from_its_bytes()
     test_mislabeled_files_are_processed_as_what_they_really_are()
@@ -265,4 +319,5 @@ if __name__ == "__main__":
     test_password_protected_office_file_is_named_as_such()
     test_magic_checks_dont_misread_text_that_happens_to_start_like_a_binary()
     test_zip_bombs_are_refused_from_the_directory_alone()
+    test_office_xml_that_would_need_too_much_memory_is_refused()
     print("\nAll file-type tests passed!")

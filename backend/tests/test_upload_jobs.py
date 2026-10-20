@@ -321,11 +321,17 @@ def test_size_limits_are_friendly_and_leave_nothing_behind():
         with mock.patch.object(upload_jobs, "MAX_UPLOAD_BYTES", 1024 * 1024):
             resp = _post(client, filename="big.pdf", body=b"%PDF-1.7\n" + b"0" * (2 * 1024 * 1024))
         assert resp.status_code == 413 and "MB" in resp.get_json()["error"]
-        # Formats parsed in memory have a lower cap.
+        # Formats parsed in memory have a lower cap; those read whole with no compression, lower still.
         with mock.patch.object(upload_jobs, "MAX_IN_MEMORY_DOCUMENT_MB", 1):
+            resp = _post(client, filename="lease.docx", body=_docx_over_1mb())
+        assert resp.status_code == 413 and "for a Word document" in resp.get_json()["error"], resp.get_json()
+        with mock.patch.object(upload_jobs, "MAX_FLAT_DOCUMENT_MB", 1):
             resp = _post(client, filename="roll.csv", body=b"Unit,Tenant,Rent\n" + b"101,Acme,1200\n" * 100_000,
                          kind="rent_roll")
         assert resp.status_code == 413 and "for a CSV file" in resp.get_json()["error"], resp.get_json()
+        # Review follow-up, at the real default: a 50 MB .txt took 135 MB just to read.
+        resp = _post(client, filename="lease.txt", body=b"The Tenant shall pay rent monthly.\n" * 320_000)
+        assert resp.status_code == 413 and "The limit is 10 MB for a text file" in resp.get_json()["error"], resp.get_json()
         assert _stored_files() == []
 
         # Every OTHER route keeps exactly 16 MB, even with the flag on.
@@ -338,6 +344,164 @@ def test_size_limits_are_friendly_and_leave_nothing_behind():
     finally:
         os.unlink(db)
     print("✓ test_size_limits_are_friendly_and_leave_nothing_behind: PASS")
+
+
+def _docx_over_1mb():
+    """A real .docx that's over 1 MB on disk (an embedded binary part that won't compress)."""
+    import zipfile
+    from docx import Document
+    buf = io.BytesIO()
+    Document().save(buf)
+    with zipfile.ZipFile(buf, "a") as z:
+        z.writestr("word/embeddings/oleObject1.bin", b"\xd0\xcf\x11\xe0" + os.urandom(1536 * 1024))
+    return buf.getvalue()
+
+
+def _rent_roll_docx(rows):
+    from docx import Document
+    buf = io.BytesIO()
+    doc = Document()
+    table = doc.add_table(rows=0, cols=len(rows[0]))
+    for row in rows:
+        for cell, value in zip(table.add_row().cells, row):
+            cell.text = str(value)
+    doc.save(buf)
+    return buf.getvalue()
+
+
+def test_tables_over_the_row_limit_are_refused_before_parsing():
+    """
+    Review follow-up: every parsed rent-roll row costs ~5.5 KB whatever the
+    format (a 3 MB CSV of 50,000 units took 290 MB), so rows are counted --
+    without building the table -- and a file over MAX_TABLE_ROWS is refused
+    before the parser runs.
+    """
+    import openpyxl
+    import xlrd
+    db = _fresh_db()
+    try:
+        client = _client()
+        rows = [["Unit", "Tenant", "Monthly Rent"]] + [[f"{100 + i}", f"Tenant {i}", 1200 + i] for i in range(60)]
+        wb = openpyxl.Workbook()
+        for row in rows:
+            wb.active.append(row)
+        for r in range(100, 400):  # formatted but empty rows aren't rows of data
+            wb.active.cell(row=r, column=1).number_format = "0.00"
+        xlsx = io.BytesIO()
+        wb.save(xlsx)
+        files = {
+            "roll.csv": "".join(",".join(map(str, row)) + "\n" for row in rows).encode(),
+            "roll.xlsx": xlsx.getvalue(),
+            "roll.docx": _rent_roll_docx(rows),
+        }
+        for name, body in files.items():
+            path = os.path.join(tempfile.mkdtemp(), name)
+            with open(path, "wb") as f:
+                f.write(body)
+            assert upload_jobs._table_row_count(path, name.rsplit(".", 1)[1]) == 61, name
+            shutil.rmtree(os.path.dirname(path))
+        xls = os.path.join(TESTS_DIR, "..", "tools", "gauntlet", "fixtures", "rent_rolls", "p05__xls.xls")
+        sheet = xlrd.open_workbook(xls).sheet_by_index(0)
+        expected = sum(1 for r in range(sheet.nrows) if any(str(v).strip() for v in sheet.row_values(r)))
+        assert upload_jobs._table_row_count(xls, "xls") == expected > 0
+
+        with mock.patch.object(upload_jobs, "MAX_TABLE_ROWS", 50), \
+             mock.patch("app.rent_roll_import.parse_rent_roll_file") as parse:
+            for name, body in files.items():
+                _, done = _upload_and_wait(client, filename=name, body=body, kind="rent_roll")
+                assert done["status"] == "failed", (name, done)
+                assert "61 rows. The limit is 50 rows per file" in done["error"], (name, done["error"])
+            parse.assert_not_called()
+            _, done = _upload_and_wait(client, filename="leases.csv", body=files["roll.csv"])
+            assert done["status"] == "failed" and "61 rows" in done["error"], "a spreadsheet uploaded as a lease too"
+        with mock.patch.object(upload_jobs, "MAX_TABLE_ROWS", 61):
+            for name, body in files.items():
+                _, done = _upload_and_wait(client, filename=name, body=body, kind="rent_roll")
+                assert done["status"] == "complete" and done["result"]["imported_count"] == 60, (name, done)
+        assert _stored_files() == []
+    finally:
+        os.unlink(db)
+    print("✓ test_tables_over_the_row_limit_are_refused_before_parsing: PASS")
+
+
+def test_the_largest_office_files_accepted_convert_well_under_512mb():
+    """
+    Review follow-up, measured: the densest Word document the upload
+    accepts, and the largest .docx rent roll it accepts (the
+    costliest format per row; its XML cap binds before the row cap), each
+    converted in a fresh process. Peak memory above the process's starting
+    point must stay under 200 MB.
+    """
+    script = r"""
+import io, os, resource, subprocess, sys, tempfile
+sys.path.insert(0, %(backend)r)
+from app import document_extractor, file_types, rent_roll_import, upload_jobs
+
+def current_mb():
+    if sys.platform.startswith("linux"):
+        with open("/proc/self/statm") as f:
+            return int(f.read().split()[1]) * os.sysconf("SC_PAGE_SIZE") / 2**20
+    return int(subprocess.check_output(["ps", "-o", "rss=", "-p", str(os.getpid())])) / 1024
+
+def peak_mb():
+    peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    return peak / 2**20 if sys.platform == "darwin" else peak / 1024
+
+import zipfile
+from docx import Document
+blank = io.BytesIO()
+Document().save(blank)
+with zipfile.ZipFile(blank) as z:  # the template's styles etc. count toward the cap too
+    room = file_types.MAX_ZIP_XML_BYTES["docx"] - 8192 - sum(
+        p.file_size for p in file_types.xml_parts(z) if p.filename != "word/document.xml")
+
+def docx(body):
+    out = io.BytesIO()
+    with zipfile.ZipFile(blank) as src, zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as dst:
+        for item in src.infolist():
+            dst.writestr(item, body if item.filename == "word/document.xml" else src.read(item.filename))
+    return out.getvalue()
+
+W = b'<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>'
+# The densest lease accepted: empty paragraphs up to the element cap (the template has ~19,000 elements).
+lease = docx(W + b"<w:p/>" * (file_types.MAX_DOCX_ELEMENTS - 25000)
+             + b"<w:p><w:r><w:t>The Tenant shall pay rent.</w:t></w:r></w:p></w:body></w:document>")
+cell = lambda text: b"<w:tc><w:p><w:r><w:t>" + text.encode() + b"</w:t></w:r></w:p></w:tc>"
+header = ["Unit", "Tenant", "Lease Start", "Lease End", "Monthly Rent", "Status", "Sq Ft"]
+row = lambda i: b"<w:tr>" + b"".join(cell(v) for v in (str(100000 + i), "Tenant Name %%d" %% (100000 + i), "01/01/2025",
+                                                       "12/31/2025", str(1200 + i %% 500), "Occupied", "850")) + b"</w:tr>"
+fits = room // len(row(0))
+units = min(upload_jobs.MAX_TABLE_ROWS - 1, fits)
+rows = [b"<w:tr>" + b"".join(cell(h) for h in header) + b"</w:tr>"] + [row(i) for i in range(units)]
+roll = docx(W + b"<w:tbl>" + b"".join(rows) + b"</w:tbl></w:body></w:document>")
+del rows
+print("expected", units)
+
+tmp = tempfile.mkdtemp()
+for name, data, kind in (("lease.docx", lease, "lease"), ("roll.docx", roll, "rent_roll")):
+    path = os.path.join(tmp, name)
+    with open(path, "wb") as f:
+        f.write(data)
+    assert file_types.detect_file_type(path, name, kind).extension == "docx", name
+    assert upload_jobs._table_row_count(path, "docx") <= upload_jobs.MAX_TABLE_ROWS
+del lease, roll
+
+base = current_mb()
+document_extractor.extract_pages_from_path(os.path.join(tmp, "lease.docx"), "docx")
+print("lease", round(peak_mb() - base))
+with open(os.path.join(tmp, "roll.docx"), "rb") as f:
+    units = len(rent_roll_import.parse_rent_roll_file(f.read(), "roll.docx", None)["leases"])
+print("roll", round(peak_mb() - base), units)
+""" % {"backend": os.path.abspath(os.path.join(TESTS_DIR, ".."))}
+    out = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True, env=dict(os.environ),
+                         cwd=TESTS_DIR, timeout=600)
+    assert out.returncode == 0, out.stderr[-3000:]
+    lines = dict(line.split(" ", 1) for line in out.stdout.strip().splitlines())
+    lease_mb, (roll_mb, units) = int(lines["lease"]), map(int, lines["roll"].split())
+    assert units == int(lines["expected"]) > 5000, (units, lines)
+    assert lease_mb < 200 and roll_mb < 200, f"peak above start: lease {lease_mb} MB, rent roll {roll_mb} MB"
+    print(f"✓ test_the_largest_office_files_accepted_convert_well_under_512mb: PASS "
+          f"(lease .docx +{lease_mb} MB, {units:,}-unit .docx rent roll +{roll_mb} MB)")
 
 
 def test_page_limit_is_checked_before_any_ocr():
@@ -869,6 +1033,8 @@ if __name__ == "__main__":
         test_ai_failure_shows_a_friendly_message_and_logs_the_details_with_the_team()
         test_120mb_scanned_pdf_is_streamed_not_held_in_memory()
         test_size_limits_are_friendly_and_leave_nothing_behind()
+        test_tables_over_the_row_limit_are_refused_before_parsing()
+        test_the_largest_office_files_accepted_convert_well_under_512mb()
         test_page_limit_is_checked_before_any_ocr()
         test_wrong_content_is_rejected_and_mislabeled_files_are_read_as_what_they_are()
         test_every_accepted_format_goes_through_the_one_pipeline()

@@ -40,6 +40,7 @@ import tempfile
 import threading
 import time
 import uuid
+import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
@@ -67,6 +68,21 @@ MAX_REQUEST_BYTES = MAX_UPLOAD_BYTES + 1024 * 1024
 # Real ones are a few MB at most; the 5,000-row rent roll fixture is 0.4 MB.
 MAX_IN_MEMORY_DOCUMENT_MB = int(os.environ.get("LARGE_FILE_MAX_DOCUMENT_MB", "50"))
 IN_MEMORY_EXTENSIONS = {"docx", "doc", "xlsx", "xlsm", "xls", "csv", "tsv", "txt"}
+# Of those, the ones read whole with no compression in between get less:
+# a 50 MB .txt took 135 MB to read and xlrd held a 22 MB .xls in 90 MB.
+# 10 MB is 25 times a 5,000-row rent roll and 3 times the text of a
+# 1,000-page lease. (.docx/.xlsx are bounded by their XML instead, in
+# file_types.MAX_ZIP_XML_BYTES.)
+MAX_FLAT_DOCUMENT_MB = int(os.environ.get("LARGE_FILE_MAX_FLAT_DOCUMENT_MB", "10"))
+FLAT_EXTENSIONS = {"csv", "tsv", "txt", "xls"}
+# Every parsed row of a rent roll costs ~5.5 KB whatever the format (a
+# 3 MB CSV of 50,000 units took 290 MB), so rows are capped too: 10,000 is
+# twice the 5,000-row fixture and parses in at most ~125 MB (.docx; CSV
+# ~105, .xls ~65, .xlsx ~35). Counted before the parser runs, by a pass
+# that doesn't build the table (_table_row_count).
+MAX_TABLE_ROWS = int(os.environ.get("LARGE_FILE_MAX_TABLE_ROWS", "10000"))
+RENT_ROLL_TABLE_EXTENSIONS = {"csv", "tsv", "txt", "xlsx", "xlsm", "xls", "docx"}
+LEASE_TABLE_EXTENSIONS = {"csv", "tsv", "xlsx", "xlsm", "xls"}
 # 1,000 pages: twice the 500-page lease this was built for. A scanned page
 # OCRs in ~2-3 s, so this caps one file at under an hour of OCR.
 MAX_PAGES = int(os.environ.get("LARGE_FILE_MAX_PAGES", "1000"))
@@ -116,6 +132,8 @@ def public_config() -> Dict[str, Any]:
         "large_file_uploads": enabled(),
         "max_upload_mb": MAX_UPLOAD_MB,
         "max_document_mb": MAX_IN_MEMORY_DOCUMENT_MB,
+        "max_flat_document_mb": MAX_FLAT_DOCUMENT_MB,
+        "max_table_rows": MAX_TABLE_ROWS,
         "max_pages": MAX_PAGES,
         "accepted": {kind: {"extensions": file_types.PICKER_EXTENSIONS[kind], "label": file_types.ACCEPTED_LABEL[kind]}
                      for kind in ("lease", "rent_roll")},
@@ -195,6 +213,15 @@ def remove_file(path: Optional[str]) -> None:
             pass
         except OSError:
             logger.warning("Could not delete a stored upload", exc_info=True)
+
+
+def in_memory_limit_mb(extension: str) -> Optional[int]:
+    """The size cap for a format parsed in memory, or None for PDFs and images (MAX_UPLOAD_MB only)."""
+    if extension in FLAT_EXTENSIONS:
+        return MAX_FLAT_DOCUMENT_MB
+    if extension in IN_MEMORY_EXTENSIONS:
+        return MAX_IN_MEMORY_DOCUMENT_MB
+    return None
 
 
 def too_large_message(size_bytes: Optional[int], limit_mb: Optional[int] = None, applies_to: str = "per file") -> str:
@@ -383,6 +410,63 @@ def _too_many_pages(count: int) -> UploadJobError:
     )
 
 
+def _table_row_count(path: str, extension: str) -> Optional[int]:
+    """
+    Rows with something in them, counted without building the table: text
+    line by line, .xlsx/.docx by streaming their XML (rows / table rows),
+    .xls one sheet at a time (its 10 MB cap bounds that). None if the file
+    can't be read this way; the parser then reports the real problem.
+    """
+    try:
+        if extension in ("csv", "tsv", "txt"):
+            with open(path, "rb") as f:
+                return sum(1 for line in f if line.strip())
+        if extension == "xls":
+            import xlrd
+            book = xlrd.open_workbook(path, on_demand=True)
+            try:
+                count = 0
+                for index in range(book.nsheets):
+                    sheet = book.sheet_by_index(index)
+                    count += sum(1 for r in range(sheet.nrows) if any(str(v).strip() for v in sheet.row_values(r)))
+                    book.unload_sheet(index)
+                return count
+            finally:
+                book.release_resources()
+        from lxml import etree
+        # .xlsx: <row>s with a cell that holds something. .docx: every table row.
+        tag, needs_value = ("tr", False) if extension == "docx" else ("row", True)
+        count = 0
+        with zipfile.ZipFile(path) as archive:
+            for info in file_types.xml_parts(archive):
+                with archive.open(info) as part:
+                    try:
+                        for _, elem in etree.iterparse(part, events=("end",), tag=f"{{*}}{tag}", resolve_entities=False,
+                                                       no_network=True, load_dtd=False):
+                            if not needs_value or any(len(cell) for cell in elem):
+                                count += 1
+                            elem.clear()
+                            while elem.getprevious() is not None:
+                                del elem.getparent()[0]
+                    except etree.XMLSyntaxError:
+                        continue
+        return count
+    except Exception:
+        logger.warning("Could not count table rows (%s); the parser will report the problem", extension, exc_info=True)
+        return None
+
+
+def _check_table_rows(path: str, extension: str, extensions: set) -> None:
+    if extension not in extensions:
+        return
+    count = _table_row_count(path, extension)
+    if count is not None and count > MAX_TABLE_ROWS:
+        raise UploadJobError(
+            f"This file has {count:,} rows. The limit is {MAX_TABLE_ROWS:,} rows per file. Split it into "
+            "smaller files (for example, one per property) and upload each one."
+        )
+
+
 def _process_lease(job: Dict[str, Any], progress) -> Dict[str, Any]:
     from app import ai_extraction, api, document_extractor, usage_limits
 
@@ -397,6 +481,8 @@ def _process_lease(job: Dict[str, Any], progress) -> Dict[str, Any]:
         count = _pdf_page_count(path)
         if count is not None and count > MAX_PAGES:
             raise _too_many_pages(count)
+
+    _check_table_rows(path, extension, LEASE_TABLE_EXTENSIONS)
 
     # Table-shaped .csv/.xlsx (e.g. this app's own exports) first, same as POST /leases.
     if extension in ("csv", "xlsx"):
@@ -561,6 +647,7 @@ def _process_rent_roll(job: Dict[str, Any], progress) -> Dict[str, Any]:
     team_id, filename = job["team_id"], job["filename"]
     options = job.get("options") or {}
     progress("reading", "Reading the rent roll")
+    _check_table_rows(job["stored_path"], job["detected_type"], RENT_ROLL_TABLE_EXTENSIONS)
     with open(job["stored_path"], "rb") as f:
         file_bytes = f.read()
     parsed = parse_rent_roll_file(file_bytes, options.get("canonical_filename") or filename,

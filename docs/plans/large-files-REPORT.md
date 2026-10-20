@@ -216,8 +216,9 @@ reported "Reading page 7 of 300"; a 17 MB body to the old `POST /leases`
      ~151 MB into the old routes, which read files into memory. Fixed:
      the body limit is decided per request, so Werkzeug enforces it either
      way.
-   - Zip bombs: Office files over 250 MB uncompressed or 20,000 entries
-     are refused before any parser runs.
+   - Zip bombs: Office files over 64 MB uncompressed or 20,000 entries
+     are refused before any parser runs (250 MB until the memory fix
+     below).
    - Raster bombs: TIFF frame count checked before OCR, 60 MP per image,
      40 MP per rasterized PDF page.
    - At most 3 uploads in flight per team, plus a free-disk check.
@@ -246,7 +247,9 @@ All are environment variables with these defaults; they only apply with
 |---|---|---|
 | Any one file | **150 MB** (`LARGE_FILE_MAX_UPLOAD_MB`) | The 300-page office-scanner fixture (200 DPI grayscale) is 120 MB, so long scans fit with headroom. The file is never held in memory, so RAM isn't what limits this; disk and upload time are. The Claude API's 32 MB limit doesn't apply: the model gets extracted text in chunks, never the file. Over the limit, the message suggests rescanning in black-and-white/grayscale or splitting. |
 | Pages per file | **1,000** (`LARGE_FILE_MAX_PAGES`) | Twice the 500-page lease this was built for. OCR runs ~1 s/page on a laptop (Render will be slower), so this bounds one file at under an hour. Checked from the PDF's page tree / TIFF frame count before any OCR. |
-| Word / Excel / CSV / TXT | **50 MB** (`LARGE_FILE_MAX_DOCUMENT_MB`), and Office files ≤250 MB uncompressed / 20,000 parts | These are parsed fully in memory. The 5,000-row rent roll is 0.4 MB, so real files are far smaller. |
+| Word / Excel | **50 MB** (`LARGE_FILE_MAX_DOCUMENT_MB`); ≤64 MB uncompressed / 20,000 parts; XML ≤10 MB (Word) / 40 MB (Excel); Word ≤500,000 XML elements | Section 6. Images inside don't count toward the XML cap. Checked at upload from the ZIP alone. |
+| CSV / TSV / TXT / .xls | **10 MB** (`LARGE_FILE_MAX_FLAT_DOCUMENT_MB`) | Read whole: a 50 MB .txt took 135 MB just to read. 10 MB is 25 times a 5,000-row rent roll and 3 times the text of a 1,000-page lease. |
+| Rows per rent roll / spreadsheet | **10,000** (`LARGE_FILE_MAX_TABLE_ROWS`) | Section 6. Counted before parsing, without building the table. |
 | Images | 60 MP per frame | A 48 MP phone photo fits; anything larger is scaled down or refused. |
 | AI chunk | 100 pages / 180,000 chars | Section 2. |
 | Uploads in flight | 3 per team (`LARGE_FILE_MAX_ACTIVE_JOBS_PER_TEAM`) | One worker runs one job at a time. |
@@ -315,3 +318,37 @@ up or guess at any R2 configuration.
    `~/dev/projects/abstractly-large-files`, built, not pushed, flag off by
    default, report at `docs/plans/large-files-REPORT.md`, needs
    `/review-branch` after push.
+
+## 6. Memory of Office conversion (review follow-up, 2026-10-20)
+
+The server has 512 MB for everything (2 gunicorn workers + `worker.py`).
+Measured peak memory above the process's starting point, each file in a
+fresh process (macOS; scratch scripts, numbers below):
+
+| What | Before | After |
+|---|---|---|
+| .docx with 50 MB of XML (0.2 MB on disk; old cap was 250 MB) | 352 MB | refused at upload (XML > 10 MB) |
+| .docx at 10 MB of XML, 1.6 M empty paragraphs | 348 MB | refused at upload (> 500,000 elements) |
+| Densest .docx lease accepted (~480,000 elements) | -- | **+110 MB** |
+| Largest .docx rent roll accepted (9,999 rows) | -- | **+110 MB** |
+| Rent roll parse, 9,990 rows: CSV / .xls / .xlsx | -- | +106 / +65 / +33 MB |
+| 50,000-row rent roll (3 MB CSV) | 290 MB | refused before parsing (rows) |
+| 50 MB .txt lease | 135 MB to read | refused at upload (> 10 MB) |
+
+Why each limit: python-docx keeps ~200 bytes per XML element (so bytes
+alone don't bound it); openpyxl streams sheets and shared strings
+(~3 MB per MB); every parsed rent-roll row costs ~5.5-11 KB whatever the
+format. `test_the_largest_office_files_accepted_convert_well_under_512mb`
+re-measures the two worst cases on every run and fails above 200 MB.
+
+**Not fixed, and bigger than conversion: what runs after a rent roll is
+parsed.** The job then loads every lease the team has
+(`get_all_effective_leases`, twice) and runs the reconciliation sweep
+over all of them. A 5,000-row rent roll job peaked at ~320 MB absolute
+(parse ~35 MB of it); 9,990 rows ~480 MB; 19,900 rows 724 MB. That grows
+with the team's whole portfolio, not the file, and `POST
+/leases/import-rent-roll` on `main` runs the same steps. Worth its own
+task before teams hold ~10,000 leases. Related: a spreadsheet uploaded
+as a *lease* becomes one lease per row, and the resubmission check
+compares each against all the others: 1,000 rows took 7 s, 10,000 rows
+didn't finish in 10 minutes (the worker is busy all that time).

@@ -20,19 +20,38 @@ files), so this is cheap on a 150 MB upload.
 """
 import os
 import zipfile
-from typing import Optional
+import zlib
+from typing import List, Optional
 
 import olefile
+from lxml import etree
 
 _HEAD_BYTES = 64 * 1024
 
 # Office files are ZIPs that their parsers inflate fully in memory. A real
 # lease .docx or a 5,000-row rent-roll .xlsx inflates to a few MB; a
 # "zip bomb" inflates a small upload to gigabytes and takes the server
-# down with it. Checked from the ZIP directory alone, before any parser
-# runs (security review of this branch).
-MAX_ZIP_UNCOMPRESSED_BYTES = 250 * 1024 * 1024
+# down with it. Checked from the ZIP alone, before any parser runs
+# (security review of this branch).
+MAX_ZIP_UNCOMPRESSED_BYTES = 64 * 1024 * 1024
 MAX_ZIP_ENTRIES = 20_000
+# The XML parts cost far more than their size once parsed (measured, see
+# docs/plans/large-files-REPORT.md section 6): python-docx ~9 MB of RAM
+# per MB of XML, openpyxl ~3 MB per MB of shared strings, on a server with
+# 512 MB in all. Images and embedded files inside cost only their size.
+# A real lease .docx has 1-5 MB of XML; a 5,000-row rent roll .xlsx ~2 MB.
+MAX_ZIP_XML_BYTES = {"docx": 10 * 1024 * 1024, "xlsx": 40 * 1024 * 1024, "xlsm": 40 * 1024 * 1024}
+# python-docx keeps a node per element (~200 bytes each), so dense XML
+# costs more than its size says: 10 MB of empty paragraphs is 1.6 million
+# elements and took 348 MB. 500,000 parses in ~100 MB; the blank Word
+# template is ~19,000 and a long, heavily formatted lease ~150,000.
+# (openpyxl streams sheets and shared strings, so .xlsx needs no count.)
+MAX_DOCX_ELEMENTS = 500_000
+# Parts starting like this can't be XML, so no parser builds a tree from
+# them: images (PNG, JPEG, GIF, BMP, TIFF, WMF), embedded OLE/ZIP/PDF.
+# EMF is checked by its signature at byte 40.
+_BINARY_PART_MAGIC = (b"\x89PNG", b"\xff\xd8\xff", b"GIF8", b"BM", b"II*\x00", b"MM\x00*", b"\xd7\xcd\xc6\x9a",
+                      b"\x01\x00\x09\x00", b"\x02\x00\x09\x00", b"\xd0\xcf\x11\xe0", b"PK\x03\x04", b"%PDF")
 # BITMAPINFOHEADER sizes a real .bmp carries at byte 14 -- so a text file
 # that merely starts with "BM" isn't mistaken for an image.
 _BMP_DIB_HEADER_SIZES = {12, 40, 52, 56, 64, 108, 124}
@@ -117,20 +136,83 @@ def _rejection(upload_kind: str, what: str) -> UnsupportedFileType:
     )
 
 
+def xml_parts(archive: zipfile.ZipFile) -> List[zipfile.ZipInfo]:
+    """
+    The parts of an Office file a parser may build an XML tree from: every
+    file in it except those whose first bytes say image or embedded binary.
+    Decided by content, not by name or [Content_Types].xml, because a
+    package can point its parser at any part under any name.
+    """
+    parts = []
+    for info in archive.infolist():
+        if info.is_dir():
+            continue
+        with archive.open(info) as part:
+            head = part.read(44)
+        if not (head.startswith(_BINARY_PART_MAGIC) or (head[:4] == b"\x01\x00\x00\x00" and head[40:44] == b" EMF")):
+            parts.append(info)
+    return parts
+
+
 def _detect_zip(path: str, upload_kind: str, original_extension: str) -> str:
     try:
         with zipfile.ZipFile(path) as archive:
             entries = archive.infolist()
-    except (zipfile.BadZipFile, OSError):
+            if len(entries) > MAX_ZIP_ENTRIES or sum(e.file_size for e in entries) > MAX_ZIP_UNCOMPRESSED_BYTES:
+                raise UnsupportedFileType(
+                    "This file expands to far more data than a real document or spreadsheet, so it wasn't opened. "
+                    "If it's genuine, export it again (or save it as PDF or CSV) and upload that."
+                )
+            extension = _office_type(entries, upload_kind, original_extension)
+            parts = xml_parts(archive)
+            xml_bytes = sum(e.file_size for e in parts)
+            too_dense = (extension == "docx" and xml_bytes <= MAX_ZIP_XML_BYTES["docx"]
+                         and _more_elements_than(archive, parts, MAX_DOCX_ELEMENTS))
+    except (zipfile.BadZipFile, zlib.error, EOFError, RuntimeError, OSError):
+        # RuntimeError: an encrypted entry; zlib/EOF: a damaged one.
         raise UnsupportedFileType(
             "This file appears to be a damaged Office document or ZIP archive. "
             "Open it, save a fresh copy, and upload that."
         )
-    if len(entries) > MAX_ZIP_ENTRIES or sum(e.file_size for e in entries) > MAX_ZIP_UNCOMPRESSED_BYTES:
+    if xml_bytes > MAX_ZIP_XML_BYTES[extension]:
+        mb, limit_mb = xml_bytes / (1024 * 1024), MAX_ZIP_XML_BYTES[extension] // (1024 * 1024)
+        if extension == "docx":
+            raise UnsupportedFileType(
+                f"This Word document holds more text and formatting than we can open safely ({mb:.0f} MB of "
+                f"document data; the limit is {limit_mb} MB). Save it as a PDF and upload that."
+            )
         raise UnsupportedFileType(
-            "This file expands to far more data than a real document or spreadsheet, so it wasn't opened. "
-            "If it's genuine, export it again (or save it as PDF or CSV) and upload that."
+            f"This workbook holds more data than we can open safely ({mb:.0f} MB of sheet data; the limit is "
+            f"{limit_mb} MB). Split it into smaller workbooks (for example, one per property) and upload each one."
         )
+    if too_dense:
+        raise UnsupportedFileType(
+            "This Word document holds more text and formatting than we can open safely. "
+            "Save it as a PDF and upload that."
+        )
+    return extension
+
+
+def _more_elements_than(archive: zipfile.ZipFile, parts: List[zipfile.ZipInfo], limit: int) -> bool:
+    """Streams the parts' XML (memory stays flat) and stops as soon as `limit` is passed. Unparseable parts are skipped: the parser reports them."""
+    count = 0
+    for info in parts:
+        with archive.open(info) as part:
+            try:
+                for _, element in etree.iterparse(part, events=("end",), resolve_entities=False, no_network=True,
+                                                  load_dtd=False):
+                    count += 1
+                    if count > limit:
+                        return True
+                    element.clear()
+                    while element.getprevious() is not None:
+                        del element.getparent()[0]
+            except etree.XMLSyntaxError:
+                continue
+    return False
+
+
+def _office_type(entries: List[zipfile.ZipInfo], upload_kind: str, original_extension: str) -> str:
     names = {e.filename for e in entries}
     if "word/document.xml" in names:
         return "docx"
