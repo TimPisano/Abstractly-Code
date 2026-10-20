@@ -350,6 +350,16 @@ Claim with `/start-task <branch>`; read PIVOT_PLAN.md Step 4 first (`git show pi
   remove once no open branch edits them (new plans live in `docs/plans/`).
 - `backend/tests/sample_lease.pdf` is gitignored: new worktrees run
   `python backend/tests/create_sample_lease.py` (start-task does this).
+- Bug in `.claude/hooks/guard.py` (found 2026-10-20, not fixed by request):
+  typing `/merge-branch <branch>` records the approval's branch as
+  `/merge-branch`, so the guard then blocks `git merge <branch>`. In
+  `prompt()`, the slash-command event arrives with empty arguments, so it
+  builds `"/merge-branch \n/merge-branch <branch>"`, and the
+  `/merge-branch\s+(\S+)` match skips the space and newline and takes the
+  second `/merge-branch` as the branch. Fix: skip the `"/%s %s"` prefix
+  when args are empty (or match `[^\s/]\S*`). Until fixed, `/merge-branch`
+  can't merge; workaround is a plain message containing
+  `merge approved: /merge-branch <branch>`.
 
 ## Done
 
