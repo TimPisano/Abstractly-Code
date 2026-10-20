@@ -229,8 +229,20 @@ def _pages_to_prompt_text(pages: List[Dict[str, Any]]) -> str:
     return body
 
 
-def _user_message(pages: List[Dict[str, Any]]) -> str:
+def _user_message(pages: List[Dict[str, Any]], part: Optional[Dict[str, int]] = None) -> str:
+    # `part` is set only by extract_lease_fields_chunked: one call per page
+    # range of a long lease. Without it the message is byte-for-byte what
+    # it has always been.
+    part_note = ""
+    if part:
+        part_note = (
+            f"This is part {part['index']} of {part['count']} of ONE long lease: pages "
+            f"{part['first_page']}-{part['last_page']} of {part['total_pages']}. The other parts are read "
+            "separately and combined afterwards, so extract only what these pages state; return a field as "
+            "not found if it is not in these pages rather than guessing what another part says.\n\n"
+        )
     return (
+        part_note +
         "Abstract the following commercial lease. Page markers are shown as "
         "\"===== PAGE N =====\". Extract each field per the tool's field guidance and "
         "the confidence rubric in your instructions. For every field you find, source_text "
@@ -489,10 +501,11 @@ def tool_payload(response: Any, *, bad_input_message: str = "This document could
     return payload
 
 
-def _call_model(pages: List[Dict[str, Any]], client: Optional[anthropic.Anthropic]) -> Any:
+def _call_model(pages: List[Dict[str, Any]], client: Optional[anthropic.Anthropic],
+                part: Optional[Dict[str, int]] = None) -> Any:
     return call_forced_tool(
         system=SYSTEM_PROMPT,
-        user_content=_user_message(pages),
+        user_content=_user_message(pages, part),
         tool=_build_tool(),
         client=client,
     )
@@ -544,6 +557,202 @@ def extract_lease_fields(
     # path, for telemetry logging) can read it, and json.dumps of the
     # whole structure still round-trips. Downstream field consumers
     # iterate LEASE_FIELDS explicitly and never see this.
+    fields["_ai_meta"] = telemetry
+    return fields
+
+
+# ----------------------------------------------------------------------
+# Long documents: page chunks, one call each, merged with citations
+#
+# Limits, from the official docs (checked 2026-10-19):
+#   - Messages API request size: 32 MB
+#     (platform.claude.com/docs/en/api/overview, "Request size limits").
+#   - Context window: 1M tokens for the current Sonnet/Opus models, about
+#     2.5M characters on the current tokenizer
+#     (platform.claude.com/docs/en/about-claude/models/overview).
+#   - PDF input: 600 pages per request, 100 when the context window is
+#     under 1M; a PDF page is typically 1,500-3,000 tokens
+#     (platform.claude.com/docs/en/build-with-claude/pdf-support).
+# This module sends extracted TEXT, not PDFs, so the binding limit is
+# tokens, not pages. A chunk is capped at both CHUNK_MAX_PAGES and
+# CHUNK_MAX_CHARS, whichever comes first:
+#   - 100 pages: the documented per-request PDF limit for a <1M-context
+#     request, so a chunk stays valid even on a 200k-context model or if
+#     this ever switches to native PDF input.
+#   - 180,000 characters (~72k tokens at 2.5 chars/token): under
+#     MAX_DOCUMENT_CHARS, so _pages_to_prompt_text never truncates a chunk;
+#     far under 1M tokens and 32 MB; and small enough that one call fits
+#     comfortably inside REQUEST_TIMEOUT_SECONDS.
+# A 500-page lease at ~2,800 chars/page (1.4M chars) becomes 9 chunks.
+# ----------------------------------------------------------------------
+
+CHUNK_MAX_PAGES = int(os.environ.get("LEASE_EXTRACTION_CHUNK_MAX_PAGES", "100"))
+CHUNK_MAX_CHARS = int(os.environ.get("LEASE_EXTRACTION_CHUNK_MAX_CHARS", "180000"))
+
+_CONFIDENCE_RANK = {"high": 3, "medium": 2, "low": 1}
+
+
+def plan_chunks(pages: List[Dict[str, Any]], max_pages: Optional[int] = None,
+                max_chars: Optional[int] = None) -> List[List[Dict[str, Any]]]:
+    """
+    Split `pages` into consecutive runs, each at most `max_pages` pages and
+    `max_chars` characters of page text (page marker overhead included).
+    Never splits a page; a single page larger than `max_chars` becomes a
+    chunk of its own (the prompt builder then truncates it, visibly).
+    """
+    max_pages = max_pages or CHUNK_MAX_PAGES
+    max_chars = max_chars or CHUNK_MAX_CHARS
+    chunks: List[List[Dict[str, Any]]] = []
+    current: List[Dict[str, Any]] = []
+    current_chars = 0
+    for page in pages:
+        size = len((page.get("text") or "").strip()) + 24  # "===== PAGE N =====" header
+        if current and (len(current) >= max_pages or current_chars + size > max_chars):
+            chunks.append(current)
+            current, current_chars = [], 0
+        current.append(page)
+        current_chars += size
+    if current:
+        chunks.append(current)
+    return chunks
+
+
+def _normalized_value(value: str) -> str:
+    return re.sub(r"[\s$,.;:]+", " ", value.lower()).strip()
+
+
+def _merge_concessions(found: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Concessions add up rather than compete: keep every distinct one, from every part, deduped like the single-call path."""
+    best = max(found, key=lambda e: (_CONFIDENCE_RANK.get(e.get("confidence"), 0), -((e.get("source") or {}).get("page") or 0)))
+    merged = dict(best)
+    values, quotes, items, seen = [], [], [], set()
+    for entry in found:
+        if _normalized_value(entry["value"]) not in {_normalized_value(v) for v in values}:
+            values.append(entry["value"])
+        if entry.get("source_text") and entry["source_text"] not in quotes:
+            quotes.append(entry["source_text"])
+        for item in entry.get("items") or []:
+            key = concessions.dedupe_key(item)
+            if key not in seen:
+                seen.add(key)
+                items.append(item)
+    merged["value"] = "; ".join(values)
+    merged["source_text"] = " ... ".join(quotes) or None
+    merged["confidence"] = min((e.get("confidence") or "low" for e in found), key=lambda c: _CONFIDENCE_RANK.get(c, 0))
+    if items:
+        merged["items"] = items
+    if len(found) > 1:
+        merged["found_on_pages"] = sorted({(e.get("source") or {}).get("page") for e in found} - {None})
+    return merged
+
+
+def merge_chunk_fields(chunk_results: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Combine per-chunk field dicts (each already in the stored shape, with
+    page numbers that are absolute -- chunk pages keep their original
+    numbers) into one field set.
+
+    Per field:
+      - not found in any part   -> not found.
+      - found in one part        -> that entry, unchanged.
+      - same value in several    -> the highest-confidence entry (earliest
+                                    page on a tie), plus `found_on_pages`.
+      - DIFFERENT values         -> the highest-confidence one is shown, but
+                                    confidence drops to "low" and every
+                                    candidate is kept in `alternatives` with
+                                    its own page citation. The prompt's own
+                                    rule is "never guess between candidates";
+                                    a 500-page lease restating rent in an
+                                    amendment on page 300 is exactly the
+                                    case a reviewer must look at.
+      - concessions              -> combined across parts (_merge_concessions).
+    """
+    merged: Dict[str, Any] = {}
+    for name in LEASE_FIELDS:
+        found = [r[name] for r in chunk_results if (r.get(name) or {}).get("value") is not None]
+        if not found:
+            merged[name] = {**_not_found_entry(), "engine": "ai"}
+            continue
+        if name == "concessions":
+            merged[name] = _merge_concessions(found)
+            continue
+
+        def rank(entry):
+            return (_CONFIDENCE_RANK.get(entry.get("confidence"), 0), -((entry.get("source") or {}).get("page") or 10 ** 9))
+
+        best = max(found, key=rank)
+        entry = dict(best)
+        distinct = {_normalized_value(e["value"]) for e in found}
+        if len(found) > 1:
+            entry["found_on_pages"] = sorted({(e.get("source") or {}).get("page") for e in found} - {None})
+        if len(distinct) > 1:
+            entry["confidence"] = "low"
+            entry["alternatives"] = [
+                {"value": e["value"], "source": e.get("source"), "confidence": e.get("confidence")}
+                for e in sorted(found, key=lambda e: (e.get("source") or {}).get("page") or 0)
+            ]
+            listed = "; ".join(
+                f"{a['value']} (page {(a['source'] or {}).get('page', '?')})" for a in entry["alternatives"]
+            )
+            entry["validation_note"] = (
+                f"Different values were found in different parts of this document: {listed}. "
+                "Check which one applies."
+            )
+        merged[name] = entry
+    return merged
+
+
+def extract_lease_fields_chunked(
+    pages: List[Dict[str, Any]],
+    *,
+    client: Optional[anthropic.Anthropic] = None,
+    progress=None,
+) -> Dict[str, Any]:
+    """
+    extract_lease_fields for documents of any length: one model call per
+    chunk from plan_chunks, merged by merge_chunk_fields. A document that
+    fits in one chunk makes exactly the same single call as
+    extract_lease_fields (same message, same result).
+
+    `progress(done, total)` is called after each chunk. Any chunk failing
+    raises AIExtractionError for the whole document -- a partial merge
+    would silently report "not found" for whatever the failed part said.
+    """
+    if not pages:
+        raise AIExtractionError("This document has no readable content to extract.")
+    chunks = plan_chunks(pages)
+    if len(chunks) == 1:
+        fields = extract_lease_fields(pages, client=client)
+        if progress:
+            progress(1, 1)
+        return fields
+
+    started = time.monotonic()
+    anthropic_client = _make_client(client)
+    results, input_tokens, output_tokens = [], 0, 0
+    total_pages = len(pages)
+    for index, chunk in enumerate(chunks, start=1):
+        part = {"index": index, "count": len(chunks), "first_page": chunk[0]["page"],
+                "last_page": chunk[-1]["page"], "total_pages": total_pages}
+        response = _call_model(chunk, anthropic_client, part)
+        results.append(_parse_tool_payload(_extract_tool_input(response), chunk))
+        usage = getattr(response, "usage", None)
+        input_tokens += getattr(usage, "input_tokens", 0) or 0
+        output_tokens += getattr(usage, "output_tokens", 0) or 0
+        if progress:
+            progress(index, len(chunks))
+
+    fields = merge_chunk_fields(results)
+    telemetry = {
+        "model": DEFAULT_MODEL,
+        "prompt_version": f"{PROMPT_VERSION}-chunked",
+        "latency_ms": int((time.monotonic() - started) * 1000),
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "found_count": sum(1 for e in fields.values() if e.get("value") is not None),
+        "chunk_count": len(chunks),
+    }
+    logger.info("AI chunked extraction ok: %s", telemetry)
     fields["_ai_meta"] = telemetry
     return fields
 

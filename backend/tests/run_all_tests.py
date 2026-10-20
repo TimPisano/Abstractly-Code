@@ -118,6 +118,7 @@ UNIT_TESTS = [
     # Large files + any file type (feature/large-files-any-type).
     "test_file_types.py",
     "test_large_file_extraction.py",
+    "test_ai_chunked_extraction.py",
 ]
 
 LIVE_API_TESTS = [
