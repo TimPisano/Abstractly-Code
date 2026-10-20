@@ -9,6 +9,7 @@
 | [competitors.md](./competitors.md) | Incumbents, AI entrants, public pricing, gaps |
 | [feature-priorities.md](./feature-priorities.md) | Top 10 features, scored, with S8 branch coverage |
 | [eval-docs.md](./eval-docs.md) | 31 public no-login documents; an 18-document v1 eval set |
+| [eval-baseline.md](./eval-baseline.md) | How today's extraction does on 16 filled affordable forms (harness in `tests/eval/affordable/`). Short version: 0% on lease fields from forms, high-confidence wrong values, unflattened fillable forms read as empty |
 
 ## The three things that matter
 
