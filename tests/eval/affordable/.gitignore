@@ -1,0 +1,2 @@
+# Scanned copies are large and fully reproducible: python -I make_scans.py
+samples/*.scan.pdf
