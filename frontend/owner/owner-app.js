@@ -670,6 +670,14 @@ const Teams = {
         body.innerHTML = `
             <h2>${escapeHtml(t.name)}</h2>
             <p>Status: <span class="owner-status-pill owner-status-${escapeHtml(t.status)}">${escapeHtml(t.status)}</span> &middot; Created ${escapeHtml(formatDate(t.created_at))}</p>
+            ${t.page_usage ? `
+            <h3 style="margin-top:1.5rem;">Monthly page limit</h3>
+            <p>${escapeHtml(t.page_usage.pages_used.toLocaleString())} of ${escapeHtml(t.page_usage.page_limit.toLocaleString())} pages used this month${t.page_usage.page_limit_is_default ? ' (default limit)' : ''}. Uploads that would go over are turned away before any AI processing.</p>
+            <form id="pageLimitForm" class="owner-entry-row">
+                <input type="number" id="pageLimitInput" class="text-input" min="0" max="1000000" step="1" required value="${escapeHtml(String(t.page_usage.page_limit))}" aria-label="Monthly page limit">
+                <button type="submit" class="btn-primary" id="pageLimitSaveBtn">Save limit</button>
+                ${t.page_usage.page_limit_is_default ? '' : '<button type="button" class="btn-secondary" id="pageLimitDefaultBtn">Use default</button>'}
+            </form>` : ''}
             <h3 style="margin-top:1.5rem;">Members</h3>
             <div style="overflow-x:auto;">
                 <table class="owner-table">
@@ -692,6 +700,35 @@ const Teams = {
                     : `<button class="btn-secondary" id="reactivateTeamBtn">Reactivate Team</button>`}
             </div>
         `;
+        const savePageLimit = async (value) => {
+            try {
+                await ownerFetch(`/teams/${t.id}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ monthly_page_quota: value }),
+                });
+                showToast(value === null ? `${t.name} is back on the default page limit.` : `${t.name}'s page limit is now ${value.toLocaleString()} a month.`);
+                this.openDetail(t.id);
+            } catch (err) {
+                showToast(err.message, 'error');
+            }
+        };
+        const pageLimitForm = document.getElementById('pageLimitForm');
+        if (pageLimitForm) {
+            pageLimitForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                const value = Number(document.getElementById('pageLimitInput').value);
+                if (!Number.isInteger(value) || value < 0 || value > 1000000) {
+                    showToast('Enter a whole number of pages from 0 to 1,000,000.', 'error');
+                    return;
+                }
+                savePageLimit(value);
+            });
+        }
+        const pageLimitDefaultBtn = document.getElementById('pageLimitDefaultBtn');
+        if (pageLimitDefaultBtn) {
+            pageLimitDefaultBtn.addEventListener('click', () => savePageLimit(null));
+        }
         const deactivateBtn = document.getElementById('deactivateTeamBtn');
         if (deactivateBtn) {
             deactivateBtn.addEventListener('click', async () => {

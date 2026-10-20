@@ -557,6 +557,29 @@ def _split_and_extract(pages, field_extractor):
     return results
 
 
+def _claim_monthly_pages(page_count):
+    """
+    The team's monthly page limit, applied once a file's page count is
+    known and BEFORE any extraction work (regex or model) runs: returns
+    (message, 403) if these pages would take the caller's team past its
+    limit. Otherwise records them as used -- this is the only place
+    upload pages are recorded, for every upload route (single, batch,
+    resubmit, amendment, /extract) -- and returns None. Pages count from
+    the moment they're accepted for extraction, success or not, the same
+    way the document quota counts attempts.
+    """
+    from app import usage_limits
+    user = current_user()
+    team_id = (user or {}).get("team_id")
+    if not team_id:
+        return ("Your account isn't assigned to a team yet. Ask an admin to assign you to a team before uploading.", 403)
+    msg = usage_limits.check_team_quota(team_id, page_count)
+    if msg:
+        return (msg, 403)
+    usage_limits.log_usage_event(team_id, user["id"], None, page_count, None, event_type="extraction")
+    return None
+
+
 def _extract_leases_from_file_storage(file_storage, defer_ai=False):
     """
     Shared pipeline: save an uploaded werkzeug FileStorage to a temp
@@ -604,6 +627,10 @@ def _extract_leases_from_file_storage(file_storage, defer_ai=False):
         if extension in ('csv', 'xlsx'):
             table_leases, _ = _try_table_extraction(file_bytes, file_storage.filename, extension)
             if table_leases is not None:
+                # A spreadsheet of lease rows counts as one page.
+                quota_error = _claim_monthly_pages(1)
+                if quota_error:
+                    return None, quota_error
                 return table_leases, None
             # Table parsing found nothing usable -- fall through to the
             # shared prose path below, same as every other format.
@@ -612,6 +639,12 @@ def _extract_leases_from_file_storage(file_storage, defer_ai=False):
             pages = document_extractor.extract_pages(file_bytes, file_storage.filename, temp_path)
         except DocumentExtractionError as e:
             return None, (str(e), 422)
+
+        # Page count known, nothing sent to a model yet: the last point
+        # where the team's monthly page limit can stop this file for free.
+        quota_error = _claim_monthly_pages(len(pages))
+        if quota_error:
+            return None, quota_error
 
         # Checked before ANY extraction runs, including boundary
         # detection -- both are regex-driven and equally unreliable
@@ -766,7 +799,13 @@ def _validate_upload():
     if not team_id:
         return None, (jsonify({"error": "Your account isn't assigned to a team yet. Ask an admin to assign you to a team before uploading."}), 403)
 
-    msg = usage_limits.check_team_quota(team_id)
+    # A PDF's page count is cheap to read before any other work, so a
+    # file that would go over the team's monthly page limit is turned
+    # away here, before OCR/text extraction. Every other format (and
+    # PDFs too) is checked again once its pages are known -- see
+    # _claim_monthly_pages.
+    incoming_pages = usage_limits.count_pdf_pages(file_bytes) if file.filename.lower().endswith('.pdf') else None
+    msg = usage_limits.check_team_quota(team_id, incoming_pages or 0)
     if msg:
         return None, (jsonify({"error": msg}), 403)
 
@@ -1130,9 +1169,8 @@ def upload_lease():
     finally:
         conn.close()
 
-    # Log usage event (pages unknown for async; tokens will be logged when extraction finishes)
-    if team_id:
-        usage_limits.log_usage_event(team_id, user["id"], created[0]["id"] if created else None, None, None, event_type="extraction")
+    # Usage (this document and its pages) was recorded by
+    # _claim_monthly_pages inside _extract_leases_from_file_storage.
 
     if _start_deferred_extraction(filename, split_leases):
         # Model-backed extraction is running in the background. The
@@ -3319,6 +3357,14 @@ def update_team(team_id):
             return jsonify({"error": "Team not found"}), 404
 
         body = request.get_json(silent=True) or {}
+        # The page limit gates every upload (usage_limits.check_team_quota):
+        # a whole number of pages, or null to fall back to the default.
+        # A string or negative number here would make the quota
+        # comparison raise or block everything.
+        if 'monthly_page_quota' in body:
+            value = body['monthly_page_quota']
+            if value is not None and (isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 1_000_000):
+                return jsonify({"error": "monthly_page_quota must be a whole number from 0 to 1,000,000, or null for the default"}), 400
         if 'monthly_document_quota' in body:
             conn.execute("UPDATE teams SET monthly_document_quota = ? WHERE id = ?", (body['monthly_document_quota'], team_id))
         if 'monthly_page_quota' in body:
@@ -6088,7 +6134,8 @@ def owner_team_detail(team_id):
     if not team:
         return jsonify({"error": "Team not found"}), 404
     members = [_owner_account_public_shape(u) for u in database.list_users(team_id)]
-    return jsonify({**team, "members": members}), 200
+    from app import usage_limits
+    return jsonify({**team, "members": members, "page_usage": usage_limits.get_team_page_usage(team_id)}), 200
 
 
 @app.route('/owner/teams', methods=['POST'])
