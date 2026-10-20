@@ -11,6 +11,13 @@
 >
 > 92% of the answers are in the text the extractor sees. The gap is mapping coverage: real affordable documents are mostly **not** the standard HUD forms we mapped. See "Real documents", the last section.
 
+> **Update, AI engine (2026-10-20, credits added).** First real run of the AI engine (`claude-sonnet-5`, prompt v2), 79 calls including the setup check, about $3.45:
+> - **CRE real leases (12 EDGAR leases):** 46% raw auto-score, **96% after review** (172 / 180). 4 values are wrong, 2 of them high-confidence invented dates.
+> - **CRE synthetic (60 leases):** 97% raw, **99% after review** (895 / 900). All 5 real errors are on scanned copies.
+> - **Affordable real documents (11):** lease fields 0 / 2 verified, 7 / 21 unverified. **Program fields 0 / 136**, because the AI engine has no slots for them. Only 6 of the 11 documents reach the AI at all.
+>
+> See "AI engine: real and synthetic CRE, real affordable", the last section.
+
 ## What was measured
 
 - **16 public blank forms** (HUD, IRS, five state housing agencies), each filled with fictional but internally consistent values, with a JSON answer key. Examples: HAP contract rent = tenant share + HAP, and TIC income stays under the computed AMI limit.
@@ -289,3 +296,107 @@ Synthetic, for comparison: the form reader scores 94% lease and 92% program on c
 - **Fix the fallback gates before wiring in.** One image-only page trips the "needs OCR" gate for the whole document, and a tax-credit agreement tripped the rent-roll gate. Both stop a contract or agreement before any reader sees it.
 - **Masking:** California parcel numbers (`482-16-1026`) are SSN-shaped and get masked in quotes. Before real use, the SSN rule should look at the label ("APN") as well as the shape.
 - **Biggest gap in this set:** there are no real filled TICs, 52641s or RFTAs; agencies don't publish real ones. The only way to test those on real paper is anonymised design-partner documents. That was already the plan's last step.
+
+## AI engine: real and synthetic CRE, real affordable
+
+**Date:** 2026-10-20 · **Engine:** `ai` (`claude-sonnet-5`, prompt v2), the upload path's own `ai_extraction.extract_lease_fields` · **Key:** `backend/.env` in the primary checkout, `LEASE_EXTRACTION_ENGINE=ai` · **Code:** `ai_extraction.py`, `document_extractor.py`, `extraction_scoring.py` and `field_extractor.py` are identical on `main` and this branch.
+**Raw results:** `tests/eval/real/results/ai.json` (affordable), `cre_benchmark_ai.json`, `cre_synthetic_ai.json`, and `cre_benchmark_ai_review.md` (a verdict on every benchmark mismatch).
+
+### What ran, and what it cost
+
+| Set | Documents | AI calls | Tokens in / out | Cost |
+|---|---|---|---|---|
+| Affordable real (`run_eval.py --set real --engine ai`) | 11 | 6 | 117,468 / 6,274 | $0.30 |
+| CRE real: the 12 EDGAR leases in `backend/benchmark_data/`, scored against `ground_truth.json` | 12 | 12 | 604,297 / 29,380 | $1.50 |
+| CRE synthetic: `tests/synthetic_corpus_training/round_1_seed_41`, lease field accuracy only (the training harness's `extract_corpus` step; no rent-roll checks, no database writes) | 60 | 60 | 387,929 / 85,529 | $1.63 |
+| Setup check (one short test lease) | 1 | 1 | 6,014 / 919 | $0.02 |
+| **Total** | | **79** | | **≈ $3.45** |
+
+No API errors, and no retries in the logs. The four EDGAR leases listed in `tests/eval/real/manifest.json` were **not** used. They still aren't downloaded and have no answer keys (see REVIEW.md). The 12-lease benchmark stands in for them: those leases are real EDGAR exhibits and their answers were already checked by hand.
+
+**Raw vs reviewed.** `extraction_scoring` matches free text by substring, and the answer keys are full sentences, so a right answer worded differently scores as wrong. `run_accuracy_benchmark.py` says to quote both numbers. "Reviewed" means I (Claude) read every mismatch against the key, and the lease text where it was in doubt. **You haven't checked these verdicts yet**: they're in `cre_benchmark_ai_review.md`.
+
+### CRE real leases (12 EDGAR leases, 180 lease-field pairs)
+
+**Overall: 46.1% raw → 95.6% reviewed (172 / 180).** For comparison, regex scored 36.7% raw / ~43.9% reviewed (`ACCURACY_REPORT.md`).
+
+| Field | Raw | Reviewed | What the misses were |
+|---|---|---|---|
+| `tenant` | 92% | 100% | |
+| `landlord` | 92% | 100% | |
+| `rent_amount` | 92% | 92% | Dover: $12,529.08/mo; $18.34 × 8,194 sf ÷ 12 = $12,523.16 |
+| `lease_start_date` | 33% | **75%** | Convera: gave the Target Date (Aug 1, 2005) as the start date. Dialysis: **"July 2, 2001", which is nowhere in the lease (high confidence)**. Family Steak: blank where the key has a formula |
+| `lease_end_date` | 25% | **67%** | Dialysis: **"July 31, 2006", invented (high confidence)**. Convera, Family Steak: blank instead of the formula. Dover: the formula drops "the day before" |
+| `property_address` | 42% | 100% | |
+| `security_deposit` | 75% | 100% | |
+| `cam_charges` | 25% | 100% | |
+| `rent_escalation` | 42% | 100% | |
+| `renewal_options` | 0% | 100% | |
+| `permitted_use` | 42% | 100% | |
+| `exclusivity_clause` | 25% | 100% | |
+| `insurance_requirements` | 0% | 100% | The key for Altiris leaves out "$500,000 per person"; the lease states it and the AI caught it |
+| `default_cure_period` | 8% | 100% | |
+| `square_footage` | 100% | 100% | |
+
+- **The dangerous failures are dates.** On the 7 leases whose start date is a formula ("earlier of possession or 15 days after completion"), the AI sometimes picks a nearby date or invents one instead of returning the formula. 2 of the 4 wrong values are invented at high confidence. This is the most important result here.
+- **Raw calibration is meaningless here.** P(correct | high) is 53% raw only because of the scorer. After review, 2 of 144 high-confidence answers are wrong.
+- **Product issue found:** in 22 fields across the 12 leases, the model wrote "Not found…" or "None" as the field's *value* instead of returning nothing (10 of the 180 scored fields, plus 12 `concessions` fields). `_coerce_field_entry` (`ai_extraction.py:285`) stores any non-empty string. In the app, those fields would look like found values. Most carry a useful note ("Commencement Date is formula-based…"). Not fixed: this run measures only.
+
+### CRE synthetic (60 leases, 900 lease-field pairs)
+
+**Overall: 96.8% raw → 99.4% reviewed (895 / 900).** Text documents (54): 97.4% raw, **100% reviewed** (810 / 810). Scanned (6): 91.1% raw, **94.4% reviewed** (85 / 90). By format, raw: pdf 96.4%, docx 97.1%, txt 97.8%.
+
+| Field | Raw | Reviewed | Misses |
+|---|---|---|---|
+| `exclusivity_clause` | 60% | 100% | All 24 are the scorer: the key says just "exclusive use", the AI returns the clause itself |
+| `lease_start_date` | 98% | 98% | blank on a scan (lease_0003) |
+| `lease_end_date` | 98% | 98% | blank on a scan (lease_0017) |
+| `square_footage` | 98% | 98% | blank on a scan (lease_0017) |
+| `landlord` | 98% | 98% | "Oakmont Comercial Trust": OCR typo copied (lease_0017, high confidence) |
+| `default_cure_period` | 98% | 98% | "1 days" for 15 days: OCR (lease_0021, low confidence) |
+| the other 9 fields | 100% | 100% | |
+
+The synthetic leases are much easier than real ones: fixed calendar dates, one premises, plain wording. The gap between 99% here and 96% on real leases is almost all formula dates.
+
+### Affordable real documents (11), by document type
+
+Lease fields use the same 15-field matcher. One reviewed change: Grand Junction's "674 23¾ Road" vs the key's "23 3/4" counts as right (raw: 6 / 21 unverified). **Unverified** means every REVIEW.md answer, since none is ticked yet (132 fields). Only the 27 fields matched against HUD's public data count as verified.
+
+| Doc type | Docs | Reached the AI | Lease, verified | Lease, unverified | Program, verified | Program, unverified | Program values in the text | Invented lease values |
+|---|---|---|---|---|---|---|---|---|
+| LURA / regulatory agreement | 3 | 2 | 0/1 | 1/2 | 0/5 | 0/36 | 40/41 | 4 |
+| HAP contract (1990 PBRA) | 1 | 1 | – | 0/2 | 0/2 | 0/7 | 8/9 | 2 |
+| HAP renewal (2013) | 1 | 0 | 0/1 | 0/2 | 0/4 | 0/10 | 11/14 | 0 |
+| HAP renewal request (letter) | 1 | 1 | – | – | 0/8 | 0/7 | 15/15 | 3 |
+| PBV HAP contract | 3 | 0 | – | 0/6 | 0/6 | 0/25 | 26/31 | 0 |
+| Form: HUD-50059 (agency sample) | 1 | 1 | – | 0/3 | – | 0/22 | 5/22 | 0 |
+| Form: 811 PRA lease (agency sample) | 1 | 1 | – | **6/6** | – | 0/4 | 4/4 | 5 |
+| **All** | **11** | **6** | **0/2** | **7/21 (33%)** | **0/25** | **0/111** | 109/136 (80%) | 14 |
+
+**Per lease field** (all documents; "–" = no document states it):
+
+| Lease field | Verified | Unverified | Invented |
+|---|---|---|---|
+| `tenant` | – | 1/2 | 1 |
+| `landlord` | – | 1/6 | 1 |
+| `rent_amount` | – | 1/2 | |
+| `lease_start_date` | – | 1/3 | |
+| `lease_end_date` | – | 1/1 | |
+| `property_address` | 0/2 | 1/5 | 2 |
+| `security_deposit` | – | 1/2 | |
+| `permitted_use` | – | – | 5 |
+| `renewal_options` | – | – | 2 |
+| `rent_escalation`, `insurance_requirements`, `default_cure_period` | – | – | 1 each |
+
+**Program fields: 0 extracted of 136 (25 verified, 111 unverified), every field, every document type.** This is by construction: the AI engine returns only the 15 CRE lease fields plus `concessions`. HAP rents, unit mix, AMI limits, contract numbers and so on have no slot in its output. The most common ones are `project_name` and `owner_name` (9 documents each), then `total_units` (6), and `city`, `contract_units`, `street_address` (5 each). The per-field rows are in `ai.json` under `program_fields`.
+
+What the numbers say:
+- **5 of the 11 documents never reach the AI.** The four "needs OCR" gates (the 2013 renewal and all three PBV contracts) and the rent-roll gate (Amasa) stop them first, so they score 0 under every engine. These gates are the first thing to fix for affordable documents, whichever reader is used.
+- **Where the AI does run, it reads leases fine and contracts poorly as leases.** It got all 6 lease fields of the 811 lease right. On LURAs and HAP contracts it maps the parties onto tenant and landlord: on Olympia Oaks, the owner became the "tenant" and the Town the "landlord". It fills `permitted_use` and `renewal_options` with program terms that the keys don't list ("invented" = asserted where the key has nothing). Some of those are true statements about the document. This isn't a hallucination problem; the 15 CRE fields are the wrong shape for these documents.
+- **HUD-50059 sample: 0 / 25**, against the form reader's 15 / 22 program and 3 / 3 lease. Only 5 of its 22 program values survive in the plain text layer the AI path gets; the form reader uses layout text. On this form, the AI path is worse than the non-AI fix.
+- **Scoring REVIEW.md answers as unverified changes nothing at the top level.** Both verified lease fields are addresses on documents that fail the gate (Coppertree 2013) or that the AI left blank (Olympia Oaks).
+
+### Not run
+- The synthetic affordable forms (`run_eval.py --engine ai`, 41 calls): not asked for this time. The "Regex vs AI" table above is still empty.
+- The training harness's rent-roll validation step.
+- The 4 EDGAR leases in `tests/eval/real/` (no download, no answer keys).

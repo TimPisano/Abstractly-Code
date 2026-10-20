@@ -1,0 +1,3993 @@
+{
+  "engine": "ai",
+  "set": "real",
+  "run_date": "2026-10-20",
+  "summary": {
+    "original": {
+      "overall": {
+        "docs": 11,
+        "recognised": 0,
+        "lease": {
+          "verified": {
+            "stated": 2,
+            "correct": 0,
+            "wrong": 0,
+            "recall_pct": 0.0
+          },
+          "proposed": {
+            "stated": 21,
+            "correct": 6,
+            "wrong": 1,
+            "recall_pct": 28.6
+          }
+        },
+        "lease_spurious": 14,
+        "program": {
+          "verified": {
+            "stated": 25,
+            "correct": 0,
+            "wrong": 0,
+            "recall_pct": 0.0
+          },
+          "proposed": {
+            "stated": 111,
+            "correct": 0,
+            "wrong": 0,
+            "recall_pct": 0.0
+          }
+        }
+      },
+      "by_doc_type": {
+        "hap_contract": {
+          "docs": 4,
+          "recognised": 0,
+          "lease": {
+            "verified": {
+              "stated": 0,
+              "correct": 0,
+              "wrong": 0,
+              "recall_pct": null
+            },
+            "proposed": {
+              "stated": 8,
+              "correct": 0,
+              "wrong": 0,
+              "recall_pct": 0.0
+            }
+          },
+          "lease_spurious": 2,
+          "program": {
+            "verified": {
+              "stated": 8,
+              "correct": 0,
+              "wrong": 0,
+              "recall_pct": 0.0
+            },
+            "proposed": {
+              "stated": 32,
+              "correct": 0,
+              "wrong": 0,
+              "recall_pct": 0.0
+            }
+          }
+        },
+        "hap_renewal": {
+          "docs": 1,
+          "recognised": 0,
+          "lease": {
+            "verified": {
+              "stated": 1,
+              "correct": 0,
+              "wrong": 0,
+              "recall_pct": 0.0
+            },
+            "proposed": {
+              "stated": 2,
+              "correct": 0,
+              "wrong": 0,
+              "recall_pct": 0.0
+            }
+          },
+          "lease_spurious": 0,
+          "program": {
+            "verified": {
+              "stated": 4,
+              "correct": 0,
+              "wrong": 0,
+              "recall_pct": 0.0
+            },
+            "proposed": {
+              "stated": 10,
+              "correct": 0,
+              "wrong": 0,
+              "recall_pct": 0.0
+            }
+          }
+        },
+        "hap_renewal_request": {
+          "docs": 1,
+          "recognised": 0,
+          "lease": {
+            "verified": {
+              "stated": 0,
+              "correct": 0,
+              "wrong": 0,
+              "recall_pct": null
+            },
+            "proposed": {
+              "stated": 0,
+              "correct": 0,
+              "wrong": 0,
+              "recall_pct": null
+            }
+          },
+          "lease_spurious": 3,
+          "program": {
+            "verified": {
+              "stated": 8,
+              "correct": 0,
+              "wrong": 0,
+              "recall_pct": 0.0
+            },
+            "proposed": {
+              "stated": 7,
+              "correct": 0,
+              "wrong": 0,
+              "recall_pct": 0.0
+            }
+          }
+        },
+        "lura": {
+          "docs": 3,
+          "recognised": 0,
+          "lease": {
+            "verified": {
+              "stated": 1,
+              "correct": 0,
+              "wrong": 0,
+              "recall_pct": 0.0
+            },
+            "proposed": {
+              "stated": 2,
+              "correct": 0,
+              "wrong": 1,
+              "recall_pct": 0.0
+            }
+          },
+          "lease_spurious": 4,
+          "program": {
+            "verified": {
+              "stated": 5,
+              "correct": 0,
+              "wrong": 0,
+              "recall_pct": 0.0
+            },
+            "proposed": {
+              "stated": 36,
+              "correct": 0,
+              "wrong": 0,
+              "recall_pct": 0.0
+            }
+          }
+        },
+        "pbra_certification": {
+          "docs": 1,
+          "recognised": 0,
+          "lease": {
+            "verified": {
+              "stated": 0,
+              "correct": 0,
+              "wrong": 0,
+              "recall_pct": null
+            },
+            "proposed": {
+              "stated": 3,
+              "correct": 0,
+              "wrong": 0,
+              "recall_pct": 0.0
+            }
+          },
+          "lease_spurious": 0,
+          "program": {
+            "verified": {
+              "stated": 0,
+              "correct": 0,
+              "wrong": 0,
+              "recall_pct": null
+            },
+            "proposed": {
+              "stated": 22,
+              "correct": 0,
+              "wrong": 0,
+              "recall_pct": 0.0
+            }
+          }
+        },
+        "residential_lease": {
+          "docs": 1,
+          "recognised": 0,
+          "lease": {
+            "verified": {
+              "stated": 0,
+              "correct": 0,
+              "wrong": 0,
+              "recall_pct": null
+            },
+            "proposed": {
+              "stated": 6,
+              "correct": 6,
+              "wrong": 0,
+              "recall_pct": 100.0
+            }
+          },
+          "lease_spurious": 5,
+          "program": {
+            "verified": {
+              "stated": 0,
+              "correct": 0,
+              "wrong": 0,
+              "recall_pct": null
+            },
+            "proposed": {
+              "stated": 4,
+              "correct": 0,
+              "wrong": 0,
+              "recall_pct": 0.0
+            }
+          }
+        }
+      }
+    }
+  },
+  "skipped": [],
+  "documents": [
+    {
+      "id": "hap_il_amanda_brooke_request",
+      "form": "Consultant's cover letter to HUD requesting HAP assignment and an Option 1-A 20-year renewal with rent increase",
+      "program": "PBRA",
+      "doc_type": "hap_renewal_request",
+      "variant": "original",
+      "pipeline_status": "ok",
+      "form_id": null,
+      "low_text_pages": [],
+      "lease_ranges": 2,
+      "pages": 8,
+      "mean_ocr_confidence": null,
+      "ai_meta": {
+        "model": "claude-sonnet-5",
+        "prompt_version": "v2",
+        "latency_ms": 7065,
+        "input_tokens": 10677,
+        "output_tokens": 937,
+        "found_count": 3
+      },
+      "ai_error": null,
+      "lease_fields": {
+        "stated": 0,
+        "correct": 0,
+        "wrong": 0,
+        "missed": 0,
+        "spurious": 3,
+        "in_text_layer": 0,
+        "scores": [
+          {
+            "field": "tenant",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "landlord",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "rent_amount",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "lease_start_date",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "lease_end_date",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "property_address",
+            "expected": null,
+            "extracted": "Normal, Illinois",
+            "confidence": "low",
+            "correct": false,
+            "kind": "spurious",
+            "asserted_wrong": true,
+            "app_matcher_correct": false,
+            "in_text_layer": null
+          },
+          {
+            "field": "security_deposit",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "cam_charges",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "rent_escalation",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "renewal_options",
+            "expected": null,
+            "extracted": "20-year HAP Contract renewal under Option 1-A of the Section 8 Renewal Policy Guide, to take effect upon acquisition closing",
+            "confidence": "medium",
+            "correct": false,
+            "kind": "spurious",
+            "asserted_wrong": true,
+            "app_matcher_correct": false,
+            "in_text_layer": null
+          },
+          {
+            "field": "permitted_use",
+            "expected": null,
+            "extracted": "Multifamily affordable rental housing (120 dwelling units) under Section 8 project-based assistance",
+            "confidence": "medium",
+            "correct": false,
+            "kind": "spurious",
+            "asserted_wrong": true,
+            "app_matcher_correct": false,
+            "in_text_layer": null
+          },
+          {
+            "field": "exclusivity_clause",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "insurance_requirements",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "default_cure_period",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "square_footage",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          }
+        ]
+      },
+      "program_fields": {
+        "total": 15,
+        "correct": 0,
+        "in_text_layer": 15,
+        "scores": [
+          {
+            "field": "contract_number",
+            "type": "text",
+            "expected": "IL06H121160",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "verified"
+          },
+          {
+            "field": "rems_property_id",
+            "type": "text",
+            "expected": "800005699",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "verified"
+          },
+          {
+            "field": "project_name",
+            "type": "text",
+            "expected": "Amanda Brooke",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "verified"
+          },
+          {
+            "field": "city",
+            "type": "text",
+            "expected": "Normal",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "verified"
+          },
+          {
+            "field": "total_units",
+            "type": "int",
+            "expected": "120",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "verified"
+          },
+          {
+            "field": "contract_units",
+            "type": "int",
+            "expected": "120",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "verified"
+          },
+          {
+            "field": "owner_name",
+            "type": "text",
+            "expected": "FH Amanda Brooke LLC",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "verified"
+          },
+          {
+            "field": "renewal_term_years",
+            "type": "int",
+            "expected": "20",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "verified"
+          },
+          {
+            "field": "letter_date",
+            "type": "date",
+            "expected": "April 14, 2024",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "current_rent_1br",
+            "type": "money",
+            "expected": "740",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "current_rent_2br",
+            "type": "money",
+            "expected": "838",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "current_rent_3br",
+            "type": "money",
+            "expected": "945",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "proposed_rent_1br",
+            "type": "money",
+            "expected": "1035",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "proposed_rent_2br",
+            "type": "money",
+            "expected": "1285",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "proposed_rent_3br",
+            "type": "money",
+            "expected": "1530",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          }
+        ]
+      }
+    },
+    {
+      "id": "hap_tx_coppertree_1990",
+      "form": "HUD Section 8 HAP Contract, Disposition of HUD-Owned Projects, Parts I and II (1990, typewritten, scanned)",
+      "program": "PBRA",
+      "doc_type": "hap_contract",
+      "variant": "original",
+      "pipeline_status": "ok",
+      "form_id": null,
+      "low_text_pages": [],
+      "lease_ranges": 1,
+      "pages": 47,
+      "mean_ocr_confidence": null,
+      "ai_meta": {
+        "model": "claude-sonnet-5",
+        "prompt_version": "v2",
+        "latency_ms": 7737,
+        "input_tokens": 64016,
+        "output_tokens": 1001,
+        "found_count": 2
+      },
+      "ai_error": null,
+      "lease_fields": {
+        "stated": 2,
+        "correct": 0,
+        "wrong": 0,
+        "missed": 2,
+        "spurious": 2,
+        "in_text_layer": 2,
+        "scores": [
+          {
+            "field": "tenant",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "landlord",
+            "expected": "Texas-Coppertree Village Limited Partnership",
+            "extracted": null,
+            "confidence": null,
+            "correct": false,
+            "kind": "missed",
+            "asserted_wrong": false,
+            "app_matcher_correct": false,
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "rent_amount",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "lease_start_date",
+            "expected": "November 3, 1990",
+            "extracted": null,
+            "confidence": null,
+            "correct": false,
+            "kind": "missed",
+            "asserted_wrong": false,
+            "app_matcher_correct": false,
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "lease_end_date",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "property_address",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "security_deposit",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "cam_charges",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "rent_escalation",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "renewal_options",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "permitted_use",
+            "expected": null,
+            "extracted": "Leased by eligible lower-income families solely as private dwellings and as their principal place of residence",
+            "confidence": "medium",
+            "correct": false,
+            "kind": "spurious",
+            "asserted_wrong": true,
+            "app_matcher_correct": false,
+            "in_text_layer": null
+          },
+          {
+            "field": "exclusivity_clause",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "insurance_requirements",
+            "expected": null,
+            "extracted": "Flood insurance required if project is in a special flood hazard area, in an amount at least equal to development/project cost (less estimated land cost) or the maximum limit available under the National Flood Insurance Act of 1968, whichever is less",
+            "confidence": "medium",
+            "correct": false,
+            "kind": "spurious",
+            "asserted_wrong": true,
+            "app_matcher_correct": false,
+            "in_text_layer": null
+          },
+          {
+            "field": "default_cure_period",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "square_footage",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          }
+        ]
+      },
+      "program_fields": {
+        "total": 9,
+        "correct": 0,
+        "in_text_layer": 8,
+        "scores": [
+          {
+            "field": "contract_number",
+            "type": "text",
+            "expected": "TX24E000008",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": false,
+            "status": "verified"
+          },
+          {
+            "field": "rems_property_id",
+            "type": "text",
+            "expected": "800020793",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "verified"
+          },
+          {
+            "field": "owner_name",
+            "type": "text",
+            "expected": "Texas-Coppertree Village Limited Partnership",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "effective_date",
+            "type": "date",
+            "expected": "11/03/1990",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "stage1_units",
+            "type": "int",
+            "expected": "114",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "stage2_units",
+            "type": "int",
+            "expected": "90",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "contract_rent_1br",
+            "type": "money",
+            "expected": "250",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "contract_rent_2br",
+            "type": "money",
+            "expected": "350",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "contract_rent_3br",
+            "type": "money",
+            "expected": "395",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          }
+        ]
+      }
+    },
+    {
+      "id": "hap_tx_coppertree_renewal_2013",
+      "form": "HUD Assignment, Assumption and Amendment of Section 8 HAP Contract (03/14) with attached Basic Renewal Contract, Multi-Year Term (REV 11-05-2007)",
+      "program": "PBRA",
+      "doc_type": "hap_renewal",
+      "variant": "original",
+      "pipeline_status": "ocr_needed",
+      "form_id": null,
+      "low_text_pages": [
+        4
+      ],
+      "lease_ranges": 0,
+      "pages": 26,
+      "mean_ocr_confidence": null,
+      "ai_meta": null,
+      "ai_error": null,
+      "lease_fields": {
+        "stated": 3,
+        "correct": 0,
+        "wrong": 0,
+        "missed": 3,
+        "spurious": 0,
+        "in_text_layer": 3,
+        "scores": [
+          {
+            "field": "tenant",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "landlord",
+            "expected": "2005 West Gulf Complex, L.P.",
+            "extracted": null,
+            "confidence": null,
+            "correct": false,
+            "kind": "missed",
+            "asserted_wrong": false,
+            "app_matcher_correct": false,
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "rent_amount",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "lease_start_date",
+            "expected": "April 1, 2013",
+            "extracted": null,
+            "confidence": null,
+            "correct": false,
+            "kind": "missed",
+            "asserted_wrong": false,
+            "app_matcher_correct": false,
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "lease_end_date",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "property_address",
+            "expected": "1415 Gulf Bank Road, Houston, TX 77088",
+            "extracted": null,
+            "confidence": null,
+            "correct": false,
+            "kind": "missed",
+            "asserted_wrong": false,
+            "app_matcher_correct": false,
+            "in_text_layer": true,
+            "status": "verified"
+          },
+          {
+            "field": "security_deposit",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "cam_charges",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "rent_escalation",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "renewal_options",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "permitted_use",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "exclusivity_clause",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "insurance_requirements",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "default_cure_period",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "square_footage",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          }
+        ]
+      },
+      "program_fields": {
+        "total": 14,
+        "correct": 0,
+        "in_text_layer": 11,
+        "scores": [
+          {
+            "field": "contract_number",
+            "type": "text",
+            "expected": "TX24E000008",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "verified"
+          },
+          {
+            "field": "project_name",
+            "type": "text",
+            "expected": "Texas Coppertree aka Coppertree Village",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "contract_units",
+            "type": "int",
+            "expected": "263",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "verified"
+          },
+          {
+            "field": "units_1br",
+            "type": "int",
+            "expected": "156",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": false,
+            "status": "proposed"
+          },
+          {
+            "field": "units_2br",
+            "type": "int",
+            "expected": "102",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "verified"
+          },
+          {
+            "field": "units_3br",
+            "type": "int",
+            "expected": "5",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "verified"
+          },
+          {
+            "field": "contract_rent_1br",
+            "type": "money",
+            "expected": "767",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "contract_rent_2br",
+            "type": "money",
+            "expected": "979",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "contract_rent_3br",
+            "type": "money",
+            "expected": "1130",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": false,
+            "status": "proposed"
+          },
+          {
+            "field": "effective_date",
+            "type": "date",
+            "expected": "04/01/2013",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "initial_term",
+            "type": "text",
+            "expected": "20 years",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": false,
+            "status": "proposed"
+          },
+          {
+            "field": "contract_administrator",
+            "type": "text",
+            "expected": "Southwest Housing Compliance Corporation",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "owner_name",
+            "type": "text",
+            "expected": "2005 West Gulf Complex, L.P.",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "buyer_name",
+            "type": "text",
+            "expected": "Coppertree Village Holdings LLC",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          }
+        ]
+      }
+    },
+    {
+      "id": "lura_co_grand_junction",
+      "form": "Land Use Restriction Agreement (city land sale to a housing authority), recorded Mesa County, CO",
+      "program": "Affordable (city covenant, LIHTC-style terms)",
+      "doc_type": "lura",
+      "variant": "original",
+      "pipeline_status": "ok",
+      "form_id": null,
+      "low_text_pages": [],
+      "lease_ranges": 1,
+      "pages": 7,
+      "mean_ocr_confidence": null,
+      "ai_meta": {
+        "model": "claude-sonnet-5",
+        "prompt_version": "v2",
+        "latency_ms": 6577,
+        "input_tokens": 11103,
+        "output_tokens": 929,
+        "found_count": 2
+      },
+      "ai_error": null,
+      "lease_fields": {
+        "stated": 1,
+        "correct": 0,
+        "wrong": 1,
+        "missed": 0,
+        "spurious": 1,
+        "in_text_layer": 0,
+        "scores": [
+          {
+            "field": "tenant",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "landlord",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "rent_amount",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "lease_start_date",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "lease_end_date",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "property_address",
+            "expected": "674 23 3/4 Road, Grand Junction, Colorado 81505",
+            "extracted": "674 23\u00be Road, Grand Junction, Colorado 81505",
+            "confidence": "high",
+            "correct": false,
+            "kind": "wrong",
+            "asserted_wrong": true,
+            "app_matcher_correct": false,
+            "in_text_layer": false,
+            "status": "proposed"
+          },
+          {
+            "field": "security_deposit",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "cam_charges",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "rent_escalation",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "renewal_options",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "permitted_use",
+            "expected": null,
+            "extracted": "Rental housing and services commonly accessed by low-income persons",
+            "confidence": "high",
+            "correct": false,
+            "kind": "spurious",
+            "asserted_wrong": true,
+            "app_matcher_correct": false,
+            "in_text_layer": null
+          },
+          {
+            "field": "exclusivity_clause",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "insurance_requirements",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "default_cure_period",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "square_footage",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          }
+        ]
+      },
+      "program_fields": {
+        "total": 9,
+        "correct": 0,
+        "in_text_layer": 8,
+        "scores": [
+          {
+            "field": "owner_name",
+            "type": "text",
+            "expected": "Grand Junction Housing Authority",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "agency_name",
+            "type": "text",
+            "expected": "City of Grand Junction",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "street_address",
+            "type": "text",
+            "expected": "674 23 3/4 Road",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": false,
+            "status": "proposed"
+          },
+          {
+            "field": "city",
+            "type": "text",
+            "expected": "Grand Junction",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "county",
+            "type": "text",
+            "expected": "Mesa",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "term_years",
+            "type": "int",
+            "expected": "40",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "ami_limit_pct",
+            "type": "pct",
+            "expected": "80%",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "recording_date",
+            "type": "date",
+            "expected": "10/29/2025",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "reception_number",
+            "type": "text",
+            "expected": "3141336",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          }
+        ]
+      }
+    },
+    {
+      "id": "lura_ma_olympia_oaks",
+      "form": "Massachusetts DHCD Tax Credit Regulatory Agreement and Declaration of Restrictive Covenants (MHP 2006 template), unsigned execution copy",
+      "program": "LIHTC",
+      "doc_type": "lura",
+      "variant": "original",
+      "pipeline_status": "ok",
+      "form_id": null,
+      "low_text_pages": [],
+      "lease_ranges": 3,
+      "pages": 20,
+      "mean_ocr_confidence": null,
+      "ai_meta": {
+        "model": "claude-sonnet-5",
+        "prompt_version": "v2",
+        "latency_ms": 7357,
+        "input_tokens": 7915,
+        "output_tokens": 997,
+        "found_count": 3
+      },
+      "ai_error": null,
+      "lease_fields": {
+        "stated": 1,
+        "correct": 0,
+        "wrong": 0,
+        "missed": 1,
+        "spurious": 3,
+        "in_text_layer": 1,
+        "scores": [
+          {
+            "field": "tenant",
+            "expected": null,
+            "extracted": "Olympia Amherst Limited Partnership",
+            "confidence": "medium",
+            "correct": false,
+            "kind": "spurious",
+            "asserted_wrong": true,
+            "app_matcher_correct": false,
+            "in_text_layer": null
+          },
+          {
+            "field": "landlord",
+            "expected": null,
+            "extracted": "Town of Amherst",
+            "confidence": "medium",
+            "correct": false,
+            "kind": "spurious",
+            "asserted_wrong": true,
+            "app_matcher_correct": false,
+            "in_text_layer": null
+          },
+          {
+            "field": "rent_amount",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "lease_start_date",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "lease_end_date",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "property_address",
+            "expected": "85 Olympia Drive, Amherst, Massachusetts",
+            "extracted": null,
+            "confidence": null,
+            "correct": false,
+            "kind": "missed",
+            "asserted_wrong": false,
+            "app_matcher_correct": false,
+            "in_text_layer": true,
+            "status": "verified"
+          },
+          {
+            "field": "security_deposit",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "cam_charges",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "rent_escalation",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "renewal_options",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "permitted_use",
+            "expected": null,
+            "extracted": "Residential rental housing development (low-income housing tax credit project)",
+            "confidence": "medium",
+            "correct": false,
+            "kind": "spurious",
+            "asserted_wrong": true,
+            "app_matcher_correct": false,
+            "in_text_layer": null
+          },
+          {
+            "field": "exclusivity_clause",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "insurance_requirements",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "default_cure_period",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "square_footage",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          }
+        ]
+      },
+      "program_fields": {
+        "total": 14,
+        "correct": 0,
+        "in_text_layer": 14,
+        "scores": [
+          {
+            "field": "project_name",
+            "type": "text",
+            "expected": "Olympia Oaks",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "owner_name",
+            "type": "text",
+            "expected": "Olympia Amherst Limited Partnership",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "verified"
+          },
+          {
+            "field": "agency_name",
+            "type": "text",
+            "expected": "Department of Housing and Community Development",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "street_address",
+            "type": "text",
+            "expected": "85 Olympia Drive",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "verified"
+          },
+          {
+            "field": "city",
+            "type": "text",
+            "expected": "Amherst",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "verified"
+          },
+          {
+            "field": "total_units",
+            "type": "int",
+            "expected": "42",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "verified"
+          },
+          {
+            "field": "low_income_units",
+            "type": "int",
+            "expected": "42",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "min_applicable_fraction",
+            "type": "pct",
+            "expected": "100%",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "units_1br",
+            "type": "int",
+            "expected": "8",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "units_2br",
+            "type": "int",
+            "expected": "21",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "units_3br",
+            "type": "int",
+            "expected": "13",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "units_at_30_pct_ami",
+            "type": "int",
+            "expected": "8",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "extended_use_years",
+            "type": "int",
+            "expected": "99",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "area",
+            "type": "text",
+            "expected": "Springfield, MA HMFA",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          }
+        ]
+      }
+    },
+    {
+      "id": "lura_ut_amasa",
+      "form": "Utah Housing Corporation Low-Income Housing Credit Commitment Agreement and Declaration of Restrictive Covenants (2026 draft for a council agenda)",
+      "program": "LIHTC",
+      "doc_type": "lura",
+      "variant": "original",
+      "pipeline_status": "rejected_as_rent_roll",
+      "form_id": null,
+      "low_text_pages": [],
+      "lease_ranges": 0,
+      "pages": 17,
+      "mean_ocr_confidence": null,
+      "ai_meta": null,
+      "ai_error": null,
+      "lease_fields": {
+        "stated": 1,
+        "correct": 0,
+        "wrong": 0,
+        "missed": 1,
+        "spurious": 0,
+        "in_text_layer": 1,
+        "scores": [
+          {
+            "field": "tenant",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "landlord",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "rent_amount",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "lease_start_date",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "lease_end_date",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "property_address",
+            "expected": "109 Kane Creek Blvd., Moab, Utah 84532",
+            "extracted": null,
+            "confidence": null,
+            "correct": false,
+            "kind": "missed",
+            "asserted_wrong": false,
+            "app_matcher_correct": false,
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "security_deposit",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "cam_charges",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "rent_escalation",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "renewal_options",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "permitted_use",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "exclusivity_clause",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "insurance_requirements",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "default_cure_period",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "square_footage",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          }
+        ]
+      },
+      "program_fields": {
+        "total": 18,
+        "correct": 0,
+        "in_text_layer": 18,
+        "scores": [
+          {
+            "field": "project_name",
+            "type": "text",
+            "expected": "Amasa Apartments",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "owner_name",
+            "type": "text",
+            "expected": "Amasa Apartments LLC",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "agency_name",
+            "type": "text",
+            "expected": "Utah Housing Corporation",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "bin",
+            "type": "text",
+            "expected": "UT-93-18004",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "verified"
+          },
+          {
+            "field": "bin_2",
+            "type": "text",
+            "expected": "UT-25-25001",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "bin_3",
+            "type": "text",
+            "expected": "UT-25-25002",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "street_address",
+            "type": "text",
+            "expected": "109 Kane Creek Blvd.",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "city",
+            "type": "text",
+            "expected": "Moab",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "county",
+            "type": "text",
+            "expected": "Grand",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "total_units",
+            "type": "int",
+            "expected": "50",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "low_income_units",
+            "type": "int",
+            "expected": "50",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "min_applicable_fraction",
+            "type": "pct",
+            "expected": "100%",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "ami_limit_pct",
+            "type": "pct",
+            "expected": "60%",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "extended_use_years",
+            "type": "int",
+            "expected": "50",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "units_2br",
+            "type": "int",
+            "expected": "27",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "units_3br",
+            "type": "int",
+            "expected": "11",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "units_4br",
+            "type": "int",
+            "expected": "12",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "units_at_30_pct_ami",
+            "type": "int",
+            "expected": "5",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          }
+        ]
+      }
+    },
+    {
+      "id": "pbv_ca_rivco_5th_street",
+      "form": "HUD-52530B PBV HAP Contract for Existing Housing, Part 1 (04/2023), with the PHA's Exhibit A",
+      "program": "PBV",
+      "doc_type": "hap_contract",
+      "variant": "original",
+      "pipeline_status": "ocr_needed",
+      "form_id": null,
+      "low_text_pages": [
+        8
+      ],
+      "lease_ranges": 0,
+      "pages": 10,
+      "mean_ocr_confidence": null,
+      "ai_meta": null,
+      "ai_error": null,
+      "lease_fields": {
+        "stated": 2,
+        "correct": 0,
+        "wrong": 0,
+        "missed": 2,
+        "spurious": 0,
+        "in_text_layer": 1,
+        "scores": [
+          {
+            "field": "tenant",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "landlord",
+            "expected": "Mercy House Living Centers",
+            "extracted": null,
+            "confidence": null,
+            "correct": false,
+            "kind": "missed",
+            "asserted_wrong": false,
+            "app_matcher_correct": false,
+            "in_text_layer": false,
+            "status": "proposed"
+          },
+          {
+            "field": "rent_amount",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "lease_start_date",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "lease_end_date",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "property_address",
+            "expected": "926 and 932 W. 5th Street, Corona, CA 92882",
+            "extracted": null,
+            "confidence": null,
+            "correct": false,
+            "kind": "missed",
+            "asserted_wrong": false,
+            "app_matcher_correct": false,
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "security_deposit",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "cam_charges",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "rent_escalation",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "renewal_options",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "permitted_use",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "exclusivity_clause",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "insurance_requirements",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "default_cure_period",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "square_footage",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          }
+        ]
+      },
+      "program_fields": {
+        "total": 10,
+        "correct": 0,
+        "in_text_layer": 7,
+        "scores": [
+          {
+            "field": "pha_name",
+            "type": "text",
+            "expected": "Housing Authority of the County of Riverside",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": false,
+            "status": "proposed"
+          },
+          {
+            "field": "owner_name",
+            "type": "text",
+            "expected": "Mercy House Living Centers",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": false,
+            "status": "proposed"
+          },
+          {
+            "field": "initial_term",
+            "type": "text",
+            "expected": "20 years",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": false,
+            "status": "proposed"
+          },
+          {
+            "field": "project_name",
+            "type": "text",
+            "expected": "5th Street Housing",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "street_address",
+            "type": "text",
+            "expected": "926 and 932 W. 5th Street, Corona, CA 92882",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "contract_units",
+            "type": "int",
+            "expected": "11",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "total_units",
+            "type": "int",
+            "expected": "12",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "pbv_units_1br",
+            "type": "int",
+            "expected": "4",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "pbv_units_2br",
+            "type": "int",
+            "expected": "7",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "ami_limit_pct",
+            "type": "pct",
+            "expected": "30%",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          }
+        ]
+      }
+    },
+    {
+      "id": "pbv_ca_rivco_cottonwood2",
+      "form": "HUD-52530A PBV HAP Contract for New Construction/Rehab, Part 1 (07/2019), with the PHA's Exhibits A-D",
+      "program": "PBV",
+      "doc_type": "hap_contract",
+      "variant": "original",
+      "pipeline_status": "ocr_needed",
+      "form_id": null,
+      "low_text_pages": [
+        15
+      ],
+      "lease_ranges": 0,
+      "pages": 19,
+      "mean_ocr_confidence": null,
+      "ai_meta": null,
+      "ai_error": null,
+      "lease_fields": {
+        "stated": 2,
+        "correct": 0,
+        "wrong": 0,
+        "missed": 2,
+        "spurious": 0,
+        "in_text_layer": 1,
+        "scores": [
+          {
+            "field": "tenant",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "landlord",
+            "expected": "Courtyards at Cottonwood II, L.P.",
+            "extracted": null,
+            "confidence": null,
+            "correct": false,
+            "kind": "missed",
+            "asserted_wrong": false,
+            "app_matcher_correct": false,
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "rent_amount",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "lease_start_date",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "lease_end_date",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "property_address",
+            "expected": "24550 & 24570 Cottonwood Ave., Moreno Valley, CA 92553",
+            "extracted": null,
+            "confidence": null,
+            "correct": false,
+            "kind": "missed",
+            "asserted_wrong": false,
+            "app_matcher_correct": false,
+            "in_text_layer": false,
+            "status": "proposed"
+          },
+          {
+            "field": "security_deposit",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "cam_charges",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "rent_escalation",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "renewal_options",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "permitted_use",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "exclusivity_clause",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "insurance_requirements",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "default_cure_period",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "square_footage",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          }
+        ]
+      },
+      "program_fields": {
+        "total": 11,
+        "correct": 0,
+        "in_text_layer": 10,
+        "scores": [
+          {
+            "field": "pha_name",
+            "type": "text",
+            "expected": "Housing Authority of the County of Riverside",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "owner_name",
+            "type": "text",
+            "expected": "Courtyards at Cottonwood II, L.P.",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "project_name",
+            "type": "text",
+            "expected": "Courtyards at Cottonwood II",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "verified"
+          },
+          {
+            "field": "city",
+            "type": "text",
+            "expected": "Moreno Valley",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": false,
+            "status": "verified"
+          },
+          {
+            "field": "total_units",
+            "type": "int",
+            "expected": "32",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "verified"
+          },
+          {
+            "field": "units_2br",
+            "type": "int",
+            "expected": "16",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "verified"
+          },
+          {
+            "field": "units_3br",
+            "type": "int",
+            "expected": "12",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "verified"
+          },
+          {
+            "field": "units_4br",
+            "type": "int",
+            "expected": "4",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "verified"
+          },
+          {
+            "field": "contract_units",
+            "type": "int",
+            "expected": "8",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "contract_rent_2br",
+            "type": "money",
+            "expected": "1592",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "contract_rent_3br",
+            "type": "money",
+            "expected": "2041",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          }
+        ]
+      }
+    },
+    {
+      "id": "pbv_ca_rivco_oak_view",
+      "form": "HUD-52530A PBV HAP Contract for New Construction/Rehab, Part 1 (04/2023), with the PHA's Exhibits A-D",
+      "program": "PBV",
+      "doc_type": "hap_contract",
+      "variant": "original",
+      "pipeline_status": "ocr_needed",
+      "form_id": null,
+      "low_text_pages": [
+        9,
+        15,
+        17,
+        19,
+        21
+      ],
+      "lease_ranges": 0,
+      "pages": 22,
+      "mean_ocr_confidence": null,
+      "ai_meta": null,
+      "ai_error": null,
+      "lease_fields": {
+        "stated": 2,
+        "correct": 0,
+        "wrong": 0,
+        "missed": 2,
+        "spurious": 0,
+        "in_text_layer": 2,
+        "scores": [
+          {
+            "field": "tenant",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "landlord",
+            "expected": "NCRC Murrieta Senior Housing LP",
+            "extracted": null,
+            "confidence": null,
+            "correct": false,
+            "kind": "missed",
+            "asserted_wrong": false,
+            "app_matcher_correct": false,
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "rent_amount",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "lease_start_date",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "lease_end_date",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "property_address",
+            "expected": "24960 Adams Avenue, Murrieta CA 92562",
+            "extracted": null,
+            "confidence": null,
+            "correct": false,
+            "kind": "missed",
+            "asserted_wrong": false,
+            "app_matcher_correct": false,
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "security_deposit",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "cam_charges",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "rent_escalation",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "renewal_options",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "permitted_use",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "exclusivity_clause",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "insurance_requirements",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "default_cure_period",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "square_footage",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          }
+        ]
+      },
+      "program_fields": {
+        "total": 10,
+        "correct": 0,
+        "in_text_layer": 9,
+        "scores": [
+          {
+            "field": "pha_name",
+            "type": "text",
+            "expected": "Housing Authority of the County of Riverside",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": false,
+            "status": "proposed"
+          },
+          {
+            "field": "owner_name",
+            "type": "text",
+            "expected": "NCRC Murrieta Senior Housing LP",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "project_name",
+            "type": "text",
+            "expected": "Oak View Ranch Senior Apartments",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "street_address",
+            "type": "text",
+            "expected": "24960 Adams Avenue, Murrieta CA 92562",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "total_units",
+            "type": "int",
+            "expected": "81",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "contract_units",
+            "type": "int",
+            "expected": "40",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "pbv_units_1br",
+            "type": "int",
+            "expected": "35",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "pbv_units_2br",
+            "type": "int",
+            "expected": "5",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "contract_rent_1br",
+            "type": "money",
+            "expected": "1937",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "contract_rent_2br",
+            "type": "money",
+            "expected": "2226",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          }
+        ]
+      }
+    },
+    {
+      "id": "sample_tx_811_50059",
+      "form": "HUD-50059 Owner's Certification of Compliance (06/2014), pages 1-2, filled by TDHCA as a training sample",
+      "program": "Section 811 PRA",
+      "doc_type": "pbra_certification",
+      "variant": "original",
+      "pipeline_status": "ok",
+      "form_id": null,
+      "low_text_pages": [],
+      "lease_ranges": 1,
+      "pages": 2,
+      "mean_ocr_confidence": null,
+      "ai_meta": {
+        "model": "claude-sonnet-5",
+        "prompt_version": "v2",
+        "latency_ms": 5001,
+        "input_tokens": 9082,
+        "output_tokens": 715,
+        "found_count": 0
+      },
+      "ai_error": null,
+      "lease_fields": {
+        "stated": 3,
+        "correct": 0,
+        "wrong": 0,
+        "missed": 3,
+        "spurious": 0,
+        "in_text_layer": 0,
+        "scores": [
+          {
+            "field": "tenant",
+            "expected": "Charlie R Cole",
+            "extracted": null,
+            "confidence": null,
+            "correct": false,
+            "kind": "missed",
+            "asserted_wrong": false,
+            "app_matcher_correct": false,
+            "in_text_layer": false,
+            "status": "proposed"
+          },
+          {
+            "field": "landlord",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "rent_amount",
+            "expected": "$841",
+            "extracted": null,
+            "confidence": null,
+            "correct": false,
+            "kind": "missed",
+            "asserted_wrong": false,
+            "app_matcher_correct": false,
+            "in_text_layer": false,
+            "status": "proposed"
+          },
+          {
+            "field": "lease_start_date",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "lease_end_date",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "property_address",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "security_deposit",
+            "expected": "$400",
+            "extracted": null,
+            "confidence": null,
+            "correct": false,
+            "kind": "missed",
+            "asserted_wrong": false,
+            "app_matcher_correct": false,
+            "in_text_layer": false,
+            "status": "proposed"
+          },
+          {
+            "field": "cam_charges",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "rent_escalation",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "renewal_options",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "permitted_use",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "exclusivity_clause",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "insurance_requirements",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "default_cure_period",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "square_footage",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          }
+        ]
+      },
+      "program_fields": {
+        "total": 22,
+        "correct": 0,
+        "in_text_layer": 5,
+        "scores": [
+          {
+            "field": "project_name",
+            "type": "text",
+            "expected": "Lorena Springs",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": false,
+            "status": "proposed"
+          },
+          {
+            "field": "head_of_household",
+            "type": "text",
+            "expected": "Charlie R Cole",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": false,
+            "status": "proposed"
+          },
+          {
+            "field": "certification_type",
+            "type": "text",
+            "expected": "MI",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "effective_date",
+            "type": "date",
+            "expected": "12/01/2021",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": false,
+            "status": "proposed"
+          },
+          {
+            "field": "next_recert_date",
+            "type": "date",
+            "expected": "12/01/2022",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": false,
+            "status": "proposed"
+          },
+          {
+            "field": "move_in_date",
+            "type": "date",
+            "expected": "12/01/2021",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": false,
+            "status": "proposed"
+          },
+          {
+            "field": "unit_number",
+            "type": "text",
+            "expected": "2",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "bedrooms",
+            "type": "int",
+            "expected": "1",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "project_number",
+            "type": "text",
+            "expected": "TX59RDD0000",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": false,
+            "status": "proposed"
+          },
+          {
+            "field": "contract_number",
+            "type": "text",
+            "expected": "TX59RDD0001",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": false,
+            "status": "proposed"
+          },
+          {
+            "field": "household_size",
+            "type": "int",
+            "expected": "1",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "annual_income",
+            "type": "money",
+            "expected": "16400",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": false,
+            "status": "proposed"
+          },
+          {
+            "field": "extremely_low_income_limit",
+            "type": "money",
+            "expected": "16650",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": false,
+            "status": "proposed"
+          },
+          {
+            "field": "total_deductions",
+            "type": "money",
+            "expected": "400",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": false,
+            "status": "proposed"
+          },
+          {
+            "field": "adjusted_income",
+            "type": "money",
+            "expected": "16000",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": false,
+            "status": "proposed"
+          },
+          {
+            "field": "security_deposit",
+            "type": "money",
+            "expected": "400",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": false,
+            "status": "proposed"
+          },
+          {
+            "field": "contract_rent",
+            "type": "money",
+            "expected": "841",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": false,
+            "status": "proposed"
+          },
+          {
+            "field": "utility_allowance",
+            "type": "money",
+            "expected": "50",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "gross_rent",
+            "type": "money",
+            "expected": "891",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": false,
+            "status": "proposed"
+          },
+          {
+            "field": "total_tenant_payment",
+            "type": "money",
+            "expected": "400",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": false,
+            "status": "proposed"
+          },
+          {
+            "field": "tenant_rent",
+            "type": "money",
+            "expected": "350",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": false,
+            "status": "proposed"
+          },
+          {
+            "field": "assistance_payment",
+            "type": "money",
+            "expected": "491",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": false,
+            "status": "proposed"
+          }
+        ]
+      }
+    },
+    {
+      "id": "sample_tx_811_lease",
+      "form": "811 Project Rental Assistance Lease, form HUD-92236-PRA (02/2014), filled by TDHCA as a training sample",
+      "program": "Section 811 PRA",
+      "doc_type": "residential_lease",
+      "variant": "original",
+      "pipeline_status": "ok",
+      "form_id": null,
+      "low_text_pages": [],
+      "lease_ranges": 3,
+      "pages": 10,
+      "mean_ocr_confidence": null,
+      "ai_meta": {
+        "model": "claude-sonnet-5",
+        "prompt_version": "v2",
+        "latency_ms": 13073,
+        "input_tokens": 14675,
+        "output_tokens": 1695,
+        "found_count": 12
+      },
+      "ai_error": null,
+      "lease_fields": {
+        "stated": 6,
+        "correct": 6,
+        "wrong": 0,
+        "missed": 0,
+        "spurious": 5,
+        "in_text_layer": 5,
+        "scores": [
+          {
+            "field": "tenant",
+            "expected": "Charlie Cole",
+            "extracted": "Charlie Cole",
+            "confidence": "high",
+            "correct": true,
+            "kind": "correct_found",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "landlord",
+            "expected": "Lorena Springs",
+            "extracted": "Lorena Springs",
+            "confidence": "high",
+            "correct": true,
+            "kind": "correct_found",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "rent_amount",
+            "expected": "$841",
+            "extracted": "$841.00",
+            "confidence": "high",
+            "correct": true,
+            "kind": "correct_found",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "lease_start_date",
+            "expected": "December 1, 2021",
+            "extracted": "December 1, 2021",
+            "confidence": "high",
+            "correct": true,
+            "kind": "correct_found",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "lease_end_date",
+            "expected": "November 30, 2022",
+            "extracted": "November 30, 2022",
+            "confidence": "high",
+            "correct": true,
+            "kind": "correct_found",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": false,
+            "status": "proposed"
+          },
+          {
+            "field": "property_address",
+            "expected": null,
+            "extracted": "Lorena Springs",
+            "confidence": "low",
+            "correct": false,
+            "kind": "spurious",
+            "asserted_wrong": true,
+            "app_matcher_correct": false,
+            "in_text_layer": null
+          },
+          {
+            "field": "security_deposit",
+            "expected": "$400",
+            "extracted": "$400.00",
+            "confidence": "high",
+            "correct": true,
+            "kind": "correct_found",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "cam_charges",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "rent_escalation",
+            "expected": null,
+            "extracted": "Subject to adjustment based on annual income recertification; 30 days' written notice of any adjustment",
+            "confidence": "medium",
+            "correct": false,
+            "kind": "spurious",
+            "asserted_wrong": true,
+            "app_matcher_correct": false,
+            "in_text_layer": null
+          },
+          {
+            "field": "renewal_options",
+            "expected": null,
+            "extracted": "Automatically renews for successive one-month terms unless terminated, at the same rental subject to adjustment",
+            "confidence": "high",
+            "correct": false,
+            "kind": "spurious",
+            "asserted_wrong": true,
+            "app_matcher_correct": false,
+            "in_text_layer": null
+          },
+          {
+            "field": "permitted_use",
+            "expected": null,
+            "extracted": "Private dwelling solely for the Tenant and his/her family; unit to be Tenant's only place of residence",
+            "confidence": "high",
+            "correct": false,
+            "kind": "spurious",
+            "asserted_wrong": true,
+            "app_matcher_correct": false,
+            "in_text_layer": null
+          },
+          {
+            "field": "exclusivity_clause",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "insurance_requirements",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "default_cure_period",
+            "expected": null,
+            "extracted": "30 days after receipt of written notice (for termination based on good cause); for material noncompliance, timing per Agreement or State law, whichever is later",
+            "confidence": "medium",
+            "correct": false,
+            "kind": "spurious",
+            "asserted_wrong": true,
+            "app_matcher_correct": false,
+            "in_text_layer": null
+          },
+          {
+            "field": "square_footage",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          }
+        ]
+      },
+      "program_fields": {
+        "total": 4,
+        "correct": 0,
+        "in_text_layer": 4,
+        "scores": [
+          {
+            "field": "assistance_payment",
+            "type": "money",
+            "expected": "491",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "tenant_rent",
+            "type": "money",
+            "expected": "350",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "utility_allowance",
+            "type": "money",
+            "expected": "50",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          },
+          {
+            "field": "project_name",
+            "type": "text",
+            "expected": "Lorena Springs",
+            "extracted": null,
+            "method": null,
+            "correct": false,
+            "kind": "missed",
+            "in_text_layer": true,
+            "status": "proposed"
+          }
+        ]
+      }
+    }
+  ],
+  "ai": {
+    "model": "claude-sonnet-5",
+    "prompt_version": "v2",
+    "calls": 6,
+    "errors": 0,
+    "input_tokens": 117468,
+    "output_tokens": 6274
+  }
+}

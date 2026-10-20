@@ -1,0 +1,2790 @@
+{
+  "set": "bench",
+  "model": "claude-sonnet-5",
+  "prompt_version": "v2",
+  "run_date": "2026-10-20",
+  "aggregate": {
+    "documents": 12,
+    "fields_evaluated": 180,
+    "overall_accuracy": 0.4611,
+    "asserted_values": 172,
+    "asserted_wrong": 95,
+    "high_conf_wrong_count": 68,
+    "high_conf_wrong_rate": 0.4722,
+    "high_conf_wrong": [
+      {
+        "doc": "01_ionetix_office_2026",
+        "format": "pdf",
+        "field": "rent_escalation",
+        "extracted": "Year 1-2 (Months 1-24): $7,250.00/mo; Renewal Term (Months 25-48): $7,500.00/mo",
+        "expected": "No escalation during the initial 24-month term; Base Rent increases to $7,500.00/month for the renewal term (months 25-48)",
+        "kind": "wrong"
+      },
+      {
+        "doc": "01_ionetix_office_2026",
+        "format": "pdf",
+        "field": "renewal_options",
+        "extracted": "1 option of 2 years; notice not less than 180 days prior to expiration of Initial Term; renewal rent fixed at $7,500.00/month",
+        "expected": "One 2-year renewal option; exercise by written notice not less than 180 days prior to expiration of the Initial Term; conditioned on no monetary default and no material non-monetary default; renewal rent $7,500.00/month",
+        "kind": "wrong"
+      },
+      {
+        "doc": "01_ionetix_office_2026",
+        "format": "pdf",
+        "field": "permitted_use",
+        "extracted": "Office/medical/research building activities including, but not limited to, the development of advanced cyclotron technology, the production of medical isotopes, and uses similar or incidental thereto, and any other uses permitted by Law",
+        "expected": "Office/medical/research building activities including development of advanced cyclotron technology, production of medical isotopes, and uses similar or incidental thereto; and any other uses permitted by law",
+        "kind": "wrong"
+      },
+      {
+        "doc": "01_ionetix_office_2026",
+        "format": "pdf",
+        "field": "insurance_requirements",
+        "extracted": "Property insurance at least 80% of replacement value (excluding contents/trade fixtures), and public liability insurance of not less than $3,000,000",
+        "expected": "Public liability policy of not less than $3,000,000; Lessor and its lender named as additional insured. Property insurance at not less than 80% of replacement value with Lessor as additional insured.",
+        "kind": "wrong"
+      },
+      {
+        "doc": "02_convera_office_2005",
+        "format": "pdf",
+        "field": "renewal_options",
+        "extracted": "One (1) option to extend for an additional 3 years at Prevailing Market Rate; written notice required not less than 180 days prior to expiration of Initial Term",
+        "expected": "One 3-year renewal option ('Renewal Term') at the Prevailing Market Rate, provided Tenant is not in default",
+        "kind": "wrong"
+      },
+      {
+        "doc": "02_convera_office_2005",
+        "format": "pdf",
+        "field": "permitted_use",
+        "extracted": "General office purposes in accordance with applicable zoning regulations, and for no other purpose",
+        "expected": "General office purposes in accordance with applicable zoning regulations and for no other purpose (with a continuous-occupancy covenant)",
+        "kind": "wrong"
+      },
+      {
+        "doc": "02_convera_office_2005",
+        "format": "pdf",
+        "field": "insurance_requirements",
+        "extracted": "$2,000,000 combined single limit public liability insurance per person/per occurrence; all-risk property and casualty insurance at replacement cost; workmen's compensation if required by law; business interruption insurance for at least 12 months",
+        "expected": "Tenant public liability insurance of not less than $2,000,000 combined single limit (per person / per occurrence); all-risk property at replacement cost; business interruption (>=12 months); workers' comp; plate glass. Landlord named as additional insured. Contractors: $200,000 CSL.",
+        "kind": "wrong"
+      },
+      {
+        "doc": "02_convera_office_2005",
+        "format": "pdf",
+        "field": "default_cure_period",
+        "extracted": "10 days after receipt of written notice (monetary default); 30 days after notice for non-monetary default (with extension if default cannot be cured within 30 days and Tenant diligently prosecutes cure)",
+        "expected": "Monetary: 10 days after written notice that payment is past due. Non-monetary: 30 days after notice (extended if not curable in 30 days and Tenant is diligently pursuing cure).",
+        "kind": "wrong"
+      },
+      {
+        "doc": "05_conns_retail_2003",
+        "format": "pdf",
+        "field": "tenant",
+        "extracted": "C.A.I., L.P.",
+        "expected": "C. A. I., L.P. (trade names \"Conn's\" and \"Conn Appliances\"); guaranteed by Conn Appliances, Inc.",
+        "kind": "wrong"
+      },
+      {
+        "doc": "05_conns_retail_2003",
+        "format": "pdf",
+        "field": "security_deposit",
+        "extracted": "None",
+        "expected": null,
+        "kind": "spurious"
+      },
+      {
+        "doc": "05_conns_retail_2003",
+        "format": "pdf",
+        "field": "cam_charges",
+        "extracted": "$0.49 per sq ft annually, estimated $43,258.18 for first calendar year, payable in monthly installments of $3,604.89",
+        "expected": "Tenant's Pro Rata Share of Common Area Costs estimated $43,258.18 for the first calendar year ($0.49 per sq ft of Demised Premises floor area; $3,604.89/month). Pro rata share 88,283/137,514. Separate pro rata shares for real estate taxes ($0.34/sq ft) and insurance premiums ($0.06/sq ft).",
+        "kind": "wrong"
+      },
+      {
+        "doc": "05_conns_retail_2003",
+        "format": "pdf",
+        "field": "rent_escalation",
+        "extracted": "Fixed step increases: Months 1-12: $17,722.00/mo; Months 13-60: $20,232.00/mo; Months 61-120: $23,910.00/mo (based on full 88,283 sq ft premises)",
+        "expected": "Stepped Minimum Guaranteed Rental: $17,722.00/month (months 1-12), $20,232.00/month (months 13-60), $23,910.00/month (months 61-120)",
+        "kind": "wrong"
+      },
+      {
+        "doc": "05_conns_retail_2003",
+        "format": "pdf",
+        "field": "renewal_options",
+        "extracted": "Two 5-year renewal options; notice 6 months or more prior to expiration of then-current term; First Renewal Term rent = $4.25/sq ft annually; Second Renewal Term rent = $5.25/sq ft annually",
+        "expected": "Two (2) five-year renewal options, per Exhibit H",
+        "kind": "wrong"
+      },
+      {
+        "doc": "05_conns_retail_2003",
+        "format": "pdf",
+        "field": "insurance_requirements",
+        "extracted": "Commercial General Liability Insurance with limits not less than $2,000,000.00 combined single limit, plus not less than $3,000,000.00 Excess Liability or Commercial Umbrella Policy",
+        "expected": "Tenant Commercial General Liability insurance of not less than $2,000,000.00 combined single limit, plus a $3,000,000.00 Excess Liability / Commercial Umbrella policy. Landlord maintains CGL of $2,000,000.00 combined single limit for the Common Areas.",
+        "kind": "wrong"
+      },
+      {
+        "doc": "05_conns_retail_2003",
+        "format": "pdf",
+        "field": "default_cure_period",
+        "extracted": "10 days after written notice (monetary default); non-monetary/general default cure period is 30 days after written notice",
+        "expected": "Monetary default: 10 days after written notice. Non-monetary default: 30 days after written notice. Plus an additional 3 days' written notice before Landlord pursues remedies.",
+        "kind": "wrong"
+      },
+      {
+        "doc": "07_growlife_retail_2014",
+        "format": "pdf",
+        "field": "rent_escalation",
+        "extracted": "Months 1-12: $4,051.25/mo ($15.00/sf); Months 13-24: $4,172.79/mo ($15.45/sf); Months 25-36: $4,297.97/mo ($15.91/sf); Months 37-39: $4,426.91/mo ($16.39/sf)",
+        "expected": "Stepped Minimum Rent, approximately 3% per year: $15.00/sq ft (months 1-12), $15.45/sq ft (months 13-24), and a further step in year 3",
+        "kind": "wrong"
+      },
+      {
+        "doc": "07_growlife_retail_2014",
+        "format": "pdf",
+        "field": "renewal_options",
+        "extracted": "1 option of 36 months; written notice at least 120 days prior to expiration of original Term; renewal rent: Months 1-12 $4,559.72/mo ($16.88/sf), Months 13-24 $4,696.51/mo ($17.39/sf), Months 25-36 $4,837.40/mo ($17.91/sf)",
+        "expected": "One option to extend for one additional 36-month period; conditioned on Tenant not being in default and operating per the Permitted Use",
+        "kind": "wrong"
+      },
+      {
+        "doc": "07_growlife_retail_2014",
+        "format": "pdf",
+        "field": "insurance_requirements",
+        "extracted": "CGL with $1,000,000 combined single limit / $2,000,000 general aggregate; property insurance for alterations/tenant property at full replacement cost with deductible not more than $10,000; plate glass insurance (may self-insure); automobile liability $1,000,000 each accident; workers comp/employers liability $1,000,000 each accident/disease; business interruption insurance covering 12 months of expenses/loss of income",
+        "expected": "Tenant Commercial General Liability insurance, minimum combined single limit $1,000,000 / general aggregate $2,000,000 (aggregate applies per-location); Special Form property insurance at full replacement cost (deductible <= $10,000); automobile liability $1,000,000; workers' compensation + employers' liability $1,000,000. Landlord, Landlord's mortgagee and managing agent named as additional insureds.",
+        "kind": "wrong"
+      },
+      {
+        "doc": "10_dover_retail_2006",
+        "format": "pdf",
+        "field": "rent_escalation",
+        "extracted": "Year 1-3: $18.34/sq ft; Year 4-6: $19.99/sq ft; Year 7-9: $21.79/sq ft; Year 10: $23.75/sq ft; Renewal Term 1 (Yr 1-2): $23.75/sq ft; Renewal Term 1 (Yr 3-5): $25.89/sq ft; Renewal Term 2 (Yr 1-3): $28.22/sq ft; Renewal Term 2 (Yr 4-5): $30.76/sq ft",
+        "expected": "Stepped Base Rent over the 10-year Original Term: $18.34/sq ft (Years 1-3), $19.99 (Years 4-6), $21.79 (Years 7-9), $23.75 (Year 10)",
+        "kind": "wrong"
+      },
+      {
+        "doc": "10_dover_retail_2006",
+        "format": "pdf",
+        "field": "renewal_options",
+        "extracted": "2 options of 5 years each; written notice not less than 180 days before expiration of previous term; renewal rent at fixed escalated per-sq-ft rates specified in lease (not FMV)",
+        "expected": "Two successive 5-year Renewal Terms; written notice at least 180 days before the Renewal Term begins; Landlord may void the renewal if an uncured material default exists at the end of the prior Term. Renewal Base Rent: $23.75 then $25.89/sq ft (First Renewal); $28.22 then $30.76/sq ft (Second Renewal).",
+        "kind": "wrong"
+      },
+      {
+        "doc": "10_dover_retail_2006",
+        "format": "pdf",
+        "field": "permitted_use",
+        "extracted": "Upscale specialty retailer and direct marketer of equestrian products, similar to other Dover Saddlery stores",
+        "expected": "For and only for an 'upscale specialty retailer and direct marketer of equestrian products' similar to other Dover Saddlery stores in the United States",
+        "kind": "wrong"
+      },
+      {
+        "doc": "10_dover_retail_2006",
+        "format": "pdf",
+        "field": "exclusivity_clause",
+        "extracted": "Landlord will not lease to new tenants for retail sale of tack, riding apparel, boots, shoes, leather products, medications/ointments for horse care, saddles, or horse-care items; carve-out allows other tenants limited overlapping use (no more than 7% of revenue, reasonable business relation, not advertised) and disputes resolved via arbitration with specific limitations on damages",
+        "expected": "Landlord shall not enter into any lease with a tenant new to the Property allowing space to be used for retail sale of tack, riding apparel, boots, shoes, leather products, medications and ointments related to horse care, saddles, and items related to the care and keeping of horses (subject to carve-outs for unavoidable overlap; enforcement mechanics in Section 3.5)",
+        "kind": "wrong"
+      },
+      {
+        "doc": "10_dover_retail_2006",
+        "format": "pdf",
+        "field": "insurance_requirements",
+        "extracted": "General public liability insurance: $1,000,000 per occurrence bodily injury/death (any one person), $1,000,000 per occurrence (all persons), $500,000 property damage per occurrence, plus full replacement cost coverage for Tenant's contents; Landlord named as additional insured",
+        "expected": "Tenant general public liability insurance of not less than $1,000,000 for bodily injury/death of any one person per occurrence, $1,000,000 for all persons per occurrence, and $500,000 for property damage per occurrence, plus full replacement cost of contents. Landlord (and, on request, any mortgagee) named as additional insured; primary and non-contributory; 30 days' cancellation notice.",
+        "kind": "wrong"
+      },
+      {
+        "doc": "10_dover_retail_2006",
+        "format": "pdf",
+        "field": "default_cure_period",
+        "extracted": "5 days after written notice for monetary default; 30 days to begin cure (completed within 90 days) for non-monetary default",
+        "expected": "Monetary default: 5 days after written notice. Non-monetary default: 30 days after written notice to begin curing, with full cure within 90 days. No grace period more than twice in any 12-month period.",
+        "kind": "wrong"
+      },
+      {
+        "doc": "13_altiris_office_2001",
+        "format": "pdf",
+        "field": "property_address",
+        "extracted": "588 West 400 South, Lindon, Utah (Suites 250, 300, 350, and certain storage space adjacent to the receiving dock)",
+        "expected": "Canopy Office Building III, 588 West 400 South, Lindon, Utah (Suites 250, 300, 350 plus storage space adjacent to the receiving dock)",
+        "kind": "wrong"
+      },
+      {
+        "doc": "13_altiris_office_2001",
+        "format": "pdf",
+        "field": "cam_charges",
+        "extracted": "Tenant's Percentage Share of Operating Costs: 53.78%, with Base Year 1/1/2002-12/31/2002",
+        "expected": "Tenant's Percentage Share of Operating Costs = 53.78%; Basic Operating Costs and Taxes adjusted over a Base Year of 1/1/2002 - 12/31/2002. No fixed dollar amount.",
+        "kind": "wrong"
+      },
+      {
+        "doc": "13_altiris_office_2001",
+        "format": "pdf",
+        "field": "renewal_options",
+        "extracted": "2 options of 5 years each; 6 months prior written notice; renewal rent at rates not to exceed market rates at the time, or at maximum increases of 3% per year from the initial lease term, whichever is less.",
+        "expected": "Two 5-year options to renew, upon 6 months' prior written notice; renewal rate not to exceed market rate, or a maximum 3%/year increase from the initial term, whichever is less",
+        "kind": "wrong"
+      },
+      {
+        "doc": "13_altiris_office_2001",
+        "format": "pdf",
+        "field": "permitted_use",
+        "extracted": "General office purposes and no other use or purpose without prior written consent of Landlord",
+        "expected": "General office purposes and for no other use or purpose without Landlord's prior written consent (no retail sales without Landlord's prior written consent)",
+        "kind": "wrong"
+      },
+      {
+        "doc": "13_altiris_office_2001",
+        "format": "pdf",
+        "field": "insurance_requirements",
+        "extracted": "$1,000,000 property damage, $500,000 per person, and $2,000,000 per occurrence for personal injuries or deaths, naming Landlord as additional insured",
+        "expected": "Tenant liability insurance of $1,000,000 for property damage and $2,000,000 per occurrence for personal injuries or deaths occurring on the Premises",
+        "kind": "wrong"
+      },
+      {
+        "doc": "13_altiris_office_2001",
+        "format": "pdf",
+        "field": "default_cure_period",
+        "extracted": "10 days after written notice (non-monetary default); monetary default notice is limited to one written notice per calendar year with no further notice required thereafter",
+        "expected": "Monetary default (rent): Landlord gives one written notice per calendar year; after that, no further notice required before exercising remedies. Non-monetary default: 10 days from written notice (extended if the default cannot reasonably be cured in 10 days and Tenant commences and diligently pursues cure).",
+        "kind": "wrong"
+      },
+      {
+        "doc": "14_bareescentuals_office_2006",
+        "format": "pdf",
+        "field": "lease_start_date",
+        "extracted": "June 1, 2005",
+        "expected": "June 1, 2005 (the 22nd/23rd Floor Commencement Date, which is the Lease Commencement Date; Suites 1825/1815 Commencement Date is July 1, 2005)",
+        "kind": "wrong"
+      },
+      {
+        "doc": "14_bareescentuals_office_2006",
+        "format": "pdf",
+        "field": "property_address",
+        "extracted": "71 Stevenson Street, San Francisco, California 94105 (Suites 2200, 2300, 1825, and 1815)",
+        "expected": "71 Stevenson Street, San Francisco, California 94105 (Suites 2200, 2300, 1825 and 1815 in a 23-story, approximately 323,275 rentable sq ft office building)",
+        "kind": "wrong"
+      },
+      {
+        "doc": "14_bareescentuals_office_2006",
+        "format": "pdf",
+        "field": "cam_charges",
+        "extracted": "Tenant's Share (approximately 10.96%) of Direct Expenses (Operating Expenses and Tax Expenses) in excess of Base Year (calendar year 2005) amounts",
+        "expected": "Tenant's Share approximately 10.96%; Direct Expenses adjusted over a Base Year of calendar year 2005. No fixed dollar amount.",
+        "kind": "wrong"
+      },
+      {
+        "doc": "14_bareescentuals_office_2006",
+        "format": "pdf",
+        "field": "rent_escalation",
+        "extracted": "Year 1-3: $90,781.69/mo ($30.75/sf); Year 4-7: $96,686.19/mo ($32.75/sf); Year 8-end of Term: $102,590.69/mo ($34.75/sf)",
+        "expected": "Stepped Base Rent: $30.75/rentable sq ft (Years 1-3), $32.75 (Years 4-7), $34.75 (Year 8 to end of Term); increases occur on the anniversary of the Suites 1825/1815 Commencement Date",
+        "kind": "wrong"
+      },
+      {
+        "doc": "14_bareescentuals_office_2006",
+        "format": "pdf",
+        "field": "renewal_options",
+        "extracted": "1 option of 5 years; written notice at least 12 months but not more than 15 months prior to expiration of initial Term; renewal rent at Fair Market Base Rental, not less than Base Rent in effect immediately prior to Extension Period",
+        "expected": "One 5-year Extension Option at Fair Market Base Rental; written notice at least 12 months but not more than 15 months before the initial Term expires; personal to MD Beauty and its Permitted Transferees; Tenant not in default",
+        "kind": "wrong"
+      },
+      {
+        "doc": "14_bareescentuals_office_2006",
+        "format": "pdf",
+        "field": "insurance_requirements",
+        "extracted": "Commercial General Liability: $3,000,000 per occurrence / $3,000,000 annual aggregate (Bodily Injury and Property Damage Liability, and Personal Injury Liability each); plus Physical Damage (all-risk, full replacement cost) and Worker's Compensation/Employer's Liability",
+        "expected": "Tenant Commercial General Liability insurance with limits not less than: bodily injury and property damage liability $3,000,000 each occurrence / $3,000,000 annual aggregate; personal injury liability $3,000,000 each occurrence / $3,000,000 annual aggregate",
+        "kind": "wrong"
+      },
+      {
+        "doc": "14_bareescentuals_office_2006",
+        "format": "pdf",
+        "field": "default_cure_period",
+        "extracted": "30 days after written notice (non-monetary default; extendable to 60 days if diligently pursued); monetary default cure period is 5 business days after notice",
+        "expected": "Monetary default (Rent): 5 business days after notice. Non-monetary default: 30 days after written notice (up to 60 days if the default cannot reasonably be cured in 30 days and Tenant diligently pursues cure).",
+        "kind": "wrong"
+      },
+      {
+        "doc": "15_formfactor_industrial_2002",
+        "format": "pdf",
+        "field": "landlord",
+        "extracted": "Richard K. and Pamela Corbett, Robert and Cheryl Rumberger, Connie Duke",
+        "expected": "Richard K. and Pamela Corbett, Robert and Cheryl Rumberger, and Connie Duke (individuals)",
+        "kind": "wrong"
+      },
+      {
+        "doc": "15_formfactor_industrial_2002",
+        "format": "pdf",
+        "field": "property_address",
+        "extracted": "2020 Research Drive, Livermore, CA (Alameda County)",
+        "expected": "2020 Research Drive, Livermore, California (County of Alameda; APN 99A-1500-6-23)",
+        "kind": "wrong"
+      },
+      {
+        "doc": "15_formfactor_industrial_2002",
+        "format": "pdf",
+        "field": "rent_escalation",
+        "extracted": "Year 1-2 (4/1/1998): $8,551.00/mo; from 4/1/2000: $9,149.57/mo; from 4/1/2002: $9,790.04/mo",
+        "expected": "Scheduled Base Rent step-ups: $8,551.00/month, increasing to $9,149.57 on April 1, 2000 and to $9,790.04 on April 1, 2002",
+        "kind": "wrong"
+      },
+      {
+        "doc": "15_formfactor_industrial_2002",
+        "format": "pdf",
+        "field": "renewal_options",
+        "extracted": "2 options of 3 years each; notice at least 6 months prior to expiration of current term; rent at then current market rent but not less than rent being paid at end of then current term",
+        "expected": "Two options to extend, 3 years each; written notice at least 6 months before the current term expires; rent at then-current market rent, but not less than the rent being paid at the end of the current term",
+        "kind": "wrong"
+      },
+      {
+        "doc": "15_formfactor_industrial_2002",
+        "format": "pdf",
+        "field": "insurance_requirements",
+        "extracted": "Commercial General Liability policy, occurrence basis, single limit coverage not less than $1,000,000 per occurrence, with Lessor as additional insured",
+        "expected": "Lessee Commercial General Liability policy with single-limit coverage of not less than $1,000,000 per occurrence. Lessor is the Insuring Party for property insurance.",
+        "kind": "wrong"
+      },
+      {
+        "doc": "15_formfactor_industrial_2002",
+        "format": "pdf",
+        "field": "default_cure_period",
+        "extracted": "30 days after written notice (general default); monetary/life-safety defaults have a 3-day cure period",
+        "expected": "Monetary default (Base Rent / other monetary payment / evidence of insurance): 3 days following written notice. Failure to provide required documentation: 10 days following written notice. Other non-monetary default: 30 days after written notice (extended if the cure reasonably requires more than 30 days and Lessee commences and diligently prosecutes it).",
+        "kind": "wrong"
+      },
+      {
+        "doc": "16_dialysis_medical_2001",
+        "format": "pdf",
+        "field": "lease_start_date",
+        "extracted": "July 2, 2001",
+        "expected": "derived: not a fixed calendar date -- the Commencement Date is the earlier of (a) the date Tenant takes possession or (b) 15 days after substantial completion and related conditions. Target Date June 15, 2001; Lease dated June 11, 2001.",
+        "kind": "wrong"
+      },
+      {
+        "doc": "16_dialysis_medical_2001",
+        "format": "pdf",
+        "field": "lease_end_date",
+        "extracted": "July 31, 2006",
+        "expected": "derived: 5 years (plus partial first month) after the Commencement Date; no fixed calendar date stated",
+        "kind": "wrong"
+      },
+      {
+        "doc": "16_dialysis_medical_2001",
+        "format": "pdf",
+        "field": "property_address",
+        "extracted": "1344 Ashton Road, Suite 201, Hanover, Maryland 21076",
+        "expected": "1344 Ashton Road, Suite 201, Hanover, Maryland (Fifth Election District, Anne Arundel County)",
+        "kind": "wrong"
+      },
+      {
+        "doc": "16_dialysis_medical_2001",
+        "format": "pdf",
+        "field": "renewal_options",
+        "extracted": "1 option of 5 years; notice not less than 180 days prior to expiration of Initial Term; renewal rent at Prevailing Market Rate (then-prevailing market rate for comparable space within 10 miles, including annual adjustments)",
+        "expected": "One 5-year Renewal Term (Option to Extend), at the Prevailing Market Rate; provided Tenant is not in default",
+        "kind": "wrong"
+      },
+      {
+        "doc": "16_dialysis_medical_2001",
+        "format": "pdf",
+        "field": "permitted_use",
+        "extracted": "General office purposes in accordance with applicable zoning regulations, continuous occupancy required, no other purpose",
+        "expected": "Solely for general office purposes in accordance with applicable zoning regulations and for no other purpose (with a continuous-occupancy covenant)",
+        "kind": "wrong"
+      },
+      {
+        "doc": "16_dialysis_medical_2001",
+        "format": "pdf",
+        "field": "insurance_requirements",
+        "extracted": "$2,000,000 combined single limit public liability insurance per person/occurrence; all-risk property/casualty insurance at replacement cost covering Tenant's personal property and improvements; workers' compensation as required by law; plate/interior glass coverage",
+        "expected": "Tenant public liability insurance of not less than $2,000,000 combined single limit (per person and per occurrence) for personal injury, death and property damage; all-risk property/casualty at replacement cost. Contractors: $200,000 combined single limit. Landlord named as additional insured.",
+        "kind": "wrong"
+      },
+      {
+        "doc": "16_dialysis_medical_2001",
+        "format": "pdf",
+        "field": "default_cure_period",
+        "extracted": "30 days after notice for non-monetary default (with extension if diligently pursued); 10 days after written notice for monetary default",
+        "expected": "Monetary default: 10 days after receipt of written notice that the amount is past due. Non-monetary default: 30 days after notice (extended if the default cannot be cured in 30 days and Tenant is diligently pursuing cure).",
+        "kind": "wrong"
+      },
+      {
+        "doc": "17_familysteak_retail_2002",
+        "format": "pdf",
+        "field": "security_deposit",
+        "extracted": "None",
+        "expected": null,
+        "kind": "spurious"
+      },
+      {
+        "doc": "17_familysteak_retail_2002",
+        "format": "pdf",
+        "field": "renewal_options",
+        "extracted": "2 successive renewal options of 10 years each; written notice required not less than 180 days prior to expiration of the Lease Term (or preceding Renewal Term); renewal rent = Base Rent per Subsection 1.3 plus Percentage Rent per Subsection 5.7 (same formula continues)",
+        "expected": "Two successive 10-year renewal option terms (Section 33)",
+        "kind": "wrong"
+      },
+      {
+        "doc": "17_familysteak_retail_2002",
+        "format": "pdf",
+        "field": "permitted_use",
+        "extracted": "Initial use as a Ryan's Grill, Buffet and Bakery, serving breakfast, lunch and dinner; may later change to a sit-down family restaurant or dinner house (not fast food) under certain conditions; no other use permitted",
+        "expected": "Initially only as a Ryan's Grill, Buffet and Bakery serving breakfast, lunch and dinner (and as a Tourist Information Attraction Ticket outlet and any use permitted under the Timeshare Lease); may later convert to a sit-down family restaurant or dinner house (not fast food) if not competing with another tenant on the Property",
+        "kind": "wrong"
+      },
+      {
+        "doc": "17_familysteak_retail_2002",
+        "format": "pdf",
+        "field": "exclusivity_clause",
+        "extracted": "While Tenant operates as a Ryan's Grill, Buffet and Bakery and is not in default, Landlord will not lease to or operate itself the uses listed as \"Prohibited Uses\" on Exhibit G; does not preclude leasing to other restaurants not on Exhibit G or permitting other tenants to sell similar products; Phase II free-standing restaurant building capped at 6,500 sq ft unless additional parking provided",
+        "expected": "Section 4.4 'Tenant's Exclusive': while Tenant is not in default and is operating as a Ryan's Grill, Buffet and Bakery, Landlord will not lease to another operator, or operate itself, the uses listed on Exhibit G ('Prohibited Uses'); does not preclude other restaurants not on Exhibit G. Any Phase II free-standing restaurant is limited to 6,500 leasable sq ft unless Landlord adds parking.",
+        "kind": "wrong"
+      },
+      {
+        "doc": "17_familysteak_retail_2002",
+        "format": "pdf",
+        "field": "insurance_requirements",
+        "extracted": "Minimum Coverage: $2,000,000 per person / $2,000,000 per occurrence bodily injury and property damage liability, with $10,000,000 umbrella coverage per occurrence, and $1,000,000 for property damage; plus full replacement cost fire and extended coverage on Tenant's personal property",
+        "expected": "'Minimum Coverage': bodily injury and property damage of not less than $2,000,000 per person and $2,000,000 per occurrence, with umbrella coverage of $10,000,000 per occurrence, and $1,000,000 for property damage",
+        "kind": "wrong"
+      },
+      {
+        "doc": "17_familysteak_retail_2002",
+        "format": "pdf",
+        "field": "default_cure_period",
+        "extracted": "10 days after written notice (general default); monetary default (failure to pay rent) has a 3-day cure period after written notice",
+        "expected": "Monetary default (rent/money): 3 days after written notice. Non-monetary default: 10 days after written notice (extendable to 30 days if not a health/safety threat, more than 10 days is reasonably required, and Tenant commences within 10 days and diligently cures). No notice/cure right after 2 or more compliance failures in any 12-month period.",
+        "kind": "wrong"
+      },
+      {
+        "doc": "18_cuyamacabank_retail_2002",
+        "format": "pdf",
+        "field": "property_address",
+        "extracted": "8002 La Mesa Boulevard, La Mesa, San Diego, CA 91941",
+        "expected": "8002 La Mesa Boulevard, La Mesa, San Diego County, CA 91941",
+        "kind": "wrong"
+      },
+      {
+        "doc": "18_cuyamacabank_retail_2002",
+        "format": "pdf",
+        "field": "security_deposit",
+        "extracted": "None",
+        "expected": null,
+        "kind": "spurious"
+      },
+      {
+        "doc": "18_cuyamacabank_retail_2002",
+        "format": "pdf",
+        "field": "renewal_options",
+        "extracted": "2 options of 5 years each; notice 90-270 days prior to option commencement; renewal rent at prevailing market rate in first year (determined by appraisal if parties disagree), then increasing 3% annually thereafter",
+        "expected": "Two options to extend, 5 years each; written notice at least 90 days and not more than 270 days before the option period commences; Tenant not in default. First year of each option at prevailing market rate (appraiser mechanism), then 3%/year increases thereafter.",
+        "kind": "wrong"
+      },
+      {
+        "doc": "18_cuyamacabank_retail_2002",
+        "format": "pdf",
+        "field": "permitted_use",
+        "extracted": "Full service bank branch only",
+        "expected": "Only as a full service bank branch and for no other purpose whatsoever",
+        "kind": "wrong"
+      },
+      {
+        "doc": "18_cuyamacabank_retail_2002",
+        "format": "pdf",
+        "field": "insurance_requirements",
+        "extracted": "$1,000,000 combined single limit CGL (bodily injury and property damage, including plate glass, vandalism, malicious mischief) naming Landlord as additional insured; plus Fixture Insurance covering 100% of full insurable value of Tenant's improvements, fixtures, equipment and merchandise",
+        "expected": "Broad form comprehensive general liability insurance with limits of not less than $1,000,000 combined single limit for bodily injury and property damage (property-damage coverage to include plate glass)",
+        "kind": "wrong"
+      },
+      {
+        "doc": "18_cuyamacabank_retail_2002",
+        "format": "pdf",
+        "field": "default_cure_period",
+        "extracted": "15 days after written notice (non-monetary default); monetary default cure period is 3 days after written notice",
+        "expected": "Monetary default (rent): continues more than 3 days after written notice. Non-monetary default: continues more than 15 days after written notice. (Separate 5-day late-charge trigger with no notice required.)",
+        "kind": "wrong"
+      },
+      {
+        "doc": "19_saflink_office_2003",
+        "format": "pdf",
+        "field": "lease_end_date",
+        "extracted": "January 31, 2009",
+        "expected": "January 31, 2009 (stated; five years after the Rent Commencement Date)",
+        "kind": "wrong"
+      },
+      {
+        "doc": "19_saflink_office_2003",
+        "format": "pdf",
+        "field": "property_address",
+        "extracted": "1875 Campus Commons Drive, Suite 301, Reston, VA 20191",
+        "expected": "1875 Campus Commons Drive, Suite 301, Reston, Virginia 20191 (Building: 'Campus South')",
+        "kind": "wrong"
+      },
+      {
+        "doc": "19_saflink_office_2003",
+        "format": "pdf",
+        "field": "cam_charges",
+        "extracted": "Tenant's Proportionate Share (10.8%) of increases in operating expenses over the Base Operating Expense Amount (Operating Expenses incurred for Calendar year 2004)",
+        "expected": "Tenant's Proportionate Share (10.8%) of increases in Operating Expenses over the Base Operating Expense Amount (Operating Expenses for calendar year 2004). No fixed dollar amount.",
+        "kind": "wrong"
+      },
+      {
+        "doc": "19_saflink_office_2003",
+        "format": "pdf",
+        "field": "renewal_options",
+        "extracted": "1 option of 3 years; written request (Initial Term Renewal Request) not less than 9 months prior to expiration of initial term; renewal rent at 100% of then-prevailing market rent determined by mutual agreement or MAI Appraisal Process, but not less than rent paid during last Lease Year of initial term",
+        "expected": "One 3-year extension term; provided the Lease is in effect, Tenant is not and has not been in default, and Tenant occupies at least 95% of the Demised Premises. Initial Term Renewal Request at least 9 months before expiration; rent at 100% of prevailing market rent (mutual agreement or MAI Appraisal Process), not less than the rent paid in the last Lease Year of the initial term.",
+        "kind": "wrong"
+      },
+      {
+        "doc": "19_saflink_office_2003",
+        "format": "pdf",
+        "field": "insurance_requirements",
+        "extracted": "Commercial general liability insurance with limits not less than $1,000,000 per occurrence and $2,000,000 in the aggregate; also all-risk property insurance on tenant improvements/alterations/personal property, builder's risk insurance during construction, and workers' compensation insurance as required by law",
+        "expected": "Tenant broad form commercial general liability policy of not less than $1,000,000 per occurrence and $2,000,000 in the aggregate; insures Tenant's performance of the Section 18(c) indemnity",
+        "kind": "wrong"
+      },
+      {
+        "doc": "19_saflink_office_2003",
+        "format": "pdf",
+        "field": "default_cure_period",
+        "extracted": "10 days after written notice (general default); monetary default: 5 days after written notice",
+        "expected": "Monetary default (Base Annual Rent / Additional Rent): 5 days after written notice that the amount is overdue (or, if Tenant received 2 or more such notices in the preceding 12 months, 5 days after the due date with no further notice). Non-monetary default: 10 days after written notice.",
+        "kind": "wrong"
+      }
+    ],
+    "calibration": {
+      "p_correct_given_high": 0.5278,
+      "p_correct_given_medium": 0.0625,
+      "p_correct_given_low": 0.0,
+      "calibration_gap": 0.5278,
+      "n_high": 144,
+      "n_medium": 16,
+      "n_low": 12
+    },
+    "field_accuracy": [
+      {
+        "field": "renewal_options",
+        "accuracy": 0.0,
+        "n": 12,
+        "importance": 2
+      },
+      {
+        "field": "insurance_requirements",
+        "accuracy": 0.0,
+        "n": 12,
+        "importance": 1
+      },
+      {
+        "field": "default_cure_period",
+        "accuracy": 0.0833,
+        "n": 12,
+        "importance": 1
+      },
+      {
+        "field": "lease_end_date",
+        "accuracy": 0.25,
+        "n": 12,
+        "importance": 3
+      },
+      {
+        "field": "cam_charges",
+        "accuracy": 0.25,
+        "n": 12,
+        "importance": 1
+      },
+      {
+        "field": "exclusivity_clause",
+        "accuracy": 0.25,
+        "n": 12,
+        "importance": 1
+      },
+      {
+        "field": "lease_start_date",
+        "accuracy": 0.3333,
+        "n": 12,
+        "importance": 3
+      },
+      {
+        "field": "property_address",
+        "accuracy": 0.4167,
+        "n": 12,
+        "importance": 2
+      },
+      {
+        "field": "rent_escalation",
+        "accuracy": 0.4167,
+        "n": 12,
+        "importance": 2
+      },
+      {
+        "field": "permitted_use",
+        "accuracy": 0.4167,
+        "n": 12,
+        "importance": 1
+      },
+      {
+        "field": "security_deposit",
+        "accuracy": 0.75,
+        "n": 12,
+        "importance": 1
+      },
+      {
+        "field": "tenant",
+        "accuracy": 0.9167,
+        "n": 12,
+        "importance": 3
+      },
+      {
+        "field": "rent_amount",
+        "accuracy": 0.9167,
+        "n": 12,
+        "importance": 3
+      },
+      {
+        "field": "landlord",
+        "accuracy": 0.9167,
+        "n": 12,
+        "importance": 2
+      },
+      {
+        "field": "square_footage",
+        "accuracy": 1.0,
+        "n": 12,
+        "importance": 1
+      }
+    ],
+    "format_accuracy": [
+      {
+        "format": "pdf",
+        "accuracy": 0.4611,
+        "n": 180
+      }
+    ],
+    "worst_fields": [
+      {
+        "field": "renewal_options",
+        "accuracy": 0.0,
+        "n": 12,
+        "importance": 2
+      },
+      {
+        "field": "insurance_requirements",
+        "accuracy": 0.0,
+        "n": 12,
+        "importance": 1
+      },
+      {
+        "field": "default_cure_period",
+        "accuracy": 0.0833,
+        "n": 12,
+        "importance": 1
+      },
+      {
+        "field": "lease_end_date",
+        "accuracy": 0.25,
+        "n": 12,
+        "importance": 3
+      },
+      {
+        "field": "cam_charges",
+        "accuracy": 0.25,
+        "n": 12,
+        "importance": 1
+      },
+      {
+        "field": "exclusivity_clause",
+        "accuracy": 0.25,
+        "n": 12,
+        "importance": 1
+      }
+    ]
+  },
+  "documents": [
+    {
+      "doc_meta": {
+        "id": "01_ionetix_office_2026",
+        "format": "pdf",
+        "scanned": null
+      },
+      "field_scores": [
+        {
+          "field": "tenant",
+          "expected": "Ionetix Radioisotopes, Inc. (formerly known as Ionetix Corporation), a Delaware corporation",
+          "extracted": "Ionetix Radioisotopes, Inc.",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "landlord",
+          "expected": "Sonya Silverstein Rothstein, Julie M. Rothstein, Amy L. Rothstein and Susan H. Rothstein-Youakim, as Co-Trustees of the Sonya S. Rothstein Trust (u/a/d July 30, 2025)",
+          "extracted": "Sonya Silverstein Rothstein, Julie M. Rothstein, Amy L. Rothstein and Susan H. Rothstein-Youakim, as Co-Trustees of the Sonya S. Rothstein Trust",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "rent_amount",
+          "expected": "$7,250.00 per month (months 1-24), plus applicable sales tax",
+          "extracted": "$7,250.00",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "lease_start_date",
+          "expected": "August 1, 2026",
+          "extracted": "August 1, 2026",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "lease_end_date",
+          "expected": "derived: July 31, 2028 (24 months after the Commencement Date; no explicit calendar expiration date stated)",
+          "extracted": "July 31, 2028",
+          "confidence": "medium",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "property_address",
+          "expected": "1950 S. Tamiami Trail (US-41), Sarasota, Florida 34239",
+          "extracted": "1950 S. Tamiami Trail (US-41), Sarasota, Florida 34239",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "security_deposit",
+          "expected": "$15,000.00 (carried over from the $30,000.00 deposit under the prior 2017 lease; $15,000.00 returned to Lessee, $15,000.00 retained under this Lease)",
+          "extracted": "$15,000.00",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "cam_charges",
+          "expected": null,
+          "extracted": null,
+          "confidence": null,
+          "correct": true,
+          "kind": "correct_absent",
+          "asserted_wrong": false
+        },
+        {
+          "field": "rent_escalation",
+          "expected": "No escalation during the initial 24-month term; Base Rent increases to $7,500.00/month for the renewal term (months 25-48)",
+          "extracted": "Year 1-2 (Months 1-24): $7,250.00/mo; Renewal Term (Months 25-48): $7,500.00/mo",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "renewal_options",
+          "expected": "One 2-year renewal option; exercise by written notice not less than 180 days prior to expiration of the Initial Term; conditioned on no monetary default and no material non-monetary default; renewal rent $7,500.00/month",
+          "extracted": "1 option of 2 years; notice not less than 180 days prior to expiration of Initial Term; renewal rent fixed at $7,500.00/month",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "permitted_use",
+          "expected": "Office/medical/research building activities including development of advanced cyclotron technology, production of medical isotopes, and uses similar or incidental thereto; and any other uses permitted by law",
+          "extracted": "Office/medical/research building activities including, but not limited to, the development of advanced cyclotron technology, the production of medical isotopes, and uses similar or incidental thereto, and any other uses permitted by Law",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "exclusivity_clause",
+          "expected": null,
+          "extracted": null,
+          "confidence": null,
+          "correct": true,
+          "kind": "correct_absent",
+          "asserted_wrong": false
+        },
+        {
+          "field": "insurance_requirements",
+          "expected": "Public liability policy of not less than $3,000,000; Lessor and its lender named as additional insured. Property insurance at not less than 80% of replacement value with Lessor as additional insured.",
+          "extracted": "Property insurance at least 80% of replacement value (excluding contents/trade fixtures), and public liability insurance of not less than $3,000,000",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "default_cure_period",
+          "expected": "15 days after written notice (both rent in arrears and other non-monetary defaults)",
+          "extracted": "15 days after written notice",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "square_footage",
+          "expected": "approximately 8,000 square feet (building, parking and land)",
+          "extracted": "8,000 sq ft",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        }
+      ],
+      "fields_total": 15,
+      "fields_correct": 10,
+      "accuracy": 0.6666666666666666,
+      "ai_meta": {
+        "model": "claude-sonnet-5",
+        "prompt_version": "v2",
+        "latency_ms": 14437,
+        "input_tokens": 20561,
+        "output_tokens": 2071,
+        "found_count": 13
+      },
+      "extracted": {
+        "tenant": "Ionetix Radioisotopes, Inc.",
+        "landlord": "Sonya Silverstein Rothstein, Julie M. Rothstein, Amy L. Rothstein and Susan H. Rothstein-Youakim, as Co-Trustees of the Sonya S. Rothstein Trust",
+        "rent_amount": "$7,250.00",
+        "lease_start_date": "August 1, 2026",
+        "lease_end_date": "July 31, 2028",
+        "property_address": "1950 S. Tamiami Trail (US-41), Sarasota, Florida 34239",
+        "security_deposit": "$15,000.00",
+        "cam_charges": null,
+        "rent_escalation": "Year 1-2 (Months 1-24): $7,250.00/mo; Renewal Term (Months 25-48): $7,500.00/mo",
+        "renewal_options": "1 option of 2 years; notice not less than 180 days prior to expiration of Initial Term; renewal rent fixed at $7,500.00/month",
+        "permitted_use": "Office/medical/research building activities including, but not limited to, the development of advanced cyclotron technology, the production of medical isotopes, and uses similar or incidental thereto, and any other uses permitted by Law",
+        "exclusivity_clause": null,
+        "insurance_requirements": "Property insurance at least 80% of replacement value (excluding contents/trade fixtures), and public liability insurance of not less than $3,000,000",
+        "default_cure_period": "15 days after written notice",
+        "square_footage": "8,000 sq ft",
+        "concessions": null
+      }
+    },
+    {
+      "doc_meta": {
+        "id": "02_convera_office_2005",
+        "format": "pdf",
+        "scanned": null
+      },
+      "field_scores": [
+        {
+          "field": "tenant",
+          "expected": "Convera Corporation",
+          "extracted": "Convera Corporation",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "landlord",
+          "expected": "Gateway 44, LLC",
+          "extracted": "Gateway 44, LLC",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "rent_amount",
+          "expected": "$4,531.00 per month (Initial Premises, Lease Year 1, at $23.00 per rentable sq ft; annual base rent $54,372.00)",
+          "extracted": "$4,531.00",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "lease_start_date",
+          "expected": "derived: not a fixed calendar date -- the 'Initial Premises Commencement Date' (earlier of possession or 15 days after substantial completion + Target Date). Lease dated June 10, 2005; Target Date August 1, 2005.",
+          "extracted": "August 1, 2005",
+          "confidence": "medium",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "lease_end_date",
+          "expected": "derived: 3 years (plus partial first month) after the Initial Premises Commencement Date; no fixed calendar date stated",
+          "extracted": "Not found",
+          "confidence": "low",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "property_address",
+          "expected": "6760 Alexander Bell Drive, Suite 260, Columbia, Maryland 21046 (Howard County)",
+          "extracted": "6760 Alexander Bell Drive, Suite 260, Columbia, Maryland 21046",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "security_deposit",
+          "expected": "$4,531.00 (plus Advance Rent of $4,531.00)",
+          "extracted": "$4,531.00",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "cam_charges",
+          "expected": "Tenant pays its proportionate share of Building/Project operating expenses and real estate taxes above a 2006 base year; no fixed dollar amount stated",
+          "extracted": "Pro-rata share of Building Expenses in excess of Base Year Building Expenses, calculated per rentable square foot of the Premises",
+          "confidence": "medium",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "rent_escalation",
+          "expected": "Annual step-ups in base rent: $23.00 / $23.69 / $24.40 per rentable sq ft in Lease Years 1 / 2 / 3 (approximately 3% per year)",
+          "extracted": "Initial Premises: Year 1: $4,531.00/mo ($23.00 psf); Year 2: $4,666.93/mo ($23.69 psf); Year 3: $4,806.94/mo ($24.40 psf)",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "renewal_options",
+          "expected": "One 3-year renewal option ('Renewal Term') at the Prevailing Market Rate, provided Tenant is not in default",
+          "extracted": "One (1) option to extend for an additional 3 years at Prevailing Market Rate; written notice required not less than 180 days prior to expiration of Initial Term",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "permitted_use",
+          "expected": "General office purposes in accordance with applicable zoning regulations and for no other purpose (with a continuous-occupancy covenant)",
+          "extracted": "General office purposes in accordance with applicable zoning regulations, and for no other purpose",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "exclusivity_clause",
+          "expected": null,
+          "extracted": "Not found",
+          "confidence": "low",
+          "correct": false,
+          "kind": "spurious",
+          "asserted_wrong": true
+        },
+        {
+          "field": "insurance_requirements",
+          "expected": "Tenant public liability insurance of not less than $2,000,000 combined single limit (per person / per occurrence); all-risk property at replacement cost; business interruption (>=12 months); workers' comp; plate glass. Landlord named as additional insured. Contractors: $200,000 CSL.",
+          "extracted": "$2,000,000 combined single limit public liability insurance per person/per occurrence; all-risk property and casualty insurance at replacement cost; workmen's compensation if required by law; business interruption insurance for at least 12 months",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "default_cure_period",
+          "expected": "Monetary: 10 days after written notice that payment is past due. Non-monetary: 30 days after notice (extended if not curable in 30 days and Tenant is diligently pursuing cure).",
+          "extracted": "10 days after receipt of written notice (monetary default); 30 days after notice for non-monetary default (with extension if default cannot be cured within 30 days and Tenant diligently prosecutes cure)",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "square_footage",
+          "expected": "8,388 rentable square feet (2,364 sq ft Initial Premises / Suite 260 + 5,024 sq ft Remaining Premises / Suite 150)",
+          "extracted": "8,388 sq ft (2,364 sq ft Initial Premises + 5,024 sq ft Remaining Premises)",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        }
+      ],
+      "fields_total": 15,
+      "fields_correct": 7,
+      "accuracy": 0.4666666666666667,
+      "ai_meta": {
+        "model": "claude-sonnet-5",
+        "prompt_version": "v2",
+        "latency_ms": 16426,
+        "input_tokens": 51295,
+        "output_tokens": 2109,
+        "found_count": 16
+      },
+      "extracted": {
+        "tenant": "Convera Corporation",
+        "landlord": "Gateway 44, LLC",
+        "rent_amount": "$4,531.00",
+        "lease_start_date": "August 1, 2005",
+        "lease_end_date": "Not found",
+        "property_address": "6760 Alexander Bell Drive, Suite 260, Columbia, Maryland 21046",
+        "security_deposit": "$4,531.00",
+        "cam_charges": "Pro-rata share of Building Expenses in excess of Base Year Building Expenses, calculated per rentable square foot of the Premises",
+        "rent_escalation": "Initial Premises: Year 1: $4,531.00/mo ($23.00 psf); Year 2: $4,666.93/mo ($23.69 psf); Year 3: $4,806.94/mo ($24.40 psf)",
+        "renewal_options": "One (1) option to extend for an additional 3 years at Prevailing Market Rate; written notice required not less than 180 days prior to expiration of Initial Term",
+        "permitted_use": "General office purposes in accordance with applicable zoning regulations, and for no other purpose",
+        "exclusivity_clause": "Not found",
+        "insurance_requirements": "$2,000,000 combined single limit public liability insurance per person/per occurrence; all-risk property and casualty insurance at replacement cost; workmen's compensation if required by law; business interruption insurance for at least 12 months",
+        "default_cure_period": "10 days after receipt of written notice (monetary default); 30 days after notice for non-monetary default (with extension if default cannot be cured within 30 days and Tenant diligently prosecutes cure)",
+        "square_footage": "8,388 sq ft (2,364 sq ft Initial Premises + 5,024 sq ft Remaining Premises)",
+        "concessions": "Not found"
+      }
+    },
+    {
+      "doc_meta": {
+        "id": "05_conns_retail_2003",
+        "format": "pdf",
+        "scanned": null
+      },
+      "field_scores": [
+        {
+          "field": "tenant",
+          "expected": "C. A. I., L.P. (trade names \"Conn's\" and \"Conn Appliances\"); guaranteed by Conn Appliances, Inc.",
+          "extracted": "C.A.I., L.P.",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "landlord",
+          "expected": "Fiesta Mart, Inc.",
+          "extracted": "Fiesta Mart, Inc.",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "rent_amount",
+          "expected": "$17,722.00 per month (Minimum Guaranteed Rental, months 1-12; total MGR over term $2,618,400.00)",
+          "extracted": "$17,722.00",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "lease_start_date",
+          "expected": "derived: not a fixed calendar date -- Commencement Date is the earlier of (i) 120 days after tender of possession or (ii) 5 days after a certificate of occupancy is issued",
+          "extracted": "Not found (Commencement Date is formula-based, not a fixed calendar date)",
+          "confidence": "low",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "lease_end_date",
+          "expected": "derived: last day of the 120th full calendar month after the Commencement Date (10-year term); no fixed calendar date",
+          "extracted": "Not found (end date depends on Commencement Date, which is not a fixed calendar date)",
+          "confidence": "low",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "property_address",
+          "expected": "Beaumont Shopping Center, City of Beaumont, Jefferson County, Texas (specific street/legal description in Exhibit A, not in the lease body)",
+          "extracted": "Beaumont Shopping Center, Beaumont, Jefferson County, Texas (approximately 88,283 square feet circumscribed on the Site Plan)",
+          "confidence": "medium",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "security_deposit",
+          "expected": null,
+          "extracted": "None",
+          "confidence": "high",
+          "correct": false,
+          "kind": "spurious",
+          "asserted_wrong": true
+        },
+        {
+          "field": "cam_charges",
+          "expected": "Tenant's Pro Rata Share of Common Area Costs estimated $43,258.18 for the first calendar year ($0.49 per sq ft of Demised Premises floor area; $3,604.89/month). Pro rata share 88,283/137,514. Separate pro rata shares for real estate taxes ($0.34/sq ft) and insurance premiums ($0.06/sq ft).",
+          "extracted": "$0.49 per sq ft annually, estimated $43,258.18 for first calendar year, payable in monthly installments of $3,604.89",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "rent_escalation",
+          "expected": "Stepped Minimum Guaranteed Rental: $17,722.00/month (months 1-12), $20,232.00/month (months 13-60), $23,910.00/month (months 61-120)",
+          "extracted": "Fixed step increases: Months 1-12: $17,722.00/mo; Months 13-60: $20,232.00/mo; Months 61-120: $23,910.00/mo (based on full 88,283 sq ft premises)",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "renewal_options",
+          "expected": "Two (2) five-year renewal options, per Exhibit H",
+          "extracted": "Two 5-year renewal options; notice 6 months or more prior to expiration of then-current term; First Renewal Term rent = $4.25/sq ft annually; Second Renewal Term rent = $5.25/sq ft annually",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "permitted_use",
+          "expected": "Only for general office purposes and uses related directly thereto, and for no other purpose whatsoever (as stated in Section 1.1(s) -- note this is unusually narrow wording for an appliance retailer)",
+          "extracted": "Only for general office purposes and uses related directly thereto, and for no other purpose whatsoever",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "exclusivity_clause",
+          "expected": null,
+          "extracted": "Not found - no tenant exclusive-use protection granted; lease instead restricts subletting of Surrender Space from certain prohibited competing uses",
+          "confidence": "low",
+          "correct": false,
+          "kind": "spurious",
+          "asserted_wrong": true
+        },
+        {
+          "field": "insurance_requirements",
+          "expected": "Tenant Commercial General Liability insurance of not less than $2,000,000.00 combined single limit, plus a $3,000,000.00 Excess Liability / Commercial Umbrella policy. Landlord maintains CGL of $2,000,000.00 combined single limit for the Common Areas.",
+          "extracted": "Commercial General Liability Insurance with limits not less than $2,000,000.00 combined single limit, plus not less than $3,000,000.00 Excess Liability or Commercial Umbrella Policy",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "default_cure_period",
+          "expected": "Monetary default: 10 days after written notice. Non-monetary default: 30 days after written notice. Plus an additional 3 days' written notice before Landlord pursues remedies.",
+          "extracted": "10 days after written notice (monetary default); non-monetary/general default cure period is 30 days after written notice",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "square_footage",
+          "expected": "approximately 88,283 square feet (Demised Premises within the Shopping Center)",
+          "extracted": "88,283 sq ft",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        }
+      ],
+      "fields_total": 15,
+      "fields_correct": 4,
+      "accuracy": 0.26666666666666666,
+      "ai_meta": {
+        "model": "claude-sonnet-5",
+        "prompt_version": "v2",
+        "latency_ms": 19842,
+        "input_tokens": 75238,
+        "output_tokens": 2402,
+        "found_count": 16
+      },
+      "extracted": {
+        "tenant": "C.A.I., L.P.",
+        "landlord": "Fiesta Mart, Inc.",
+        "rent_amount": "$17,722.00",
+        "lease_start_date": "Not found (Commencement Date is formula-based, not a fixed calendar date)",
+        "lease_end_date": "Not found (end date depends on Commencement Date, which is not a fixed calendar date)",
+        "property_address": "Beaumont Shopping Center, Beaumont, Jefferson County, Texas (approximately 88,283 square feet circumscribed on the Site Plan)",
+        "security_deposit": "None",
+        "cam_charges": "$0.49 per sq ft annually, estimated $43,258.18 for first calendar year, payable in monthly installments of $3,604.89",
+        "rent_escalation": "Fixed step increases: Months 1-12: $17,722.00/mo; Months 13-60: $20,232.00/mo; Months 61-120: $23,910.00/mo (based on full 88,283 sq ft premises)",
+        "renewal_options": "Two 5-year renewal options; notice 6 months or more prior to expiration of then-current term; First Renewal Term rent = $4.25/sq ft annually; Second Renewal Term rent = $5.25/sq ft annually",
+        "permitted_use": "Only for general office purposes and uses related directly thereto, and for no other purpose whatsoever",
+        "exclusivity_clause": "Not found - no tenant exclusive-use protection granted; lease instead restricts subletting of Surrender Space from certain prohibited competing uses",
+        "insurance_requirements": "Commercial General Liability Insurance with limits not less than $2,000,000.00 combined single limit, plus not less than $3,000,000.00 Excess Liability or Commercial Umbrella Policy",
+        "default_cure_period": "10 days after written notice (monetary default); non-monetary/general default cure period is 30 days after written notice",
+        "square_footage": "88,283 sq ft",
+        "concessions": "Not found - no free rent, abatement, or recurring discount concessions identified; lease includes a tax abatement cooperation provision (Exhibit K) and a Surrender Space option reducing future rent, but these are not tenant rent concessions as defined"
+      }
+    },
+    {
+      "doc_meta": {
+        "id": "07_growlife_retail_2014",
+        "format": "pdf",
+        "scanned": null
+      },
+      "field_scores": [
+        {
+          "field": "tenant",
+          "expected": "GrowLife Hydroponics, Inc., a Delaware corporation",
+          "extracted": "GrowLife Hydroponics, Inc.",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "landlord",
+          "expected": "W-ADP Meadows VII, L.L.C., a Delaware limited liability company",
+          "extracted": "W-ADP Meadows VII, L.L.C.",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "rent_amount",
+          "expected": "$4,051.25 per month (Minimum Rent, months 1-12, at $15.00 per rentable sq ft / $48,615.00 per year; first 3 full calendar months abated)",
+          "extracted": "$4,051.25",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "lease_start_date",
+          "expected": "derived: not a fixed calendar date -- the Rent Commencement Date is the earlier of (i) the date Tenant opens for business or (ii) 60 days after Landlord's delivery of the premises. Agreement Effective Date: January 23, 2014.",
+          "extracted": "Not found (Rent Commencement Date is a floating date tied to earlier of tenant's opening or 60 days after delivery; Effective Date is January 23, 2014)",
+          "confidence": "low",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "lease_end_date",
+          "expected": "derived: last day of the 39th full calendar month after the Rent Commencement Date (39-month term); no fixed calendar date",
+          "extracted": "Not found (expires last day of 39th full calendar month after Rent Commencement Date, which is not a fixed calendar date in the document)",
+          "confidence": "low",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "property_address",
+          "expected": "4880 Baseline Road, Building E, Suite 106, Boulder, CO 80303 (in the shopping center 'Meadows on the Parkway')",
+          "extracted": "4880 Baseline Road, Building E, Suite 106, Boulder, CO 80303",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "security_deposit",
+          "expected": "$5,590.73",
+          "extracted": "$5,590.73",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "cam_charges",
+          "expected": "Tenant's Proportionate Share of Operating Expenses (utilities, real property taxes, Landlord's insurance, management fee up to 4% of gross rents, supervision/admin fee up to 15%, amortized capital improvements); proportionate share = rentable area of Leased Premises / rentable area of all Landlord-owned buildings in the Shopping Center. No fixed dollar amount.",
+          "extracted": "Tenant's Proportionate Share of Operating Expenses (pro-rata, calculated by dividing rentable area of Leased Premises by rentable area of all buildings owned by Landlord in the Shopping Center), payable monthly in advance",
+          "confidence": "medium",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "rent_escalation",
+          "expected": "Stepped Minimum Rent, approximately 3% per year: $15.00/sq ft (months 1-12), $15.45/sq ft (months 13-24), and a further step in year 3",
+          "extracted": "Months 1-12: $4,051.25/mo ($15.00/sf); Months 13-24: $4,172.79/mo ($15.45/sf); Months 25-36: $4,297.97/mo ($15.91/sf); Months 37-39: $4,426.91/mo ($16.39/sf)",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "renewal_options",
+          "expected": "One option to extend for one additional 36-month period; conditioned on Tenant not being in default and operating per the Permitted Use",
+          "extracted": "1 option of 36 months; written notice at least 120 days prior to expiration of original Term; renewal rent: Months 1-12 $4,559.72/mo ($16.88/sf), Months 13-24 $4,696.51/mo ($17.39/sf), Months 25-36 $4,837.40/mo ($17.91/sf)",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "permitted_use",
+          "expected": "Solely for the purpose of operating a retail store selling hydroponic horticulture products, and for no other purpose without Landlord's prior written consent",
+          "extracted": "Retail store selling hydroponic horticulture products",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "exclusivity_clause",
+          "expected": null,
+          "extracted": "Not found - lease references an Exhibit D listing exclusive and prohibited uses but the exhibit contents are not provided in the document",
+          "confidence": "low",
+          "correct": false,
+          "kind": "spurious",
+          "asserted_wrong": true
+        },
+        {
+          "field": "insurance_requirements",
+          "expected": "Tenant Commercial General Liability insurance, minimum combined single limit $1,000,000 / general aggregate $2,000,000 (aggregate applies per-location); Special Form property insurance at full replacement cost (deductible <= $10,000); automobile liability $1,000,000; workers' compensation + employers' liability $1,000,000. Landlord, Landlord's mortgagee and managing agent named as additional insureds.",
+          "extracted": "CGL with $1,000,000 combined single limit / $2,000,000 general aggregate; property insurance for alterations/tenant property at full replacement cost with deductible not more than $10,000; plate glass insurance (may self-insure); automobile liability $1,000,000 each accident; workers comp/employers liability $1,000,000 each accident/disease; business interruption insurance covering 12 months of expenses/loss of income",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "default_cure_period",
+          "expected": "Monetary default (Rent): immediate, no notice or cure period ('without the necessity of demand therefor or notice thereof'). Non-monetary default: 5 days after written notice.",
+          "extracted": "5 days after written notice (non-monetary default); monetary defaults (failure to pay Rent) have no cure period stated - breach occurs immediately without notice or demand",
+          "confidence": "medium",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "square_footage",
+          "expected": "approximately 3,241 rentable square feet (Space E-106)",
+          "extracted": "3,241 sq ft",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        }
+      ],
+      "fields_total": 15,
+      "fields_correct": 7,
+      "accuracy": 0.4666666666666667,
+      "ai_meta": {
+        "model": "claude-sonnet-5",
+        "prompt_version": "v2",
+        "latency_ms": 22418,
+        "input_tokens": 35304,
+        "output_tokens": 2944,
+        "found_count": 16
+      },
+      "extracted": {
+        "tenant": "GrowLife Hydroponics, Inc.",
+        "landlord": "W-ADP Meadows VII, L.L.C.",
+        "rent_amount": "$4,051.25",
+        "lease_start_date": "Not found (Rent Commencement Date is a floating date tied to earlier of tenant's opening or 60 days after delivery; Effective Date is January 23, 2014)",
+        "lease_end_date": "Not found (expires last day of 39th full calendar month after Rent Commencement Date, which is not a fixed calendar date in the document)",
+        "property_address": "4880 Baseline Road, Building E, Suite 106, Boulder, CO 80303",
+        "security_deposit": "$5,590.73",
+        "cam_charges": "Tenant's Proportionate Share of Operating Expenses (pro-rata, calculated by dividing rentable area of Leased Premises by rentable area of all buildings owned by Landlord in the Shopping Center), payable monthly in advance",
+        "rent_escalation": "Months 1-12: $4,051.25/mo ($15.00/sf); Months 13-24: $4,172.79/mo ($15.45/sf); Months 25-36: $4,297.97/mo ($15.91/sf); Months 37-39: $4,426.91/mo ($16.39/sf)",
+        "renewal_options": "1 option of 36 months; written notice at least 120 days prior to expiration of original Term; renewal rent: Months 1-12 $4,559.72/mo ($16.88/sf), Months 13-24 $4,696.51/mo ($17.39/sf), Months 25-36 $4,837.40/mo ($17.91/sf)",
+        "permitted_use": "Retail store selling hydroponic horticulture products",
+        "exclusivity_clause": "Not found - lease references an Exhibit D listing exclusive and prohibited uses but the exhibit contents are not provided in the document",
+        "insurance_requirements": "CGL with $1,000,000 combined single limit / $2,000,000 general aggregate; property insurance for alterations/tenant property at full replacement cost with deductible not more than $10,000; plate glass insurance (may self-insure); automobile liability $1,000,000 each accident; workers comp/employers liability $1,000,000 each accident/disease; business interruption insurance covering 12 months of expenses/loss of income",
+        "default_cure_period": "5 days after written notice (non-monetary default); monetary defaults (failure to pay Rent) have no cure period stated - breach occurs immediately without notice or demand",
+        "square_footage": "3,241 sq ft",
+        "concessions": "Minimum Rent abated for first 3 full calendar months following Rent Commencement Date (Tenant must still pay Tenant's Proportionate Share of Operating Expenses during abatement); Landlord contributes $10.00 per rentable sq ft as Tenant Improvement Allowance toward Tenant's Work"
+      }
+    },
+    {
+      "doc_meta": {
+        "id": "10_dover_retail_2006",
+        "format": "pdf",
+        "scanned": null
+      },
+      "field_scores": [
+        {
+          "field": "tenant",
+          "expected": "Dover Saddlery Retail, Inc.",
+          "extracted": "Dover Saddlery Retail, Inc.",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "landlord",
+          "expected": "Sparks Lot Seven, LLC (c/o Obrecht Properties, LLC)",
+          "extracted": "Sparks Lot Seven, LLC",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "rent_amount",
+          "expected": "$12,523.25 per month (Lease Years 1-3 at $18.34 per sq ft/year on 8,194 sq ft; first 60 days abated)",
+          "extracted": "$12,529.08/month (Year 1-3, based on $18.34/sq ft annually on 8,194 sq ft)",
+          "confidence": "medium",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "lease_start_date",
+          "expected": "derived: not a fixed calendar date -- the Commencement Date is when Landlord substantially completes construction, estimated 'on or about July 1, 2006'. Lease dated March 29, 2006.",
+          "extracted": "July 1, 2006 (estimated Commencement Date)",
+          "confidence": "medium",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "lease_end_date",
+          "expected": "derived: 11:59 p.m. on the day before the 10th anniversary of the first day of the first full calendar month after the Commencement Date (10-year Original Term); approximately June 30, 2016 if commencement is July 1, 2006",
+          "extracted": "Tenth anniversary of the first day of the first full calendar month following the Commencement Date",
+          "confidence": "medium",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "property_address",
+          "expected": "10 Fila Way, Sparks, Maryland 21152 (Lot 7, Sparks Corporate Center)",
+          "extracted": "10 Fila Way, Sparks, Maryland 21152",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "security_deposit",
+          "expected": "$12,500.00",
+          "extracted": "$12,500.00",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "cam_charges",
+          "expected": "Tenant's proportionate share of Annual Operating Costs (real property and similar taxes/assessments, utilities, trash removal, grounds/common area/mechanical-systems maintenance, and other costs of operating and maintaining the Property). No fixed dollar amount.",
+          "extracted": "Tenant's proportionate share of Annual Operating Costs (including Park Fund and Retail Pad apportionment), billed as additional rent based on actual costs incurred by Landlord",
+          "confidence": "medium",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "rent_escalation",
+          "expected": "Stepped Base Rent over the 10-year Original Term: $18.34/sq ft (Years 1-3), $19.99 (Years 4-6), $21.79 (Years 7-9), $23.75 (Year 10)",
+          "extracted": "Year 1-3: $18.34/sq ft; Year 4-6: $19.99/sq ft; Year 7-9: $21.79/sq ft; Year 10: $23.75/sq ft; Renewal Term 1 (Yr 1-2): $23.75/sq ft; Renewal Term 1 (Yr 3-5): $25.89/sq ft; Renewal Term 2 (Yr 1-3): $28.22/sq ft; Renewal Term 2 (Yr 4-5): $30.76/sq ft",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "renewal_options",
+          "expected": "Two successive 5-year Renewal Terms; written notice at least 180 days before the Renewal Term begins; Landlord may void the renewal if an uncured material default exists at the end of the prior Term. Renewal Base Rent: $23.75 then $25.89/sq ft (First Renewal); $28.22 then $30.76/sq ft (Second Renewal).",
+          "extracted": "2 options of 5 years each; written notice not less than 180 days before expiration of previous term; renewal rent at fixed escalated per-sq-ft rates specified in lease (not FMV)",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "permitted_use",
+          "expected": "For and only for an 'upscale specialty retailer and direct marketer of equestrian products' similar to other Dover Saddlery stores in the United States",
+          "extracted": "Upscale specialty retailer and direct marketer of equestrian products, similar to other Dover Saddlery stores",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "exclusivity_clause",
+          "expected": "Landlord shall not enter into any lease with a tenant new to the Property allowing space to be used for retail sale of tack, riding apparel, boots, shoes, leather products, medications and ointments related to horse care, saddles, and items related to the care and keeping of horses (subject to carve-outs for unavoidable overlap; enforcement mechanics in Section 3.5)",
+          "extracted": "Landlord will not lease to new tenants for retail sale of tack, riding apparel, boots, shoes, leather products, medications/ointments for horse care, saddles, or horse-care items; carve-out allows other tenants limited overlapping use (no more than 7% of revenue, reasonable business relation, not advertised) and disputes resolved via arbitration with specific limitations on damages",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "insurance_requirements",
+          "expected": "Tenant general public liability insurance of not less than $1,000,000 for bodily injury/death of any one person per occurrence, $1,000,000 for all persons per occurrence, and $500,000 for property damage per occurrence, plus full replacement cost of contents. Landlord (and, on request, any mortgagee) named as additional insured; primary and non-contributory; 30 days' cancellation notice.",
+          "extracted": "General public liability insurance: $1,000,000 per occurrence bodily injury/death (any one person), $1,000,000 per occurrence (all persons), $500,000 property damage per occurrence, plus full replacement cost coverage for Tenant's contents; Landlord named as additional insured",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "default_cure_period",
+          "expected": "Monetary default: 5 days after written notice. Non-monetary default: 30 days after written notice to begin curing, with full cure within 90 days. No grace period more than twice in any 12-month period.",
+          "extracted": "5 days after written notice for monetary default; 30 days to begin cure (completed within 90 days) for non-monetary default",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "square_footage",
+          "expected": "8,194 square feet (4,567 sq ft first-floor Retail Space + 3,627 sq ft second-floor Office Space)",
+          "extracted": "8,194 sq ft",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        }
+      ],
+      "fields_total": 15,
+      "fields_correct": 5,
+      "accuracy": 0.3333333333333333,
+      "ai_meta": {
+        "model": "claude-sonnet-5",
+        "prompt_version": "v2",
+        "latency_ms": 28543,
+        "input_tokens": 41279,
+        "output_tokens": 3556,
+        "found_count": 16
+      },
+      "extracted": {
+        "tenant": "Dover Saddlery Retail, Inc.",
+        "landlord": "Sparks Lot Seven, LLC",
+        "rent_amount": "$12,529.08/month (Year 1-3, based on $18.34/sq ft annually on 8,194 sq ft)",
+        "lease_start_date": "July 1, 2006 (estimated Commencement Date)",
+        "lease_end_date": "Tenth anniversary of the first day of the first full calendar month following the Commencement Date",
+        "property_address": "10 Fila Way, Sparks, Maryland 21152",
+        "security_deposit": "$12,500.00",
+        "cam_charges": "Tenant's proportionate share of Annual Operating Costs (including Park Fund and Retail Pad apportionment), billed as additional rent based on actual costs incurred by Landlord",
+        "rent_escalation": "Year 1-3: $18.34/sq ft; Year 4-6: $19.99/sq ft; Year 7-9: $21.79/sq ft; Year 10: $23.75/sq ft; Renewal Term 1 (Yr 1-2): $23.75/sq ft; Renewal Term 1 (Yr 3-5): $25.89/sq ft; Renewal Term 2 (Yr 1-3): $28.22/sq ft; Renewal Term 2 (Yr 4-5): $30.76/sq ft",
+        "renewal_options": "2 options of 5 years each; written notice not less than 180 days before expiration of previous term; renewal rent at fixed escalated per-sq-ft rates specified in lease (not FMV)",
+        "permitted_use": "Upscale specialty retailer and direct marketer of equestrian products, similar to other Dover Saddlery stores",
+        "exclusivity_clause": "Landlord will not lease to new tenants for retail sale of tack, riding apparel, boots, shoes, leather products, medications/ointments for horse care, saddles, or horse-care items; carve-out allows other tenants limited overlapping use (no more than 7% of revenue, reasonable business relation, not advertised) and disputes resolved via arbitration with specific limitations on damages",
+        "insurance_requirements": "General public liability insurance: $1,000,000 per occurrence bodily injury/death (any one person), $1,000,000 per occurrence (all persons), $500,000 property damage per occurrence, plus full replacement cost coverage for Tenant's contents; Landlord named as additional insured",
+        "default_cure_period": "5 days after written notice for monetary default; 30 days to begin cure (completed within 90 days) for non-monetary default",
+        "square_footage": "8,194 sq ft",
+        "concessions": "60 days free Base Rent at start of Original Term (Tenant still pays additional rent during this period; full abated rent becomes due if Tenant defaults)"
+      }
+    },
+    {
+      "doc_meta": {
+        "id": "13_altiris_office_2001",
+        "format": "pdf",
+        "scanned": null
+      },
+      "field_scores": [
+        {
+          "field": "tenant",
+          "expected": "Altiris, Inc.",
+          "extracted": "Altiris, Inc.",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "landlord",
+          "expected": "Canopy Properties, Inc.",
+          "extracted": "Canopy Properties, Inc.",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "rent_amount",
+          "expected": "$73,225.28 per month (Base Rent of $878,703.30 annually, year 1; plus separate additional rent of $8,834/month and $12,583/month for above-standard improvements/cabling and furniture per amortization schedules)",
+          "extracted": "$73,225.28 (converted from $878,703.30 annually)",
+          "confidence": "medium",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "lease_start_date",
+          "expected": "January 1, 2002",
+          "extracted": "January 1, 2002",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "lease_end_date",
+          "expected": "December 31, 2006",
+          "extracted": "December 31, 2006",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "property_address",
+          "expected": "Canopy Office Building III, 588 West 400 South, Lindon, Utah (Suites 250, 300, 350 plus storage space adjacent to the receiving dock)",
+          "extracted": "588 West 400 South, Lindon, Utah (Suites 250, 300, 350, and certain storage space adjacent to the receiving dock)",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "security_deposit",
+          "expected": null,
+          "extracted": null,
+          "confidence": null,
+          "correct": true,
+          "kind": "correct_absent",
+          "asserted_wrong": false
+        },
+        {
+          "field": "cam_charges",
+          "expected": "Tenant's Percentage Share of Operating Costs = 53.78%; Basic Operating Costs and Taxes adjusted over a Base Year of 1/1/2002 - 12/31/2002. No fixed dollar amount.",
+          "extracted": "Tenant's Percentage Share of Operating Costs: 53.78%, with Base Year 1/1/2002-12/31/2002",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "rent_escalation",
+          "expected": "Base Rent escalates annually at the Wall Street Journal published CPI rate each year of the term",
+          "extracted": "Base rent escalates annually at the Wall Street Journal published CPI rate; separately, Basic Rent is adjusted each January beginning January 1, 2003 for Tenant's share of increases/decreases in Basic Operating Costs over the Base Year.",
+          "confidence": "medium",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "renewal_options",
+          "expected": "Two 5-year options to renew, upon 6 months' prior written notice; renewal rate not to exceed market rate, or a maximum 3%/year increase from the initial term, whichever is less",
+          "extracted": "2 options of 5 years each; 6 months prior written notice; renewal rent at rates not to exceed market rates at the time, or at maximum increases of 3% per year from the initial lease term, whichever is less.",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "permitted_use",
+          "expected": "General office purposes and for no other use or purpose without Landlord's prior written consent (no retail sales without Landlord's prior written consent)",
+          "extracted": "General office purposes and no other use or purpose without prior written consent of Landlord",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "exclusivity_clause",
+          "expected": null,
+          "extracted": null,
+          "confidence": null,
+          "correct": true,
+          "kind": "correct_absent",
+          "asserted_wrong": false
+        },
+        {
+          "field": "insurance_requirements",
+          "expected": "Tenant liability insurance of $1,000,000 for property damage and $2,000,000 per occurrence for personal injuries or deaths occurring on the Premises",
+          "extracted": "$1,000,000 property damage, $500,000 per person, and $2,000,000 per occurrence for personal injuries or deaths, naming Landlord as additional insured",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "default_cure_period",
+          "expected": "Monetary default (rent): Landlord gives one written notice per calendar year; after that, no further notice required before exercising remedies. Non-monetary default: 10 days from written notice (extended if the default cannot reasonably be cured in 10 days and Tenant commences and diligently pursues cure).",
+          "extracted": "10 days after written notice (non-monetary default); monetary default notice is limited to one written notice per calendar year with no further notice required thereafter",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "square_footage",
+          "expected": "47,395 approximate square feet (Building size 88,124 sq ft)",
+          "extracted": "47,395 sq ft",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        }
+      ],
+      "fields_total": 15,
+      "fields_correct": 8,
+      "accuracy": 0.5333333333333333,
+      "ai_meta": {
+        "model": "claude-sonnet-5",
+        "prompt_version": "v2",
+        "latency_ms": 17310,
+        "input_tokens": 41609,
+        "output_tokens": 2176,
+        "found_count": 14
+      },
+      "extracted": {
+        "tenant": "Altiris, Inc.",
+        "landlord": "Canopy Properties, Inc.",
+        "rent_amount": "$73,225.28 (converted from $878,703.30 annually)",
+        "lease_start_date": "January 1, 2002",
+        "lease_end_date": "December 31, 2006",
+        "property_address": "588 West 400 South, Lindon, Utah (Suites 250, 300, 350, and certain storage space adjacent to the receiving dock)",
+        "security_deposit": null,
+        "cam_charges": "Tenant's Percentage Share of Operating Costs: 53.78%, with Base Year 1/1/2002-12/31/2002",
+        "rent_escalation": "Base rent escalates annually at the Wall Street Journal published CPI rate; separately, Basic Rent is adjusted each January beginning January 1, 2003 for Tenant's share of increases/decreases in Basic Operating Costs over the Base Year.",
+        "renewal_options": "2 options of 5 years each; 6 months prior written notice; renewal rent at rates not to exceed market rates at the time, or at maximum increases of 3% per year from the initial lease term, whichever is less.",
+        "permitted_use": "General office purposes and no other use or purpose without prior written consent of Landlord",
+        "exclusivity_clause": null,
+        "insurance_requirements": "$1,000,000 property damage, $500,000 per person, and $2,000,000 per occurrence for personal injuries or deaths, naming Landlord as additional insured",
+        "default_cure_period": "10 days after written notice (non-monetary default); monetary default notice is limited to one written notice per calendar year with no further notice required thereafter",
+        "square_footage": "47,395 sq ft",
+        "concessions": "Not found"
+      }
+    },
+    {
+      "doc_meta": {
+        "id": "14_bareescentuals_office_2006",
+        "format": "pdf",
+        "scanned": null
+      },
+      "field_scores": [
+        {
+          "field": "tenant",
+          "expected": "MD Beauty, Inc., a Delaware corporation",
+          "extracted": "MD Beauty, Inc.",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "landlord",
+          "expected": "ECI Stevenson LLC, a California limited liability company",
+          "extracted": "ECI Stevenson LLC",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "rent_amount",
+          "expected": "$90,781.69 per month (Years 1-3, annual Base Rent $1,089,380.25 at $30.75 per rentable sq ft; first 180 days abated for the 22nd/23rd floor space and for Suites 1825/1815 respectively)",
+          "extracted": "$90,781.69",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "lease_start_date",
+          "expected": "June 1, 2005 (the 22nd/23rd Floor Commencement Date, which is the Lease Commencement Date; Suites 1825/1815 Commencement Date is July 1, 2005)",
+          "extracted": "June 1, 2005",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "lease_end_date",
+          "expected": "derived: the last day of the calendar month in which the 10th anniversary of the Suites 1825/1815 Commencement Date (July 1, 2005) falls -- i.e. July 31, 2015",
+          "extracted": "The last day of the calendar month in which the tenth (10th) anniversary of the Suites 1825/1815 Commencement Date (July 1, 2005) falls",
+          "confidence": "medium",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "property_address",
+          "expected": "71 Stevenson Street, San Francisco, California 94105 (Suites 2200, 2300, 1825 and 1815 in a 23-story, approximately 323,275 rentable sq ft office building)",
+          "extracted": "71 Stevenson Street, San Francisco, California 94105 (Suites 2200, 2300, 1825, and 1815)",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "security_deposit",
+          "expected": "Letter of credit in the amount of $275,000 (subject to L/C Burnoff; increases proportionately if Tenant leases more than 35,427 rentable sq ft)",
+          "extracted": "$275,000.00 (standby letter of credit)",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "cam_charges",
+          "expected": "Tenant's Share approximately 10.96%; Direct Expenses adjusted over a Base Year of calendar year 2005. No fixed dollar amount.",
+          "extracted": "Tenant's Share (approximately 10.96%) of Direct Expenses (Operating Expenses and Tax Expenses) in excess of Base Year (calendar year 2005) amounts",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "rent_escalation",
+          "expected": "Stepped Base Rent: $30.75/rentable sq ft (Years 1-3), $32.75 (Years 4-7), $34.75 (Year 8 to end of Term); increases occur on the anniversary of the Suites 1825/1815 Commencement Date",
+          "extracted": "Year 1-3: $90,781.69/mo ($30.75/sf); Year 4-7: $96,686.19/mo ($32.75/sf); Year 8-end of Term: $102,590.69/mo ($34.75/sf)",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "renewal_options",
+          "expected": "One 5-year Extension Option at Fair Market Base Rental; written notice at least 12 months but not more than 15 months before the initial Term expires; personal to MD Beauty and its Permitted Transferees; Tenant not in default",
+          "extracted": "1 option of 5 years; written notice at least 12 months but not more than 15 months prior to expiration of initial Term; renewal rent at Fair Market Base Rental, not less than Base Rent in effect immediately prior to Extension Period",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "permitted_use",
+          "expected": "General office use only, consistent with a first-class office building",
+          "extracted": "General office use only, consistent with a first-class office building",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "exclusivity_clause",
+          "expected": null,
+          "extracted": "Not found",
+          "confidence": "low",
+          "correct": false,
+          "kind": "spurious",
+          "asserted_wrong": true
+        },
+        {
+          "field": "insurance_requirements",
+          "expected": "Tenant Commercial General Liability insurance with limits not less than: bodily injury and property damage liability $3,000,000 each occurrence / $3,000,000 annual aggregate; personal injury liability $3,000,000 each occurrence / $3,000,000 annual aggregate",
+          "extracted": "Commercial General Liability: $3,000,000 per occurrence / $3,000,000 annual aggregate (Bodily Injury and Property Damage Liability, and Personal Injury Liability each); plus Physical Damage (all-risk, full replacement cost) and Worker's Compensation/Employer's Liability",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "default_cure_period",
+          "expected": "Monetary default (Rent): 5 business days after notice. Non-monetary default: 30 days after written notice (up to 60 days if the default cannot reasonably be cured in 30 days and Tenant diligently pursues cure).",
+          "extracted": "30 days after written notice (non-monetary default; extendable to 60 days if diligently pursued); monetary default cure period is 5 business days after notice",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "square_footage",
+          "expected": "35,427 rentable square feet (12,332 sq ft Suite 2200 + 12,398 sq ft Suite 2300 + 9,614 sq ft Suite 1825 + 1,083 sq ft Suite 1815)",
+          "extracted": "35,427 rentable square feet",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        }
+      ],
+      "fields_total": 15,
+      "fields_correct": 6,
+      "accuracy": 0.4,
+      "ai_meta": {
+        "model": "claude-sonnet-5",
+        "prompt_version": "v2",
+        "latency_ms": 21993,
+        "input_tokens": 74611,
+        "output_tokens": 2618,
+        "found_count": 16
+      },
+      "extracted": {
+        "tenant": "MD Beauty, Inc.",
+        "landlord": "ECI Stevenson LLC",
+        "rent_amount": "$90,781.69",
+        "lease_start_date": "June 1, 2005",
+        "lease_end_date": "The last day of the calendar month in which the tenth (10th) anniversary of the Suites 1825/1815 Commencement Date (July 1, 2005) falls",
+        "property_address": "71 Stevenson Street, San Francisco, California 94105 (Suites 2200, 2300, 1825, and 1815)",
+        "security_deposit": "$275,000.00 (standby letter of credit)",
+        "cam_charges": "Tenant's Share (approximately 10.96%) of Direct Expenses (Operating Expenses and Tax Expenses) in excess of Base Year (calendar year 2005) amounts",
+        "rent_escalation": "Year 1-3: $90,781.69/mo ($30.75/sf); Year 4-7: $96,686.19/mo ($32.75/sf); Year 8-end of Term: $102,590.69/mo ($34.75/sf)",
+        "renewal_options": "1 option of 5 years; written notice at least 12 months but not more than 15 months prior to expiration of initial Term; renewal rent at Fair Market Base Rental, not less than Base Rent in effect immediately prior to Extension Period",
+        "permitted_use": "General office use only, consistent with a first-class office building",
+        "exclusivity_clause": "Not found",
+        "insurance_requirements": "Commercial General Liability: $3,000,000 per occurrence / $3,000,000 annual aggregate (Bodily Injury and Property Damage Liability, and Personal Injury Liability each); plus Physical Damage (all-risk, full replacement cost) and Worker's Compensation/Employer's Liability",
+        "default_cure_period": "30 days after written notice (non-monetary default; extendable to 60 days if diligently pursued); monetary default cure period is 5 business days after notice",
+        "square_footage": "35,427 rentable square feet",
+        "concessions": "180 days free Base Rent for Suite 2200/2300 following 22nd/23rd Floor Commencement Date; 180 days free Base Rent for Suites 1825/1815 following Suites 1825/1815 Commencement Date; Tenant Improvement Allowance of $40 per rentable square foot"
+      }
+    },
+    {
+      "doc_meta": {
+        "id": "15_formfactor_industrial_2002",
+        "format": "pdf",
+        "scanned": null
+      },
+      "field_scores": [
+        {
+          "field": "tenant",
+          "expected": "Form Factor, Inc., a Delaware corporation",
+          "extracted": "Form Factor, Inc.",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "landlord",
+          "expected": "Richard K. and Pamela Corbett, Robert and Cheryl Rumberger, and Connie Duke (individuals)",
+          "extracted": "Richard K. and Pamela Corbett, Robert and Cheryl Rumberger, Connie Duke",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "rent_amount",
+          "expected": "$8,551.00 per month",
+          "extracted": "$8,551.00",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "lease_start_date",
+          "expected": "April 1, 1998",
+          "extracted": "April 1, 1998",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "lease_end_date",
+          "expected": "March 31, 2003",
+          "extracted": "March 31, 2003",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "property_address",
+          "expected": "2020 Research Drive, Livermore, California (County of Alameda; APN 99A-1500-6-23)",
+          "extracted": "2020 Research Drive, Livermore, CA (Alameda County)",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "security_deposit",
+          "expected": "$8,551.00",
+          "extracted": "$8,551.00",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "cam_charges",
+          "expected": null,
+          "extracted": null,
+          "confidence": null,
+          "correct": true,
+          "kind": "correct_absent",
+          "asserted_wrong": false
+        },
+        {
+          "field": "rent_escalation",
+          "expected": "Scheduled Base Rent step-ups: $8,551.00/month, increasing to $9,149.57 on April 1, 2000 and to $9,790.04 on April 1, 2002",
+          "extracted": "Year 1-2 (4/1/1998): $8,551.00/mo; from 4/1/2000: $9,149.57/mo; from 4/1/2002: $9,790.04/mo",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "renewal_options",
+          "expected": "Two options to extend, 3 years each; written notice at least 6 months before the current term expires; rent at then-current market rent, but not less than the rent being paid at the end of the current term",
+          "extracted": "2 options of 3 years each; notice at least 6 months prior to expiration of current term; rent at then current market rent but not less than rent being paid at end of then current term",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "permitted_use",
+          "expected": "Office space, laboratory space and other permitted uses",
+          "extracted": "Office space, laboratory space and other permitted uses",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "exclusivity_clause",
+          "expected": null,
+          "extracted": null,
+          "confidence": null,
+          "correct": true,
+          "kind": "correct_absent",
+          "asserted_wrong": false
+        },
+        {
+          "field": "insurance_requirements",
+          "expected": "Lessee Commercial General Liability policy with single-limit coverage of not less than $1,000,000 per occurrence. Lessor is the Insuring Party for property insurance.",
+          "extracted": "Commercial General Liability policy, occurrence basis, single limit coverage not less than $1,000,000 per occurrence, with Lessor as additional insured",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "default_cure_period",
+          "expected": "Monetary default (Base Rent / other monetary payment / evidence of insurance): 3 days following written notice. Failure to provide required documentation: 10 days following written notice. Other non-monetary default: 30 days after written notice (extended if the cure reasonably requires more than 30 days and Lessee commences and diligently prosecutes it).",
+          "extracted": "30 days after written notice (general default); monetary/life-safety defaults have a 3-day cure period",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "square_footage",
+          "expected": "10,060 square feet (two-story office building on 0.864 acres)",
+          "extracted": "10,060 sq ft",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        }
+      ],
+      "fields_total": 15,
+      "fields_correct": 9,
+      "accuracy": 0.6,
+      "ai_meta": {
+        "model": "claude-sonnet-5",
+        "prompt_version": "v2",
+        "latency_ms": 16092,
+        "input_tokens": 52928,
+        "output_tokens": 2005,
+        "found_count": 14
+      },
+      "extracted": {
+        "tenant": "Form Factor, Inc.",
+        "landlord": "Richard K. and Pamela Corbett, Robert and Cheryl Rumberger, Connie Duke",
+        "rent_amount": "$8,551.00",
+        "lease_start_date": "April 1, 1998",
+        "lease_end_date": "March 31, 2003",
+        "property_address": "2020 Research Drive, Livermore, CA (Alameda County)",
+        "security_deposit": "$8,551.00",
+        "cam_charges": null,
+        "rent_escalation": "Year 1-2 (4/1/1998): $8,551.00/mo; from 4/1/2000: $9,149.57/mo; from 4/1/2002: $9,790.04/mo",
+        "renewal_options": "2 options of 3 years each; notice at least 6 months prior to expiration of current term; rent at then current market rent but not less than rent being paid at end of then current term",
+        "permitted_use": "Office space, laboratory space and other permitted uses",
+        "exclusivity_clause": null,
+        "insurance_requirements": "Commercial General Liability policy, occurrence basis, single limit coverage not less than $1,000,000 per occurrence, with Lessor as additional insured",
+        "default_cure_period": "30 days after written notice (general default); monetary/life-safety defaults have a 3-day cure period",
+        "square_footage": "10,060 sq ft",
+        "concessions": "Not found"
+      }
+    },
+    {
+      "doc_meta": {
+        "id": "16_dialysis_medical_2001",
+        "format": "pdf",
+        "scanned": null
+      },
+      "field_scores": [
+        {
+          "field": "tenant",
+          "expected": "Dialysis Corporation of America",
+          "extracted": "Dialysis Corporation of America",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "landlord",
+          "expected": "Commons Office Research, LLC",
+          "extracted": "Commons Office Research, LLC",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "rent_amount",
+          "expected": "$3,883.33 per month (Rental Year 1; annual Base Rent $46,599.96)",
+          "extracted": "$3,883.33",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "lease_start_date",
+          "expected": "derived: not a fixed calendar date -- the Commencement Date is the earlier of (a) the date Tenant takes possession or (b) 15 days after substantial completion and related conditions. Target Date June 15, 2001; Lease dated June 11, 2001.",
+          "extracted": "July 2, 2001",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "lease_end_date",
+          "expected": "derived: 5 years (plus partial first month) after the Commencement Date; no fixed calendar date stated",
+          "extracted": "July 31, 2006",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "property_address",
+          "expected": "1344 Ashton Road, Suite 201, Hanover, Maryland (Fifth Election District, Anne Arundel County)",
+          "extracted": "1344 Ashton Road, Suite 201, Hanover, Maryland 21076",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "security_deposit",
+          "expected": "$3,833.33 (Advance Rental also $3,833.33)",
+          "extracted": "$3,833.33",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "cam_charges",
+          "expected": "Tenant's Proportionate Share (approximately 2,330/16,865 = 13.8%) of Building Expenses over a 2000 Base Year and of Taxes over a 2000-2001 Base Year. No fixed dollar amount.",
+          "extracted": "Tenant pays its proportionate share (13.82%) of increases in Building Expenses over Base Year Building Expenses (2000 calendar year), billed as additional rent",
+          "confidence": "medium",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "rent_escalation",
+          "expected": "Stepped annual Base Rent (approximately 2%/year): $46,599.96 / $47,532.00 / $48,482.64 / $49,452.24 / $50,441.28 per year for Rental Years 1-5 (monthly $3,883.33 / $3,961.00 / $4,040.22 / $4,121.02 / $4,203.44)",
+          "extracted": "Year 1: $3,883.33/mo ($46,599.96/yr); Year 2: $3,961.00/mo ($47,532.00/yr); Year 3: $4,040.22/mo ($48,482.64/yr); Year 4: $4,121.02/mo ($49,452.24/yr); Year 5: $4,203.44/mo ($50,441.28/yr)",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "renewal_options",
+          "expected": "One 5-year Renewal Term (Option to Extend), at the Prevailing Market Rate; provided Tenant is not in default",
+          "extracted": "1 option of 5 years; notice not less than 180 days prior to expiration of Initial Term; renewal rent at Prevailing Market Rate (then-prevailing market rate for comparable space within 10 miles, including annual adjustments)",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "permitted_use",
+          "expected": "Solely for general office purposes in accordance with applicable zoning regulations and for no other purpose (with a continuous-occupancy covenant)",
+          "extracted": "General office purposes in accordance with applicable zoning regulations, continuous occupancy required, no other purpose",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "exclusivity_clause",
+          "expected": null,
+          "extracted": "Not found",
+          "confidence": "low",
+          "correct": false,
+          "kind": "spurious",
+          "asserted_wrong": true
+        },
+        {
+          "field": "insurance_requirements",
+          "expected": "Tenant public liability insurance of not less than $2,000,000 combined single limit (per person and per occurrence) for personal injury, death and property damage; all-risk property/casualty at replacement cost. Contractors: $200,000 combined single limit. Landlord named as additional insured.",
+          "extracted": "$2,000,000 combined single limit public liability insurance per person/occurrence; all-risk property/casualty insurance at replacement cost covering Tenant's personal property and improvements; workers' compensation as required by law; plate/interior glass coverage",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "default_cure_period",
+          "expected": "Monetary default: 10 days after receipt of written notice that the amount is past due. Non-monetary default: 30 days after notice (extended if the default cannot be cured in 30 days and Tenant is diligently pursuing cure).",
+          "extracted": "30 days after notice for non-monetary default (with extension if diligently pursued); 10 days after written notice for monetary default",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "square_footage",
+          "expected": "2,330 rentable square feet (Building: 16,865 rentable sq ft)",
+          "extracted": "2,330 sq ft",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        }
+      ],
+      "fields_total": 15,
+      "fields_correct": 6,
+      "accuracy": 0.4,
+      "ai_meta": {
+        "model": "claude-sonnet-5",
+        "prompt_version": "v2",
+        "latency_ms": 16563,
+        "input_tokens": 47411,
+        "output_tokens": 2067,
+        "found_count": 16
+      },
+      "extracted": {
+        "tenant": "Dialysis Corporation of America",
+        "landlord": "Commons Office Research, LLC",
+        "rent_amount": "$3,883.33",
+        "lease_start_date": "July 2, 2001",
+        "lease_end_date": "July 31, 2006",
+        "property_address": "1344 Ashton Road, Suite 201, Hanover, Maryland 21076",
+        "security_deposit": "$3,833.33",
+        "cam_charges": "Tenant pays its proportionate share (13.82%) of increases in Building Expenses over Base Year Building Expenses (2000 calendar year), billed as additional rent",
+        "rent_escalation": "Year 1: $3,883.33/mo ($46,599.96/yr); Year 2: $3,961.00/mo ($47,532.00/yr); Year 3: $4,040.22/mo ($48,482.64/yr); Year 4: $4,121.02/mo ($49,452.24/yr); Year 5: $4,203.44/mo ($50,441.28/yr)",
+        "renewal_options": "1 option of 5 years; notice not less than 180 days prior to expiration of Initial Term; renewal rent at Prevailing Market Rate (then-prevailing market rate for comparable space within 10 miles, including annual adjustments)",
+        "permitted_use": "General office purposes in accordance with applicable zoning regulations, continuous occupancy required, no other purpose",
+        "exclusivity_clause": "Not found",
+        "insurance_requirements": "$2,000,000 combined single limit public liability insurance per person/occurrence; all-risk property/casualty insurance at replacement cost covering Tenant's personal property and improvements; workers' compensation as required by law; plate/interior glass coverage",
+        "default_cure_period": "30 days after notice for non-monetary default (with extension if diligently pursued); 10 days after written notice for monetary default",
+        "square_footage": "2,330 sq ft",
+        "concessions": "Not found"
+      }
+    },
+    {
+      "doc_meta": {
+        "id": "17_familysteak_retail_2002",
+        "format": "pdf",
+        "scanned": null
+      },
+      "field_scores": [
+        {
+          "field": "tenant",
+          "expected": "Family Steak Houses of Florida, Inc., a Florida corporation, d/b/a Ryan's Grill, Buffet & Bakery",
+          "extracted": "Family Steak Houses of Florida, Inc., a Florida Corporation, d/b/a Ryan's Grill, Buffet & Bakery",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "landlord",
+          "expected": "E.D.I. II Investments, Inc., a Florida corporation",
+          "extracted": "E.D.I. II Investments, Inc., a Florida Corporation",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "rent_amount",
+          "expected": "$18,943.75 per month (Lease Years 1-5; annual Base Rent $227,325.00). Plus percentage rent of 5.0% of gross receipts above a $3,500,000 Gross Receipts Floor.",
+          "extracted": "$18,943.75",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "lease_start_date",
+          "expected": "derived: not a fixed calendar date -- the Commencement Date is 150 days after Landlord delivers the building pad, or the opening for business, whichever occurs first. Lease dated 2002 (day/month left blank in the document).",
+          "extracted": null,
+          "confidence": null,
+          "correct": false,
+          "kind": "missed",
+          "asserted_wrong": false
+        },
+        {
+          "field": "lease_end_date",
+          "expected": "derived: 11:59 p.m. on the last day of the 15th Lease Year (15-year term); no fixed calendar date",
+          "extracted": null,
+          "confidence": null,
+          "correct": false,
+          "kind": "missed",
+          "asserted_wrong": false
+        },
+        {
+          "field": "property_address",
+          "expected": "5370 International Drive, Orlando, FL 32819",
+          "extracted": "5370 International Drive, Orlando, FL 32819",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "security_deposit",
+          "expected": null,
+          "extracted": "None",
+          "confidence": "high",
+          "correct": false,
+          "kind": "spurious",
+          "asserted_wrong": true
+        },
+        {
+          "field": "cam_charges",
+          "expected": "Estimated Monthly Operating Expenses of $4,059.37/month for the first Lease Year, based on $4.50 per square foot of Net Rentable Area per annum; subject to adjustment (Section 19.2). Tenant's proportionate share.",
+          "extracted": "$4,059.37 per month (based on estimated initial year Operating Expenses of $4.50 per sq ft of Net Rentable Area per annum)",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "rent_escalation",
+          "expected": "'Inflation Rent': Base Rent increases 10% every 5 Lease Years -- $227,325.00/year (Years 1-5), $250,057.50/year (Years 6-10), $275,063.25/year (Years 11-15)",
+          "extracted": "Base Rent increases 10% every 5 lease years: Years 1-5: $18,943.75/mo ($227,325.00/yr); Years 6-10: $20,838.12/mo ($250,057.50/yr); Years 11-15: $22,921.93/mo ($275,063.25/yr)",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "renewal_options",
+          "expected": "Two successive 10-year renewal option terms (Section 33)",
+          "extracted": "2 successive renewal options of 10 years each; written notice required not less than 180 days prior to expiration of the Lease Term (or preceding Renewal Term); renewal rent = Base Rent per Subsection 1.3 plus Percentage Rent per Subsection 5.7 (same formula continues)",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "permitted_use",
+          "expected": "Initially only as a Ryan's Grill, Buffet and Bakery serving breakfast, lunch and dinner (and as a Tourist Information Attraction Ticket outlet and any use permitted under the Timeshare Lease); may later convert to a sit-down family restaurant or dinner house (not fast food) if not competing with another tenant on the Property",
+          "extracted": "Initial use as a Ryan's Grill, Buffet and Bakery, serving breakfast, lunch and dinner; may later change to a sit-down family restaurant or dinner house (not fast food) under certain conditions; no other use permitted",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "exclusivity_clause",
+          "expected": "Section 4.4 'Tenant's Exclusive': while Tenant is not in default and is operating as a Ryan's Grill, Buffet and Bakery, Landlord will not lease to another operator, or operate itself, the uses listed on Exhibit G ('Prohibited Uses'); does not preclude other restaurants not on Exhibit G. Any Phase II free-standing restaurant is limited to 6,500 leasable sq ft unless Landlord adds parking.",
+          "extracted": "While Tenant operates as a Ryan's Grill, Buffet and Bakery and is not in default, Landlord will not lease to or operate itself the uses listed as \"Prohibited Uses\" on Exhibit G; does not preclude leasing to other restaurants not on Exhibit G or permitting other tenants to sell similar products; Phase II free-standing restaurant building capped at 6,500 sq ft unless additional parking provided",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "insurance_requirements",
+          "expected": "'Minimum Coverage': bodily injury and property damage of not less than $2,000,000 per person and $2,000,000 per occurrence, with umbrella coverage of $10,000,000 per occurrence, and $1,000,000 for property damage",
+          "extracted": "Minimum Coverage: $2,000,000 per person / $2,000,000 per occurrence bodily injury and property damage liability, with $10,000,000 umbrella coverage per occurrence, and $1,000,000 for property damage; plus full replacement cost fire and extended coverage on Tenant's personal property",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "default_cure_period",
+          "expected": "Monetary default (rent/money): 3 days after written notice. Non-monetary default: 10 days after written notice (extendable to 30 days if not a health/safety threat, more than 10 days is reasonably required, and Tenant commences within 10 days and diligently cures). No notice/cure right after 2 or more compliance failures in any 12-month period.",
+          "extracted": "10 days after written notice (general default); monetary default (failure to pay rent) has a 3-day cure period after written notice",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "square_footage",
+          "expected": "approximately 10,825 square feet of Net Rentable Area (free-standing building on a building pad)",
+          "extracted": "10,825 sq ft",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        }
+      ],
+      "fields_total": 15,
+      "fields_correct": 7,
+      "accuracy": 0.4666666666666667,
+      "ai_meta": {
+        "model": "claude-sonnet-5",
+        "prompt_version": "v2",
+        "latency_ms": 23368,
+        "input_tokens": 54435,
+        "output_tokens": 2776,
+        "found_count": 14
+      },
+      "extracted": {
+        "tenant": "Family Steak Houses of Florida, Inc., a Florida Corporation, d/b/a Ryan's Grill, Buffet & Bakery",
+        "landlord": "E.D.I. II Investments, Inc., a Florida Corporation",
+        "rent_amount": "$18,943.75",
+        "lease_start_date": null,
+        "lease_end_date": null,
+        "property_address": "5370 International Drive, Orlando, FL 32819",
+        "security_deposit": "None",
+        "cam_charges": "$4,059.37 per month (based on estimated initial year Operating Expenses of $4.50 per sq ft of Net Rentable Area per annum)",
+        "rent_escalation": "Base Rent increases 10% every 5 lease years: Years 1-5: $18,943.75/mo ($227,325.00/yr); Years 6-10: $20,838.12/mo ($250,057.50/yr); Years 11-15: $22,921.93/mo ($275,063.25/yr)",
+        "renewal_options": "2 successive renewal options of 10 years each; written notice required not less than 180 days prior to expiration of the Lease Term (or preceding Renewal Term); renewal rent = Base Rent per Subsection 1.3 plus Percentage Rent per Subsection 5.7 (same formula continues)",
+        "permitted_use": "Initial use as a Ryan's Grill, Buffet and Bakery, serving breakfast, lunch and dinner; may later change to a sit-down family restaurant or dinner house (not fast food) under certain conditions; no other use permitted",
+        "exclusivity_clause": "While Tenant operates as a Ryan's Grill, Buffet and Bakery and is not in default, Landlord will not lease to or operate itself the uses listed as \"Prohibited Uses\" on Exhibit G; does not preclude leasing to other restaurants not on Exhibit G or permitting other tenants to sell similar products; Phase II free-standing restaurant building capped at 6,500 sq ft unless additional parking provided",
+        "insurance_requirements": "Minimum Coverage: $2,000,000 per person / $2,000,000 per occurrence bodily injury and property damage liability, with $10,000,000 umbrella coverage per occurrence, and $1,000,000 for property damage; plus full replacement cost fire and extended coverage on Tenant's personal property",
+        "default_cure_period": "10 days after written notice (general default); monetary default (failure to pay rent) has a 3-day cure period after written notice",
+        "square_footage": "10,825 sq ft",
+        "concessions": "Not found"
+      }
+    },
+    {
+      "doc_meta": {
+        "id": "18_cuyamacabank_retail_2002",
+        "format": "pdf",
+        "scanned": null
+      },
+      "field_scores": [
+        {
+          "field": "tenant",
+          "expected": "Cuyamaca Bank, NA",
+          "extracted": "Cuyamaca Bank, NA",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "landlord",
+          "expected": "The Auerbach Realty Group, LLC",
+          "extracted": "The Auerbach Realty Group, LLC",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "rent_amount",
+          "expected": "$6,630.00 per month (Fixed Minimum Monthly Rent; Fixed Annual Rental Rate $79,560.00)",
+          "extracted": "$6,630.00",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "lease_start_date",
+          "expected": "October 1, 2003",
+          "extracted": "October 1, 2003",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "lease_end_date",
+          "expected": "September 30, 2008",
+          "extracted": "September 30, 2008",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "property_address",
+          "expected": "8002 La Mesa Boulevard, La Mesa, San Diego County, CA 91941",
+          "extracted": "8002 La Mesa Boulevard, La Mesa, San Diego, CA 91941",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "security_deposit",
+          "expected": null,
+          "extracted": "None",
+          "confidence": "high",
+          "correct": false,
+          "kind": "spurious",
+          "asserted_wrong": true
+        },
+        {
+          "field": "cam_charges",
+          "expected": "Tenant pays its proportionate (pro rata) share of real property taxes, insurance, and the cost to maintain the common areas. No fixed dollar amount.",
+          "extracted": "Pro-rata share of CAM, insurance, and taxes, calculated as square footage of Demised Premises divided by gross leasable area of Shopping Center",
+          "confidence": "medium",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "rent_escalation",
+          "expected": "Fixed Minimum Monthly Rent increases 3% each year",
+          "extracted": "3% annual increase each year during the Term (rent adjustment date)",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "renewal_options",
+          "expected": "Two options to extend, 5 years each; written notice at least 90 days and not more than 270 days before the option period commences; Tenant not in default. First year of each option at prevailing market rate (appraiser mechanism), then 3%/year increases thereafter.",
+          "extracted": "2 options of 5 years each; notice 90-270 days prior to option commencement; renewal rent at prevailing market rate in first year (determined by appraisal if parties disagree), then increasing 3% annually thereafter",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "permitted_use",
+          "expected": "Only as a full service bank branch and for no other purpose whatsoever",
+          "extracted": "Full service bank branch only",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "exclusivity_clause",
+          "expected": null,
+          "extracted": "Not found",
+          "confidence": "low",
+          "correct": false,
+          "kind": "spurious",
+          "asserted_wrong": true
+        },
+        {
+          "field": "insurance_requirements",
+          "expected": "Broad form comprehensive general liability insurance with limits of not less than $1,000,000 combined single limit for bodily injury and property damage (property-damage coverage to include plate glass)",
+          "extracted": "$1,000,000 combined single limit CGL (bodily injury and property damage, including plate glass, vandalism, malicious mischief) naming Landlord as additional insured; plus Fixture Insurance covering 100% of full insurable value of Tenant's improvements, fixtures, equipment and merchandise",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "default_cure_period",
+          "expected": "Monetary default (rent): continues more than 3 days after written notice. Non-monetary default: continues more than 15 days after written notice. (Separate 5-day late-charge trigger with no notice required.)",
+          "extracted": "15 days after written notice (non-monetary default); monetary default cure period is 3 days after written notice",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "square_footage",
+          "expected": "approximately 4,737 square feet",
+          "extracted": "Approximately 4,737 square feet",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        }
+      ],
+      "fields_total": 15,
+      "fields_correct": 7,
+      "accuracy": 0.4666666666666667,
+      "ai_meta": {
+        "model": "claude-sonnet-5",
+        "prompt_version": "v2",
+        "latency_ms": 20905,
+        "input_tokens": 48192,
+        "output_tokens": 2437,
+        "found_count": 16
+      },
+      "extracted": {
+        "tenant": "Cuyamaca Bank, NA",
+        "landlord": "The Auerbach Realty Group, LLC",
+        "rent_amount": "$6,630.00",
+        "lease_start_date": "October 1, 2003",
+        "lease_end_date": "September 30, 2008",
+        "property_address": "8002 La Mesa Boulevard, La Mesa, San Diego, CA 91941",
+        "security_deposit": "None",
+        "cam_charges": "Pro-rata share of CAM, insurance, and taxes, calculated as square footage of Demised Premises divided by gross leasable area of Shopping Center",
+        "rent_escalation": "3% annual increase each year during the Term (rent adjustment date)",
+        "renewal_options": "2 options of 5 years each; notice 90-270 days prior to option commencement; renewal rent at prevailing market rate in first year (determined by appraisal if parties disagree), then increasing 3% annually thereafter",
+        "permitted_use": "Full service bank branch only",
+        "exclusivity_clause": "Not found",
+        "insurance_requirements": "$1,000,000 combined single limit CGL (bodily injury and property damage, including plate glass, vandalism, malicious mischief) naming Landlord as additional insured; plus Fixture Insurance covering 100% of full insurable value of Tenant's improvements, fixtures, equipment and merchandise",
+        "default_cure_period": "15 days after written notice (non-monetary default); monetary default cure period is 3 days after written notice",
+        "square_footage": "Approximately 4,737 square feet",
+        "concessions": "Not found"
+      }
+    },
+    {
+      "doc_meta": {
+        "id": "19_saflink_office_2003",
+        "format": "pdf",
+        "scanned": null
+      },
+      "field_scores": [
+        {
+          "field": "tenant",
+          "expected": "Saflink Corporation, a Delaware corporation",
+          "extracted": "Saflink Corporation",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "landlord",
+          "expected": "VA Branches, LLC, a Delaware limited liability company",
+          "extracted": "VA Branches, LLC",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "rent_amount",
+          "expected": "$11,025.44 per month (Base Monthly Rent; Base Annual Rent $132,305.25)",
+          "extracted": "$11,025.44",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "lease_start_date",
+          "expected": "derived: Commencement Date 'on or about February 1, 2004', upon substantial completion of tenant improvements and receipt of the Certificate of Occupancy. Deed of Lease dated November 10, 2003.",
+          "extracted": "February 1, 2004",
+          "confidence": "medium",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "lease_end_date",
+          "expected": "January 31, 2009 (stated; five years after the Rent Commencement Date)",
+          "extracted": "January 31, 2009",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "property_address",
+          "expected": "1875 Campus Commons Drive, Suite 301, Reston, Virginia 20191 (Building: 'Campus South')",
+          "extracted": "1875 Campus Commons Drive, Suite 301, Reston, VA 20191",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "security_deposit",
+          "expected": "$11,025.44",
+          "extracted": "$11,025.44",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "cam_charges",
+          "expected": "Tenant's Proportionate Share (10.8%) of increases in Operating Expenses over the Base Operating Expense Amount (Operating Expenses for calendar year 2004). No fixed dollar amount.",
+          "extracted": "Tenant's Proportionate Share (10.8%) of increases in operating expenses over the Base Operating Expense Amount (Operating Expenses incurred for Calendar year 2004)",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "rent_escalation",
+          "expected": "Annual adjustments to Base Annual Rent of 3%",
+          "extracted": "3% annually on each anniversary (first day of each lease year, including extension terms)",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "renewal_options",
+          "expected": "One 3-year extension term; provided the Lease is in effect, Tenant is not and has not been in default, and Tenant occupies at least 95% of the Demised Premises. Initial Term Renewal Request at least 9 months before expiration; rent at 100% of prevailing market rent (mutual agreement or MAI Appraisal Process), not less than the rent paid in the last Lease Year of the initial term.",
+          "extracted": "1 option of 3 years; written request (Initial Term Renewal Request) not less than 9 months prior to expiration of initial term; renewal rent at 100% of then-prevailing market rent determined by mutual agreement or MAI Appraisal Process, but not less than rent paid during last Lease Year of initial term",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "permitted_use",
+          "expected": "General office use and light assembly of software packages",
+          "extracted": "General Office Use and light assembly of software packages",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        },
+        {
+          "field": "exclusivity_clause",
+          "expected": null,
+          "extracted": "Not found",
+          "confidence": "low",
+          "correct": false,
+          "kind": "spurious",
+          "asserted_wrong": true
+        },
+        {
+          "field": "insurance_requirements",
+          "expected": "Tenant broad form commercial general liability policy of not less than $1,000,000 per occurrence and $2,000,000 in the aggregate; insures Tenant's performance of the Section 18(c) indemnity",
+          "extracted": "Commercial general liability insurance with limits not less than $1,000,000 per occurrence and $2,000,000 in the aggregate; also all-risk property insurance on tenant improvements/alterations/personal property, builder's risk insurance during construction, and workers' compensation insurance as required by law",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "default_cure_period",
+          "expected": "Monetary default (Base Annual Rent / Additional Rent): 5 days after written notice that the amount is overdue (or, if Tenant received 2 or more such notices in the preceding 12 months, 5 days after the due date with no further notice). Non-monetary default: 10 days after written notice.",
+          "extracted": "10 days after written notice (general default); monetary default: 5 days after written notice",
+          "confidence": "high",
+          "correct": false,
+          "kind": "wrong",
+          "asserted_wrong": true
+        },
+        {
+          "field": "square_footage",
+          "expected": "6,083 rentable square feet (Building: 56,359 rentable sq ft)",
+          "extracted": "6,083 sq ft",
+          "confidence": "high",
+          "correct": true,
+          "kind": "correct_found",
+          "asserted_wrong": false
+        }
+      ],
+      "fields_total": 15,
+      "fields_correct": 7,
+      "accuracy": 0.4666666666666667,
+      "ai_meta": {
+        "model": "claude-sonnet-5",
+        "prompt_version": "v2",
+        "latency_ms": 21172,
+        "input_tokens": 61434,
+        "output_tokens": 2219,
+        "found_count": 16
+      },
+      "extracted": {
+        "tenant": "Saflink Corporation",
+        "landlord": "VA Branches, LLC",
+        "rent_amount": "$11,025.44",
+        "lease_start_date": "February 1, 2004",
+        "lease_end_date": "January 31, 2009",
+        "property_address": "1875 Campus Commons Drive, Suite 301, Reston, VA 20191",
+        "security_deposit": "$11,025.44",
+        "cam_charges": "Tenant's Proportionate Share (10.8%) of increases in operating expenses over the Base Operating Expense Amount (Operating Expenses incurred for Calendar year 2004)",
+        "rent_escalation": "3% annually on each anniversary (first day of each lease year, including extension terms)",
+        "renewal_options": "1 option of 3 years; written request (Initial Term Renewal Request) not less than 9 months prior to expiration of initial term; renewal rent at 100% of then-prevailing market rent determined by mutual agreement or MAI Appraisal Process, but not less than rent paid during last Lease Year of initial term",
+        "permitted_use": "General Office Use and light assembly of software packages",
+        "exclusivity_clause": "Not found",
+        "insurance_requirements": "Commercial general liability insurance with limits not less than $1,000,000 per occurrence and $2,000,000 in the aggregate; also all-risk property insurance on tenant improvements/alterations/personal property, builder's risk insurance during construction, and workers' compensation insurance as required by law",
+        "default_cure_period": "10 days after written notice (general default); monetary default: 5 days after written notice",
+        "square_footage": "6,083 sq ft",
+        "concessions": "Base Monthly Rent abated for the first 3 months after Rent Commencement Date (provided Tenant not in default)"
+      }
+    }
+  ],
+  "tokens": {
+    "in": 604297,
+    "out": 29380,
+    "calls": 12
+  }
+}
