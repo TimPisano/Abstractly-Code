@@ -1,0 +1,124 @@
+{
+  "id": "hap_il_amanda_brooke_request",
+  "form": "Consultant's cover letter to HUD requesting HAP assignment and an Option 1-A 20-year renewal with rent increase",
+  "program": "PBRA",
+  "doc_type": "hap_renewal_request",
+  "real": true,
+  "doc_file": "docs/hap_il_amanda_brooke_request.pdf",
+  "source_url": "https://www.ihda.org/wp-content/uploads/2025/04/AMANDA-BROOKE-HAP-Assignment-_-Rent-Increase-Cover-Letter-04.14.2025.pdf",
+  "source_pages": [
+    1,
+    8
+  ],
+  "notes": "A letter, not a contract: tests whether contract facts are read from prose. The letter is dated 'April 14, 2024' but the file name says 04.14.2025 and it cites 2025 FMRs, so the printed year looks like a typo; the key uses the printed date. HUD's database shows the renewal took effect 2026-04-01 for 240 months with FH Amanda Brooke LLC as owner. Contains business contact emails and a phone number (consultant, title company, HUD inbox); no tenant data.",
+  "lease_fields": {
+    "tenant": null,
+    "landlord": null,
+    "rent_amount": null,
+    "lease_start_date": null,
+    "lease_end_date": null,
+    "property_address": null,
+    "security_deposit": null,
+    "cam_charges": null,
+    "rent_escalation": null,
+    "renewal_options": null,
+    "permitted_use": null,
+    "exclusivity_clause": null,
+    "insurance_requirements": null,
+    "default_cure_period": null,
+    "square_footage": null
+  },
+  "lease_field_status": {},
+  "program_fields": {
+    "contract_number": {
+      "value": "IL06H121160",
+      "type": "text",
+      "status": "verified",
+      "basis": "p.1; HUD Multifamily Assistance & Section 8 Contracts DB, contracts table (current as of 2026-10-06): contract_number IL06H121160"
+    },
+    "rems_property_id": {
+      "value": "800005699",
+      "type": "text",
+      "status": "verified",
+      "basis": "p.1 'Property ID #800005699'; HUD Multifamily Assistance & Section 8 Contracts DB, contracts table (current as of 2026-10-06): property_id 800005699"
+    },
+    "project_name": {
+      "value": "Amanda Brooke",
+      "type": "text",
+      "status": "verified",
+      "basis": "p.1; HUD Multifamily Assistance & Section 8 Contracts DB, properties table (current as of 2026-10-06): 'AMANDA BROOKE APARTMENTS'"
+    },
+    "city": {
+      "value": "Normal",
+      "type": "text",
+      "status": "verified",
+      "basis": "p.1; HUD Multifamily Assistance & Section 8 Contracts DB, properties table (current as of 2026-10-06): city Normal, IL"
+    },
+    "total_units": {
+      "value": "120",
+      "type": "int",
+      "status": "verified",
+      "basis": "p.3 'The Project has 120 dwelling units'; HUD Multifamily Assistance & Section 8 Contracts DB, properties table (current as of 2026-10-06): property_total_unit_count 120"
+    },
+    "contract_units": {
+      "value": "120",
+      "type": "int",
+      "status": "verified",
+      "basis": "p.3 'benefits all 120 units'; HUD Multifamily Assistance & Section 8 Contracts DB, contracts table (current as of 2026-10-06): assisted_units_count 120"
+    },
+    "owner_name": {
+      "value": "FH Amanda Brooke LLC",
+      "type": "text",
+      "status": "verified",
+      "basis": "p.1 proposed owner; HUD Multifamily Assistance & Section 8 Contracts DB, properties table (current as of 2026-10-06): owner_organization_name 'FH Amanda Brooke LLC'"
+    },
+    "renewal_term_years": {
+      "value": "20",
+      "type": "int",
+      "status": "verified",
+      "basis": "p.1 '20-year contract renewal'; HUD Multifamily Assistance & Section 8 Contracts DB, contracts table (current as of 2026-10-06): contract_term_months_qty 240"
+    },
+    "letter_date": {
+      "value": "April 14, 2024",
+      "type": "date",
+      "status": "proposed",
+      "basis": "p.1 (probably 2025; see notes)"
+    },
+    "current_rent_1br": {
+      "value": "740",
+      "type": "money",
+      "status": "proposed",
+      "basis": "p.3 table"
+    },
+    "current_rent_2br": {
+      "value": "838",
+      "type": "money",
+      "status": "proposed",
+      "basis": "p.3 table"
+    },
+    "current_rent_3br": {
+      "value": "945",
+      "type": "money",
+      "status": "proposed",
+      "basis": "p.3 table"
+    },
+    "proposed_rent_1br": {
+      "value": "1035",
+      "type": "money",
+      "status": "proposed",
+      "basis": "p.3 table"
+    },
+    "proposed_rent_2br": {
+      "value": "1285",
+      "type": "money",
+      "status": "proposed",
+      "basis": "p.3 table"
+    },
+    "proposed_rent_3br": {
+      "value": "1530",
+      "type": "money",
+      "status": "proposed",
+      "basis": "p.3 table"
+    }
+  }
+}

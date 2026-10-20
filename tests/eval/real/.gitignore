@@ -1,0 +1,4 @@
+# Third-party documents are not committed: fetch.py downloads them by URL and
+# checks each one against the SHA-256 in manifest.json.
+sources/
+docs/

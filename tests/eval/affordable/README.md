@@ -35,6 +35,13 @@ The AI engine sends each document to the Anthropic API, so it's opt-in and costs
 ANTHROPIC_API_KEY=... $PY -I tests/eval/affordable/run_eval.py --engine ai --variants clean
 ```
 
+Real public documents (LURAs, HAP contracts, agency samples) live in `tests/eval/real/` and are scored separately. Their answers are split into "verified" (backed by HUD's public data) and "proposed" (awaiting review in `tests/eval/real/REVIEW.md`):
+
+```
+$PY -I tests/eval/real/fetch.py                                    # download + check hashes (not committed)
+$PY -I tests/eval/affordable/run_eval.py --set real --engine affordable+fallback   # -> tests/eval/real/results/
+```
+
 ## Rules for adding a document
 
 - Public, no-login government documents only. Never a real tenant file.

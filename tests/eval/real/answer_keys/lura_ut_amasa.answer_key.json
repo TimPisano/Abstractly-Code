@@ -1,0 +1,147 @@
+{
+  "id": "lura_ut_amasa",
+  "form": "Utah Housing Corporation Low-Income Housing Credit Commitment Agreement and Declaration of Restrictive Covenants (2026 draft for a council agenda)",
+  "program": "LIHTC",
+  "doc_type": "lura",
+  "real": true,
+  "doc_file": "docs/lura_ut_amasa.pdf",
+  "source_url": "https://www.moabcity.gov/AgendaCenter/ViewFile/Item/7882?fileID=10144",
+  "source_pages": [
+    1,
+    17
+  ],
+  "notes": "Draft attached to a City of Moab agenda item; effective date blank ('____ day of _________, 2026'). Three BINs; UT-93-18004 is in HUD's building table under Kane Creek Apts (1993 allocation, 36 units in HUD's data), so this looks like a resyndication plus two new buildings (UT-25-25001/2, too new for HUD's data). The 50-unit count is not in HUD's data.",
+  "lease_fields": {
+    "tenant": null,
+    "landlord": null,
+    "rent_amount": null,
+    "lease_start_date": null,
+    "lease_end_date": null,
+    "property_address": "109 Kane Creek Blvd., Moab, Utah 84532",
+    "security_deposit": null,
+    "cam_charges": null,
+    "rent_escalation": null,
+    "renewal_options": null,
+    "permitted_use": null,
+    "exclusivity_clause": null,
+    "insurance_requirements": null,
+    "default_cure_period": null,
+    "square_footage": null
+  },
+  "lease_field_status": {
+    "property_address": {
+      "status": "proposed",
+      "basis": "s.1 first building address (the project has three)"
+    }
+  },
+  "program_fields": {
+    "project_name": {
+      "value": "Amasa Apartments",
+      "type": "text",
+      "status": "proposed",
+      "basis": "p.1 recitals"
+    },
+    "owner_name": {
+      "value": "Amasa Apartments LLC",
+      "type": "text",
+      "status": "proposed",
+      "basis": "p.1"
+    },
+    "agency_name": {
+      "value": "Utah Housing Corporation",
+      "type": "text",
+      "status": "proposed",
+      "basis": "p.1"
+    },
+    "bin": {
+      "value": "UT-93-18004",
+      "type": "text",
+      "status": "verified",
+      "basis": "s.1 table; HUD LIHTC Database, building table (LIHTCPUB_BIN): bin UT-93-18004, MOAB (hud_id UTA19950917)"
+    },
+    "bin_2": {
+      "value": "UT-25-25001",
+      "type": "text",
+      "status": "proposed",
+      "basis": "s.1 table"
+    },
+    "bin_3": {
+      "value": "UT-25-25002",
+      "type": "text",
+      "status": "proposed",
+      "basis": "s.1 table"
+    },
+    "street_address": {
+      "value": "109 Kane Creek Blvd.",
+      "type": "text",
+      "status": "proposed",
+      "basis": "s.1 table, first building"
+    },
+    "city": {
+      "value": "Moab",
+      "type": "text",
+      "status": "proposed",
+      "basis": "s.1"
+    },
+    "county": {
+      "value": "Grand",
+      "type": "text",
+      "status": "proposed",
+      "basis": "Exhibit A 'situated in Grand County'"
+    },
+    "total_units": {
+      "value": "50",
+      "type": "int",
+      "status": "proposed",
+      "basis": "s.2 'all 50 of the units'"
+    },
+    "low_income_units": {
+      "value": "50",
+      "type": "int",
+      "status": "proposed",
+      "basis": "s.13 '50 units of the Project will be leased'"
+    },
+    "min_applicable_fraction": {
+      "value": "100%",
+      "type": "pct",
+      "status": "proposed",
+      "basis": "s.1"
+    },
+    "ami_limit_pct": {
+      "value": "60%",
+      "type": "pct",
+      "status": "proposed",
+      "basis": "s.2 '60% or less of the area median gross income'"
+    },
+    "extended_use_years": {
+      "value": "50",
+      "type": "int",
+      "status": "proposed",
+      "basis": "s.9 'total extended use period of 50 years'"
+    },
+    "units_2br": {
+      "value": "27",
+      "type": "int",
+      "status": "proposed",
+      "basis": "s.13 table: 1+20+1+5"
+    },
+    "units_3br": {
+      "value": "11",
+      "type": "int",
+      "status": "proposed",
+      "basis": "s.13 table: 1+7+3"
+    },
+    "units_4br": {
+      "value": "12",
+      "type": "int",
+      "status": "proposed",
+      "basis": "s.13 table: 8+3+1"
+    },
+    "units_at_30_pct_ami": {
+      "value": "5",
+      "type": "int",
+      "status": "proposed",
+      "basis": "s.13 table"
+    }
+  }
+}

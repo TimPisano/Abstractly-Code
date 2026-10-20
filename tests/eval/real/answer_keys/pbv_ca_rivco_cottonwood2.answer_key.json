@@ -1,0 +1,109 @@
+{
+  "id": "pbv_ca_rivco_cottonwood2",
+  "form": "HUD-52530A PBV HAP Contract for New Construction/Rehab, Part 1 (07/2019), with the PHA's Exhibits A-D",
+  "program": "PBV",
+  "doc_type": "hap_contract",
+  "real": true,
+  "doc_file": "docs/pbv_ca_rivco_cottonwood2.pdf",
+  "source_url": "https://media.rivcocob.org/proceeds/2023/p2023_03_28_files/10.04001.pdf",
+  "source_pages": [
+    5,
+    23
+  ],
+  "notes": "Form of contract approved by the board (stamped MAR 28 2023). HUD's LIHTC database lists Courtyards at Cottonwood II at '24580 COTTONWOOD AVE' with 32 units (16 2BR, 12 3BR, 4 4BR, placed in service 2024); Exhibit A's address reads '24550 & 24570 Cottonwood', so the address is left for review. The APN 482-16-1026 has an SSN shape.",
+  "lease_fields": {
+    "tenant": null,
+    "landlord": "Courtyards at Cottonwood II, L.P.",
+    "rent_amount": null,
+    "lease_start_date": null,
+    "lease_end_date": null,
+    "property_address": "24550 & 24570 Cottonwood Ave., Moreno Valley, CA 92553",
+    "security_deposit": null,
+    "cam_charges": null,
+    "rent_escalation": null,
+    "renewal_options": null,
+    "permitted_use": null,
+    "exclusivity_clause": null,
+    "insurance_requirements": null,
+    "default_cure_period": null,
+    "square_footage": null
+  },
+  "lease_field_status": {
+    "landlord": {
+      "status": "proposed",
+      "basis": "Part 1 s.1a"
+    },
+    "property_address": {
+      "status": "proposed",
+      "basis": "Exhibit A (HUD DB: 24580 Cottonwood Ave)"
+    }
+  },
+  "program_fields": {
+    "pha_name": {
+      "value": "Housing Authority of the County of Riverside",
+      "type": "text",
+      "status": "proposed",
+      "basis": "Part 1 s.1a"
+    },
+    "owner_name": {
+      "value": "Courtyards at Cottonwood II, L.P.",
+      "type": "text",
+      "status": "proposed",
+      "basis": "Part 1 s.1a"
+    },
+    "project_name": {
+      "value": "Courtyards at Cottonwood II",
+      "type": "text",
+      "status": "verified",
+      "basis": "Exhibit A; HUD LIHTC Database (LIHTCPUB, huduser.gov, file dated 2026-04-30): project 'COURTYARDS AT COTTONWOOD II' (hud_id CAA20240032)"
+    },
+    "city": {
+      "value": "Moreno Valley",
+      "type": "text",
+      "status": "verified",
+      "basis": "Exhibit A; HUD LIHTC Database (LIHTCPUB, huduser.gov, file dated 2026-04-30): proj_cty 'MORENO VALLEY'"
+    },
+    "total_units": {
+      "value": "32",
+      "type": "int",
+      "status": "verified",
+      "basis": "Exhibit A 'Total Number Units in the Project: 32'; HUD LIHTC Database (LIHTCPUB, huduser.gov, file dated 2026-04-30): n_units 32"
+    },
+    "units_2br": {
+      "value": "16",
+      "type": "int",
+      "status": "verified",
+      "basis": "Exhibit A total units; HUD LIHTC Database (LIHTCPUB, huduser.gov, file dated 2026-04-30): n_2br 16"
+    },
+    "units_3br": {
+      "value": "12",
+      "type": "int",
+      "status": "verified",
+      "basis": "Exhibit A total units; HUD LIHTC Database (LIHTCPUB, huduser.gov, file dated 2026-04-30): n_3br 12"
+    },
+    "units_4br": {
+      "value": "4",
+      "type": "int",
+      "status": "verified",
+      "basis": "Exhibit A total units; HUD LIHTC Database (LIHTCPUB, huduser.gov, file dated 2026-04-30): n_4br 4"
+    },
+    "contract_units": {
+      "value": "8",
+      "type": "int",
+      "status": "proposed",
+      "basis": "Exhibit A"
+    },
+    "contract_rent_2br": {
+      "value": "1592",
+      "type": "money",
+      "status": "proposed",
+      "basis": "Exhibit A"
+    },
+    "contract_rent_3br": {
+      "value": "2041",
+      "type": "money",
+      "status": "proposed",
+      "basis": "Exhibit A"
+    }
+  }
+}

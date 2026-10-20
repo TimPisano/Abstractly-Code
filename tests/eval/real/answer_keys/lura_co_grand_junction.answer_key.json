@@ -1,0 +1,93 @@
+{
+  "id": "lura_co_grand_junction",
+  "form": "Land Use Restriction Agreement (city land sale to a housing authority), recorded Mesa County, CO",
+  "program": "Affordable (city covenant, LIHTC-style terms)",
+  "doc_type": "lura",
+  "real": true,
+  "doc_file": "docs/lura_co_grand_junction.pdf",
+  "source_url": "https://trim22-web.gjcity.org/GJ_WebDrawer/Record/1162307/File/document",
+  "source_pages": [
+    1,
+    7
+  ],
+  "notes": "Recorded scan with the recorder's OCR text layer. Not an HFA tax-credit LURA: a city covenant that borrows Section 42 definitions. No unit count stated. Not found in HUD's LIHTC database (searched '674 23' and the housing authority's name).",
+  "lease_fields": {
+    "tenant": null,
+    "landlord": null,
+    "rent_amount": null,
+    "lease_start_date": null,
+    "lease_end_date": null,
+    "property_address": "674 23 3/4 Road, Grand Junction, Colorado 81505",
+    "security_deposit": null,
+    "cam_charges": null,
+    "rent_escalation": null,
+    "renewal_options": null,
+    "permitted_use": null,
+    "exclusivity_clause": null,
+    "insurance_requirements": null,
+    "default_cure_period": null,
+    "square_footage": null
+  },
+  "lease_field_status": {
+    "property_address": {
+      "status": "proposed",
+      "basis": "recital A (printed '23¾'; OCR may differ)"
+    }
+  },
+  "program_fields": {
+    "owner_name": {
+      "value": "Grand Junction Housing Authority",
+      "type": "text",
+      "status": "proposed",
+      "basis": "p.1 parties"
+    },
+    "agency_name": {
+      "value": "City of Grand Junction",
+      "type": "text",
+      "status": "proposed",
+      "basis": "p.1 parties"
+    },
+    "street_address": {
+      "value": "674 23 3/4 Road",
+      "type": "text",
+      "status": "proposed",
+      "basis": "recital A"
+    },
+    "city": {
+      "value": "Grand Junction",
+      "type": "text",
+      "status": "proposed",
+      "basis": "recital A"
+    },
+    "county": {
+      "value": "Mesa",
+      "type": "text",
+      "status": "proposed",
+      "basis": "recital A"
+    },
+    "term_years": {
+      "value": "40",
+      "type": "int",
+      "status": "proposed",
+      "basis": "Terms s.2"
+    },
+    "ami_limit_pct": {
+      "value": "80%",
+      "type": "pct",
+      "status": "proposed",
+      "basis": "Terms s.3(a)"
+    },
+    "recording_date": {
+      "value": "10/29/2025",
+      "type": "date",
+      "status": "proposed",
+      "basis": "p.1 recording stamp"
+    },
+    "reception_number": {
+      "value": "3141336",
+      "type": "text",
+      "status": "proposed",
+      "basis": "p.1 recording stamp"
+    }
+  }
+}

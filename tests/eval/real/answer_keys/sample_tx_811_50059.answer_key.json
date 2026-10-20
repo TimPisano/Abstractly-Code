@@ -1,0 +1,179 @@
+{
+  "id": "sample_tx_811_50059",
+  "form": "HUD-50059 Owner's Certification of Compliance (06/2014), pages 1-2, filled by TDHCA as a training sample",
+  "program": "Section 811 PRA",
+  "doc_type": "pbra_certification",
+  "real": true,
+  "doc_file": "docs/sample_tx_811_50059.pdf",
+  "source_url": "https://www.tdhca.texas.gov/sites/default/files/section-811-pra/docs/S811-SampleTenantFile.pdf",
+  "source_pages": [
+    4,
+    5
+  ],
+  "notes": "Agency sample with a fictitious household (the standard placeholder SSN elsewhere in the file, street '1234 Street'). The date of birth on the form is never extracted by design. Values are internally consistent: 841 = 491 + 350; gross rent 891 = 841 + 50; TTP 400 = tenant rent 350 + UA 50.",
+  "lease_fields": {
+    "tenant": "Charlie R Cole",
+    "landlord": null,
+    "rent_amount": "$841",
+    "lease_start_date": null,
+    "lease_end_date": null,
+    "property_address": null,
+    "security_deposit": "$400",
+    "cam_charges": null,
+    "rent_escalation": null,
+    "renewal_options": null,
+    "permitted_use": null,
+    "exclusivity_clause": null,
+    "insurance_requirements": null,
+    "default_cure_period": null,
+    "square_footage": null
+  },
+  "lease_field_status": {
+    "tenant": {
+      "status": "proposed",
+      "basis": "p.1 summary"
+    },
+    "rent_amount": {
+      "status": "proposed",
+      "basis": "p.2 item 29 Contract Rent"
+    },
+    "security_deposit": {
+      "status": "proposed",
+      "basis": "p.2 item 26"
+    }
+  },
+  "program_fields": {
+    "project_name": {
+      "value": "Lorena Springs",
+      "type": "text",
+      "status": "proposed",
+      "basis": "p.1-2"
+    },
+    "head_of_household": {
+      "value": "Charlie R Cole",
+      "type": "text",
+      "status": "proposed",
+      "basis": "p.1"
+    },
+    "certification_type": {
+      "value": "MI",
+      "type": "text",
+      "status": "proposed",
+      "basis": "p.2 item 16"
+    },
+    "effective_date": {
+      "value": "12/01/2021",
+      "type": "date",
+      "status": "proposed",
+      "basis": "p.2 item 12"
+    },
+    "next_recert_date": {
+      "value": "12/01/2022",
+      "type": "date",
+      "status": "proposed",
+      "basis": "p.2 item 14"
+    },
+    "move_in_date": {
+      "value": "12/01/2021",
+      "type": "date",
+      "status": "proposed",
+      "basis": "p.2 item 15"
+    },
+    "unit_number": {
+      "value": "2",
+      "type": "text",
+      "status": "proposed",
+      "basis": "p.2 item 21"
+    },
+    "bedrooms": {
+      "value": "1",
+      "type": "int",
+      "status": "proposed",
+      "basis": "p.2 item 22"
+    },
+    "project_number": {
+      "value": "TX59RDD0000",
+      "type": "text",
+      "status": "proposed",
+      "basis": "p.2 item 5"
+    },
+    "contract_number": {
+      "value": "TX59RDD0001",
+      "type": "text",
+      "status": "proposed",
+      "basis": "p.2 item 6"
+    },
+    "household_size": {
+      "value": "1",
+      "type": "int",
+      "status": "proposed",
+      "basis": "p.2 item 53"
+    },
+    "annual_income": {
+      "value": "16400",
+      "type": "money",
+      "status": "proposed",
+      "basis": "p.2 item 86"
+    },
+    "extremely_low_income_limit": {
+      "value": "16650",
+      "type": "money",
+      "status": "proposed",
+      "basis": "p.2 item 89"
+    },
+    "total_deductions": {
+      "value": "400",
+      "type": "money",
+      "status": "proposed",
+      "basis": "p.2 item 106"
+    },
+    "adjusted_income": {
+      "value": "16000",
+      "type": "money",
+      "status": "proposed",
+      "basis": "p.2 item 107"
+    },
+    "security_deposit": {
+      "value": "400",
+      "type": "money",
+      "status": "proposed",
+      "basis": "p.2 item 26"
+    },
+    "contract_rent": {
+      "value": "841",
+      "type": "money",
+      "status": "proposed",
+      "basis": "p.2 item 29"
+    },
+    "utility_allowance": {
+      "value": "50",
+      "type": "money",
+      "status": "proposed",
+      "basis": "p.2 item 30"
+    },
+    "gross_rent": {
+      "value": "891",
+      "type": "money",
+      "status": "proposed",
+      "basis": "p.2 item 31"
+    },
+    "total_tenant_payment": {
+      "value": "400",
+      "type": "money",
+      "status": "proposed",
+      "basis": "p.2 item 108"
+    },
+    "tenant_rent": {
+      "value": "350",
+      "type": "money",
+      "status": "proposed",
+      "basis": "p.2 item 110"
+    },
+    "assistance_payment": {
+      "value": "491",
+      "type": "money",
+      "status": "proposed",
+      "basis": "p.2 item 112"
+    }
+  }
+}

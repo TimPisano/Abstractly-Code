@@ -1,0 +1,131 @@
+{
+  "id": "hap_tx_coppertree_renewal_2013",
+  "form": "HUD Assignment, Assumption and Amendment of Section 8 HAP Contract (03/14) with attached Basic Renewal Contract, Multi-Year Term (REV 11-05-2007)",
+  "program": "PBRA",
+  "doc_type": "hap_renewal",
+  "real": true,
+  "doc_file": "docs/hap_tx_coppertree_renewal_2013.pdf",
+  "source_url": "https://www.nhlp.org/wp-content/uploads/HAP-Assignment-Package-2015.pdf",
+  "source_pages": [
+    1,
+    26
+  ],
+  "notes": "Unsigned 2015 assignment (seller 2005 West Gulf Complex, L.P. to buyer Coppertree Village Holdings LLC) with the executed 2013 renewal contract as Exhibit A. Exhibit A's 1-bedroom count reads 158 in the OCR layer; HUD's database has 156, and 156 + 102 + 5 = 263 matches page 1, so 156 is likely right but is left for review.",
+  "lease_fields": {
+    "tenant": null,
+    "landlord": "2005 West Gulf Complex, L.P.",
+    "rent_amount": null,
+    "lease_start_date": "April 1, 2013",
+    "lease_end_date": null,
+    "property_address": "1415 Gulf Bank Road, Houston, TX 77088",
+    "security_deposit": null,
+    "cam_charges": null,
+    "rent_escalation": null,
+    "renewal_options": null,
+    "permitted_use": null,
+    "exclusivity_clause": null,
+    "insurance_requirements": null,
+    "default_cure_period": null,
+    "square_footage": null
+  },
+  "lease_field_status": {
+    "property_address": {
+      "status": "verified",
+      "basis": "p.8 'Project Description'; HUD Multifamily Assistance & Section 8 Contracts DB, properties table (current as of 2026-10-06): 1415 W Gulf Bank Rd, HOUSTON TX 77088"
+    },
+    "landlord": {
+      "status": "proposed",
+      "basis": "p.1 seller / p.9 'Name of Owner' (the 2015 assignment would replace it with the buyer)"
+    },
+    "lease_start_date": {
+      "status": "proposed",
+      "basis": "p.9 s.2a 'begins on April 1, 2013'"
+    }
+  },
+  "program_fields": {
+    "contract_number": {
+      "value": "TX24E000008",
+      "type": "text",
+      "status": "verified",
+      "basis": "p.1, p.8; HUD Multifamily Assistance & Section 8 Contracts DB, contracts table (current as of 2026-10-06): contract_number TX24E000008"
+    },
+    "project_name": {
+      "value": "Texas Coppertree aka Coppertree Village",
+      "type": "text",
+      "status": "proposed",
+      "basis": "p.8 (HUD DB name: 'Coppertree Village Apartments')"
+    },
+    "contract_units": {
+      "value": "263",
+      "type": "int",
+      "status": "verified",
+      "basis": "p.1 'for 263 units'; HUD Multifamily Assistance & Section 8 Contracts DB, contracts table (current as of 2026-10-06): assisted_units_count 263"
+    },
+    "units_1br": {
+      "value": "156",
+      "type": "int",
+      "status": "proposed",
+      "basis": "p.20 Exhibit A (OCR reads 158); HUD Multifamily Assistance & Section 8 Contracts DB, contracts table (current as of 2026-10-06): 1BR_count 156"
+    },
+    "units_2br": {
+      "value": "102",
+      "type": "int",
+      "status": "verified",
+      "basis": "p.20 Exhibit A; HUD Multifamily Assistance & Section 8 Contracts DB, contracts table (current as of 2026-10-06): 2BR_count 102"
+    },
+    "units_3br": {
+      "value": "5",
+      "type": "int",
+      "status": "verified",
+      "basis": "p.20 Exhibit A; HUD Multifamily Assistance & Section 8 Contracts DB, contracts table (current as of 2026-10-06): 3BR_count 5"
+    },
+    "contract_rent_1br": {
+      "value": "767",
+      "type": "money",
+      "status": "proposed",
+      "basis": "p.20 Exhibit A"
+    },
+    "contract_rent_2br": {
+      "value": "979",
+      "type": "money",
+      "status": "proposed",
+      "basis": "p.20 Exhibit A"
+    },
+    "contract_rent_3br": {
+      "value": "1130",
+      "type": "money",
+      "status": "proposed",
+      "basis": "p.20 Exhibit A"
+    },
+    "effective_date": {
+      "value": "04/01/2013",
+      "type": "date",
+      "status": "proposed",
+      "basis": "p.9 s.2a"
+    },
+    "initial_term": {
+      "value": "20 years",
+      "type": "text",
+      "status": "proposed",
+      "basis": "p.9 s.2a 'a period of Twenty years'"
+    },
+    "contract_administrator": {
+      "value": "Southwest Housing Compliance Corporation",
+      "type": "text",
+      "status": "proposed",
+      "basis": "p.9"
+    },
+    "owner_name": {
+      "value": "2005 West Gulf Complex, L.P.",
+      "type": "text",
+      "status": "proposed",
+      "basis": "p.9"
+    },
+    "buyer_name": {
+      "value": "Coppertree Village Holdings LLC",
+      "type": "text",
+      "status": "proposed",
+      "basis": "p.1"
+    }
+  }
+}

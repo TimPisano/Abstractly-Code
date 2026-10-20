@@ -5,6 +5,12 @@
 
 > **Update, third pass (branch `feature/affordable-forms`).** The non-AI fixes from the plan were built as a standalone module, `backend/app/affordable/`. On the 16 forms, lease fields went from **0% to 94%** on flattened forms, both on the development copies and on a holdout set the mappings were never tuned on. Program fields (HAP, TTP, limits…) went from **0% to 89–92%**. Scans are weaker (88% dev, 56–58% holdout). Before/after scores per fix are in the last section, "After: the non-AI fixes". Everything above that section is the "before" picture and is unchanged.
 
+> **Update, real documents (2026-10-20).** On 11 real public documents (recorded LURAs, PHA board-packet HAP contracts, HUD Section 8 renewals, and an agency's filled sample forms), the picture is much worse than on the synthetic set:
+> - **Today's engine:** reads **0** fields right.
+> - **The form reader:** recognises 5 of 11 documents and gets **19% of lease fields** and **16% of program fields** right.
+>
+> 92% of the answers are in the text the extractor sees. The gap is mapping coverage: real affordable documents are mostly **not** the standard HUD forms we mapped. See "Real documents", the last section.
+
 ## What was measured
 
 - **16 public blank forms** (HUD, IRS, five state housing agencies), each filled with fictional but internally consistent values, with a JSON answer key. Examples: HAP contract rent = tenant share + HAP, and TIC income stays under the computed AMI limit.
@@ -209,3 +215,77 @@ Lease right/stated · program right/total:
 2. **OCR punctuation noise in names and addresses** ("1450. Maple"). Strip a period glued between a number and a word, and a lone leading or trailing period.
 3. **Nothing calls this module yet.** Wiring it into uploads is a separate change for `api.py` and `document_extractor`, files another session was editing tonight. It goes behind `AFFORDABLE_FORMS_MODE`.
 4. **The AI engine is still unmeasured** (billing). Once credits are added, the useful comparison is AI vs this module on the LURA and the holdout scans, the two places the module is weakest.
+
+## Real documents (`tests/eval/real/`)
+
+**Date:** 2026-10-20 · **Set:** [`tests/eval/real/`](../../tests/eval/real/SOURCES.md), 11 public documents · **Raw results:** `tests/eval/real/results/{regex,affordable,affordable+fallback}.json`
+
+### What's in the set
+
+| Kind | Documents | Where from |
+|---|---|---|
+| LIHTC use agreements | 3: Olympia Oaks, MA (DHCD regulatory agreement); Amasa Apartments, UT (Utah Housing commitment agreement, 3 BINs); Grand Junction, CO (recorded city LURA, scanned) | Town, city and county records sites |
+| Project-based Section 8 (PBRA) | 3: Coppertree Village, TX, 1990 HAP contract (typewritten scan); its 2015 assignment plus 2013 multi-year renewal contract; Amanda Brooke, IL, 2025 renewal-and-assignment request letter | NHLP resource library, IHDA |
+| PBV HAP contracts | 3: HUD-52530A/B Part 1 plus the PHA's Exhibit A (units, bedroom mix, rents), cut from Riverside County Housing Authority board packets (2023, 2025, 2026) | Riverside County board agendas |
+| Filled agency samples | 2: a HUD-50059 and an 811 PRA lease (HUD-92236-PRA), filled by TDHCA with a fictitious household | TDHCA training file |
+| Commercial leases (EDGAR) | 4 listed, **not downloaded**: SEC requires a contact email in the User-Agent; see REVIEW.md | SEC EDGAR |
+
+**Answer keys:** each field is **verified** or **proposed**.
+- **Verified (27 of 159 fields)** means the document states the value and a row in HUD's public data agrees. Sources: the LIHTC Database (units, bedroom mix, address, BIN) and the Multifamily Section 8 Contracts database (contract number, property ID, assisted units, owner, term).
+- **Proposed (132 fields)** means I read the value from the document. These wait for a hand check in [`REVIEW.md`](../../tests/eval/real/REVIEW.md) and are scored separately.
+- Only 27 fields could be verified because HUD's data covers few fields per property: totals and counts, not rents, dates or parties. PBV contracts aren't in HUD's multifamily database at all.
+
+**How it runs:** `fetch.py` downloads the documents, checks their SHA-256 against the manifest, and cuts out the contract pages. They are not committed. `run_eval.py --set real` runs them through the same pipelines as the synthetic set.
+
+### Scores
+
+| Engine | Recognised | Lease, verified | Lease, proposed | Program, verified | Program, proposed | Wrong values asserted | Invented lease values |
+|---|---|---|---|---|---|---|---|
+| `regex` (today's upload path) | – | 0 / 2 | 0 / 21 | 0 / 25 | 0 / 111 | 5 | 8 |
+| `affordable` (form reader only) | 5 / 11 | 0 / 2 | **4 / 21 (19%)** | 0 / 25 | **18 / 111 (16%)** | 6 | 0 |
+| `affordable+fallback` (form reader, else today's path) | 5 / 11 | 0 / 2 | 4 / 21 (19%) | 0 / 25 | 18 / 111 (16%) | 9 | 5 |
+
+Synthetic, for comparison: the form reader scores 94% lease and 92% program on clean copies, and 94% / 89% on the holdout.
+
+**By document:**
+- **HUD-50059 (agency sample):** the only real document that scores like the synthetic set. Lease fields 3 / 3; program fields 15 / 22. It is the same 06/2014 edition we mapped. It missed project name, certification type, effective date, unit number, TTP, tenant rent and assistance payment; the values are all in the text layer. I haven't diagnosed why: the likely cause is that this filler's value positions differ from the offsets we mapped.
+- **PBV HAP contracts (3):** all recognised as 52530A/B, but the mapping only covers Part 1 (PHA, owner, dates, term). The facts that matter (units, bedroom mix, contract rents) are in Exhibit A, which each PHA writes in its own format. Results:
+  - PHA name right on 2 of 3.
+  - Owner wrong on the other two: "Cottonwood **ll**" (the scan's OCR reads II as ll), and "IBy" (a signature-block misread on the Oak View execution page).
+  - 5th Street: "Mercy House Living Centers" scores right after the key correction described in REVIEW.md.
+- **Grand Junction LURA:** mis-recognised as the CHFA LURA. "Colorado Housing and Finance Authority" and "Land Use Restriction Agreement" both appear, but it isn't a CHFA form. Nothing right; one wrong value ("MESA, STATE" for county).
+- **Not recognised (6):** the MA and UT tax-credit agreements, both Coppertree contracts, the Amanda Brooke letter, and the 811 lease.
+  - The form reader correctly returns nothing on these.
+  - With the fallback, today's lease extractor runs and produces only noise:
+    - "Russell E. Lomax" as the 1990 contract's landlord. That name signs for "Shannon Place, Ltd." on pages that turn out to be from another contract or an earlier owner: the published PDF is a compilation (see REVIEW.md);
+    - "Income Verification" as the 811 lease's tenant;
+    - "$50" as its deposit.
+  - Of the 11 real documents, today's path also stops at the **"needs OCR" gate** on 4: one image-only or near-empty page in a contract is enough, such as a scanned execution page or an "Exhibit A" cover sheet. It rejects the Utah agreement **as a rent roll**; I didn't check which part of it trips that gate.
+
+### Why real documents score so much lower
+
+1. **Most real affordable documents aren't standard HUD forms.**
+   - Of the 11, only 4 are HUD forms we mapped (50059, 52530A ×2, 52530B).
+   - The rest are agency-specific: 3 state or city agreements, 2 pre-2015 HUD contract editions, a letter and an 811 lease.
+   - The answers are there: **125 of 136 program values (92%) are in the text the extractor sees.**
+   - Only **32 of the 136 have a slot** in the matching form mapping, and the reader gets **18 of those 32 (56%)** right.
+2. **The important numbers live in free-form attachments.**
+   - In PBV contracts, units, bedroom mix and rents are in Exhibit A, which the PHA writes itself.
+   - In renewal contracts they're in a typed exhibit table; in LURAs, in recitals and prose sections.
+   - Template mapping can't reach these. This is the job the plan gave the AI route, or a table reader.
+3. **Real scans are worse than our synthetic scans.**
+   - The 1990 contract's OCR layer reads "TFXAS- CnPPgRTP.F.E VIT,LAGE" and "Decemher 3 19 ng".
+   - Roman numerals come out as "ll"; rubber stamps overlap fields.
+   - Our synthetic scans had none of this.
+4. **The same form varies between editions and between fillers.**
+   - The 50059 sample uses the same 06/2014 edition we mapped, yet 7 of its 22 fields were missed.
+   - The Riverside 52530B has its own fillable-field names, so the form-field rule mapped the owner's name to the signatory slot.
+5. **The verified fields are exactly the ones we don't map yet.** Total units, assisted units, bedroom mix, contract number on renewals, BIN on non-CHFA agreements. So the verified score is 0 / 27 for every engine.
+
+### What this changes in the plan
+
+- **Keep the form reader for what it does well.** Tenant-level HUD forms (50059, TIC, 52641, RFTA) are standardised, filled by software, and read well, even from a real agency sample.
+- **Contract-level documents need a different reader:** HAP contracts and renewals, LURAs, PBV exhibits. Either the AI route, which the plan already reserved for prose, or a generic "label: value" and table reader. This set gives us a real benchmark for that choice. Run `--engine ai --set real` once credits are added.
+- **Fix the fallback gates before wiring in.** One image-only page trips the "needs OCR" gate for the whole document, and a tax-credit agreement tripped the rent-roll gate. Both stop a contract or agreement before any reader sees it.
+- **Masking:** California parcel numbers (`482-16-1026`) are SSN-shaped and get masked in quotes. Before real use, the SSN rule should look at the label ("APN") as well as the shape.
+- **Biggest gap in this set:** there are no real filled TICs, 52641s or RFTAs; agencies don't publish real ones. The only way to test those on real paper is anonymised design-partner documents. That was already the plan's last step.

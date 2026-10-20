@@ -1,0 +1,83 @@
+{
+  "id": "sample_tx_811_lease",
+  "form": "811 Project Rental Assistance Lease, form HUD-92236-PRA (02/2014), filled by TDHCA as a training sample",
+  "program": "Section 811 PRA",
+  "doc_type": "residential_lease",
+  "real": true,
+  "doc_file": "docs/sample_tx_811_lease.pdf",
+  "source_url": "https://www.tdhca.texas.gov/sites/default/files/section-811-pra/docs/S811-SampleTenantFile.pdf",
+  "source_pages": [
+    63,
+    72
+  ],
+  "notes": "Typed values sit above the printed blanks, so text order interleaves values and underscores ('1st ____ day of December ____, 21'). Year printed as '21' / '22' in the '20__' blanks. No street address in the lease itself (the rent ledger elsewhere in the file has '5678 Street, Unit 2').",
+  "lease_fields": {
+    "tenant": "Charlie Cole",
+    "landlord": "Lorena Springs",
+    "rent_amount": "$841",
+    "lease_start_date": "December 1, 2021",
+    "lease_end_date": "November 30, 2022",
+    "property_address": null,
+    "security_deposit": "$400",
+    "cam_charges": null,
+    "rent_escalation": null,
+    "renewal_options": null,
+    "permitted_use": null,
+    "exclusivity_clause": null,
+    "insurance_requirements": null,
+    "default_cure_period": null,
+    "square_footage": null
+  },
+  "lease_field_status": {
+    "tenant": {
+      "status": "proposed",
+      "basis": "p.1"
+    },
+    "landlord": {
+      "status": "proposed",
+      "basis": "p.1"
+    },
+    "rent_amount": {
+      "status": "proposed",
+      "basis": "p.1 s.2 Contract Rent"
+    },
+    "lease_start_date": {
+      "status": "proposed",
+      "basis": "p.1 s.1"
+    },
+    "lease_end_date": {
+      "status": "proposed",
+      "basis": "p.1 s.1"
+    },
+    "security_deposit": {
+      "status": "proposed",
+      "basis": "p.2 s.6"
+    }
+  },
+  "program_fields": {
+    "assistance_payment": {
+      "value": "491",
+      "type": "money",
+      "status": "proposed",
+      "basis": "p.2 s.4"
+    },
+    "tenant_rent": {
+      "value": "350",
+      "type": "money",
+      "status": "proposed",
+      "basis": "p.2 s.4"
+    },
+    "utility_allowance": {
+      "value": "50",
+      "type": "money",
+      "status": "proposed",
+      "basis": "p.1 s.3a"
+    },
+    "project_name": {
+      "value": "Lorena Springs",
+      "type": "text",
+      "status": "proposed",
+      "basis": "p.1 s.1"
+    }
+  }
+}

@@ -29,6 +29,15 @@ Two scores per document:
      i.e. whether a future extractor could find it at all.
 
 Writes results/<engine>.json and prints a summary.
+
+  python -I tests/eval/affordable/run_eval.py --set real --engine affordable+fallback
+
+--set real scores the real public documents in tests/eval/real/ (fetch
+them first with tests/eval/real/fetch.py) instead of the synthetic
+samples, and writes tests/eval/real/results/<engine>.json. Their answer
+keys mark each field "verified" (the document states it and HUD's public
+data agrees) or "proposed" (read from the document, awaiting a human
+check in REVIEW.md); the two are scored separately.
 """
 
 import argparse
@@ -52,13 +61,14 @@ from app.normalize import parse_currency, parse_date  # noqa: E402
 
 SAMPLES = HERE / "samples"
 RESULTS = HERE / "results"
+REAL = HERE.parent / "real"
 
 
 # ---------------------------------------------------------------------------
 # pipeline (mirrors api.py's upload path)
 # ---------------------------------------------------------------------------
 
-ENGINES = ("regex", "regex+acroform", "regex+layout", "affordable", "ai")
+ENGINES = ("regex", "regex+acroform", "regex+layout", "affordable", "affordable+fallback", "ai")
 
 
 def run_pipeline(pdf_path: Path, engine: str):
@@ -72,20 +82,27 @@ def run_pipeline(pdf_path: Path, engine: str):
     affordable      the per-form extractor (app.affordable.extract):
                     recognises the form, reads it whole, and returns
                     program fields too -- fixes 1 + 2 + 3
+    affordable+fallback
+                    the form reader, and today's upload path for documents
+                    it doesn't recognise -- how the plan wires it in
     ai              today's upload path with the AI engine
     """
     data = pdf_path.read_bytes()
-    if engine == "affordable":
+    if engine in ("affordable", "affordable+fallback"):
         from app.affordable import extract_document, layout_pages
         res = extract_document(data)
-        return {
-            "pages": layout_pages(data, include_acroform=True),
-            "status": "ok" if res["form_id"] else "unrecognised",
-            "ranges": 1,
-            "fields": res["lease_fields"],
-            "program_fields": res["program_fields"],
-            "form_id": res["form_id"],
-        }
+        if res["form_id"] or engine == "affordable":
+            return {
+                "pages": layout_pages(data, include_acroform=True),
+                "status": "ok" if res["form_id"] else "unrecognised",
+                "ranges": 1,
+                "fields": res["lease_fields"],
+                "program_fields": res["program_fields"],
+                "form_id": res["form_id"],
+            }
+        out = run_pipeline(pdf_path, "regex")
+        out["status"] = f"fallback:{out['status']}"
+        return out
     if engine == "regex+layout":
         from app.affordable import layout_pages
         pages = layout_pages(data, include_acroform=True)
@@ -240,6 +257,8 @@ VARIANTS = ("clean", "acroform", "scan", "holdout", "holdout_scan")
 
 
 def sample_path(key: dict, variant: str) -> Path:
+    if key.get("real"):
+        return REAL / key["doc_file"]      # one copy: the document as published
     clean = HERE / key["sample_file"]
     return clean if variant == "clean" else clean.with_name(f"{clean.stem}.{variant}.pdf")
 
@@ -260,6 +279,8 @@ def evaluate(key: dict, engine: str, variant: str = "clean") -> dict:
                 s.update(correct=True, kind="correct_found", asserted_wrong=False)
         s["in_text_layer"] = None if expected is None else in_text(
             expected, "money" if field in MONEY_FIELDS else "date" if field.endswith("_date") else "text", text)
+        if key.get("real") and expected is not None:
+            s["status"] = key["lease_field_status"][field]["status"]
         lease_scores.append(s)
 
     program_scores = []
@@ -279,6 +300,7 @@ def evaluate(key: dict, engine: str, variant: str = "clean") -> dict:
             "correct": correct,
             "kind": "correct" if correct else ("missed" if got is None else "wrong"),
             "in_text_layer": in_text(str(shown), entry["type"], text),
+            **({"status": entry["status"]} if "status" in entry else {}),
         })
 
     stated = [s for s in lease_scores if s["expected"] is not None]
@@ -289,6 +311,7 @@ def evaluate(key: dict, engine: str, variant: str = "clean") -> dict:
         "doc_type": key["doc_type"],
         "variant": variant,
         "pipeline_status": result["status"],
+        "form_id": result.get("form_id"),
         "low_text_pages": result.get("low_text_pages", []),
         "lease_ranges": result["ranges"],
         "pages": len(result["pages"]),
@@ -366,9 +389,42 @@ def summarize(docs):
     return {"overall": overall, "by_doc_type": types, "by_field": fields}
 
 
+def summarize_real(docs):
+    """Real documents: recall per answer status (verified against HUD data
+    vs proposed, awaiting review), for lease and program fields, overall
+    and per document type. Wrong = a value asserted that doesn't match."""
+    def tally(scores):
+        out = {}
+        for status in ("verified", "proposed"):
+            ss = [s for s in scores if s.get("status") == status]
+            ok = sum(1 for s in ss if s["correct"])
+            wrong = sum(1 for s in ss if s["kind"] == "wrong")
+            out[status] = {"stated": len(ss), "correct": ok, "wrong": wrong, "recall_pct": _pct(ok, len(ss))}
+        return out
+
+    def block(ds):
+        lease = [s for d in ds for s in d["lease_fields"]["scores"] if s["expected"] is not None]
+        prog = [s for d in ds for s in d["program_fields"]["scores"]]
+        return {
+            "docs": len(ds),
+            "recognised": sum(1 for d in ds if d.get("form_id")),
+            "lease": tally(lease),
+            "lease_spurious": sum(d["lease_fields"]["spurious"] for d in ds),
+            "program": tally(prog),
+        }
+
+    by_type = defaultdict(list)
+    for d in docs:
+        by_type[d["doc_type"]].append(d)
+    return {"overall": block(docs), "by_doc_type": {t: block(ds) for t, ds in sorted(by_type.items())}}
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--engine", choices=ENGINES, default="regex")
+    ap.add_argument("--set", dest="doc_set", choices=("synthetic", "real"), default="synthetic",
+                    help="synthetic = the filled samples in samples/ (default); real = the public documents "
+                         "in tests/eval/real/, scored separately (variants don't apply)")
     ap.add_argument("--only", nargs="*", help="answer-key ids to run")
     ap.add_argument("--variants", nargs="*", choices=VARIANTS, default=list(VARIANTS),
                     help="clean = filled and flattened; acroform = values left in unflattened form fields "
@@ -381,9 +437,13 @@ def main(argv=None):
         print("--engine ai needs ANTHROPIC_API_KEY in the environment. Nothing was sent.", file=sys.stderr)
         return 2
 
-    keys = [json.loads(p.read_text()) for p in sorted(SAMPLES.glob("*.answer_key.json"))]
+    real = args.doc_set == "real"
+    key_dir = REAL / "answer_keys" if real else SAMPLES
+    keys = [json.loads(p.read_text()) for p in sorted(key_dir.glob("*.answer_key.json"))]
     if args.only:
         keys = [k for k in keys if k["id"] in set(args.only)]
+    if real:
+        args.variants = ["original"]
     docs, skipped = [], []
     for variant in args.variants:
         for k in keys:
@@ -391,9 +451,12 @@ def main(argv=None):
                 skipped.append(f"{k['id']} ({variant})")
                 continue
             docs.append(evaluate(k, args.engine, variant))
-    summary = {v: summarize([d for d in docs if d["variant"] == v]) for v in args.variants
-               if any(d["variant"] == v for d in docs)}
-    report = {"engine": args.engine, "run_date": date.today().isoformat(), "summary": summary,
+    if real:
+        summary = {"original": summarize_real(docs)}
+    else:
+        summary = {v: summarize([d for d in docs if d["variant"] == v]) for v in args.variants
+                   if any(d["variant"] == v for d in docs)}
+    report = {"engine": args.engine, "set": args.doc_set, "run_date": date.today().isoformat(), "summary": summary,
               "skipped": skipped, "documents": docs}
     if args.engine == "ai":
         from app import ai_extraction
@@ -407,13 +470,31 @@ def main(argv=None):
             "output_tokens": sum(m.get("output_tokens") or 0 for m in metas),
         }
 
-    RESULTS.mkdir(exist_ok=True)
-    out = RESULTS / (args.out or f"{args.engine}.json")
+    results_dir = REAL / "results" if real else RESULTS
+    results_dir.mkdir(exist_ok=True)
+    out = results_dir / (args.out or f"{args.engine}.json")
     out.write_text(json.dumps(report, indent=2, default=str) + "\n")
 
-    print(f"engine={args.engine}  runs={len(docs)}  -> {out.relative_to(REPO)}")
+    print(f"engine={args.engine}  set={args.doc_set}  runs={len(docs)}  -> {out.relative_to(REPO)}")
     if skipped:
         print(f"skipped (no file): {', '.join(skipped)}")
+    if real:
+        print(f"{'document':32} {'status':28} {'form':14} {'lease ver':>9} {'lease prop':>10} {'spur':>4} {'prog ver':>8} {'prog prop':>9}")
+        for d in docs:
+            def ok(scores, status):
+                ss = [s for s in scores if s.get("status") == status]
+                return f"{sum(s['correct'] for s in ss)}/{len(ss)}"
+            lease = [s for s in d["lease_fields"]["scores"] if s["expected"] is not None]
+            prog = d["program_fields"]["scores"]
+            print(f"{d['id']:32} {d['pipeline_status']:28} {str(d.get('form_id') or '-'):14} {ok(lease, 'verified'):>9} "
+                  f"{ok(lease, 'proposed'):>10} {d['lease_fields']['spurious']:>4} {ok(prog, 'verified'):>8} {ok(prog, 'proposed'):>9}")
+        o = summary["original"]["overall"]
+        for part in ("lease", "program"):
+            print(f"OVERALL {part}: verified {o[part]['verified']['correct']}/{o[part]['verified']['stated']} "
+                  f"({o[part]['verified']['recall_pct']}%), proposed {o[part]['proposed']['correct']}/"
+                  f"{o[part]['proposed']['stated']} ({o[part]['proposed']['recall_pct']}%)")
+        print(f"recognised {o['recognised']}/{o['docs']}, lease spurious {o['lease_spurious']}")
+        return 0
     print(f"{'document':22} {'variant':12} {'status':21} {'rng':>3} {'lease ok/stated':>15} {'spur':>4} {'lease txt':>9} {'prog txt':>9} {'prog ok':>9} {'ocr':>5}")
     for d in docs:
         lf, pf = d["lease_fields"], d["program_fields"]
