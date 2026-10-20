@@ -12,6 +12,7 @@ asked for: corrupted files, empty files, and a genuinely unsupported
 format, each with its own clear, specific error.
 """
 
+import _test_env  # noqa: F401  -- first: temp DB, no .env, no real network (see _test_env.py)
 import os
 import sys
 import tempfile

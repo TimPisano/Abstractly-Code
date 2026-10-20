@@ -18,6 +18,7 @@ the page count raise if it's reached. Anthropic is never called: the
 regex engine is the default, and the blocked paths stop before either.
 """
 
+import _test_env  # noqa: F401  -- first: temp DB, no .env, no real network (see _test_env.py)
 import io
 import os
 import sys

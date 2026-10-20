@@ -12,6 +12,7 @@ sides of its threshold deliberately without needing a real PDF for
 every boundary case.
 """
 
+import _test_env  # noqa: F401  -- first: temp DB, no .env, no real network (see _test_env.py)
 import os
 import sys
 

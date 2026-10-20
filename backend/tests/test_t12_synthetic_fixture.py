@@ -17,6 +17,7 @@ fixture, Market Rent correctly excluded) -- close enough that it must
 NOT be flagged, proving the tolerance logic holds on believable,
 non-hand-picked numbers, not just a clean synthetic example.
 """
+import _test_env  # noqa: F401  -- first: temp DB, no .env, no real network (see _test_env.py)
 import os
 import sys
 

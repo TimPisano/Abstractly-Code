@@ -13,6 +13,7 @@ citation returned by every answered question must match, byte for byte, the
 property that makes this a rule engine rather than a text generator.
 """
 
+import _test_env  # noqa: F401  -- first: temp DB, no .env, no real network (see _test_env.py)
 import os
 import sys
 from datetime import date, timedelta

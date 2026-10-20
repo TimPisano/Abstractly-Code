@@ -4,6 +4,7 @@ logging, per-request line + id, opt-in email-on-error) and the
 DB-aware /health endpoint.
 """
 
+import _test_env  # noqa: F401  -- first: temp DB, no .env, no real network (see _test_env.py)
 import io
 import logging
 import os

@@ -17,6 +17,7 @@ separate, looser "Label: Value" colon-style pattern (_party_label_patterns)
 System" (a common, unrelated registered-agent clause) or "Owner's
 attorney: ..." could otherwise be misread as the tenant/landlord name.
 """
+import _test_env  # noqa: F401  -- first: temp DB, no .env, no real network (see _test_env.py)
 import os
 import sys
 

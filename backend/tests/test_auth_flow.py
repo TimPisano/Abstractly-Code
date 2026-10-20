@@ -9,6 +9,7 @@ subject/text/HTML are checked) and never reaches SMTP, and the
 background-thread send is made synchronous so assertions don't race it.
 """
 
+import _test_env  # noqa: F401  -- first: temp DB, no .env, no real network (see _test_env.py)
 import hashlib
 import os
 import re

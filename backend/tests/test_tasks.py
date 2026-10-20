@@ -10,6 +10,7 @@ Flask test_client(), real database.create_user()-backed sessions
 (tasks.created_by_user_id/assigned_to_user_id are real FKs).
 """
 
+import _test_env  # noqa: F401  -- first: temp DB, no .env, no real network (see _test_env.py)
 import os
 import sys
 import tempfile

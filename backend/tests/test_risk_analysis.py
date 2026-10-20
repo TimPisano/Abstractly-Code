@@ -13,6 +13,7 @@ since a flag that can't cite what it fired on is exactly what this
 module is designed not to produce.
 """
 
+import _test_env  # noqa: F401  -- first: temp DB, no .env, no real network (see _test_env.py)
 import os
 import sys
 

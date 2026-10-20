@@ -33,6 +33,7 @@ PDFs with PyPDF2, which a prior session found could silently duplicate
 or lose page content when temp files were reused across a loop (see
 DECISIONS.md). Generating directly avoids that failure mode entirely.
 """
+import _test_env  # noqa: F401  -- first: temp DB, no .env, no real network (see _test_env.py)
 import os
 import sys
 

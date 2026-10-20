@@ -10,6 +10,7 @@ each band — "is 10.0% in line or above average?" is the only part of the
 classification a reader could reasonably guess wrong.
 """
 
+import _test_env  # noqa: F401  -- first: temp DB, no .env, no real network (see _test_env.py)
 import os
 import sys
 
