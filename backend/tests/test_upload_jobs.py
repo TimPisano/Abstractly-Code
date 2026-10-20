@@ -9,6 +9,7 @@ Most tests run the job inline (start_job patched to call run_upload_job
 directly) so they are deterministic; test_thread_runner_* exercises the
 real background thread, and test_rq_runner_* the Redis queue hand-off.
 """
+import _test_env  # noqa: F401  -- first: temp DB, no .env, no real network (see _test_env.py)
 import io
 import os
 import shutil

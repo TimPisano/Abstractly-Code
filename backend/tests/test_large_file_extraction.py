@@ -7,6 +7,7 @@ fixture (OCR-ing all 300 pages takes ~10 minutes, so the full-size run is
 done by tests/run_large_file_scale_check.py and recorded in the report,
 not here).
 """
+import _test_env  # noqa: F401  -- first: temp DB, no .env, no real network (see _test_env.py)
 import io
 import os
 import shutil

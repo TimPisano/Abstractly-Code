@@ -5,6 +5,7 @@ that format (reportlab, python-docx, openpyxl, Pillow, pillow-heif) or an
 existing multi-format fixture (legacy .doc / .xls), never a hand-typed
 header -- except for the deliberately-wrong files (executable, archives).
 """
+import _test_env  # noqa: F401  -- first: temp DB, no .env, no real network (see _test_env.py)
 import io
 import os
 import shutil

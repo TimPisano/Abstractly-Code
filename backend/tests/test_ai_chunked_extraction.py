@@ -5,6 +5,7 @@ the client is a fake "faithful reader" that only reports a term if the
 text it was actually sent contains it, quoting that text verbatim -- so a
 term on page 431 can only come back if page 431 reached the model.
 """
+import _test_env  # noqa: F401  -- first: temp DB, no .env, no real network (see _test_env.py)
 import os
 import re
 import sys
