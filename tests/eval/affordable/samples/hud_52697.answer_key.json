@@ -1,0 +1,145 @@
+{
+  "id": "hud_52697",
+  "form": "HUD-52697 LIHTC Tenant Data Collection Form (exp. 10/31/2025)",
+  "program": "LIHTC",
+  "doc_type": "lihtc_tenant_data",
+  "source_file": "sources/hud_52697.pdf",
+  "sample_file": "samples/hud_52697.pdf",
+  "synthetic": true,
+  "notes": "Recertification for a fictional 2-person household in a 2BR 60% AMI unit. The street line and city line are written on separate lines under 'Building Address', so property_address is the street only. The form has no lease dates, rent to owner or owner name.",
+  "lease_fields": {
+    "tenant": null,
+    "landlord": null,
+    "rent_amount": null,
+    "lease_start_date": null,
+    "lease_end_date": null,
+    "property_address": "312 Cedar Hollow Lane",
+    "security_deposit": null
+  },
+  "program_fields": {
+    "certification_type": {
+      "value": "2",
+      "type": "int"
+    },
+    "effective_date": {
+      "value": "2026-09-01",
+      "type": "date"
+    },
+    "lihtc_qualification_date": {
+      "value": "2024-09-01",
+      "type": "date"
+    },
+    "compliance_agency": {
+      "value": "Maple Ridge Housing Finance Authority",
+      "type": "text"
+    },
+    "county": {
+      "value": "Maple Ridge County",
+      "type": "text"
+    },
+    "property_name": {
+      "value": "Cedar Hollow Apartments",
+      "type": "text"
+    },
+    "pin": {
+      "value": "MR-2019-044",
+      "type": "text"
+    },
+    "bin": {
+      "value": "MR-19-04401",
+      "type": "text"
+    },
+    "building_street": {
+      "value": "312 Cedar Hollow Lane",
+      "type": "text"
+    },
+    "unit_number": {
+      "value": "204",
+      "type": "text"
+    },
+    "bedrooms": {
+      "value": "2",
+      "type": "int"
+    },
+    "head_last_name": {
+      "value": "Wren",
+      "type": "text"
+    },
+    "head_first_name": {
+      "value": "Tobias",
+      "type": "text"
+    },
+    "head_dob": {
+      "value": "1985/04/17",
+      "type": "date"
+    },
+    "member_2_first_name": {
+      "value": "Lena",
+      "type": "text"
+    },
+    "total_annual_income": {
+      "value": "$32,400.00",
+      "type": "money",
+      "shown_as": "32,400"
+    },
+    "household_size": {
+      "value": "2",
+      "type": "int"
+    },
+    "income_limit_140pct": {
+      "value": "$65,870.00",
+      "type": "money",
+      "shown_as": "65,870"
+    },
+    "household_income_at_qualification": {
+      "value": "$29,800.00",
+      "type": "money",
+      "shown_as": "29,800"
+    },
+    "income_limit": {
+      "value": "$47,050.00",
+      "type": "money",
+      "shown_as": "47,050"
+    },
+    "tenant_paid_rent": {
+      "value": "$1,190.00",
+      "type": "money",
+      "shown_as": "1,190.00"
+    },
+    "utility_allowance": {
+      "value": "$118.00",
+      "type": "money",
+      "shown_as": "118.00"
+    },
+    "gross_rent": {
+      "value": "$1,308.00",
+      "type": "money",
+      "shown_as": "1,308.00"
+    },
+    "max_lihtc_rent": {
+      "value": "$1,323.00",
+      "type": "money",
+      "shown_as": "1,323.00"
+    },
+    "income_restriction_ami": {
+      "value": "60% AMGI",
+      "type": "checkbox"
+    },
+    "rent_restriction_ami": {
+      "value": "60% AMGI",
+      "type": "checkbox"
+    },
+    "exceeds_140pct": {
+      "value": "No",
+      "type": "checkbox"
+    },
+    "all_students": {
+      "value": "No",
+      "type": "checkbox"
+    },
+    "program_type": {
+      "value": "9% Allocated Federal Housing Tax Credit",
+      "type": "checkbox"
+    }
+  }
+}

@@ -1,0 +1,192 @@
+{
+  "id": "hud_50059",
+  "form": "HUD-50059 Owner's Certification of Compliance (06/2014 edition)",
+  "program": "PBRA",
+  "doc_type": "pbra_certification",
+  "source_file": "sources/hud_50059.pdf",
+  "sample_file": "samples/hud_50059.pdf",
+  "synthetic": true,
+  "notes": "Annual recertification. Same fictional project as the hud_52670 voucher sample. Continuation page 3 left blank (3-person household fits on page 2). Owner name printed in the owner/agent signature box. The form has no street address, so property_address is None.",
+  "lease_fields": {
+    "tenant": "Marisol Penhallow",
+    "landlord": "Oakmont Terrace Housing Associates LP",
+    "rent_amount": "$1,045.00",
+    "lease_start_date": null,
+    "lease_end_date": null,
+    "property_address": null,
+    "security_deposit": "$593.00"
+  },
+  "program_fields": {
+    "project_name": {
+      "value": "Oakmont Terrace",
+      "type": "text"
+    },
+    "owner_name": {
+      "value": "Oakmont Terrace Housing Associates LP",
+      "type": "text"
+    },
+    "head_of_household": {
+      "value": "Marisol Penhallow",
+      "type": "text"
+    },
+    "certification_type": {
+      "value": "AR",
+      "type": "text"
+    },
+    "effective_date": {
+      "value": "11/01/2026",
+      "type": "date"
+    },
+    "next_recert_date": {
+      "value": "11/01/2027",
+      "type": "date"
+    },
+    "move_in_date": {
+      "value": "11/01/2019",
+      "type": "date"
+    },
+    "unit_number": {
+      "value": "3C",
+      "type": "text"
+    },
+    "bedrooms": {
+      "value": "2",
+      "type": "int"
+    },
+    "rems_property_id": {
+      "value": "800091733",
+      "type": "text"
+    },
+    "project_number": {
+      "value": "073-35412",
+      "type": "text"
+    },
+    "contract_number": {
+      "value": "IN36L991417",
+      "type": "text"
+    },
+    "household_size": {
+      "value": "3",
+      "type": "int"
+    },
+    "dependents": {
+      "value": "2",
+      "type": "int"
+    },
+    "employment_income": {
+      "value": "$26,520.00",
+      "type": "money",
+      "shown_as": "26,520.00"
+    },
+    "asset_cash_value": {
+      "value": "$1,200.00",
+      "type": "money",
+      "shown_as": "1,200.00"
+    },
+    "asset_income": {
+      "value": "$6.00",
+      "type": "money",
+      "shown_as": "6.00"
+    },
+    "annual_income": {
+      "value": "$26,526.00",
+      "type": "money",
+      "shown_as": "26,526.00"
+    },
+    "low_income_limit": {
+      "value": "$70,600.00",
+      "type": "money",
+      "shown_as": "70,600.00"
+    },
+    "very_low_income_limit": {
+      "value": "$44,100.00",
+      "type": "money",
+      "shown_as": "44,100.00"
+    },
+    "extremely_low_income_limit": {
+      "value": "$26,500.00",
+      "type": "money",
+      "shown_as": "26,500.00"
+    },
+    "dependent_deduction": {
+      "value": "$1,000.00",
+      "type": "money",
+      "shown_as": "1,000.00"
+    },
+    "childcare_deduction": {
+      "value": "$1,800.00",
+      "type": "money",
+      "shown_as": "1,800.00"
+    },
+    "total_deductions": {
+      "value": "$2,800.00",
+      "type": "money",
+      "shown_as": "2,800.00"
+    },
+    "adjusted_income": {
+      "value": "$23,726.00",
+      "type": "money",
+      "shown_as": "23,726.00"
+    },
+    "contract_rent": {
+      "value": "$1,045.00",
+      "type": "money",
+      "shown_as": "1,045.00"
+    },
+    "utility_allowance": {
+      "value": "$96.00",
+      "type": "money",
+      "shown_as": "96.00"
+    },
+    "gross_rent": {
+      "value": "$1,141.00",
+      "type": "money",
+      "shown_as": "1,141.00"
+    },
+    "total_tenant_payment": {
+      "value": "$593.00",
+      "type": "money",
+      "shown_as": "593.00"
+    },
+    "tenant_rent": {
+      "value": "$497.00",
+      "type": "money",
+      "shown_as": "497.00"
+    },
+    "utility_reimbursement": {
+      "value": "$0.00",
+      "type": "money",
+      "shown_as": "0.00"
+    },
+    "assistance_payment": {
+      "value": "$548.00",
+      "type": "money",
+      "shown_as": "548.00"
+    },
+    "security_deposit": {
+      "value": "$593.00",
+      "type": "money",
+      "shown_as": "593.00"
+    },
+    "tenant_signed_date": {
+      "value": "10/18/2026",
+      "type": "date"
+    },
+    "owner_signed_date": {
+      "value": "10/20/2026",
+      "type": "date"
+    },
+    "member_2_first_name": {
+      "value": "Elias",
+      "type": "text"
+    },
+    "member_3_first_name": {
+      "value": "Nora",
+      "type": "text"
+    },
+    "member_2_dob": {
+      "value": "07/02/2014",
+      "type": "date"
+    }
+  }
+}

@@ -160,9 +160,15 @@ def in_text(value: str, vtype: str, text: str) -> bool:
 # scoring
 # ---------------------------------------------------------------------------
 
-def evaluate(key: dict, engine: str) -> dict:
-    result = run_pipeline(HERE / key["sample_file"], engine)
+def sample_path(key: dict, variant: str) -> Path:
+    clean = HERE / key["sample_file"]
+    return clean if variant == "clean" else clean.with_name(f"{clean.stem}.scan.pdf")
+
+
+def evaluate(key: dict, engine: str, variant: str = "clean") -> dict:
+    result = run_pipeline(sample_path(key, variant), engine)
     text = "\n".join(p.get("text") or "" for p in result["pages"])
+    ocr = [p["ocr_confidence"] for p in result["pages"] if p.get("ocr_confidence") is not None]
 
     lease_scores = []
     for field in ALL_FIELDS:
@@ -197,9 +203,12 @@ def evaluate(key: dict, engine: str) -> dict:
         "form": key["form"],
         "program": key["program"],
         "doc_type": key["doc_type"],
+        "variant": variant,
         "pipeline_status": result["status"],
+        "low_text_pages": result.get("low_text_pages", []),
         "lease_ranges": result["ranges"],
         "pages": len(result["pages"]),
+        "mean_ocr_confidence": round(sum(ocr) / len(ocr), 1) if ocr else None,
         "lease_fields": {
             "stated": len(stated),
             "correct": sum(1 for s in stated if s["correct"]),
@@ -272,6 +281,9 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--engine", choices=("regex", "ai"), default="regex")
     ap.add_argument("--only", nargs="*", help="answer-key ids to run")
+    ap.add_argument("--variants", nargs="*", choices=("clean", "scan"), default=["clean", "scan"],
+                    help="clean = the digitally filled PDF; scan = the image-only copy from make_scans.py "
+                         "(skipped for any sample without one)")
     args = ap.parse_args(argv)
 
     if args.engine == "ai" and not os.environ.get("ANTHROPIC_API_KEY"):
@@ -281,24 +293,37 @@ def main(argv=None):
     keys = [json.loads(p.read_text()) for p in sorted(SAMPLES.glob("*.answer_key.json"))]
     if args.only:
         keys = [k for k in keys if k["id"] in set(args.only)]
-    docs = [evaluate(k, args.engine) for k in keys]
-    report = {"engine": args.engine, "run_date": date.today().isoformat(), "summary": summarize(docs), "documents": docs}
+    docs, skipped = [], []
+    for variant in args.variants:
+        for k in keys:
+            if not sample_path(k, variant).exists():
+                skipped.append(f"{k['id']} ({variant})")
+                continue
+            docs.append(evaluate(k, args.engine, variant))
+    summary = {v: summarize([d for d in docs if d["variant"] == v]) for v in args.variants
+               if any(d["variant"] == v for d in docs)}
+    report = {"engine": args.engine, "run_date": date.today().isoformat(), "summary": summary,
+              "skipped": skipped, "documents": docs}
 
     RESULTS.mkdir(exist_ok=True)
     out = RESULTS / f"{args.engine}.json"
     out.write_text(json.dumps(report, indent=2, default=str) + "\n")
 
-    print(f"engine={args.engine}  docs={len(docs)}  -> {out.relative_to(REPO)}")
-    print(f"{'document':24} {'status':12} {'rng':>3} {'lease ok/stated':>15} {'spur':>4} {'lease txt':>9} {'prog txt':>9}")
+    print(f"engine={args.engine}  runs={len(docs)}  -> {out.relative_to(REPO)}")
+    if skipped:
+        print(f"skipped (no file): {', '.join(skipped)}")
+    print(f"{'document':22} {'variant':7} {'status':21} {'rng':>3} {'lease ok/stated':>15} {'spur':>4} {'lease txt':>9} {'prog txt':>9} {'ocr':>5}")
     for d in docs:
         lf, pf = d["lease_fields"], d["program_fields"]
-        print(f"{d['id']:24} {d['pipeline_status']:12} {d['lease_ranges']:>3} "
+        print(f"{d['id']:22} {d['variant']:7} {d['pipeline_status']:21} {d['lease_ranges']:>3} "
               f"{lf['correct']:>7}/{lf['stated']:<7} {lf['spurious']:>4} "
-              f"{lf['in_text_layer']:>4}/{lf['stated']:<4} {pf['in_text_layer']:>4}/{pf['total']:<4}")
-    o = report["summary"]["overall"]
-    print(f"\nOVERALL lease recall {o['lease_recall_pct']}%  spurious {o['lease_spurious']}  "
-          f"lease text-layer {o['lease_text_layer_pct']}%  program text-layer {o['program_text_layer_pct']}%  "
-          f"program extraction {o['program_extraction_pct']}%")
+              f"{lf['in_text_layer']:>4}/{lf['stated']:<4} {pf['in_text_layer']:>4}/{pf['total']:<4} "
+              f"{d['mean_ocr_confidence'] if d['mean_ocr_confidence'] is not None else '':>5}")
+    for variant, s in summary.items():
+        o = s["overall"]
+        print(f"\nOVERALL [{variant}] lease recall {o['lease_recall_pct']}%  spurious {o['lease_spurious']}  "
+              f"lease text-layer {o['lease_text_layer_pct']}%  program text-layer {o['program_text_layer_pct']}%  "
+              f"program extraction {o['program_extraction_pct']}%")
     return 0
 
 
