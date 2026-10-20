@@ -9,6 +9,8 @@
 - **Unverified** = I could not confirm it at all. Stated so you do not build on a guess.
 - **Verify with your PHA / contract administrator** = local practice varies; the rule may be set by HUD, but the operational detail is set locally.
 
+**Second pass (2026-10-19, later).** The requested Bash PDF helper (`curl ... | pdftext.py`) was **denied by the auto-mode permission classifier**, so I did not run it and did not try a workaround. I used WebFetch and WebSearch only. Result: no claim below is newly upgraded to full primary text. Two items moved from unverified to **primary HUD material, read through search summaries** (labelled "HUD talking points" and "HUD 50059 instructions" below). Everything else still stands as labelled. A reviewer with PDF access should work the open list at the end of this section.
+
 **Tooling limits that matter for this doc.** The fetch tool could not parse most HUD PDFs (form instructions, PIH notices, Handbook 4350.3, the TRACS guides), returning compressed binary. eCFR URLs returned redirects I did not follow. So the primary-source claims below come from the Cornell LII and govinfo CFR text, HUD web pages, and search summaries. Several field-level claims (50059 numbering, TRACS record layouts, 4350.3 notice windows) are therefore **secondary or unverified**. A reviewer with the PDFs should close those gaps first.
 
 ---
@@ -33,8 +35,8 @@
 - **Notice H 2023-10** (joint with PIH 2023-27) is the implementation notice. It was updated April 16, 2026 per NAHRO (secondary), following a companion notice. [NAHRO: HUD updates HOTMA guidance](https://www.nahro.org/news/hud-updates-hotma-implementation-guidance/) (secondary).
 - **Notice H 2025-07 (December 17, 2025)** extended the multifamily full-compliance date from January 1, 2026 to **January 1, 2027**. Owners who adopt HOTMA before then may calculate incomes and rents manually and enter results in TRACS 202D with the rent override function. [HUD: Multifamily HOTMA page](https://www.hud.gov/hud-partners/multifamily-hotma) (verified: HUD page). The same page says TRACS 203A requires an annotation in tenant files when the rent override is used (verified: HUD page).
 - **Notice PIH 2026-09 / H 2026-05** (dated April 13, 2026 per secondary sources; some say April 16) amends Attachment I of H 2023-10. It requires an **interim reexamination whenever a household adds or removes a member**, whether or not income changed. During a composition-triggered interim, earned-income increases are not counted except under exceptions already in the notice. An agency with a written policy of not processing income-increase reexams in the last three months of a certification may defer composition changes in that window. [HUD PIH 2026-09](https://www.hud.gov/sites/default/files/hudclips/documents/PIH-2026-09.pdf) (secondary: PDF not parsed; summary from [NAHRO](https://www.nahro.org/news/hud-updates-hotma-implementation-guidance/)). **This is missing from section8.md.**
-- **The "10% interim threshold" in section8.md.** For HCV, the 24 CFR 982.516 text I retrieved says the PHA must conduct an interim review when adjusted income will rise by **10% or more**, and may decline for decreases under 10% (or a lower PHA threshold) (verified: [24 CFR 982.516 via LII](https://www.law.cornell.edu/cfr/text/24/982.516)). For multifamily, I found only secondary summaries saying the same for unearned-income increases above 10% of adjusted income. **Unverified for multifamily** against H 2023-10 itself.
-- **Vendor blogs describe a "0% threshold" for composition changes.** That is a summary of the new composition rule, not a threshold. Treat with care.
+- **The "10% interim threshold" in section8.md.** For HCV, the 24 CFR 982.516 text I retrieved says the PHA must conduct an interim review when adjusted income will rise by **10% or more**, and may decline for decreases under 10% (or a lower PHA threshold) (verified: [24 CFR 982.516 via LII](https://www.law.cornell.edu/cfr/text/24/982.516)). For multifamily, HUD's own HOTMA talking points (a hud.gov PDF, read through a search summary, not parsed directly) state a **10% adjusted-income threshold for interim reexaminations**, with owners allowed to set a **lower threshold for decreases only**, not for increases. [HUD HOTMA talking points (multifamily)](https://www.hud.gov/sites/dfiles/Housing/documents/HOTMA_Talking_Points_Multifamily_Programs.pdf) (primary HUD material, summary-level). The attachment text that governs it is Notice H 2023-10, Attachment I, Section I.7 per an advocacy memo (secondary pointer). **Net: 10% for increases is now primary-HUD-supported at summary level; the exact attachment wording is still unverified.**
+- **Vendor blogs describe a "0% threshold" for composition changes.** That is a summary of the new composition rule, not a threshold. Treat with care. **PIH/H 2026-09 itself is still not confirmed from HUD text in this pass**: a commercial blog says it was posted April 2026, and I could not open the PDF. Treat the composition-trigger claim as **secondary, unconfirmed from HUD**.
 
 ---
 
@@ -124,6 +126,12 @@
 
 The field names below are the ones the Handbook calculations use. **Field numbers differ between form revisions, so check the revision in effect.** The arithmetic is verified from the Handbook mirror.
 
+**Second-pass additions (HUD 50059 instructions, read through search summary; the hud.gov instruction PDFs and .docx files were not parsed):**
+- **Effective Date** is defined by the instructions by certification type: for a move-in it is the move-in date; for an Initial Certification it is the date assistance began for the type in Item 2; for other (re)certifications it is the date the (re)certification takes effect. The annual-recert rule was cut off in the summary and is **still open**.
+- **Next Recertification Date** is **Item 14 in the Section B summary list on the 06/2014 form**, per a search summary. Item numbers on the current revision are **unverified**.
+- **MAT10 and TRACS:** the current instructions say the 50059 is reported to TRACS as a MAT10 record. Where the instructions conflict with the **TRACS 203A MAT User Guide** (Definitions and Edits section), the MAT User Guide controls. **Total Tenant Payment and Utility Reimbursement definitions were not found in this pass.**
+- Sources for these: [HUD 50059 instructions (docx)](https://www.hud.gov/sites/dfiles/Housing/documents/50059%20Instructions.docx), [HUD 50059 instructions for TRACS 203A (docx)](https://www.hud.gov/sites/dfiles/Housing/documents/50059-Instructions-for-30-day-PRA.docx), [MAT Chapter 5, 50059 / 50059A / 52670 reporting (Release 2.0.3.A draft, May 2023)](https://www.hud.gov/sites/dfiles/Housing/documents/Chapter_5_MAT_Certification_50059_50059A_and_Subsidy_52670_Reporting_Post2_Draft_V1_05252023.pdf). None were parsed directly.
+
 - **Total Tenant Payment (TTP)**
 - **Gross Rent** = **Contract Rent + Utility Allowance**
 - **Assistance Payment (HAP)** = **Gross Rent − TTP**
@@ -149,6 +157,7 @@ The field names below are the ones the Handbook calculations use. **Field number
 
 - **MAT10 (certification transmission):** the owner transmits certification data (from the 50059) to TRACS. **Record layouts and transmission timing not verified** (TRACS MAT user guide not parsed).
 - **MAT30 / HUD-52670 (monthly voucher):** the owner submits a voucher each month requesting HAP. The contract administrator (CA) reviews and HUD pays through LOCCS. A state HFA page says the CA disburses HAP on the **first business day of the month following voucher submission** (secondary).
+- **Authority:** where a TRACS instruction conflicts with the **TRACS 203A MAT User Guide** (Definitions and Edits), the MAT User Guide controls (second pass, secondary via 50059 instruction summary). Chapter 5 of the MAT guide draft (May 2023) covers 50059 / 50059A / 52670 reporting; its text was **not read**.
 - **Corrections:** a "MAT30 Correction" must carry the correct Voucher ID; a correction that arrives after the original voucher has gone to LOCCS for payment is rejected and the adjustment goes on the next voucher (secondary: TRACS status-code appendix via [wvhdf.com mirror](https://www.wvhdf.com/wp-content/uploads/2026/03/TRACS-Voucher-Acknowledgement-Status-Messages-Codes-202D-Appx-G-1.pdf), which the search said came from a 2014 release; **codes may have changed**).
 - **Flagged and rejected vouchers:** the search summary of HUD's [voucher flagged/rejected guide](https://www.hud.gov/sites/documents/guide_paid_flag_rejected.pdf) lists status codes **T03, T31, T52** as flagged for manual review by the HUD field office (secondary; the PDF body was not parsed, so **verify the codes in the current guide**). Unsubmitted vouchers older than 60 days are rejected as "Voucher Cancelled by Reviewer" (secondary).
 - **MAT15 (adjustments):** **not verified.** Section8.md lists it; I could not confirm its role.
@@ -294,6 +303,12 @@ Concrete cross-document checks, ranked by how much money they protect. Each one 
 ---
 
 ## Sources
+
+**Second-pass additions (search-summary read of HUD material; PDFs/.docx not parsed)**
+- [HUD HOTMA talking points, multifamily](https://www.hud.gov/sites/dfiles/Housing/documents/HOTMA_Talking_Points_Multifamily_Programs.pdf)
+- [HUD 50059 instructions (docx)](https://www.hud.gov/sites/dfiles/Housing/documents/50059%20Instructions.docx)
+- [HUD 50059 instructions, TRACS 203A (docx)](https://www.hud.gov/sites/dfiles/Housing/documents/50059-Instructions-for-30-day-PRA.docx)
+- [HUD MAT Chapter 5 draft (May 2023)](https://www.hud.gov/sites/dfiles/Housing/documents/Chapter_5_MAT_Certification_50059_50059A_and_Subsidy_52670_Reporting_Post2_Draft_V1_05252023.pdf)
 
 **Primary (verified by me or confirmed on a HUD page)**
 - [HUD: HOTMA multifamily page (notices, dates, Notice H 2025-07, TRACS 203A rent override)](https://www.hud.gov/hud-partners/multifamily-hotma)
