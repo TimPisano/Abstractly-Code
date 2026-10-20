@@ -25,7 +25,7 @@ import io
 import logging
 import os
 import re
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import olefile
 import openpyxl
@@ -439,7 +439,8 @@ _MAX_OCR_IMAGE_SIDE = 4000
 _OCR_TIMEOUT_S = 120
 
 
-def extract_pages_from_path(path: str, extension: str, progress=None) -> List[Dict[str, Any]]:
+def extract_pages_from_path(path: str, extension: str, progress=None,
+                            max_pages: Optional[int] = None) -> List[Dict[str, Any]]:
     """
     Same contract and same `pages` shape as extract_pages(), for a file
     that is already on disk and whose `extension` was decided from its
@@ -454,6 +455,9 @@ def extract_pages_from_path(path: str, extension: str, progress=None) -> List[Di
         through pillow-heif; oversized photos are scaled down before OCR.
       - `progress(done, total)` is called as pages finish, so the upload
         job can report "page 120 of 300".
+      - `max_pages`: an image with more frames than this is refused before
+        any OCR (a small multi-frame TIFF can hold thousands of frames).
+        PDFs are page-counted by the caller before this runs.
 
     Every other format is small by nature and goes through the existing
     extractor for it unchanged.
@@ -467,7 +471,7 @@ def extract_pages_from_path(path: str, extension: str, progress=None) -> List[Di
     if extension == "pdf":
         pages = _extract_pdf_per_page(path, progress)
     elif extension in ("jpg", "png", "tiff", "heic", "webp", "bmp"):
-        pages = _extract_image_frames(path, extension, progress)
+        pages = _extract_image_frames(path, extension, progress, max_pages)
     else:
         with open(path, "rb") as f:
             file_bytes = f.read()
@@ -500,7 +504,13 @@ def _extract_pdf_per_page(path: str, progress) -> List[Dict[str, Any]]:
         raise DocumentExtractionError("Failed to extract text from this PDF. The file may be corrupted or unsupported.") from e
 
 
-def _extract_image_frames(path: str, extension: str, progress) -> List[Dict[str, Any]]:
+# Images larger than this are refused rather than decoded: a 60 MP
+# grayscale frame is already 60 MB in memory, and no document photo needs
+# more (a 48 MP phone photo fits).
+_MAX_IMAGE_PIXELS = 60_000_000
+
+
+def _extract_image_frames(path: str, extension: str, progress, max_pages: Optional[int] = None) -> List[Dict[str, Any]]:
     from PIL import ImageSequence
 
     if extension == "heic":
@@ -521,10 +531,23 @@ def _extract_image_frames(path: str, extension: str, progress) -> List[Dict[str,
     except (UnidentifiedImageError, OSError) as e:
         raise DocumentExtractionError("This image file could not be read -- it may be corrupted or in an unsupported format.") from e
 
+    if max_pages and frame_count > max_pages:
+        image.close()
+        raise DocumentExtractionError(
+            f"This image file has {frame_count:,} pages. The limit is {max_pages:,} pages per file. "
+            "Split it into smaller files and upload each one."
+        )
+
     pages = []
     extractor = PDFExtractor()
     try:
         for index, frame in enumerate(ImageSequence.Iterator(image), start=1):
+            width, height = frame.size
+            if width * height > _MAX_IMAGE_PIXELS:
+                raise DocumentExtractionError(
+                    f"This image is {width:,} x {height:,} pixels, too large to read. Scale it down to under "
+                    "60 megapixels (any photo editor's Resize or Export option) or save it as a PDF, and upload it again."
+                )
             try:
                 page_image = frame.convert("L")
                 if max(page_image.size) > _MAX_OCR_IMAGE_SIDE:

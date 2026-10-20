@@ -179,7 +179,12 @@ class PDFExtractor:
                 text = ""
             entry = {"page": page_num, "text": text}
             if len(text.strip()) < min_chars:
-                ocr_text, confidence = self._ocr_single_pdf_page(pdf_path, page_num, ocr_dpi, ocr_timeout_s)
+                dpi = self._ocr_dpi_for(reader.pages[page_num - 1], ocr_dpi)
+                if dpi is None:
+                    logger.warning("Page %d is too large to rasterize for OCR; skipped", page_num)
+                    ocr_text, confidence = "", None
+                else:
+                    ocr_text, confidence = self._ocr_single_pdf_page(pdf_path, page_num, dpi, ocr_timeout_s)
                 if len(ocr_text.strip()) > len(text.strip()):
                     entry["text"] = ocr_text
                     if confidence is not None:
@@ -188,6 +193,27 @@ class PDFExtractor:
             if progress:
                 progress(page_num, total)
         return pages
+
+    # A PDF page can declare any size; at 200 DPI a 200-inch-square page is a
+    # 1.6-gigapixel bitmap. Pages are rasterized at a DPI that keeps them
+    # under this many pixels (a letter page at 200 DPI is 3.7 MP).
+    MAX_OCR_PIXELS = 40_000_000
+    MIN_OCR_DPI = 72
+
+    @classmethod
+    def _ocr_dpi_for(cls, page, dpi: int):
+        """The DPI to rasterize `page` at for OCR, lowered for oversized pages; None if even 72 DPI would be too big."""
+        try:
+            width_in = float(page.mediabox.width) / 72
+            height_in = float(page.mediabox.height) / 72
+        except Exception:
+            return dpi
+        if width_in <= 0 or height_in <= 0:
+            return dpi
+        fitting = int((cls.MAX_OCR_PIXELS / (width_in * height_in)) ** 0.5)
+        if fitting < cls.MIN_OCR_DPI:
+            return None
+        return min(dpi, fitting)
 
     def _ocr_single_pdf_page(self, pdf_path: str, page_num: int, dpi: int, timeout_s: int):
         """(text, mean_confidence) for one page, or ("", None) if rasterizing or OCR fails."""

@@ -224,6 +224,26 @@ def test_short_document_is_one_call_identical_to_the_old_path():
     print("✓ test_short_document_is_one_call_identical_to_the_old_path: PASS")
 
 
+def test_formatting_only_differences_are_not_conflicts():
+    """Review finding: "$5,000" vs "5,000.00" or "ABC, LLC" vs "ABC LLC" dropped the field to low with spurious alternatives."""
+    a, b = _empty(), _empty()
+    a["security_deposit"] = _entry("$5,000", 3)
+    b["security_deposit"] = _entry("5,000.00", 300)
+    a["landlord"] = _entry("Harborline Commons, LLC", 1)
+    b["landlord"] = _entry("Harborline Commons LLC", 500)
+    merged = ai_extraction.merge_chunk_fields([a, b])
+    for name in ("security_deposit", "landlord"):
+        assert merged[name]["confidence"] == "high" and "alternatives" not in merged[name], merged[name]
+    # A real difference is still a conflict, and a non-string value can't crash the merge.
+    b["security_deposit"] = _entry("$5,500.00", 300)
+    a["square_footage"] = _entry(12500, 3)
+    b["square_footage"] = _entry("12,500", 4)
+    merged = ai_extraction.merge_chunk_fields([a, b])
+    assert merged["security_deposit"]["confidence"] == "low"
+    assert "alternatives" not in merged["square_footage"]
+    print("✓ test_formatting_only_differences_are_not_conflicts: PASS")
+
+
 if __name__ == "__main__":
     test_plan_chunks_respects_both_caps_and_keeps_every_page_once()
     test_500_page_lease_every_page_reaches_the_model_and_late_terms_come_back_cited()
@@ -232,4 +252,5 @@ if __name__ == "__main__":
     test_concessions_from_different_parts_are_combined()
     test_one_failed_part_fails_the_whole_document()
     test_short_document_is_one_call_identical_to_the_old_path()
+    test_formatting_only_differences_are_not_conflicts()
     print("\nAll chunked AI extraction tests passed!")

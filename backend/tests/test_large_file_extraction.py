@@ -230,6 +230,59 @@ def test_500_page_text_lease_keeps_every_page():
     print("✓ test_500_page_text_lease_keeps_every_page: PASS")
 
 
+def test_raster_bombs_are_refused_before_ocr():
+    """Security review: frame counts, pixel counts and PDF page sizes are all attacker-chosen."""
+    from PIL import Image
+    tmpdir = tempfile.mkdtemp()
+    try:
+        # A multi-frame TIFF over the page limit: refused before a single frame is OCR'd.
+        path = os.path.join(tmpdir, "fax.tiff")
+        frames = [Image.new("L", (200, 200), 255) for _ in range(5)]
+        frames[0].save(path, save_all=True, append_images=frames[1:])
+        with mock.patch.object(PDFExtractor, "_ocr_page_with_confidence", side_effect=AssertionError("no OCR")):
+            try:
+                extract_pages_from_path(path, "tiff", max_pages=3)
+            except DocumentExtractionError as e:
+                assert "5 pages" in str(e) and "3 pages" in str(e), e
+            else:
+                raise AssertionError("5-frame TIFF accepted with max_pages=3")
+
+        # An image over the pixel cap: refused, not decoded.
+        big = os.path.join(tmpdir, "big.png")
+        Image.new("L", (400, 300), 255).save(big)
+        with mock.patch.object(document_extractor, "_MAX_IMAGE_PIXELS", 100_000), \
+             mock.patch.object(PDFExtractor, "_ocr_page_with_confidence", side_effect=AssertionError("no OCR")):
+            try:
+                extract_pages_from_path(big, "png")
+            except DocumentExtractionError as e:
+                assert "400 x 300 pixels" in str(e), e
+            else:
+                raise AssertionError("oversized image accepted")
+
+        # PDF pages: a letter page keeps 200 DPI; a huge page is rasterized at
+        # a lower DPI that fits the pixel budget; an absurd one is skipped.
+        writer = pypdf.PdfWriter()
+        for width_in, height_in in ((8.5, 11), (50, 50), (300, 300)):
+            writer.add_blank_page(width_in * 72, height_in * 72)
+        sized = os.path.join(tmpdir, "sizes.pdf")
+        with open(sized, "wb") as f:
+            writer.write(f)
+        reader = pypdf.PdfReader(sized)
+        assert PDFExtractor._ocr_dpi_for(reader.pages[0], 200) == 200
+        lowered = PDFExtractor._ocr_dpi_for(reader.pages[1], 200)
+        assert 72 <= lowered < 200 and (50 * lowered) ** 2 <= PDFExtractor.MAX_OCR_PIXELS, lowered
+        assert PDFExtractor._ocr_dpi_for(reader.pages[2], 200) is None
+        calls = []
+        with mock.patch.object(PDFExtractor, "_ocr_single_pdf_page",
+                               side_effect=lambda path, n, dpi, t: calls.append((n, dpi)) or ("", None)):
+            pages = PDFExtractor().extract_text_per_page(sized)
+        assert [n for n, _ in calls] == [1, 2], "the 300-inch page is never rasterized"
+        assert calls[1][1] == lowered and len(pages) == 3
+    finally:
+        shutil.rmtree(tmpdir)
+    print("✓ test_raster_bombs_are_refused_before_ocr: PASS")
+
+
 if __name__ == "__main__":
     test_scanned_pages_are_rasterized_one_at_a_time_and_ocrd()
     test_mixed_pdf_only_ocrs_the_pages_without_text()
@@ -239,4 +292,5 @@ if __name__ == "__main__":
     test_oversized_photo_is_scaled_down_before_ocr()
     test_unreadable_inputs_raise_friendly_errors()
     test_500_page_text_lease_keeps_every_page()
+    test_raster_bombs_are_refused_before_ocr()
     print("\nAll large-file extraction tests passed!")

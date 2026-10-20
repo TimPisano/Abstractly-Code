@@ -34,6 +34,7 @@ failed the next time anyone polls it (fail_stale_jobs), so nothing sits
 import hashlib
 import logging
 import os
+import shutil
 import sqlite3
 import tempfile
 import threading
@@ -71,6 +72,10 @@ IN_MEMORY_EXTENSIONS = {"docx", "doc", "xlsx", "xlsm", "xls", "csv", "tsv", "txt
 MAX_PAGES = int(os.environ.get("LARGE_FILE_MAX_PAGES", "1000"))
 
 JOB_TIMEOUT_SECONDS = int(os.environ.get("LARGE_FILE_JOB_TIMEOUT_SECONDS", str(3 * 3600)))
+# Each accepted upload is up to MAX_UPLOAD_MB on disk until its job ends,
+# and jobs run one at a time per worker; this keeps one team (or one
+# script) from filling the disk or the queue (security review of this branch).
+MAX_ACTIVE_JOBS_PER_TEAM = int(os.environ.get("LARGE_FILE_MAX_ACTIVE_JOBS_PER_TEAM", "3"))
 # A running job heartbeats on every page / chunk; the longest silent step is
 # one AI call with its retries (~7 min worst case), so 20 min of silence
 # means the process is gone. A queued job may wait behind another file's
@@ -91,6 +96,10 @@ class UploadJobError(Exception):
 
 class UploadTooLarge(Exception):
     pass
+
+
+class _JobNoLongerActive(Exception):
+    """The job row was failed (as stale) while this runner was still working on it: stop, don't overwrite."""
 
 
 def enabled() -> bool:
@@ -115,6 +124,29 @@ def upload_dir() -> str:
     return path
 
 
+def has_room_for_an_upload() -> bool:
+    """Enough free disk in upload_dir() for one more maximum-size upload (twice: Werkzeug's spool + our copy)."""
+    return shutil.disk_usage(upload_dir()).free > 2 * MAX_REQUEST_BYTES
+
+
+# Older than this, a stored upload can't belong to a live job: a job waits
+# at most QUEUED_STALE_AFTER and runs at most JOB_TIMEOUT_SECONDS.
+ORPHAN_AFTER_SECONDS = int(QUEUED_STALE_AFTER.total_seconds()) + JOB_TIMEOUT_SECONDS + 3600
+
+
+def sweep_orphaned_files() -> int:
+    """Deletes stored uploads left behind by a process that died mid-job. Returns how many."""
+    cutoff = time.time() - ORPHAN_AFTER_SECONDS
+    removed = 0
+    directory = upload_dir()
+    for name in os.listdir(directory):
+        path = os.path.join(directory, name)
+        if name.endswith(".upload") and os.path.getmtime(path) < cutoff:
+            remove_file(path)
+            removed += 1
+    return removed
+
+
 def save_upload(file_storage) -> Tuple[str, int, str]:
     """
     Streams an uploaded werkzeug FileStorage to a new file under
@@ -126,6 +158,10 @@ def save_upload(file_storage) -> Tuple[str, int, str]:
     UploadTooLarge (and leaves nothing behind) past MAX_UPLOAD_BYTES --
     Flask's MAX_CONTENT_LENGTH normally stops it sooner.
     """
+    try:
+        sweep_orphaned_files()
+    except OSError:
+        logger.warning("Orphaned-upload sweep failed", exc_info=True)
     path = os.path.join(upload_dir(), f"{uuid.uuid4().hex}.upload")
     digest, size = hashlib.sha256(), 0
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
@@ -200,12 +236,15 @@ def fail_stale_jobs(team_id: int) -> int:
     """Housekeeping on poll. Never fails the poll itself: if the write lock is busy, the next poll tries again."""
     now = datetime.now(timezone.utc)
     try:
-        return database.fail_stale_upload_jobs(
+        paths = database.fail_stale_upload_jobs(
             team_id, (now - PROCESSING_STALE_AFTER).isoformat(), (now - QUEUED_STALE_AFTER).isoformat(), STALE_MESSAGE,
         )
     except sqlite3.OperationalError:
         logger.info("Skipped the stale upload-job check: database busy")
         return 0
+    for path in paths:
+        remove_file(path)  # the runner that would have deleted it is gone
+    return len(paths)
 
 
 def _retry_when_locked(fn, *args, attempts: int = 4, wait_s: float = 2.0, **kwargs):
@@ -242,17 +281,20 @@ class _Progress:
         try:
             # A heartbeat is best-effort: if the database is busy, skip it --
             # the next page or chunk reports again.
-            database.update_upload_job(self.job_id, busy_timeout_ms=2000, status="processing", stage=stage,
-                                       message=message, progress_current=current, progress_total=total)
+            changed = database.update_upload_job(self.job_id, busy_timeout_ms=2000, only_if_active=True,
+                                                 status="processing", stage=stage, message=message,
+                                                 progress_current=current, progress_total=total)
         except sqlite3.OperationalError:
             logger.info("Skipped a progress update for upload job %s: database busy", self.job_id)
             return
+        if not changed:
+            raise _JobNoLongerActive()
         self._last_write, self._last_stage = now, stage
 
 
 def _fail(job_id: int, message: str) -> None:
-    _retry_when_locked(database.update_upload_job, job_id, status="failed", stage="failed", message=message,
-                       error=message, finished_at=datetime.now(timezone.utc).isoformat())
+    _retry_when_locked(database.update_upload_job, job_id, only_if_active=True, status="failed", stage="failed",
+                       message=message, error=message, finished_at=datetime.now(timezone.utc).isoformat())
 
 
 def run_upload_job(job_id: int) -> None:
@@ -285,9 +327,17 @@ def run_upload_job(job_id: int) -> None:
         else:
             raise UploadJobError("Unknown upload type.")
         result["elapsed_seconds"] = round(time.monotonic() - started, 1)
-        _retry_when_locked(database.update_upload_job, job_id, status="complete", stage="complete", message="Done",
-                           result=result, finished_at=datetime.now(timezone.utc).isoformat())
-        logger.info("Upload job %s complete in %.1fs", job_id, result["elapsed_seconds"])
+        changed = _retry_when_locked(database.update_upload_job, job_id, only_if_active=True, status="complete",
+                                     stage="complete", message="Done", result=result,
+                                     finished_at=datetime.now(timezone.utc).isoformat())
+        if changed:
+            logger.info("Upload job %s complete in %.1fs", job_id, result["elapsed_seconds"])
+        else:
+            # Its leases are saved, but the row had already been failed as
+            # stale; a re-upload is answered by the duplicate check.
+            logger.warning("Upload job %s finished after it was marked failed as stale", job_id)
+    except _JobNoLongerActive:
+        logger.warning("Upload job %s was marked failed while still running; stopped", job_id)
     except (UploadJobError, DocumentExtractionError, RentRollImportError) as e:
         _fail(job_id, str(e))
     except ai_extraction.AIExtractionError as e:
@@ -354,7 +404,7 @@ def _process_lease(job: Dict[str, Any], progress) -> Dict[str, Any]:
     def on_page(done, total):
         progress("reading", f"Reading page {done:,} of {total:,}", done, total)
 
-    pages = document_extractor.extract_pages_from_path(path, extension, progress=on_page)
+    pages = document_extractor.extract_pages_from_path(path, extension, progress=on_page, max_pages=MAX_PAGES)
     if len(pages) > MAX_PAGES:
         raise _too_many_pages(len(pages))
     ocr_page_count = sum(1 for p in pages if "ocr_confidence" in p)

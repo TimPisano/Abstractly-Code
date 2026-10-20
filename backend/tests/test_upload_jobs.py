@@ -286,8 +286,8 @@ def test_size_limits_are_friendly_and_leave_nothing_behind():
     db = _fresh_db()
     try:
         client = _client()
-        # Flask's own cap on POST /uploads (normally MAX_UPLOAD_MB + 1 MB of form overhead).
-        with mock.patch.dict(app.config, {"MAX_CONTENT_LENGTH": 2 * 1024 * 1024}):
+        # Werkzeug's per-request cap on POST /uploads (normally MAX_UPLOAD_MB + 1 MB of form overhead).
+        with mock.patch.object(upload_jobs, "MAX_REQUEST_BYTES", 2 * 1024 * 1024):
             resp = _post(client, filename="big.pdf", body=b"%PDF-1.7\n" + b"0" * (3 * 1024 * 1024))
         assert resp.status_code == 413 and "The limit is 150 MB per file" in resp.get_json()["error"], resp.get_json()
         # save_upload's own guard, if a body slips past the header check (e.g. no Content-Length).
@@ -334,7 +334,8 @@ def test_wrong_content_is_rejected_and_mislabeled_files_are_read_as_what_they_ar
     db = _fresh_db()
     try:
         client = _client()
-        resp = _post(client, filename="tool.pdf", body=b"MZ\x90\x00" + os.urandom(4096))
+        from test_file_types import _pe_bytes
+        resp = _post(client, filename="tool.pdf", body=_pe_bytes())
         assert resp.status_code == 415 and "a program" in resp.get_json()["error"], resp.get_json()
         with open(os.path.join(TESTS_DIR, "multiformat_lease.doc"), "rb") as f:
             resp = _post(client, filename="roll.doc", body=f.read(), kind="rent_roll")
@@ -458,8 +459,11 @@ def test_stale_job_is_failed_on_poll_and_never_resumed():
         conn.execute("UPDATE upload_jobs SET updated_at = ? WHERE id = ?", (old, job_id))
         conn.commit()
         conn.close()
+        assert len(_stored_files()) == 1
         job = client.get(f"/uploads/{job_id}").get_json()["upload"]
         assert job["status"] == "failed" and job["error"] == upload_jobs.STALE_MESSAGE
+        assert _stored_files() == [], "a stale job's file is deleted with it (review finding)"
+        assert database.get_upload_job(job_id, team_id=1)["stored_path"] is None
         upload_jobs.run_upload_job(job_id)  # a late worker pick-up must not resurrect it
         assert client.get(f"/uploads/{job_id}").get_json()["upload"]["status"] == "failed"
         assert database.get_all_effective_leases(team_id=1) == []
@@ -702,6 +706,132 @@ def test_a_busy_database_does_not_fail_the_job_or_the_poll():
     print("✓ test_a_busy_database_does_not_fail_the_job_or_the_poll: PASS")
 
 
+def _multipart(filename, size_bytes, boundary="XyZbound"):
+    head = (f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{filename}\"\r\n"
+            "Content-Type: application/pdf\r\n\r\n").encode()
+    body = b"%PDF-1.7\n" + b"0" * size_bytes
+    tail = (f"\r\n--{boundary}\r\nContent-Disposition: form-data; name=\"kind\"\r\n\r\nlease\r\n"
+            f"--{boundary}--\r\n").encode()
+    return head + body + tail, f"multipart/form-data; boundary={boundary}"
+
+
+def test_a_chunked_body_cannot_skip_the_old_16mb_limit():
+    """
+    Security review: with the flag on, the old routes' 16 MB cap was checked
+    against Content-Length only, so a chunked body (no Content-Length; gunicorn
+    sets wsgi.input_terminated) streamed 17 MB into POST /leases, which reads
+    the whole file into memory. Fails on 8fbcfce.
+    """
+    db = _fresh_db()
+    try:
+        client = _client()
+        seen = []
+        import app.api as api_module
+        real = api_module._validate_upload
+
+        def spy():
+            from flask import request
+            f = request.files.get("file")
+            seen.append(len(f.read()) if f else None)
+            if f:
+                f.seek(0)
+            return real()
+
+        payload, content_type = _multipart("big.pdf", 17 * 1024 * 1024)
+        chunked = {"headers": {"Transfer-Encoding": "chunked"}, "environ_overrides": {"wsgi.input_terminated": True}}
+        with mock.patch.object(api_module, "_validate_upload", side_effect=spy):
+            resp = client.post("/leases", input_stream=io.BytesIO(payload), content_type=content_type, **chunked)
+        assert resp.status_code == 413, (resp.status_code, resp.get_json(), seen)
+        assert seen == [], "the old route never sees the file"
+
+        # POST /uploads still takes a big chunked body (it streams to disk).
+        queued = []
+        with mock.patch.object(upload_jobs, "start_job", side_effect=queued.append):
+            resp = client.post("/uploads", input_stream=io.BytesIO(payload), content_type=content_type, **chunked)
+        assert resp.status_code == 202, resp.get_json()
+        # ...but not past its own limit.
+        with mock.patch.object(upload_jobs, "MAX_REQUEST_BYTES", 5 * 1024 * 1024):
+            resp = client.post("/uploads", input_stream=io.BytesIO(payload), content_type=content_type, **chunked)
+        assert resp.status_code == 413
+    finally:
+        for name in _stored_files():
+            os.unlink(os.path.join(_UPLOAD_DIR, name))
+        os.unlink(db)
+    print("✓ test_a_chunked_body_cannot_skip_the_old_16mb_limit: PASS")
+
+
+def test_a_team_can_have_only_a_few_uploads_in_flight():
+    """Security review: one analyst (or script) could queue unlimited 150 MB uploads and fill the disk."""
+    db = _fresh_db()
+    try:
+        client = _client()
+        with mock.patch.object(upload_jobs, "start_job", lambda job_id: None):
+            for n in range(upload_jobs.MAX_ACTIVE_JOBS_PER_TEAM):
+                assert _post(client, filename=f"r{n}.csv", body=f"Unit,Tenant,Rent\n{n},A,1\n".encode(),
+                             kind="rent_roll").status_code == 202
+            resp = _post(client, filename="one-more.csv", body=b"Unit,Tenant,Rent\n9,A,1\n", kind="rent_roll")
+            assert resp.status_code == 429 and "Wait for one to finish" in resp.get_json()["error"]
+            assert len(_stored_files()) == upload_jobs.MAX_ACTIVE_JOBS_PER_TEAM, "the refused file was never stored"
+            # Another team isn't affected by this team's queue.
+            assert _post(_client(user_id=2, team_id=2), filename="t2.csv", body=b"Unit,Tenant,Rent\n1,B,1\n",
+                         kind="rent_roll").status_code == 202
+        with mock.patch.object(upload_jobs, "has_room_for_an_upload", return_value=False):
+            resp = _post(_client(user_id=3, team_id=3), filename="x.csv", body=b"Unit,Tenant,Rent\n1,C,1\n",
+                         kind="rent_roll")
+        assert resp.status_code == 503
+    finally:
+        for name in _stored_files():
+            os.unlink(os.path.join(_UPLOAD_DIR, name))
+        os.unlink(db)
+    print("✓ test_a_team_can_have_only_a_few_uploads_in_flight: PASS")
+
+
+def test_orphaned_files_are_swept():
+    old = os.path.join(_UPLOAD_DIR, "deadbeef.upload")
+    fresh = os.path.join(_UPLOAD_DIR, "cafebabe.upload")
+    for path in (old, fresh):
+        with open(path, "wb") as f:
+            f.write(b"x")
+    long_ago = time.time() - upload_jobs.ORPHAN_AFTER_SECONDS - 60
+    os.utime(old, (long_ago, long_ago))
+    try:
+        assert upload_jobs.sweep_orphaned_files() == 1
+        assert not os.path.exists(old) and os.path.exists(fresh), "only files too old to belong to a live job"
+    finally:
+        upload_jobs.remove_file(fresh)
+    print("✓ test_orphaned_files_are_swept: PASS")
+
+
+def test_a_job_failed_as_stale_is_not_brought_back_by_its_runner():
+    """Review finding: a heartbeat used to set status='processing' unconditionally, reviving a job the user was told had failed."""
+    db = _fresh_db()
+    try:
+        client = _client()
+        queued = []
+        with mock.patch.object(upload_jobs, "start_job", side_effect=queued.append):
+            _post(client, path_of(TEXT_LEASE))
+        job_id = queued[0]
+        from app import document_extractor
+        real = document_extractor.extract_pages_from_path
+
+        def mark_stale_midway(path, extension, progress=None, max_pages=None):
+            def on_page(done, total):
+                if done == 10:  # meanwhile, a poll decided this job was stale
+                    database.update_upload_job(job_id, status="failed", stage="failed", error=upload_jobs.STALE_MESSAGE)
+                progress(done, total)
+            return real(path, extension, progress=on_page, max_pages=max_pages)
+
+        with mock.patch.object(document_extractor, "extract_pages_from_path", side_effect=mark_stale_midway):
+            upload_jobs.run_upload_job(job_id)
+        job = client.get(f"/uploads/{job_id}").get_json()["upload"]
+        assert job["status"] == "failed" and job["error"] == upload_jobs.STALE_MESSAGE, job
+        assert database.get_all_effective_leases(team_id=1) == [], "the runner stopped instead of saving"
+        assert _stored_files() == []
+    finally:
+        os.unlink(db)
+    print("✓ test_a_job_failed_as_stale_is_not_brought_back_by_its_runner: PASS")
+
+
 if __name__ == "__main__":
     try:
         test_flag_off_means_routes_404_and_old_limits_unchanged()
@@ -729,6 +859,10 @@ if __name__ == "__main__":
         test_existing_bulk_routes_keep_working()
         test_no_module_defines_the_same_function_twice()
         test_a_busy_database_does_not_fail_the_job_or_the_poll()
+        test_a_chunked_body_cannot_skip_the_old_16mb_limit()
+        test_a_team_can_have_only_a_few_uploads_in_flight()
+        test_orphaned_files_are_swept()
+        test_a_job_failed_as_stale_is_not_brought_back_by_its_runner()
     finally:
         shutil.rmtree(_UPLOAD_DIR, ignore_errors=True)
     print("\nAll upload job tests passed!")

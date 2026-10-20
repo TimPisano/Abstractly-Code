@@ -18,7 +18,7 @@ Three layers of endpoints:
     report.py) — the actual logic lives there, not here.
 """
 
-from flask import Flask, request, jsonify, Response, session, redirect, abort
+from flask import Flask, Request, request, jsonify, Response, session, redirect
 from werkzeug.datastructures import FileStorage
 from werkzeug.exceptions import HTTPException
 from flask_cors import CORS
@@ -120,7 +120,27 @@ from app.auth import verify_password, require_role, require_owner, current_user,
 from app import password_rules
 
 
+
+class _UploadSizedRequest(Request):
+    """
+    The body-size cap Werkzeug enforces, decided per request: POST /uploads
+    gets the large-file limit when LARGE_FILE_UPLOADS is on; every other
+    route keeps app.config's 16 MB. Werkzeug applies this both to a
+    declared Content-Length (413 before reading) and, for a chunked body
+    with no Content-Length, by cutting the stream off at the limit -- which
+    a check on request.content_length alone misses (security review of
+    this branch: a chunked 17 MB body reached POST /leases with the flag on).
+    """
+
+    @property
+    def max_content_length(self):
+        if self.method == "POST" and self.path == "/uploads" and upload_jobs.enabled():
+            return upload_jobs.MAX_REQUEST_BYTES
+        return LEGACY_MAX_CONTENT_LENGTH
+
+
 app = Flask(__name__)
+app.request_class = _UploadSizedRequest
 
 # Every per-IP rate limit in this file keys on request.remote_addr. Behind
 # Render's proxy that is the PROXY's address, so without this every
@@ -254,14 +274,9 @@ app.permanent_session_lifetime = timedelta(days=30)
 
 # Configure upload settings
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 MB max file size
-# Every route except POST /uploads keeps exactly that 16 MB limit. With
-# LARGE_FILE_UPLOADS on, Flask's own cap is raised to the large-file limit
-# (so Werkzeug lets POST /uploads stream a bigger body to disk) and
-# _limit_request_size below re-applies 16 MB to every other route, before
-# any of the body is read.
+# Every route except POST /uploads keeps exactly that 16 MB limit; see
+# _UploadSizedRequest above for the one exception.
 LEGACY_MAX_CONTENT_LENGTH = app.config['MAX_CONTENT_LENGTH']
-if upload_jobs.enabled():
-    app.config['MAX_CONTENT_LENGTH'] = max(LEGACY_MAX_CONTENT_LENGTH, upload_jobs.MAX_REQUEST_BYTES)
 # The single source of truth for "what can be uploaded as a lease
 # document" is document_extractor.SUPPORTED_EXTENSIONS -- this is just
 # its key set, kept as its own name here since ALLOWED_EXTENSIONS is
@@ -339,13 +354,6 @@ def handle_not_found(e):
 
 def _is_large_upload_request():
     return request.path == '/uploads' and request.method == 'POST' and upload_jobs.enabled()
-
-
-@app.before_request
-def _limit_request_size():
-    """See LEGACY_MAX_CONTENT_LENGTH: only POST /uploads gets the large-file limit."""
-    if request.content_length and request.content_length > LEGACY_MAX_CONTENT_LENGTH and not _is_large_upload_request():
-        abort(413)
 
 
 @app.errorhandler(413)
@@ -1678,6 +1686,13 @@ def create_upload():
         msg = usage_limits.check_team_quota(team_id)
         if msg:
             return jsonify({"error": msg}), 403
+
+    if database.count_active_upload_jobs(team_id) >= upload_jobs.MAX_ACTIVE_JOBS_PER_TEAM:
+        return jsonify({"error": f"Your team already has {upload_jobs.MAX_ACTIVE_JOBS_PER_TEAM} uploads processing. "
+                                 "Wait for one to finish, then upload this file."}), 429
+    if not upload_jobs.has_room_for_an_upload():
+        logger.error("Upload refused: not enough free disk in the upload directory")
+        return jsonify({"error": "The server can't take large uploads right now. Please try again in a few minutes."}), 503
 
     try:
         stored_path, size, content_hash = upload_jobs.save_upload(file)

@@ -63,6 +63,13 @@ def _image_bytes(fmt):
     return buf.getvalue()
 
 
+def _pe_bytes():
+    """The start of a real Windows executable: DOS header whose e_lfanew (bytes 60-63) points at "PE\\0\\0"."""
+    header = bytearray(b"MZ" + b"\x90\x00" + bytes(60))
+    header[60:64] = (64).to_bytes(4, "little")
+    return bytes(header[:64]) + b"PE\x00\x00" + os.urandom(512)
+
+
 def _zip_bytes(member_names):
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as z:
@@ -146,7 +153,7 @@ def test_mislabeled_files_are_processed_as_what_they_really_are():
 def test_unsupported_and_dangerous_content_is_rejected_with_a_friendly_message():
     tmpdir = tempfile.mkdtemp()
     try:
-        _expect_rejection(tmpdir, "tool.pdf", b"MZ\x90\x00" + os.urandom(512), "a program")
+        _expect_rejection(tmpdir, "tool.pdf", _pe_bytes(), "a program")
         _expect_rejection(tmpdir, "deck.pptx", _zip_bytes(["[Content_Types].xml", "ppt/presentation.xml"]), "PowerPoint")
         _expect_rejection(tmpdir, "docs.zip", _zip_bytes(["a.pdf", "b.pdf"]), "ZIP archive")
         _expect_rejection(tmpdir, "lease.odt", _zip_bytes(["mimetype", "content.xml"]), "OpenDocument")
@@ -198,10 +205,63 @@ def test_password_protected_office_file_is_named_as_such():
     print("✓ test_password_protected_office_file_is_named_as_such: PASS")
 
 
+def test_magic_checks_dont_misread_text_that_happens_to_start_like_a_binary():
+    """Review finding: a CSV starting "BM..." was detected as a BMP image; text starting "MZ" as a program; any text mentioning %PDF- as a PDF."""
+    tmpdir = tempfile.mkdtemp()
+    try:
+        assert _detect(tmpdir, "roll.csv", b"BMR,Unit,Rent\nA,101,1200\n", kind="rent_roll").extension == "csv"
+        assert _detect(tmpdir, "notes.txt", b"MZ Holdings LLC lease summary for the 2026 renewal.\n" * 3).extension == "txt"
+        assert _detect(tmpdir, "notes.txt", b"Scanner settings: save as %PDF-1.7 compatible.\nThanks!\n").extension == "txt"
+        # The real formats are still recognized.
+        assert _detect(tmpdir, "scan.bmp", _image_bytes("BMP"), kind="rent_roll").extension == "bmp"
+        assert _detect(tmpdir, "lease.pdf", b"\n\n" + _pdf_bytes()).extension == "pdf", "leading junk before %PDF- is tolerated"
+    finally:
+        shutil.rmtree(tmpdir)
+    print("✓ test_magic_checks_dont_misread_text_that_happens_to_start_like_a_binary: PASS")
+
+
+def test_zip_bombs_are_refused_from_the_directory_alone():
+    """Security review: a small .xlsx/.docx can inflate to gigabytes in openpyxl/python-docx. Refused before any parser runs."""
+    from app import file_types
+    tmpdir = tempfile.mkdtemp()
+    try:
+        bomb = os.path.join(tmpdir, "bomb.xlsx")
+        with zipfile.ZipFile(bomb, "w", compression=zipfile.ZIP_DEFLATED) as z:
+            z.writestr("[Content_Types].xml", "<Types/>")
+            with z.open("xl/workbook.xml", "w") as member:
+                chunk = b"\x00" * (1024 * 1024)
+                for _ in range(file_types.MAX_ZIP_UNCOMPRESSED_BYTES // len(chunk) + 1):
+                    member.write(chunk)
+        assert os.path.getsize(bomb) < 2 * 1024 * 1024, "the bomb itself is small"
+        try:
+            detect_file_type(bomb, "bomb.xlsx", "rent_roll")
+        except UnsupportedFileType as e:
+            assert "expands to far more data" in str(e), e
+        else:
+            raise AssertionError("zip bomb accepted")
+
+        many = os.path.join(tmpdir, "many.docx")
+        with zipfile.ZipFile(many, "w") as z:
+            z.writestr("word/document.xml", "<w:document/>")
+            for i in range(file_types.MAX_ZIP_ENTRIES):
+                z.writestr(f"x/{i}", "")
+        try:
+            detect_file_type(many, "many.docx", "lease")
+        except UnsupportedFileType as e:
+            assert "expands to far more data" in str(e), e
+        else:
+            raise AssertionError("20,000-entry zip accepted")
+    finally:
+        shutil.rmtree(tmpdir)
+    print("✓ test_zip_bombs_are_refused_from_the_directory_alone: PASS")
+
+
 if __name__ == "__main__":
     test_every_supported_format_is_recognized_from_its_bytes()
     test_mislabeled_files_are_processed_as_what_they_really_are()
     test_unsupported_and_dangerous_content_is_rejected_with_a_friendly_message()
     test_empty_and_damaged_files_get_specific_messages()
     test_password_protected_office_file_is_named_as_such()
+    test_magic_checks_dont_misread_text_that_happens_to_start_like_a_binary()
+    test_zip_bombs_are_refused_from_the_directory_alone()
     print("\nAll file-type tests passed!")

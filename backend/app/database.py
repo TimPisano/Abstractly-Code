@@ -4891,12 +4891,17 @@ def get_upload_job_for_worker(job_id: int) -> Optional[Dict[str, Any]]:
         conn.close()
 
 
-def update_upload_job(job_id: int, busy_timeout_ms: int = UPLOAD_JOB_BUSY_TIMEOUT_MS, **fields: Any) -> None:
+def update_upload_job(job_id: int, busy_timeout_ms: int = UPLOAD_JOB_BUSY_TIMEOUT_MS, only_if_active: bool = False,
+                      **fields: Any) -> int:
     """
     Set any of _UPLOAD_JOB_UPDATABLE on a job; always bumps updated_at (the
     runner's heartbeat). Raises sqlite3.OperationalError if the write lock
     isn't free within `busy_timeout_ms` -- progress heartbeats pass a short
     wait and skip on failure; status changes keep the long default.
+
+    only_if_active: change the row only while it is still queued/processing,
+    so a runner that outlived its job (already failed as stale) can't bring
+    it back to life. Returns the number of rows changed (0 or 1).
     """
     unknown = set(fields) - _UPLOAD_JOB_UPDATABLE
     if unknown:
@@ -4906,38 +4911,52 @@ def update_upload_job(job_id: int, busy_timeout_ms: int = UPLOAD_JOB_BUSY_TIMEOU
         sets.append(f"{column} = ?")
         params.append(json.dumps(value) if column in _UPLOAD_JOB_JSON_COLUMNS and value is not None else value)
     params.append(job_id)
+    where = "id = ? AND status IN ('queued', 'processing')" if only_if_active else "id = ?"
     conn = _patient_connection(busy_timeout_ms)
     try:
-        conn.execute(f"UPDATE upload_jobs SET {', '.join(sets)} WHERE id = ?", params)
+        cur = conn.execute(f"UPDATE upload_jobs SET {', '.join(sets)} WHERE {where}", params)
         conn.commit()
+        return cur.rowcount
     finally:
         conn.close()
 
 
-def fail_stale_upload_jobs(team_id: int, processing_before_iso: str, queued_before_iso: str, message: str) -> int:
+def fail_stale_upload_jobs(team_id: int, processing_before_iso: str, queued_before_iso: str, message: str) -> List[str]:
     """
     Marks this team's jobs that stopped making progress as failed: still
     'processing' with no heartbeat since `processing_before_iso`, or still
     'queued' since `queued_before_iso` (a longer window -- a queued job can
-    legitimately wait behind another file's long OCR run). Returns how many.
+    legitimately wait behind another file's long OCR run). Clears their
+    stored_path and returns those paths so the caller can delete the files
+    (the runner that would have deleted them is gone).
     """
-    now = datetime.now(timezone.utc).isoformat()
     stale_clause = "team_id = ? AND ((status = 'processing' AND updated_at < ?) OR (status = 'queued' AND updated_at < ?))"
+    args = (team_id, processing_before_iso, queued_before_iso)
     conn = get_connection()
     try:
         # Called on every poll: a plain read in the common case, so polling
         # never competes for the write lock with the job it's watching.
-        if not conn.execute(f"SELECT 1 FROM upload_jobs WHERE {stale_clause} LIMIT 1",
-                            (team_id, processing_before_iso, queued_before_iso)).fetchone():
-            return 0
-        cur = conn.execute(
-            "UPDATE upload_jobs SET status = 'failed', stage = 'failed', error = ?, message = ?, "
-            "updated_at = ?, finished_at = ? "
-            "WHERE team_id = ? AND ((status = 'processing' AND updated_at < ?) OR (status = 'queued' AND updated_at < ?))",
-            (message, message, now, now, team_id, processing_before_iso, queued_before_iso),
+        rows = conn.execute(f"SELECT id, stored_path FROM upload_jobs WHERE {stale_clause}", args).fetchall()
+        if not rows:
+            return []
+        now = datetime.now(timezone.utc).isoformat()
+        conn.execute(
+            "UPDATE upload_jobs SET status = 'failed', stage = 'failed', error = ?, message = ?, stored_path = NULL, "
+            f"updated_at = ?, finished_at = ? WHERE {stale_clause}",
+            (message, message, now, now, *args),
         )
         conn.commit()
-        return cur.rowcount
+        return [row["stored_path"] for row in rows if row["stored_path"]]
+    finally:
+        conn.close()
+
+
+def count_active_upload_jobs(team_id: int) -> int:
+    """This team's jobs still queued or processing."""
+    conn = get_connection()
+    try:
+        return conn.execute("SELECT COUNT(*) FROM upload_jobs WHERE team_id = ? AND status IN ('queued', 'processing')",
+                            (team_id,)).fetchone()[0]
     finally:
         conn.close()
 

@@ -26,6 +26,17 @@ import olefile
 
 _HEAD_BYTES = 64 * 1024
 
+# Office files are ZIPs that their parsers inflate fully in memory. A real
+# lease .docx or a 5,000-row rent-roll .xlsx inflates to a few MB; a
+# "zip bomb" inflates a small upload to gigabytes and takes the server
+# down with it. Checked from the ZIP directory alone, before any parser
+# runs (security review of this branch).
+MAX_ZIP_UNCOMPRESSED_BYTES = 250 * 1024 * 1024
+MAX_ZIP_ENTRIES = 20_000
+# BITMAPINFOHEADER sizes a real .bmp carries at byte 14 -- so a text file
+# that merely starts with "BM" isn't mistaken for an image.
+_BMP_DIB_HEADER_SIZES = {12, 40, 52, 56, 64, 108, 124}
+
 # What each upload kind accepts, by canonical extension. Lease documents:
 # the formats the product supports. Rent rolls additionally keep the
 # image formats their importer already accepted (webp, bmp) and have no
@@ -109,12 +120,18 @@ def _rejection(upload_kind: str, what: str) -> UnsupportedFileType:
 def _detect_zip(path: str, upload_kind: str, original_extension: str) -> str:
     try:
         with zipfile.ZipFile(path) as archive:
-            names = set(archive.namelist())
+            entries = archive.infolist()
     except (zipfile.BadZipFile, OSError):
         raise UnsupportedFileType(
             "This file appears to be a damaged Office document or ZIP archive. "
             "Open it, save a fresh copy, and upload that."
         )
+    if len(entries) > MAX_ZIP_ENTRIES or sum(e.file_size for e in entries) > MAX_ZIP_UNCOMPRESSED_BYTES:
+        raise UnsupportedFileType(
+            "This file expands to far more data than a real document or spreadsheet, so it wasn't opened. "
+            "If it's genuine, export it again (or save it as PDF or CSV) and upload that."
+        )
+    names = {e.filename for e in entries}
     if "word/document.xml" in names:
         return "docx"
     if "xl/workbook.xml" in names:
@@ -175,6 +192,34 @@ def _detect_text_flavor(head: bytes, original_extension: str) -> str:
     return "txt"
 
 
+def _is_bmp(head: bytes) -> bool:
+    return head.startswith(b"BM") and len(head) >= 18 and int.from_bytes(head[14:18], "little") in _BMP_DIB_HEADER_SIZES
+
+
+def _is_executable(head: bytes) -> bool:
+    if head.startswith(b"\x7fELF") or head[:4] in (b"\xcf\xfa\xed\xfe", b"\xca\xfe\xba\xbe"):
+        return True
+    if not head.startswith(b"MZ") or len(head) < 64:
+        return False
+    # A Windows program: the DOS header's e_lfanew (bytes 60-63) points at
+    # "PE\0\0", or it has the classic DOS stub text. A text file that just
+    # starts with "MZ" has neither.
+    pe_offset = int.from_bytes(head[60:64], "little")
+    return head[pe_offset:pe_offset + 4] == b"PE\x00\x00" or b"This program cannot be run" in head[:512]
+
+
+def _is_pdf(path: str, head: bytes) -> bool:
+    """%PDF- at the start, or (readers tolerate leading junk) within the first 1 KB of a file that also ends like a PDF."""
+    if head.startswith(b"%PDF-"):
+        return True
+    if b"%PDF-" not in head[:1024]:
+        return False
+    with open(path, "rb") as f:
+        f.seek(0, os.SEEK_END)
+        f.seek(max(0, f.tell() - 2048))
+        return b"%%EOF" in f.read()
+
+
 def detect_file_type(path: str, filename: Optional[str], upload_kind: str = "lease") -> DetectedType:
     """
     Content-based type of the file at `path`. `filename` (the name the
@@ -195,7 +240,7 @@ def detect_file_type(path: str, filename: Optional[str], upload_kind: str = "lea
     if not head:
         raise UnsupportedFileType("This file is empty. Check you picked the right file and upload it again.")
 
-    if b"%PDF-" in head[:1024]:
+    if _is_pdf(path, head):
         extension = "pdf"
     elif head.startswith(b"PK\x03\x04"):
         extension = _detect_zip(path, upload_kind, original_extension)
@@ -213,11 +258,11 @@ def detect_file_type(path: str, filename: Optional[str], upload_kind: str = "lea
         raise _rejection(upload_kind, "an AVIF image. Save it as JPG or PNG")
     elif head[:4] == b"RIFF" and head[8:12] == b"WEBP":
         extension = "webp"
-    elif head.startswith(b"BM"):
+    elif _is_bmp(head):
         extension = "bmp"
     elif head[:6] in (b"GIF87a", b"GIF89a"):
         raise _rejection(upload_kind, "a GIF image. Save it as PNG or JPG")
-    elif head.startswith(b"MZ") or head.startswith(b"\x7fELF") or head[:4] in (b"\xcf\xfa\xed\xfe", b"\xca\xfe\xba\xbe"):
+    elif _is_executable(head):
         raise _rejection(upload_kind, "a program, not a document")
     elif head.startswith(b"{\\rtf"):
         raise _rejection(upload_kind, "a Rich Text (.rtf) document. Save it as .docx or PDF")

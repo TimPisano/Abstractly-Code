@@ -617,8 +617,16 @@ def plan_chunks(pages: List[Dict[str, Any]], max_pages: Optional[int] = None,
     return chunks
 
 
-def _normalized_value(value: str) -> str:
-    return re.sub(r"[\s$,.;:]+", " ", value.lower()).strip()
+def _normalized_value(value: Any) -> str:
+    """
+    Comparison key for "is this the same value?" across chunks: formatting
+    alone ("$5,000" vs "5,000.00", "ABC, LLC" vs "ABC LLC") must not read as
+    a conflict. Tolerates non-string values from the model.
+    """
+    text = str(value).lower()
+    text = re.sub(r"[$,]", "", text)
+    text = re.sub(r"(\d)\.00\b", r"\1", text)
+    return re.sub(r"[\s.;:]+", " ", text).strip()
 
 
 def _merge_concessions(found: List[Dict[str, Any]]) -> Dict[str, Any]:
