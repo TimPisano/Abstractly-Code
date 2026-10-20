@@ -20,6 +20,7 @@ import os
 TESTS_DIR = os.path.dirname(__file__)
 
 UNIT_TESTS = [
+    "test_test_env.py",
     "test_extraction.py",
     "test_ai_extraction.py",
     "test_async_extraction.py",
@@ -83,6 +84,10 @@ UNIT_TESTS = [
     "test_teams_and_assignments.py",
     "test_team_isolation.py",
     "test_team_isolation_fixes.py",
+    "test_team_invites.py",
+    "test_team_setup_link.py",
+    "test_monthly_page_limit.py",
+    "test_two_team_access.py",
     "test_owner_console.py",
     "test_assistant.py",
     "test_messaging.py",
@@ -170,6 +175,10 @@ def run_test(filename):
     # suite output stays readable -- test_logging_and_health.py attaches
     # its own capturing handler and doesn't depend on the level.
     env.setdefault("LOG_LEVEL", "WARNING")
+    # Each test file also imports _test_env first, which removes every
+    # app setting, gives the file its own temp database and blocks real
+    # network. This makes app/api.py skip backend/.env from the start.
+    env["ABSTRACTLY_TESTS"] = "1"
 
     result = subprocess.run(
         [sys.executable, filename],
@@ -181,9 +190,28 @@ def run_test(filename):
     return result.returncode == 0, result.stdout, result.stderr
 
 
+def _missing_test_env(filenames):
+    """Offline test files whose first import isn't _test_env (so .env, the real database or the network could leak in)."""
+    import ast
+    missing = []
+    for filename in filenames:
+        with open(os.path.join(TESTS_DIR, filename)) as f:
+            tree = ast.parse(f.read())
+        first = next((n for n in tree.body if isinstance(n, (ast.Import, ast.ImportFrom))), None)
+        if not (isinstance(first, ast.Import) and first.names[0].name == "_test_env"):
+            missing.append(filename)
+    return missing
+
+
 def main():
     run_live = "--live" in sys.argv
     suite = UNIT_TESTS + (LIVE_API_TESTS if run_live else [])
+
+    missing = _missing_test_env(UNIT_TESTS)
+    if missing:
+        print("These test files must start with `import _test_env` (before any other import):")
+        print("\n".join(f"  {f}" for f in missing))
+        return False
 
     print("=" * 70)
     print(f"Running {len(suite)} test file(s){' (including live API tests)' if run_live else ' (unit tests only — pass --live to also run live API tests)'}")

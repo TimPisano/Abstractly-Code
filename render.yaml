@@ -178,14 +178,13 @@ services:
         value: "public, max-age=600, must-revalidate"
 
   # ---- Tester backend: same image as abstractly-api, own empty database ----
-  # A genuinely separate deployment (own service, own container, own SQLite
-  # file) for handing the real product to one outside tester at a time --
-  # NOT the demo pair above (no DEMO_MODE, no seeded sample data, no
-  # /demo/reset). Exists because this app has no per-account data isolation
-  # within one deployment (see the demo backend's comment above and
-  # docs/DEPLOYMENT.md's "Tester deployment" section) -- a tester account
-  # added to abstractly-api itself would see every real customer's leases,
-  # not a sandbox of their own.
+  # A separate deployment (own service, own container, own SQLite file,
+  # no disk): a throwaway staging copy of the real product, wiped on every
+  # deploy, restart and free-tier idle spindown. NOT the demo pair below
+  # (no DEMO_MODE, no seeded sample data, no /demo/reset). Real testers
+  # sign in to abstractly-api itself: every team's data there is scoped by
+  # team_id (feature/team-isolation, tests/test_team_isolation.py), so a
+  # tester's team can't see another firm's leases.
   - type: web
     name: abstractly-tester-api
     runtime: docker
@@ -286,10 +285,11 @@ services:
   # sample rent roll (see app/demo_seed.py) and reset on demand via
   # POST /demo/reset or backend/reset_demo_data.py -- see
   # DEPLOYMENT.md's "Demo deployment" section. Deliberately its own
-  # service/database rather than a user inside abstractly-api's
-  # database: this app has no per-account data isolation, so a demo
-  # login in the production database would see every real customer's
-  # leases, not a walled-off sandbox.
+  # service/database rather than a team inside abstractly-api's database:
+  # DEMO_MODE seeds sample data on boot, and /demo/reset deletes every
+  # row in every table (demo_seed.reset_demo_data), across all teams.
+  # Team isolation keeps logins apart, but a wipe like that is only
+  # safe in a database of its own.
   - type: web
     name: abstractly-demo-api
     runtime: docker

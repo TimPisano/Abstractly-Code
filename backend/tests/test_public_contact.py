@@ -6,6 +6,7 @@ with a footer offers the business email plus a Book a call link instead.
 Pure file reads — no server, no database, no network.
 """
 
+import _test_env  # noqa: F401  -- first: temp DB, no .env, no real network (see _test_env.py)
 import os
 import re
 

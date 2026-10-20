@@ -18,6 +18,7 @@ where an unmocked test suite mailed a real inbox once real credentials
 were configured).
 """
 
+import _test_env  # noqa: F401  -- first: temp DB, no .env, no real network (see _test_env.py)
 import hashlib
 import os
 import sys

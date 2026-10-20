@@ -10,9 +10,11 @@ Same conventions as test_messaging.py: _fresh_temp_db() + Flask
 test_client(), real database.create_user()-backed sessions.
 """
 
+import _test_env  # noqa: F401  -- first: temp DB, no .env, no real network (see _test_env.py)
 import os
 import sys
 import tempfile
+from unittest import mock
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
@@ -487,9 +489,13 @@ def test_delete_route_isolation_a_cannot_disconnect_bs_account():
         assert database.get_linked_email_account(bs_account_id) is not None, "b's account must be untouched"
 
         client_b = _client_for(b)
-        resp = client_b.delete(f"/email-accounts/{bs_account_id}")
+        # The route revokes the token with the provider through the real
+        # `requests` module; fake that call so the test never reaches Google.
+        with mock.patch.object(email_accounts.requests, "post", return_value=FakeResponse(200, {})) as revoke:
+            resp = client_b.delete(f"/email-accounts/{bs_account_id}")
         assert resp.status_code == 200
         assert database.get_linked_email_account(bs_account_id) is None
+        assert revoke.call_count == 1 and "google" in revoke.call_args[0][0], revoke.call_args
     finally:
         os.unlink(db_path)
     print("✓ test_delete_route_isolation_a_cannot_disconnect_bs_account: PASS")

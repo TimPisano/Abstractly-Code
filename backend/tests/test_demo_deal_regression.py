@@ -17,6 +17,7 @@ docstring for why the exact-findings assertion pins `today` to the demo
 deal's documented as-of date (2026-08-31) rather than real wall-clock
 "today" -- the same date-drift reasoning applies here unchanged.
 """
+import _test_env  # noqa: F401  -- first: temp DB, no .env, no real network (see _test_env.py)
 import io
 import os
 import sys

@@ -7,6 +7,7 @@ file, so this never touches the real dev database or requires a live
 server running.
 """
 
+import _test_env  # noqa: F401  -- first: temp DB, no .env, no real network (see _test_env.py)
 import os
 import sys
 import tempfile

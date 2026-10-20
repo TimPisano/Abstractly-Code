@@ -10,6 +10,7 @@ by patching jobs.extraction_queue.enqueue so it either does nothing
 function inline (_SyncEnqueue).
 """
 
+import _test_env  # noqa: F401  -- first: temp DB, no .env, no real network (see _test_env.py)
 import io
 import os
 import sys

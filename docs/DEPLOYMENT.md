@@ -484,11 +484,11 @@ purchase — just point me at the domain and registrar.
 `render.yaml` also defines a second, completely separate pair of
 services — `abstractly-demo-api` and `abstractly-demo` — for showing
 the app to people without exposing any real customer data. This is a
-genuinely separate deployment with its own database, not a demo user
-inside the production one: this app has no per-account data
-isolation (every user reads the same shared `leases` table), so a
-demo login in the production database would see every real customer's
-leases. See `backend/app/demo_seed.py` for the full reasoning.
+genuinely separate deployment with its own database, not a demo team
+inside the production one. Team isolation would keep a demo login from
+seeing customers' leases, but demo mode seeds sample data on every boot
+and its reset (below) deletes every row in every table, across all
+teams. That is only safe in a database of its own.
 
 **Deploying it:** push `render.yaml` to GitHub, then Render dashboard →
 your Blueprint → "Sync" (or it picks up the two new services
@@ -521,9 +521,8 @@ in with any account from `app/demo_seed.py`'s `DEMO_ACCOUNTS` list
 rent roll import, including one deliberate rent mismatch so the
 rent-roll reconciliation feature has something real to flag on first
 load — no empty-dashboard first impression. All seeded accounts share
-this same sample data (there's no isolation between logins within one
-deployment, only between this deployment and production) — add more
-entries to `DEMO_ACCOUNTS` for more named visitor logins.
+this same sample data because they are all on the same team ("Legacy")
+— add more entries to `DEMO_ACCOUNTS` for more named visitor logins.
 
 **Resetting it between visitors:** either works, both do the same
 thing (wipe every lease/discrepancy/task/etc. table, keep the demo

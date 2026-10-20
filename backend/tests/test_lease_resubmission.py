@@ -11,6 +11,7 @@ so this exercises the same code path a real resubmission would, same
 convention as test_multipage_field.py / create_red_flag_leases.py.
 """
 
+import _test_env  # noqa: F401  -- first: temp DB, no .env, no real network (see _test_env.py)
 import os
 import sys
 import tempfile

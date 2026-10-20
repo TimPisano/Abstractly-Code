@@ -2,18 +2,25 @@
 Quota and usage enforcement for protecting Anthropic API spend.
 
 Functions:
-- check_team_quota: rejects uploads if team is at/over monthly limit
+- check_team_quota: rejects an upload if the team is at its monthly
+  document limit, or if the upload's pages would take it past its
+  monthly page limit
+- get_team_page_usage: pages used / limit this month (owner console)
+- count_pdf_pages: a PDF's page count from its bytes, no OCR
 - check_file_limits: rejects files that are too large/many-pages
 - find_duplicate_upload: finds existing lease with same content hash
 - log_usage_event: logs extraction attempt and fires budget alerts
 - _extraction_rate_limited: checks if user hit per-minute rate limit
 """
 
+import io
 import os
 import time
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, Tuple
 import sqlite3
+
+import pypdf
 
 from app import database
 from app import email_service
@@ -56,11 +63,25 @@ def _get_team_quotas(team_id: int) -> Tuple[int, int, float]:
         conn.close()
 
 
-def check_team_quota(team_id: int) -> Optional[str]:
+def _pages_used_this_month(conn, team_id: int) -> int:
+    current_month = datetime.now(timezone.utc).strftime("%Y-%m")
+    return conn.execute(
+        "SELECT COALESCE(SUM(pages), 0) FROM usage_events WHERE team_id = ? AND strftime('%Y-%m', created_at) = ? AND event_type != 'dedup_reuse'",
+        (team_id, current_month)
+    ).fetchone()[0]
+
+
+def check_team_quota(team_id: int, incoming_pages: int = 0) -> Optional[str]:
     """
     Returns a plain-English rejection message if the team is at/over
-    its monthly quota for documents or pages. None means quota is OK.
+    its monthly quota for documents, or if `incoming_pages` more pages
+    would take it past its monthly page quota. None means quota is OK.
     Computed fresh each call (current calendar month from usage_events).
+
+    Call it before any AI work starts. incoming_pages=0 (the default)
+    only asks "is the team already out of room?" -- what the upload
+    routes check before reading a file; once the page count is known,
+    call it again with that count.
     """
     conn = database.get_connection()
     try:
@@ -77,17 +98,50 @@ def check_team_quota(team_id: int) -> Optional[str]:
         if docs_used >= doc_quota:
             return f"Your team has used all {doc_quota} documents included this month. Contact an admin to raise your limit."
 
-        pages_used = conn.execute(
-            "SELECT COALESCE(SUM(pages), 0) FROM usage_events WHERE team_id = ? AND strftime('%Y-%m', created_at) = ? AND event_type != 'dedup_reuse'",
-            (team_id, current_month)
-        ).fetchone()[0]
+        pages_used = _pages_used_this_month(conn, team_id)
 
         if pages_used >= page_quota:
-            return f"Your team has used all {page_quota} pages included this month. Contact an admin to raise your limit."
+            return f"Your team has used all {page_quota:,} pages included this month. Nothing was processed. Contact Abstractly to raise your team's limit."
+        if incoming_pages and pages_used + incoming_pages > page_quota:
+            remaining = page_quota - pages_used
+            return (
+                f"This file has {incoming_pages:,} pages, but your team has {remaining:,} of its "
+                f"{page_quota:,} monthly pages left. Nothing was processed. Try a smaller file, "
+                "or contact Abstractly to raise your team's limit."
+            )
 
         return None
     finally:
         conn.close()
+
+
+def get_team_page_usage(team_id: int) -> Dict[str, Any]:
+    """{"pages_used", "page_limit", "page_limit_is_default"} for the current calendar month -- the owner console's view of one team."""
+    _, page_quota, _ = _get_team_quotas(team_id)
+    conn = database.get_connection()
+    try:
+        override = conn.execute("SELECT monthly_page_quota FROM teams WHERE id = ?", (team_id,)).fetchone()
+        return {
+            "pages_used": _pages_used_this_month(conn, team_id),
+            "page_limit": page_quota,
+            "page_limit_is_default": not override or override[0] is None,
+        }
+    finally:
+        conn.close()
+
+
+def count_pdf_pages(file_bytes: bytes) -> Optional[int]:
+    """
+    A PDF's page count from its bytes alone: reads the page tree, never
+    renders or OCRs anything, so it's cheap enough to run on every
+    upload before any other work. None if pypdf can't read it
+    (encrypted, damaged); the extraction pipeline then reports the
+    specific problem.
+    """
+    try:
+        return len(pypdf.PdfReader(io.BytesIO(file_bytes)).pages)
+    except Exception:
+        return None
 
 
 def check_file_limits(file_bytes: bytes, filename: str) -> Optional[str]:
@@ -99,19 +153,16 @@ def check_file_limits(file_bytes: bytes, filename: str) -> Optional[str]:
     if file_size_mb > MAX_FILE_SIZE_MB:
         return f"File too large: {file_size_mb:.1f}MB exceeds limit of {MAX_FILE_SIZE_MB}MB."
 
-    # Try to count pages for PDF/supported formats. Non-PDF formats skip
-    # page counting and rely on size check alone.
+    # PDFs only: other formats have no page count until they're
+    # extracted, and rely on the size check here plus the team's
+    # monthly page limit (checked once their pages are known).
+    # count_pdf_pages reads the page count straight from the bytes. The
+    # old version called extract_pages(..., None), which raised on
+    # open(None) and was silently swallowed, so this limit never ran.
     if filename.lower().endswith('.pdf'):
-        try:
-            from app import document_extractor
-            pages = document_extractor.extract_pages(file_bytes, filename, None)
-            page_count = len(pages)
-            if page_count > MAX_PAGES_PER_FILE:
-                return f"File has too many pages: {page_count} exceeds limit of {MAX_PAGES_PER_FILE}."
-        except Exception:
-            # If page extraction fails for any reason, let the main
-            # extraction pipeline handle it (will report a more specific error).
-            pass
+        page_count = count_pdf_pages(file_bytes)
+        if page_count is not None and page_count > MAX_PAGES_PER_FILE:
+            return f"File has too many pages: {page_count} exceeds limit of {MAX_PAGES_PER_FILE}."
 
     return None
 

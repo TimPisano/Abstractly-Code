@@ -12,6 +12,7 @@ this file doesn't need a live server — it's exercising the persistence
 functions directly.
 """
 
+import _test_env  # noqa: F401  -- first: temp DB, no .env, no real network (see _test_env.py)
 import os
 import sys
 import tempfile

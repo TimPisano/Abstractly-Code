@@ -25,6 +25,7 @@ before its fix (verified against b75b947) and passes after.
 
 Same in-process test_client + temp SQLite pattern as test_team_isolation.py.
 """
+import _test_env  # noqa: F401  -- first: temp DB, no .env, no real network (see _test_env.py)
 import io
 import os
 import sys
