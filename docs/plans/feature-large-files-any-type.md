@@ -35,8 +35,14 @@ Branch only: no merge, no push, no deploy, no Render settings.
 ## Approach
 
 Everything new sits behind `LARGE_FILE_UPLOADS` (default off). With the
-flag off, existing routes behave exactly as today, except true bug fixes
-(item 6, and not reading the file into memory repeatedly).
+flag off, existing routes behave exactly as today.
+
+**Usage limits are out of scope (user, mid-run):** `feature/tester-ready`
+owns `usage_limits.py` / `test_usage_limits.py`; this branch does not touch
+them. Item 6 is reported as a finding for that branch, not fixed here. The
+new pipeline calls the existing `usage_limits.check_team_quota(team_id)`
+before any AI processing starts and leaves the quota logic alone. Its own
+file-size and page caps live in the new upload module.
 
 - **New routes** (existing routes untouched, per CLAUDE.md):
   `POST /uploads` (multipart `file`, `kind` = `lease` | `rent_roll`,
