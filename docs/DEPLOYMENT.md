@@ -317,6 +317,64 @@ A useful negative control: `abstractly-demo-api` and
 either should *lose* the record. If they behave identically to
 `abstractly-api`, the disk is not doing what you think it is.
 
+## Large-file uploads (`LARGE_FILE_UPLOADS`)
+
+Off by default everywhere. When on, the upload page sends leases and rent
+rolls to `POST /uploads`: the file is streamed to disk, its type is
+checked from its content, and a background job reads it (OCR only on
+pages that need it, one page at a time), extracts it (long leases in
+chunks for AI) and saves it, while the page shows "Reading page 120 of
+300". Measurements and the reasons for each limit are in
+`docs/plans/large-files-REPORT.md`.
+
+**No new Render service or add-on is needed.** The job runs on the queue
+and worker this app already has: `REDIS_URL` (Upstash) and `worker.py`,
+which `start.sh` starts next to gunicorn in the same container. The
+worker has to share the container: the uploaded file waits on its local
+disk.
+
+### Turning it on (do it on `abstractly-tester-api` first)
+
+In the service's **Environment** tab:
+
+1. Confirm `REDIS_URL` is set (the same value the AI extraction queue
+   uses). Without it, jobs run on a thread inside the web process
+   instead. That works, but a job in progress is lost when Render
+   restarts the service, and it's marked failed ("please upload it
+   again") the next time anyone looks at it.
+2. Add `LARGE_FILE_UPLOADS` = `true`.
+3. Add `GUNICORN_TIMEOUT` = `300`. A 150 MB file over a slow connection
+   can take more than gunicorn's default 120 s just to arrive, and
+   gunicorn would cut it off mid-upload.
+4. Optional, defaults shown: `LARGE_FILE_MAX_UPLOAD_MB` = `150`,
+   `LARGE_FILE_MAX_PAGES` = `1000`. Leave `LARGE_FILE_UPLOAD_DIR` unset;
+   the default temp directory is on the container's own disk, which the
+   API and worker share. Don't point it at the database disk
+   (`/app/data`); uploads are deleted after processing either way.
+5. Save. Render redeploys the service.
+
+Then check, on that deployment: upload a large PDF (the 120 MB scanned
+fixture from `python backend/tests/create_large_fixtures.py` is a good
+test) and a 5,000-row rent roll. Watch the progress bar, then confirm
+the lease and rows appear.
+
+### What to know before turning it on in production
+
+- **One job at a time per deployment.** There is one `worker.py`
+  process, so a 300-page scan (about 10-15 minutes of OCR) makes the next
+  upload wait. Running a second worker means one more `python worker.py &`
+  line in `start.sh`; check memory first.
+- **Memory.** Starter instances have 512 MB. OCR works one page at a
+  time, so a long scan doesn't use more memory than a short one; peak
+  numbers are in the report.
+- **Render's own limits.** Render documents HTTP responses of up to
+  100 minutes on web services and no request-size limit (a Render staff
+  answer on their community forum; not in the current docs), so the
+  150 MB cap is ours. Verify with a real large upload on the tester
+  deployment before relying on it in production.
+- **Tester and demo** have no persistent disk; a restart mid-job loses
+  that job, as above.
+
 ## Logging and monitoring
 
 The backend logs to **stdout** in a consistent format
