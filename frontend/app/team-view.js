@@ -15,6 +15,8 @@ const ROLE_LABELS = { admin: 'Admin', analyst: 'Analyst', viewer: 'Viewer' };
 
 const TeamView = {
     members: [],
+    invites: [],
+    invitesEnabled: false,
 
     async load() {
         const session = await Api.authSession();
@@ -30,10 +32,149 @@ const TeamView = {
         const container = document.getElementById('teamMembersTableContainer');
         container.innerHTML = '<p class="loading-inline" role="status"><span class="spinner-small"></span> Loading team members...</p>';
         try {
-            this.members = await Api.listTeamMembers();
+            // Invites are optional (TEAM_INVITES_ENABLED); a failure there
+            // must not hide the member list.
+            const [members, invites] = await Promise.all([
+                Api.listTeamMembers(),
+                Api.listTeamInvites().catch(() => ({ enabled: false, invites: [] })),
+            ]);
+            this.members = members;
+            this.invitesEnabled = Boolean(invites.enabled);
+            this.invites = invites.invites || [];
+            document.getElementById('teamInvitePanel').hidden = !this.invitesEnabled;
+            document.getElementById('teamAddMemberPanel').hidden = this.invitesEnabled;
             this.render();
+            this.renderInvites();
         } catch (err) {
             container.innerHTML = `<p class="error-text">Failed to load team members: ${escapeHtml(err.message)}</p>`;
+        }
+    },
+
+    renderInvites() {
+        const panel = document.getElementById('teamPendingInvitesPanel');
+        const container = document.getElementById('teamPendingInvitesContainer');
+        panel.hidden = !this.invitesEnabled || this.invites.length === 0;
+        if (panel.hidden) {
+            container.innerHTML = '';
+            return;
+        }
+        container.innerHTML = `
+            <table class="team-members-table">
+                <thead>
+                    <tr><th>Email</th><th>Role</th><th>Link</th><th></th></tr>
+                </thead>
+                <tbody>
+                    ${this.invites.map((i) => `
+                        <tr data-invite-id="${i.id}">
+                            <td>${escapeHtml(i.email)}${i.name && i.name !== i.email.split('@')[0] ? `<br><small>${escapeHtml(i.name)}</small>` : ''}</td>
+                            <td>${escapeHtml(ROLE_LABELS[i.role] || i.role)}</td>
+                            <td>${escapeHtml(this.inviteLinkLabel(i))}</td>
+                            <td>
+                                <button type="button" class="btn-secondary team-invite-resend-btn" data-invite-id="${i.id}">Resend</button>
+                                <button type="button" class="btn-secondary team-invite-revoke-btn" data-invite-id="${i.id}" data-email="${escapeHtml(i.email)}">Revoke</button>
+                            </td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        `;
+        container.querySelectorAll('.team-invite-resend-btn').forEach((btn) => {
+            btn.addEventListener('click', () => this.resendInvite(parseInt(btn.dataset.inviteId, 10), btn));
+        });
+        container.querySelectorAll('.team-invite-revoke-btn').forEach((btn) => {
+            btn.addEventListener('click', () => this.revokeInvite(parseInt(btn.dataset.inviteId, 10), btn.dataset.email));
+        });
+    },
+
+    inviteLinkLabel(invite) {
+        if (invite.expired || !invite.expires_at) return 'Expired. Resend to send a new link.';
+        const hours = Math.max(1, Math.round((new Date(invite.expires_at) - new Date()) / 3600000));
+        return hours >= 24 ? `Expires in ${Math.round(hours / 24)} day${Math.round(hours / 24) === 1 ? '' : 's'}` : `Expires in ${hours} hour${hours === 1 ? '' : 's'}`;
+    },
+
+    /**
+     * After an invite or resend: a toast if it was emailed; if email isn't
+     * set up on this server, the link itself, to copy and send by hand.
+     */
+    showInviteResult(result, email) {
+        const messageEl = document.getElementById('teamInviteMessage');
+        messageEl.textContent = '';
+        messageEl.classList.remove('is-error');
+        if (result.emailed) {
+            showToast(`Invite sent to ${email}.`, 'success');
+            return;
+        }
+        messageEl.textContent = `Email isn't set up, so nothing was sent. Copy this link and send it to ${email} yourself (it works for 72 hours, once):`;
+        const field = document.createElement('input');
+        field.type = 'text';
+        field.className = 'text-input';
+        field.readOnly = true;
+        field.value = result.invite_url || '';
+        field.setAttribute('aria-label', 'Invite link');
+        field.addEventListener('focus', () => field.select());
+        messageEl.append(document.createElement('br'), field);
+    },
+
+    async sendInvite(e) {
+        e.preventDefault();
+        const messageEl = document.getElementById('teamInviteMessage');
+        const submitBtn = document.getElementById('teamInviteSubmitBtn');
+        if (submitBtn.disabled) return;
+        messageEl.textContent = '';
+        messageEl.classList.remove('is-error');
+
+        const email = document.getElementById('teamInviteEmail').value.trim();
+        const name = document.getElementById('teamInviteName').value.trim();
+        const role = document.getElementById('teamInviteRole').value;
+
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Sending...';
+        try {
+            const result = await Api.createTeamInvite({ email, name, role });
+            document.getElementById('teamInviteForm').reset();
+            document.getElementById('teamInviteRole').value = 'analyst';
+            await this.refresh();
+            this.showInviteResult(result, email);
+        } catch (err) {
+            messageEl.textContent = err.message;
+            messageEl.classList.add('is-error');
+        } finally {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Send Invite';
+        }
+    },
+
+    async resendInvite(inviteId, button) {
+        if (button.disabled) return;
+        const invite = this.invites.find((i) => i.id === inviteId);
+        button.disabled = true;
+        button.textContent = 'Sending...';
+        try {
+            const result = await Api.resendTeamInvite(inviteId);
+            await this.refresh();
+            this.showInviteResult(result, invite ? invite.email : 'them');
+        } catch (err) {
+            showError(`Failed to resend invite: ${err.message}`);
+            button.disabled = false;
+            button.textContent = 'Resend';
+        }
+    },
+
+    async revokeInvite(inviteId, email) {
+        if (!(await confirmDialog({
+            title: 'Revoke this invite?',
+            message: `The link sent to ${email} will stop working. You can invite them again later.`,
+            confirmText: 'Revoke',
+            danger: true,
+        }))) {
+            return;
+        }
+        try {
+            await Api.revokeTeamInvite(inviteId);
+            showToast('Invite revoked.', 'success');
+            await this.refresh();
+        } catch (err) {
+            showError(`Failed to revoke invite: ${err.message}`);
         }
     },
 
@@ -101,7 +242,7 @@ const TeamView = {
         const newStatus = currentStatus === 'active' ? 'deactivated' : 'active';
         if (newStatus === 'deactivated' && !(await confirmDialog({
             title: 'Deactivate team member?',
-            message: 'They will no longer be able to sign in. You can reactivate them later.',
+            message: "They'll be signed out right away, everywhere, and won't be able to sign in. You can reactivate them later.",
             confirmText: 'Deactivate',
             danger: true,
         }))) {
@@ -165,6 +306,7 @@ registerView('team', TeamView);
 
 function _initTeamViewBindings() {
     document.getElementById('teamAddMemberForm').addEventListener('submit', (e) => TeamView.addMember(e));
+    document.getElementById('teamInviteForm').addEventListener('submit', (e) => TeamView.sendInvite(e));
 }
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', _initTeamViewBindings);

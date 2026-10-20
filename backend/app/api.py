@@ -557,6 +557,29 @@ def _split_and_extract(pages, field_extractor):
     return results
 
 
+def _claim_monthly_pages(page_count):
+    """
+    The team's monthly page limit, applied once a file's page count is
+    known and BEFORE any extraction work (regex or model) runs: returns
+    (message, 403) if these pages would take the caller's team past its
+    limit. Otherwise records them as used -- this is the only place
+    upload pages are recorded, for every upload route (single, batch,
+    resubmit, amendment, /extract) -- and returns None. Pages count from
+    the moment they're accepted for extraction, success or not, the same
+    way the document quota counts attempts.
+    """
+    from app import usage_limits
+    user = current_user()
+    team_id = (user or {}).get("team_id")
+    if not team_id:
+        return ("Your account isn't assigned to a team yet. Ask an admin to assign you to a team before uploading.", 403)
+    msg = usage_limits.check_team_quota(team_id, page_count)
+    if msg:
+        return (msg, 403)
+    usage_limits.log_usage_event(team_id, user["id"], None, page_count, None, event_type="extraction")
+    return None
+
+
 def _extract_leases_from_file_storage(file_storage, defer_ai=False):
     """
     Shared pipeline: save an uploaded werkzeug FileStorage to a temp
@@ -604,6 +627,10 @@ def _extract_leases_from_file_storage(file_storage, defer_ai=False):
         if extension in ('csv', 'xlsx'):
             table_leases, _ = _try_table_extraction(file_bytes, file_storage.filename, extension)
             if table_leases is not None:
+                # A spreadsheet of lease rows counts as one page.
+                quota_error = _claim_monthly_pages(1)
+                if quota_error:
+                    return None, quota_error
                 return table_leases, None
             # Table parsing found nothing usable -- fall through to the
             # shared prose path below, same as every other format.
@@ -612,6 +639,12 @@ def _extract_leases_from_file_storage(file_storage, defer_ai=False):
             pages = document_extractor.extract_pages(file_bytes, file_storage.filename, temp_path)
         except DocumentExtractionError as e:
             return None, (str(e), 422)
+
+        # Page count known, nothing sent to a model yet: the last point
+        # where the team's monthly page limit can stop this file for free.
+        quota_error = _claim_monthly_pages(len(pages))
+        if quota_error:
+            return None, quota_error
 
         # Checked before ANY extraction runs, including boundary
         # detection -- both are regex-driven and equally unreliable
@@ -743,20 +776,39 @@ def _validate_upload():
     file_bytes = file.read()
     file.seek(0)  # Reset for later processing
 
-    from app import usage_limits
     user = current_user()
     if not user:
         return None, (jsonify({"error": "Login required"}), 401)
 
+    error = _precheck_upload_file(user, file_bytes, file.filename)
+    if error:
+        message, status = error
+        return None, (jsonify({"error": message}), status)
+
+    return file, None
+
+
+def _precheck_upload_file(user, file_bytes, filename):
+    """
+    The usage-limit checks every uploaded file passes before any OCR,
+    text extraction or model call: per-file size and page caps, the
+    per-user extraction rate limit, a team to charge, and (for a PDF,
+    whose page count is cheap to read) the team's monthly page limit.
+    Shared by the single-file routes (via _validate_upload) and by
+    POST /leases/batch, which runs it once per file. Returns
+    (message, http_status) for a refused file, or None.
+    """
+    from app import usage_limits
+
     # File size/page limits and the per-user rate limit apply to every
     # upload regardless of team assignment -- these aren't team-scoped
     # checks, so a user with no team must not bypass them.
-    msg = usage_limits.check_file_limits(file_bytes, file.filename)
+    msg = usage_limits.check_file_limits(file_bytes, filename)
     if msg:
-        return None, (jsonify({"error": msg}), 400)
+        return (msg, 400)
 
     if usage_limits._extraction_rate_limited(user["id"]):
-        return None, (jsonify({"error": f"Rate limit exceeded: maximum {usage_limits.EXTRACTION_RATE_LIMIT_PER_USER_PER_MINUTE} extractions per minute."}), 429)
+        return (f"Rate limit exceeded: maximum {usage_limits.EXTRACTION_RATE_LIMIT_PER_USER_PER_MINUTE} extractions per minute.", 429)
 
     # Team quota genuinely needs a team to check against. Every user
     # gets one by default now (create_user() defaults to the 'Legacy'
@@ -764,13 +816,19 @@ def _validate_upload():
     # not the common path -- block rather than silently skip the quota.
     team_id = user.get("team_id")
     if not team_id:
-        return None, (jsonify({"error": "Your account isn't assigned to a team yet. Ask an admin to assign you to a team before uploading."}), 403)
+        return ("Your account isn't assigned to a team yet. Ask an admin to assign you to a team before uploading.", 403)
 
-    msg = usage_limits.check_team_quota(team_id)
+    # A PDF's page count is cheap to read before any other work, so a
+    # file that would go over the team's monthly page limit is turned
+    # away here, before OCR/text extraction. Every other format (and
+    # PDFs too) is checked again once its pages are known -- see
+    # _claim_monthly_pages.
+    incoming_pages = usage_limits.count_pdf_pages(file_bytes) if filename.lower().endswith('.pdf') else None
+    msg = usage_limits.check_team_quota(team_id, incoming_pages or 0)
     if msg:
-        return None, (jsonify({"error": msg}), 403)
+        return (msg, 403)
 
-    return file, None
+    return None
 
 
 # ----------------------------------------------------------------------
@@ -1130,9 +1188,8 @@ def upload_lease():
     finally:
         conn.close()
 
-    # Log usage event (pages unknown for async; tokens will be logged when extraction finishes)
-    if team_id:
-        usage_limits.log_usage_event(team_id, user["id"], created[0]["id"] if created else None, None, None, event_type="extraction")
+    # Usage (this document and its pages) was recorded by
+    # _claim_monthly_pages inside _extract_leases_from_file_storage.
 
     if _start_deferred_extraction(filename, split_leases):
         # Model-backed extraction is running in the background. The
@@ -1384,6 +1441,17 @@ def upload_leases_batch():
             supported = "PDF, Excel (.xlsx/.xls/.xlsm), CSV/TSV, Word (.docx/.doc), images (.jpg/.png/.tiff), or plain text (.txt)"
             results.append({"filename": filename or "(unnamed)", "success": False,
                              "error": f"Unsupported file type. Please upload one of: {supported}."})
+            continue
+
+        # Same checks as a single upload, per file and before any OCR or
+        # model work. Earlier files' pages are already recorded by then,
+        # so the monthly limit sees the batch's running total.
+        file_bytes = file_storage.read()
+        file_storage.seek(0)
+        error = _precheck_upload_file(current_user(), file_bytes, filename)
+        if error:
+            message, _status = error
+            results.append({"filename": filename, "success": False, "error": message})
             continue
 
         split_leases, error = _extract_leases_from_file_storage(file_storage, defer_ai=True)
@@ -2500,8 +2568,11 @@ def auth_team_setup():
     token = (body.get("token") or "").strip() if isinstance(body.get("token"), str) else ""
     new_password = body.get("new_password") if isinstance(body.get("new_password"), str) else ""
 
+    # `link_status` marks a dead link, so team-setup.html can tell "this
+    # link can never work" from "pick a different password" without
+    # reading the error text.
     if not token:
-        return jsonify({"error": "This setup link is invalid or has expired. Ask your admin for a new one."}), 400
+        return jsonify({"error": "This setup link is invalid or has expired. Ask your admin for a new one.", "link_status": "invalid"}), 400
     token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
     status, setup_user_id = database.get_password_reset_token_status(token_hash, _TEAM_SETUP_TOKEN_TTL_SECONDS, purpose="setup")
     setup_user = database.get_user(setup_user_id) if status == "valid" else None
@@ -2515,7 +2586,8 @@ def auth_team_setup():
     # redeemable here under the 7-day setup limit.
     user_id = database.consume_password_reset_token(token_hash, _TEAM_SETUP_TOKEN_TTL_SECONDS, purpose="setup")
     if user_id is None:
-        return jsonify({"error": "This setup link is invalid or has expired. Ask your admin for a new one."}), 400
+        status, _ = database.get_password_reset_token_status(token_hash, _TEAM_SETUP_TOKEN_TTL_SECONDS, purpose="setup")
+        return jsonify({"error": "This setup link is invalid or has expired. Ask your admin for a new one.", "link_status": status if status != "valid" else "invalid"}), 400
 
     database.update_user_password(user_id, hash_password(new_password))
     return jsonify({"status": "password_updated"}), 200
@@ -2815,9 +2887,17 @@ def _user_public(user):
 
 
 def _get_team_member(user_id, team_id):
-    """database.get_user(user_id), but returns None if that user isn't on team_id -- every route that accepts a caller-supplied assignee/participant id (task/assignment/thread creation) must use this, never bare get_user, so a team can't assign work to or pull someone outside it into a thread."""
+    """
+    database.get_user(user_id), but returns None if that user isn't on team_id -- every route that accepts a caller-supplied assignee/participant id (task/assignment/thread creation) must use this, never bare get_user, so a team can't assign work to or pull someone outside it into a thread.
+
+    Also None for a pending invite (status 'invited'): someone who hasn't
+    joined yet can't be assigned work, added to a thread, or edited
+    through /team/members/<id> (Resend/Revoke under /team/invites are
+    the only actions on them) -- which is also what lets a revoked
+    invite's row be deleted without breaking a reference.
+    """
     user = database.get_user(user_id)
-    if not user or user["team_id"] != team_id:
+    if not user or user["team_id"] != team_id or user["status"] == "invited":
         return None
     return user
 
@@ -2836,7 +2916,9 @@ def _is_protected_owner(member):
 @app.route('/team/members', methods=['GET'])
 @require_role('admin')
 def list_team_members():
-    return jsonify([_user_public(u) for u in database.list_users(team_id=current_team_id())]), 200
+    """Members only -- pending invites are listed separately by GET /team/invites."""
+    members = [u for u in database.list_users(team_id=current_team_id()) if u["status"] != "invited"]
+    return jsonify([_user_public(u) for u in members]), 200
 
 
 @app.route('/team/members', methods=['POST'])
@@ -2930,6 +3012,266 @@ def reset_team_member_password(member_id):
 
     database.update_user_password(member_id, hash_password(password))
     return jsonify({"status": "password_reset"}), 200
+
+
+# ---- Team invites (behind TEAM_INVITES_ENABLED) ---------------------
+#
+#   GET  /team/invites                     admin: {"enabled", "invites": [...]}
+#   POST /team/invites                     admin: {email, name?, role} -> 201
+#   POST /team/invites/<id>/resend         admin: fresh link, old one dies
+#   POST /team/invites/<id>/revoke         admin: link dies, email freed
+#   POST /auth/invite-status               public: {token} -> status (+ who/where)
+#   POST /auth/accept-invite               public: {token, new_password, remember}
+#
+# An invite is a users row with status 'invited' on the admin's own team
+# plus a purpose='invite' link in password_reset_tokens: only the
+# SHA-256 of the token is stored, single use, 72 hours. The invitee sets
+# their own password on team-setup.html (?kind=invite), which makes them
+# 'active' and signs them in. team_id always comes from the inviting
+# admin's session, never the request. Removing a member is the existing
+# PATCH /team/members/<id> {"status": "deactivated"}, which signs them
+# out everywhere (database.update_user_status).
+#
+# With the flag off every write route and both public routes 404, and
+# GET /team/invites answers {"enabled": false} so the Team page knows to
+# keep the old add-with-a-password form.
+
+_TEAM_INVITE_TOKEN_TTL_SECONDS = 72 * 3600
+_invite_rate_limiter = RateLimiter(max_hits=30, window_seconds=3600)  # per admin: 30 invites + resends / hour
+
+
+def _invites_enabled() -> bool:
+    """Read per request, same as _signup_enabled, so tests can toggle it."""
+    return os.environ.get("TEAM_INVITES_ENABLED", "").strip().lower() in ("1", "true", "yes")
+
+
+def _reset_invite_rate_limit_for_tests():
+    _invite_rate_limiter.reset()
+
+
+def _invite_public(user: dict) -> dict:
+    """One pending invite as the Team page shows it. `expired`: the newest link is past 72 hours (Resend issues a new one)."""
+    sent_at = user.get("invite_sent_at")
+    expires_at = None
+    expired = True
+    if sent_at:
+        expires = datetime.fromisoformat(sent_at) + timedelta(seconds=_TEAM_INVITE_TOKEN_TTL_SECONDS)
+        expires_at = expires.isoformat()
+        expired = datetime.now(timezone.utc) >= expires
+    return {
+        "id": user["id"], "email": user["email"], "name": user["name"], "role": user["role"],
+        "invited_by_name": user.get("invited_by_name"), "invite_sent_at": sent_at,
+        "expires_at": expires_at, "expired": expired,
+    }
+
+
+def _send_invite_link(invitee: dict) -> dict:
+    """
+    New single-use 72-hour invite link for `invitee` (revoking any older
+    one -- create_password_reset_token does that), emailed now. Returns
+    {"emailed": bool} plus "invite_url" only when the email didn't go
+    out, so the admin can share it by hand -- the same fallback POST
+    /owner/teams uses. Sent inline, not off the request path: this is an
+    admin-only route about an address the admin just typed, so there is
+    no account-existence timing to hide, and the admin needs to know
+    whether it was sent.
+    """
+    raw_token = secrets.token_urlsafe(32)
+    database.create_password_reset_token(invitee["id"], _token_hash(raw_token), purpose="invite")
+    invite_url = f"{_reset_link_base()}/app/team-setup.html?kind=invite&token={raw_token}"
+    team = database.get_team(invitee["team_id"]) or {}
+    emailed = email_service.send_team_invite_email(
+        invitee["email"], invitee.get("name") or "", team.get("name") or "your team",
+        current_user()["name"], invite_url,
+    )
+    result = {"emailed": bool(emailed)}
+    if not emailed:
+        result["invite_url"] = invite_url
+    return result
+
+
+def _pending_invite(user_id: int, team_id: int):
+    """The 'invited' user `user_id` on `team_id`, or None -- never a member who already joined, never anyone on another team."""
+    user = database.get_user(user_id)
+    if not user or user["team_id"] != team_id or user["status"] != "invited":
+        return None
+    return user
+
+
+@app.route('/team/invites', methods=['GET'])
+@require_role('admin')
+def list_team_invites():
+    if not _invites_enabled():
+        return jsonify({"enabled": False, "invites": []}), 200
+    invites = [_invite_public(u) for u in database.list_pending_invites(current_team_id())]
+    return jsonify({"enabled": True, "invites": invites}), 200
+
+
+@app.route('/team/invites', methods=['POST'])
+@require_role('admin')
+def create_team_invite():
+    """
+    Body: {"email", "name" (optional), "role"}. Invites someone to the
+    CALLER'S team -- there is no team_id in the body to tamper with.
+    409 when the address can't be invited: already a member or pending
+    here, or already has an account on another team (one login belongs
+    to one team; moving it is an owner-console decision).
+    """
+    if not _invites_enabled():
+        return jsonify({"error": "Not found"}), 404
+    if _invite_rate_limiter.check([f"user:{current_user()['id']}"]):
+        return jsonify({"error": "Too many invites in a short time. Please wait a bit and try again."}), 429
+
+    body = request.get_json(silent=True) or {}
+    email = body.get("email") if isinstance(body.get("email"), str) else ""
+    email = email.strip().lower()
+    role = body.get("role") if isinstance(body.get("role"), str) else ""
+    name = _clean_text_field(body.get("name"), _MAX_NAME_LENGTH)
+
+    if not email or len(email) > 254 or not _EMAIL_RE.match(email):
+        return jsonify({"error": "Please enter a valid email address."}), 400
+    if role not in _VALID_ROLES:
+        return jsonify({"error": f"role must be one of: {', '.join(sorted(_VALID_ROLES))}"}), 400
+    if not name:
+        name = email.split("@", 1)[0]
+
+    team_id = current_team_id()
+    existing = database.get_user_by_email(email)
+    if existing:
+        if existing["team_id"] != team_id:
+            return jsonify({"error": "That email already has an Abstractly account, so it can't be invited to your team. Ask them for a different email, or contact support."}), 409
+        if existing["status"] == "invited":
+            return jsonify({"error": "That person already has a pending invite. Use Resend to send a new link."}), 409
+        if existing["status"] == "deactivated":
+            return jsonify({"error": "That person was removed from your team. Reactivate them in the member list instead."}), 409
+        return jsonify({"error": "That person is already on your team."}), 409
+
+    # A random, never-recorded password hash: nobody can log in as an
+    # invited user until accept-invite replaces it (status also blocks it).
+    result = database.create_user(
+        email, name, hash_password(secrets.token_urlsafe(32)), role,
+        created_by_user_id=current_user()["id"], team_id=team_id, status="invited",
+    )
+    if result["status"] == "duplicate":
+        # Lost a race with another admin (or a signup) for the same address.
+        return jsonify({"error": "That email already has an Abstractly account."}), 409
+
+    invitee = database.get_user(result["id"])
+    sent = _send_invite_link(invitee)
+    database.insert_activity("team_member_invited", f"{name} ({email}) invited as {role} by {current_user()['name']}", team_id=team_id)
+    pending = next((i for i in database.list_pending_invites(team_id) if i["id"] == invitee["id"]), invitee)
+    return jsonify({"invite": _invite_public(pending), **sent}), 201
+
+
+@app.route('/team/invites/<int:invite_id>/resend', methods=['POST'])
+@require_role('admin')
+def resend_team_invite(invite_id):
+    """A fresh 72-hour link for a pending invite; the previous link stops working."""
+    if not _invites_enabled():
+        return jsonify({"error": "Not found"}), 404
+    invitee = _pending_invite(invite_id, current_team_id())
+    if not invitee:
+        return jsonify({"error": "Invite not found"}), 404
+    if _invite_rate_limiter.check([f"user:{current_user()['id']}"]):
+        return jsonify({"error": "Too many invites in a short time. Please wait a bit and try again."}), 429
+    sent = _send_invite_link(invitee)
+    pending = next((i for i in database.list_pending_invites(invitee["team_id"]) if i["id"] == invitee["id"]), invitee)
+    return jsonify({"invite": _invite_public(pending), **sent}), 200
+
+
+@app.route('/team/invites/<int:invite_id>/revoke', methods=['POST'])
+@require_role('admin')
+def revoke_team_invite(invite_id):
+    """Cancels a pending invite: its link stops working at once and the email can be invited again."""
+    if not _invites_enabled():
+        return jsonify({"error": "Not found"}), 404
+    team_id = current_team_id()
+    invitee = _pending_invite(invite_id, team_id)
+    if not invitee or not database.delete_invited_user(invite_id, team_id):
+        return jsonify({"error": "Invite not found"}), 404
+    database.insert_activity("team_invite_revoked", f"Invite for {invitee['email']} revoked by {current_user()['name']}", team_id=team_id)
+    return jsonify({"status": "revoked"}), 200
+
+
+def _invite_link_state(token: str):
+    """('valid'|'expired'|'used'|'superseded'|'invalid', invitee or None). Valid only while the row is still a pending invite on an active team."""
+    status, user_id = database.get_password_reset_token_status(_token_hash(token), _TEAM_INVITE_TOKEN_TTL_SECONDS, purpose="invite")
+    if status != "valid":
+        return status, None
+    invitee = database.get_user(user_id)
+    if not invitee or invitee["status"] != "invited" or database.is_team_deactivated(invitee["team_id"]):
+        return "invalid", None
+    return "valid", invitee
+
+
+@app.route('/auth/invite-status', methods=['POST'])
+def auth_invite_status():
+    """
+    Public by necessity (the invitee has no account yet). Body: {"token"}.
+    Read-only. For a valid link also returns the invitee's email, first
+    name and team name, so team-setup.html can say "Join <team>" and a
+    password manager saves the password under the right email -- nothing
+    the link's holder couldn't see by using it. A dead link returns the
+    status alone. POST, not GET, so the token never lands in the access log.
+    """
+    if not _invites_enabled():
+        return jsonify({"error": "Not found"}), 404
+    if _link_status_rate_limiter.check([f"ip:{request.remote_addr or 'unknown'}"]):
+        return jsonify({"error": "Too many requests. Please wait a few minutes and try again."}), 429
+    body = request.get_json(silent=True) or {}
+    token = _clean_token(body.get("token"))
+    if not token:
+        return jsonify({"status": "invalid"}), 200
+    status, invitee = _invite_link_state(token)
+    result = {"status": status}
+    if invitee:
+        team = database.get_team(invitee["team_id"]) or {}
+        result["email"] = invitee["email"]
+        result["first_name"] = email_service._greeting_name(invitee.get("name") or "")
+        result["team_name"] = team.get("name") or ""
+    return jsonify(result), 200
+
+
+@app.route('/auth/accept-invite', methods=['POST'])
+def auth_accept_invite():
+    """
+    Public by necessity: the emailed token is the proof of identity.
+    Body: {"token", "new_password", "remember"}. Checks the password
+    rules before consuming the link (a rejected password never burns
+    it), consumes it, sets the password, makes the invitee 'active' on
+    the team that invited them, and signs them in. Returns the same
+    body as /auth/login.
+    """
+    if not _invites_enabled():
+        return jsonify({"error": "Not found"}), 404
+    if _reset_password_rate_limiter.check([f"ip:{request.remote_addr or 'unknown'}"]):
+        return jsonify({"error": "Too many attempts. Please wait a few minutes and try again."}), 429
+
+    body = request.get_json(silent=True) or {}
+    token = _clean_token(body.get("token"))
+    new_password = body.get("new_password") if isinstance(body.get("new_password"), str) else ""
+    if not token:
+        return _dead_link_response("invalid", "invite")
+
+    status, invitee = _invite_link_state(token)
+    if status != "valid":
+        return _dead_link_response(status, "invite")
+    problem = password_rules.first_problem_message(new_password, invitee["email"], invitee.get("name") or "")
+    if problem:
+        return jsonify({"error": problem}), 400
+
+    user_id = database.consume_password_reset_token(_token_hash(token), _TEAM_INVITE_TOKEN_TTL_SECONDS, purpose="invite")
+    if user_id is None:
+        # Lost a race (double-click / two tabs): the other request used it.
+        status, _ = database.get_password_reset_token_status(_token_hash(token), _TEAM_INVITE_TOKEN_TTL_SECONDS, purpose="invite")
+        return _dead_link_response(status, "invite")
+    if not database.activate_invited_user(user_id, hash_password(new_password)):
+        # Revoked between the status check and here.
+        return _dead_link_response("invalid", "invite")
+
+    user = database.get_user(user_id)
+    database.insert_activity("team_member_joined", f"{user['name']} ({user['email']}) joined the team as {user['role']}", team_id=user["team_id"])
+    return jsonify({"status": "joined", **_start_session(user, _wants_remember(body))}), 201
 
 
 # ----------------------------------------------------------------------
@@ -3045,6 +3387,14 @@ def update_team(team_id):
             return jsonify({"error": "Team not found"}), 404
 
         body = request.get_json(silent=True) or {}
+        # The page limit gates every upload (usage_limits.check_team_quota):
+        # a whole number of pages, or null to fall back to the default.
+        # A string or negative number here would make the quota
+        # comparison raise or block everything.
+        if 'monthly_page_quota' in body:
+            value = body['monthly_page_quota']
+            if value is not None and (isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 1_000_000):
+                return jsonify({"error": "monthly_page_quota must be a whole number from 0 to 1,000,000, or null for the default"}), 400
         if 'monthly_document_quota' in body:
             conn.execute("UPDATE teams SET monthly_document_quota = ? WHERE id = ?", (body['monthly_document_quota'], team_id))
         if 'monthly_page_quota' in body:
@@ -5814,7 +6164,8 @@ def owner_team_detail(team_id):
     if not team:
         return jsonify({"error": "Team not found"}), 404
     members = [_owner_account_public_shape(u) for u in database.list_users(team_id)]
-    return jsonify({**team, "members": members}), 200
+    from app import usage_limits
+    return jsonify({**team, "members": members, "page_usage": usage_limits.get_team_page_usage(team_id)}), 200
 
 
 @app.route('/owner/teams', methods=['POST'])

@@ -27,6 +27,26 @@
         if (ok && !data.signup_enabled) Auth.showView('closed');
     }).catch(() => { /* the submit will report the network problem */ });
 
+    // Already signed in here? Say so (with a way back) rather than letting
+    // someone create a second account by accident. Signing up for a
+    // different firm is still allowed.
+    const existingToken = Auth.getToken();
+    if (existingToken) {
+        fetch(`${API_BASE_URL}/auth/session`, { headers: { Authorization: `Bearer ${existingToken}` } })
+            .then((r) => r.json())
+            .then((session) => {
+                if (!session.authenticated) return;
+                const notice = document.getElementById('signedInNotice');
+                notice.textContent = `You're signed in as ${session.email}. `;
+                const link = document.createElement('a');
+                link.href = 'index.html';
+                link.textContent = 'Go to your dashboard';
+                notice.append(link);
+                notice.hidden = false;
+            })
+            .catch(() => { /* offline: no notice */ });
+    }
+
     Object.values(fields).forEach((input) => input.addEventListener('input', () => Auth.setFieldError(input, '')));
 
     // Typos in the domain are the #1 reason a signup email "never arrives".

@@ -1,11 +1,22 @@
-# AUTH_NOTES — feature/auth-flow hardening log
+# AUTH_NOTES — auth-flow / auth-hardening log
 
 ## Summary (kept current — read this first)
 
-**State:** built, tested, pushed; three hardening rounds done. **Reviewer re-review: MERGE**
-(on `4a2b10f`; its two low notes fixed in round 3). The security auditor found nothing critical
-or high; its medium items are fixed. Not merged (never merge from this branch's session).
-Plan: `docs/plans/feature-auth-flow.md`.
+**State:** `feature/auth-flow` merged to `main` as `77e25f0` and deployed (rounds 1–3).
+Hardening continues on **`feature/auth-hardening`** (rounds 4+), pushed after each round and
+never merged. Plan: `docs/plans/feature-auth-hardening.md`.
+
+**Latest round:** 6. Links pasted with trailing junk (".", ")", a wrapped-line space,
+tracking params) still work; the password-manager username field is visible to Safari; an
+email scanner that opens a link can't use it up. The browser checks now live in the repo:
+`.claude/tools/auth-e2e/` (README there). Reviewer on rounds 4–5: **MERGE**; its follow-ups
+are done in round 6.
+
+**Deploy state (2026-10-05):** the auth-flow merge reached prod `abstractly-api`, but **the
+tester and demo APIs did not redeploy** while their static sites did. Tester's new
+reset/finish pages call `POST /auth/link-status`, which the old tester API doesn't have, so
+**password reset on tester is broken until a Manual Deploy of `abstractly-tester-api` (and
+`abstractly-demo-api`) in Render.**
 
 **What a person gets**
 - **Get started** (`/app/signup.html`): name, work email, company. They get an email from
@@ -76,6 +87,9 @@ Plan: `docs/plans/feature-auth-flow.md`.
   and offers a resend. This follows the spec ("die once a newer one is sent").
 - **Small timing difference** on signup/forgot for existing accounts (a DB write happens
   before the response; the email send doesn't). Rate limits make it hard to measure.
+- **Signing in without "Keep me signed in" replaces a remembered login in other tabs of the
+  same browser**, even for the same person: those tabs go to "You're signed out". Intended
+  (one browser holds one login), but it can surprise.
 - Admin-created members' passwords (typed by an admin) still use the old 8-character
   minimum. Self-chosen passwords (signup, reset, change, team-setup) use the full rules.
 
@@ -196,3 +210,81 @@ server" and the button works again (no endless spinner).
    Test: `test_change_password_is_not_counted_as_a_login`.
 
 After the round: suite 83/83; E2E 41/41 (Chromium desktop, WebKit iPhone); round-2 checks 6/6.
+
+### Round 4 — 2026-10-05 (feature/auth-hardening)
+
+New headless script `round4.mjs` (16 checks): Chromium **16/16**, WebKit **15/16** (the one
+miss is noise from the app dashboard, not auth; see below). Suite **83/83**. Round-1 E2E still
+**41/41** (Chromium desktop, WebKit iPhone).
+
+Fixed:
+1. **Two people, one browser.** With "Keep me signed in", every tab shares one token. When
+   B signed in, A's open tab silently made requests *as B* while still showing A's name and
+   data. Now an app tab watches the shared token: if it changes hands, the tab reloads into
+   the new person; if it's cleared, the tab goes to "You're signed out". And sign-in now
+   overwrites the token in one step instead of clear-then-set (the momentary "empty" made
+   other tabs think they'd been signed out). Tests:
+   `test_signing_in_never_momentarily_empties_the_shared_token` + E2E "two people, one
+   browser".
+2. **Signup while already signed in** says "You're signed in as … Go to your dashboard"
+   (signing up for another firm is still allowed).
+3. **Phone keyboards**: every auth input has `enterkeyhint` (Next / Go / Send / Done). Test:
+   `test_auth_inputs_tell_phone_keyboards_what_enter_does`.
+
+Checked and fine (no change needed): a link that expires while the form is open → "This
+link has expired" on submit; a link superseded from another tab while open → "There's a
+newer link"; Back from "Check your inbox" → a usable login form; Forward → the forgot page
+is not frozen; Back after a successful reset never shows the password form; double-click
+"send it again" and "Send me a new link" each send one email; Enter pressed 3× on login →
+one sign-in; two signups at once for the same email → exactly one live link; 200% text in
+landscape and portrait → no sideways scroll.
+
+Observed, not auth: after signing in, leaving the dashboard immediately makes WebKit log its
+in-flight background requests (`/alerts/summary`, `/today`, `/activity`) as "access control
+checks" errors when they're cancelled. Harmless, existing app code.
+
+### Round 5 — 2026-10-05 (feature/auth-hardening)
+
+New headless script `round5.mjs` (7 checks): Chromium **7/7**, WebKit **7/7**. Suite **83/83**.
+Round-1 E2E still **41/41** (Chromium desktop, WebKit iPhone).
+
+1. **Return to where you were.** A session that ends mid-use (expired, or signed out by a
+   reset elsewhere) used to land you on the dashboard after signing back in. Now `api.js`
+   passes the current screen's name (`?next=tasks`), and sign-in returns there. Only a plain
+   `[a-z0-9-]` view name is accepted (checked on both ends), so it can't be turned into an
+   off-site redirect. E2E: back on `#alerts` after re-login, and `?next=https://evil.example/x`
+   ignored. Test: `test_return_to_screen_only_accepts_a_plain_view_name`.
+2. **Logging in during a reset, two devices, UI only** (no change needed): phone opens the
+   reset link; the laptop signs in with the old password (works); the phone saves the new
+   password (works, signed in); the laptop's next click lands on "Your session ended".
+
+Test upkeep: round 4's static finishLogin test now finds the function body without relying
+on its exact signature (still verified to catch the original clear-then-set bug).
+
+### Round 6 — 2026-10-05 (feature/auth-hardening)
+
+`round6.mjs` (7 checks): WebKit iPhone **7/7**, Chromium **7/7**. Suite **83/83**.
+
+1. **Links pasted with trailing junk.** Copying a link out of a sentence often adds "." or ")",
+   a `%20` from a wrapped line, or a tracking `&utm_…`. These read as "This link doesn't
+   work". The page now keeps the leading token-shaped run (tokens are 43 chars of
+   `[A-Za-z0-9_-]`). E2E: all four variants open the form.
+2. **Password managers on iPhone.** The username field that tells Keychain which account the
+   new password belongs to used `hidden` (display:none), which Safari may skip. It's now
+   present but visually hidden. Test:
+   `test_password_pages_keep_a_username_field_password_managers_can_see`.
+3. Checked and fine: **an email security scanner that pre-opens a link does not burn it.**
+   Opening a link only *checks* it; only submitting the form uses it.
+
+Review follow-ups (rounds 4–5 reviewer, verdict MERGE):
+- Return-to-screen skips screens that need a lease or deal already picked (`detail`,
+  `report`, `timeline`, `comparison`); those return to the dashboard instead of an empty
+  screen.
+- **The headless browser scripts are now in the repo**: `.claude/tools/auth-e2e/`
+  (`run-local.sh`, `flows.mjs` 41 checks, `round2/4/5/6.mjs`, README). All rerun from there:
+  flows 41/41 (Chromium desktop, WebKit iPhone), round2 6/6, round4 16/16 both engines,
+  round5 7/7, round6 7/7. Round 4's error check now explicitly ignores WebKit's
+  cancelled-dashboard-fetch noise.
+- Commented the tiny boot window in which the two-tab listener isn't active yet.
+- Screenshots looked at for this branch: signup "You're signed in as…" notice and 200% text
+  (landscape/portrait), WebKit + Chromium, in `$AUTH_E2E_DIR/shots/r4-*`.

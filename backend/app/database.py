@@ -2285,7 +2285,8 @@ def get_pageview_summary(days: int = 30) -> Dict[str, Any]:
 
 def create_user(
     email: str, name: str, password_hash: str, role: str = "viewer",
-    created_by_user_id: Optional[int] = None, team_id: Optional[int] = None
+    created_by_user_id: Optional[int] = None, team_id: Optional[int] = None,
+    status: str = "active",
 ) -> Dict[str, Any]:
     """
     Returns {"status": "created", "id": ...} on success, or
@@ -2300,6 +2301,10 @@ def create_user(
     treat a NULL team_id as "not onboarded yet" and block uploads), so
     an admin only needs to pass a specific team_id when onboarding a
     new tester org into its own team.
+
+    status='invited' creates a pending teammate (POST /team/invites):
+    no usable password, can't log in, and becomes 'active' only through
+    activate_invited_user.
     """
     conn = get_connection()
     try:
@@ -2308,8 +2313,8 @@ def create_user(
             team_id = legacy_team[0] if legacy_team else None
         cur = conn.execute(
             "INSERT INTO users (email, name, password_hash, role, status, created_at, created_by_user_id, team_id) "
-            "VALUES (?, ?, ?, ?, 'active', ?, ?, ?)",
-            (email.strip().lower(), name, password_hash, role, datetime.now(timezone.utc).isoformat(), created_by_user_id, team_id),
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (email.strip().lower(), name, password_hash, role, status, datetime.now(timezone.utc).isoformat(), created_by_user_id, team_id),
         )
         conn.commit()
         return {"status": "created", "id": cur.lastrowid}
@@ -2373,6 +2378,84 @@ def list_all_users_cross_team() -> List[Dict[str, Any]]:
     try:
         rows = conn.execute("SELECT * FROM users ORDER BY created_at ASC").fetchall()
         return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+# ---- Team invites ----------------------------------------------------
+# A pending invite is a `users` row with status 'invited' on the
+# inviting team, plus a purpose='invite' row in password_reset_tokens
+# (hashed, single use -- the same table and functions as reset and
+# team-setup links). See api.py's /team/invites routes.
+
+def list_pending_invites(team_id: int) -> List[Dict[str, Any]]:
+    """Every 'invited' user on `team_id`, oldest first, with when their newest invite link was issued (invite_sent_at, None if they have none) and who invited them."""
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            """
+            SELECT u.id, u.email, u.name, u.role, u.created_at,
+                   inviter.name AS invited_by_name,
+                   (SELECT MAX(t.created_at) FROM password_reset_tokens t
+                     WHERE t.user_id = u.id AND t.purpose = 'invite') AS invite_sent_at
+            FROM users u
+            LEFT JOIN users inviter ON inviter.id = u.created_by_user_id
+            WHERE u.team_id = ? AND u.status = 'invited'
+            ORDER BY u.created_at ASC
+            """,
+            (team_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def delete_invited_user(user_id: int, team_id: int) -> bool:
+    """
+    Revokes a pending invite by deleting its 'invited' user row (its
+    invite links go with it, ON DELETE CASCADE), freeing the email to be
+    invited again. Only ever deletes a row that is still 'invited' on
+    `team_id`, so a member who already joined -- or anyone on another
+    team -- can't be deleted through here. Nothing else references an
+    invited user: they can't log in, and api._get_team_member refuses
+    them as an assignee or thread participant.
+    """
+    conn = get_connection()
+    try:
+        cur = conn.execute(
+            "DELETE FROM users WHERE id = ? AND team_id = ? AND status = 'invited'",
+            (user_id, team_id),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    except OverflowError:
+        return False
+    finally:
+        conn.close()
+
+
+def activate_invited_user(user_id: int, password_hash: str) -> bool:
+    """
+    Accepting an invite: sets the invitee's own password and makes them
+    'active', in one statement that only matches a row still 'invited'
+    -- so an invite revoked a moment earlier can't be completed. False
+    if the row isn't a pending invite (anymore).
+    """
+    conn = get_connection()
+    try:
+        cur = conn.execute(
+            "UPDATE users SET password_hash = ?, status = 'active', session_version = session_version + 1 "
+            "WHERE id = ? AND status = 'invited'",
+            (password_hash, user_id),
+        )
+        activated = cur.rowcount > 0
+        if activated:
+            conn.execute(
+                "UPDATE password_reset_tokens SET revoked_at = ? WHERE user_id = ? AND used_at IS NULL AND revoked_at IS NULL",
+                (_utcnow_iso(), user_id),
+            )
+        conn.commit()
+        return activated
     finally:
         conn.close()
 
@@ -2485,10 +2568,24 @@ def update_user_name(user_id: int, name: str) -> bool:
 
 
 def update_user_status(user_id: int, status: str) -> bool:
-    """status: 'active' | 'deactivated'. A deactivated user can no longer log in (auth.verify_password checks status), but their id stays valid everywhere it's already referenced (assignments, activity_log) -- see users.status's own column comment for why this is a status flip, not a DELETE."""
+    """
+    status: 'active' | 'deactivated'. A deactivated user can no longer log in (auth.verify_password checks status), but their id stays valid everywhere it's already referenced (assignments, activity_log) -- see users.status's own column comment for why this is a status flip, not a DELETE.
+
+    Deactivating also signs the user out everywhere (session_version + 1).
+    auth._live_user already refuses a deactivated user on every request;
+    the version bump is what keeps their old cookies and tokens dead if
+    they're reactivated later, so reactivation means "may sign in again",
+    not "every old session comes back".
+    """
     conn = get_connection()
     try:
-        cur = conn.execute("UPDATE users SET status = ? WHERE id = ?", (status, user_id))
+        if status == "active":
+            cur = conn.execute("UPDATE users SET status = ? WHERE id = ?", (status, user_id))
+        else:
+            cur = conn.execute(
+                "UPDATE users SET status = ?, session_version = session_version + 1 WHERE id = ?",
+                (status, user_id),
+            )
         conn.commit()
         return cur.rowcount > 0
     except OverflowError:

@@ -8,7 +8,7 @@ being non-NULL overrides the matching default below for that team only.
 
 # Default monthly quotas (per team). Can be overridden per team.
 DEFAULT_MONTHLY_DOCUMENT_QUOTA = 200
-DEFAULT_MONTHLY_PAGE_QUOTA = 2000
+DEFAULT_MONTHLY_PAGE_QUOTA = 1000
 DEFAULT_MONTHLY_BUDGET_USD = 50.0
 
 # Per-file constraints (hard limits, not per-team).

@@ -688,6 +688,54 @@ def test_staff_consoles_send_a_bearer_token():
     print("✓ test_staff_consoles_send_a_bearer_token: PASS")
 
 
+def test_signing_in_never_momentarily_empties_the_shared_token():
+    """Regression (round 4): finishLogin cleared localStorage before writing the new token; other open tabs saw "signed out" and left. Browser-checked in round4.mjs ("two people, one browser")."""
+    js = open(os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "app", "auth-common.js")).read()
+    start = js.index("function finishLogin(")
+    body = js[start:js.index("\n    }\n", start)]
+    assert "clearToken()" not in body, "finishLogin must overwrite, not clear-then-set"
+    gate = open(os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "app", "access-gate.js")).read()
+    assert "window.addEventListener('storage'" in gate, "app tabs must react to the shared token changing hands"
+    print("✓ test_signing_in_never_momentarily_empties_the_shared_token: PASS")
+
+
+def test_auth_inputs_tell_phone_keyboards_what_enter_does():
+    root = os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "app")
+    for page in ("login.html", "signup.html", "forgot-password.html", "finish-signup.html", "reset-password.html"):
+        html = open(os.path.join(root, page)).read()
+        for tag in re.findall(r"<input [^>]*>", html):
+            if 'type="checkbox"' in tag or " hidden" in tag or 'aria-hidden="true"' in tag:
+                continue
+            assert "enterkeyhint=" in tag, f"{page}: {tag[:60]}"
+    print("✓ test_auth_inputs_tell_phone_keyboards_what_enter_does: PASS")
+
+
+def test_return_to_screen_only_accepts_a_plain_view_name():
+    """Round 5: after a session ends mid-use, signing back in returns to that screen. The `next` value must never be able to send someone off-site (open redirect). Browser-checked in round5.mjs."""
+    root = os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "app")
+    for rel in ("login.js", "auth-common.js", "api.js"):
+        js = open(os.path.join(root, rel)).read()
+        assert "/^[a-z0-9-]{1,40}$/.test(" in js, f"{rel} must validate the view name"
+    common = open(os.path.join(root, "auth-common.js")).read()
+    assert "window.location.replace(`index.html${view}`)" in common
+    api_js = open(os.path.join(root, "api.js")).read()
+    for needs_context in ("'detail'", "'report'", "'timeline'", "'comparison'"):
+        assert needs_context in api_js[api_js.index("NEEDS_CONTEXT"):api_js.index("NEEDS_CONTEXT") + 200], needs_context
+    pattern = re.compile(r"^[a-z0-9-]{1,40}$")
+    for bad in ("https://evil.example", "//evil.example", "tasks#x", "../admin", "javascript:alert(1)", ""):
+        assert not pattern.match(bad), bad
+    print("✓ test_return_to_screen_only_accepts_a_plain_view_name: PASS")
+
+
+def test_password_pages_keep_a_username_field_password_managers_can_see():
+    """Round 6: Safari's password manager may skip a display:none field; the username for "save this password" must be present but visually hidden."""
+    root = os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "app")
+    for page in ("finish-signup.html", "reset-password.html"):
+        tag = re.search(r'<input [^>]*id="username"[^>]*>', open(os.path.join(root, page)).read()).group(0)
+        assert 'autocomplete="username"' in tag and "visually-hidden" in tag and " hidden" not in tag, (page, tag)
+    print("✓ test_password_pages_keep_a_username_field_password_managers_can_see: PASS")
+
+
 def test_link_tokens_never_travel_in_a_url_to_the_api():
     """Regression (security audit): link-status was a GET with ?token=, which the access log records."""
     with _Env() as client:

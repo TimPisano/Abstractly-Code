@@ -2698,6 +2698,14 @@
     border-collapse: collapse;
 }
 
+/* On a phone the member and invite tables are wider than the card; let
+   them scroll sideways inside it instead of pushing the Resend/Revoke and
+   Deactivate buttons off the screen. */
+#teamMembersTableContainer,
+#teamPendingInvitesContainer {
+    overflow-x: auto;
+}
+
 .team-members-table th,
 .team-members-table td {
     text-align: left;
@@ -3038,6 +3046,36 @@
    `hidden` link added here can't hit the same trap. */
 .access-gate-link[hidden] {
     display: none;
+}
+
+/* team-setup.html: one field per line, button full width. Without this
+   the inputs and button flow inline and wrap wherever they happen to
+   fit -- with the short "Join team" label the confirm field and the
+   button shared a line. Scoped to this form; other access-gate pages
+   keep their own layout. */
+#setupForm {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-top: 1.25rem;
+}
+
+#setupForm .text-input,
+#setupForm .btn-primary {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+/* Present for password managers (the username a new password is saved
+   under), invisible on screen. Same rule as auth.css's, for the pages
+   that load this stylesheet instead (team-setup.html). */
+.visually-hidden {
+    position: absolute !important;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
 }
 
 /* When the dead-link recovery link IS showing, it and "Back to sign in"
