@@ -776,20 +776,39 @@ def _validate_upload():
     file_bytes = file.read()
     file.seek(0)  # Reset for later processing
 
-    from app import usage_limits
     user = current_user()
     if not user:
         return None, (jsonify({"error": "Login required"}), 401)
 
+    error = _precheck_upload_file(user, file_bytes, file.filename)
+    if error:
+        message, status = error
+        return None, (jsonify({"error": message}), status)
+
+    return file, None
+
+
+def _precheck_upload_file(user, file_bytes, filename):
+    """
+    The usage-limit checks every uploaded file passes before any OCR,
+    text extraction or model call: per-file size and page caps, the
+    per-user extraction rate limit, a team to charge, and (for a PDF,
+    whose page count is cheap to read) the team's monthly page limit.
+    Shared by the single-file routes (via _validate_upload) and by
+    POST /leases/batch, which runs it once per file. Returns
+    (message, http_status) for a refused file, or None.
+    """
+    from app import usage_limits
+
     # File size/page limits and the per-user rate limit apply to every
     # upload regardless of team assignment -- these aren't team-scoped
     # checks, so a user with no team must not bypass them.
-    msg = usage_limits.check_file_limits(file_bytes, file.filename)
+    msg = usage_limits.check_file_limits(file_bytes, filename)
     if msg:
-        return None, (jsonify({"error": msg}), 400)
+        return (msg, 400)
 
     if usage_limits._extraction_rate_limited(user["id"]):
-        return None, (jsonify({"error": f"Rate limit exceeded: maximum {usage_limits.EXTRACTION_RATE_LIMIT_PER_USER_PER_MINUTE} extractions per minute."}), 429)
+        return (f"Rate limit exceeded: maximum {usage_limits.EXTRACTION_RATE_LIMIT_PER_USER_PER_MINUTE} extractions per minute.", 429)
 
     # Team quota genuinely needs a team to check against. Every user
     # gets one by default now (create_user() defaults to the 'Legacy'
@@ -797,19 +816,19 @@ def _validate_upload():
     # not the common path -- block rather than silently skip the quota.
     team_id = user.get("team_id")
     if not team_id:
-        return None, (jsonify({"error": "Your account isn't assigned to a team yet. Ask an admin to assign you to a team before uploading."}), 403)
+        return ("Your account isn't assigned to a team yet. Ask an admin to assign you to a team before uploading.", 403)
 
     # A PDF's page count is cheap to read before any other work, so a
     # file that would go over the team's monthly page limit is turned
     # away here, before OCR/text extraction. Every other format (and
     # PDFs too) is checked again once its pages are known -- see
     # _claim_monthly_pages.
-    incoming_pages = usage_limits.count_pdf_pages(file_bytes) if file.filename.lower().endswith('.pdf') else None
+    incoming_pages = usage_limits.count_pdf_pages(file_bytes) if filename.lower().endswith('.pdf') else None
     msg = usage_limits.check_team_quota(team_id, incoming_pages or 0)
     if msg:
-        return None, (jsonify({"error": msg}), 403)
+        return (msg, 403)
 
-    return file, None
+    return None
 
 
 # ----------------------------------------------------------------------
@@ -1422,6 +1441,17 @@ def upload_leases_batch():
             supported = "PDF, Excel (.xlsx/.xls/.xlsm), CSV/TSV, Word (.docx/.doc), images (.jpg/.png/.tiff), or plain text (.txt)"
             results.append({"filename": filename or "(unnamed)", "success": False,
                              "error": f"Unsupported file type. Please upload one of: {supported}."})
+            continue
+
+        # Same checks as a single upload, per file and before any OCR or
+        # model work. Earlier files' pages are already recorded by then,
+        # so the monthly limit sees the batch's running total.
+        file_bytes = file_storage.read()
+        file_storage.seek(0)
+        error = _precheck_upload_file(current_user(), file_bytes, filename)
+        if error:
+            message, _status = error
+            results.append({"filename": filename, "success": False, "error": message})
             continue
 
         split_leases, error = _extract_leases_from_file_storage(file_storage, defer_ai=True)

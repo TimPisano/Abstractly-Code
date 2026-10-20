@@ -10,6 +10,7 @@ import io
 import os
 import sys
 import tempfile
+from unittest import mock
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
@@ -35,6 +36,13 @@ _PUBLIC_MUTATING = {
     # Read-only link check; a POST only so the token stays in the body
     # and out of access logs (a GET query string is logged).
     "/auth/link-status",
+    # Team invites (TEAM_INVITES_ENABLED): the invitee has no account
+    # yet by definition -- the emailed invite token is the proof of
+    # identity, same category as /auth/team-setup. invite-status is the
+    # read-only check behind the "Join <team>" greeting; accept-invite
+    # sets the password. Both are rate-limited per IP; see api.py's
+    # "Team invites" section.
+    "/auth/invite-status", "/auth/accept-invite",
     "/waitlist", "/waitlist/check",
     # Fired by anonymous visitors on the public marketing site itself
     # (frontend/landing.js) -- same "public by design" category as
@@ -69,8 +77,16 @@ def _sample_body_for(rule):
     return {"json": {}}
 
 
+# Flag-gated routes return 404 while their flag is off, which would let
+# an unprotected one pass the sweep unnoticed -- so it runs with every
+# flag that adds routes switched on.
+_ROUTE_FLAGS = {"TEAM_INVITES_ENABLED": "true"}
+
+
 def test_every_mutating_route_rejects_an_anonymous_caller():
     db = _fresh_temp_db()
+    flags = mock.patch.dict(os.environ, _ROUTE_FLAGS)
+    flags.start()
     try:
         client = app.test_client()
         checked = 0
@@ -96,8 +112,31 @@ def test_every_mutating_route_rejects_an_anonymous_caller():
         assert checked > 30, f"introspection found suspiciously few mutating routes ({checked})"
         assert not offenders, "these state-changing routes let an anonymous caller through:\n  " + "\n  ".join(offenders)
     finally:
+        flags.stop()
         os.unlink(db)
     print(f"✓ test_every_mutating_route_rejects_an_anonymous_caller: PASS ({checked} routes checked)")
+
+
+def test_public_invite_routes_are_listed_and_need_a_real_token():
+    """Public by design, but only with a real invite token: an anonymous caller without one gets nothing done."""
+    assert {"/auth/invite-status", "/auth/accept-invite"} <= _PUBLIC_MUTATING
+    db = _fresh_temp_db()
+    try:
+        with mock.patch.dict(os.environ, _ROUTE_FLAGS):
+            client = app.test_client()
+            status = client.post("/auth/invite-status", json={"token": "not-a-real-token"})
+            assert status.status_code in (200, 400) and status.get_json().get("status") == "invalid", status.get_json()
+            for body in ({}, {"token": "not-a-real-token", "new_password": "a long enough password"}):
+                resp = client.post("/auth/accept-invite", json=body)
+                assert resp.status_code == 400, (body, resp.status_code, resp.get_json())
+        conn = database.get_connection()
+        try:
+            assert conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0, "a bad token must not create or activate anyone"
+        finally:
+            conn.close()
+    finally:
+        os.unlink(db)
+    print("✓ test_public_invite_routes_are_listed_and_need_a_real_token: PASS")
 
 
 def _client(role=None, is_owner=False):
@@ -187,6 +226,7 @@ def test_rent_roll_get_routes_require_login():
 
 if __name__ == "__main__":
     test_every_mutating_route_rejects_an_anonymous_caller()
+    test_public_invite_routes_are_listed_and_need_a_real_token()
     test_viewer_cannot_do_analyst_actions()
     test_analyst_cannot_do_admin_actions()
     test_non_owner_gets_404_on_owner_routes()

@@ -9,6 +9,9 @@ Regressions covered (each failed on the code before this step):
 - check_file_limits never counted PDF pages (extract_pages(..., None)
   raised and was swallowed), so MAX_PAGES_PER_FILE was never enforced.
 - POST /leases/batch skipped the quota entirely.
+- POST /leases/batch skipped every pre-check single uploads get (per-file
+  size and page caps, the per-user rate limit, the early PDF page check),
+  so OCR/text extraction ran before the page limit could stop a file.
 
 "Before any AI call" is checked by making every extraction step after
 the page count raise if it's reached. Anthropic is never called: the
@@ -18,6 +21,7 @@ regex engine is the default, and the blocked paths stop before either.
 import io
 import os
 import sys
+import time
 from unittest import mock
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -154,6 +158,75 @@ def test_batch_upload_respects_the_page_limit_before_any_extraction():
         assert "4 pages" in body["results"][0]["error"]
         assert _pages_recorded(team_id) == 998
     print("✓ test_batch_upload_respects_the_page_limit_before_any_extraction: PASS")
+
+
+def _batch(client, token, files):
+    return client.post("/leases/batch", data={"files": [(io.BytesIO(data), name) for name, data in files]},
+                       headers=_bearer(token), content_type="multipart/form-data").get_json()
+
+
+def _count_text_extraction():
+    """Wraps document_extractor.extract_pages (where OCR runs) so a test can count how many files reached it."""
+    return mock.patch.object(api_module.document_extractor, "extract_pages",
+                             side_effect=api_module.document_extractor.extract_pages)
+
+
+def test_batch_pdf_over_the_limit_is_stopped_before_text_extraction():
+    with _Uploads() as client:
+        _, team_id = _make_admin()
+        token = _login(client, "avery@harbor.test")
+        _use_pages(team_id, 998)
+        with _count_text_extraction() as extract:
+            body = _batch(client, token, [("a.pdf", _pdf(4))])
+        assert body["succeeded"] == 0 and "4 pages" in body["results"][0]["error"], body
+        assert extract.call_count == 0, "a batch PDF over the limit must be stopped before text extraction/OCR"
+        assert _pages_recorded(team_id) == 998
+    print("✓ test_batch_pdf_over_the_limit_is_stopped_before_text_extraction: PASS")
+
+
+def test_batch_counts_earlier_files_toward_the_limit():
+    with _Uploads() as client:
+        _, team_id = _make_admin()
+        token = _login(client, "avery@harbor.test")
+        _use_pages(team_id, 995)
+        with _count_text_extraction() as extract:
+            body = _batch(client, token, [("first.pdf", _pdf(3)), ("second.pdf", _pdf(3))])
+        first, second = body["results"]
+        assert first["success"], first
+        assert not second["success"] and "3 pages" in second["error"] and "2 of its 1,000" in second["error"], second
+        assert extract.call_count == 1, "only the file that fit may reach text extraction"
+        assert _pages_recorded(team_id) == 998
+    print("✓ test_batch_counts_earlier_files_toward_the_limit: PASS")
+
+
+def test_batch_enforces_the_per_file_page_and_size_caps():
+    with _Uploads() as client:
+        _make_admin()
+        token = _login(client, "avery@harbor.test")
+        too_long = usage_limits_config.MAX_PAGES_PER_FILE + 1
+        with _count_text_extraction() as extract:
+            long_result = _batch(client, token, [("long.pdf", _pdf(too_long))])["results"][0]
+            with mock.patch.object(usage_limits, "MAX_FILE_SIZE_MB", 0.01):
+                big_result = _batch(client, token, [("big.txt", b"Monthly base rent: $4,250.00.\n" * 1000)])["results"][0]
+        assert not long_result["success"] and f"{too_long} exceeds limit" in long_result["error"], long_result
+        assert not big_result["success"] and "File too large" in big_result["error"], big_result
+        assert extract.call_count == 0
+    print("✓ test_batch_enforces_the_per_file_page_and_size_caps: PASS")
+
+
+def test_batch_applies_the_per_user_extraction_rate_limit():
+    with _Uploads() as client:
+        _make_admin()
+        token = _login(client, "avery@harbor.test")
+        user_id = database.get_user_by_email("avery@harbor.test")["id"]
+        usage_limits._extraction_rate_limit_window[user_id] = [time.time()] * (usage_limits.EXTRACTION_RATE_LIMIT_PER_USER_PER_MINUTE - 1)
+        with _count_text_extraction() as extract:
+            body = _batch(client, token, [("one.pdf", _pdf(1)), ("two.pdf", _pdf(1))])
+        one, two = body["results"]
+        assert one["success"], one
+        assert not two["success"] and "Rate limit exceeded" in two["error"], two
+        assert extract.call_count == 1
+    print("✓ test_batch_applies_the_per_user_extraction_rate_limit: PASS")
 
 
 def test_team_limit_override_applies_and_other_teams_are_unaffected():
