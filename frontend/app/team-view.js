@@ -66,7 +66,7 @@ const TeamView = {
                 <tbody>
                     ${this.invites.map((i) => `
                         <tr data-invite-id="${i.id}">
-                            <td>${escapeHtml(i.email)}${i.name ? `<br><small>${escapeHtml(i.name)}</small>` : ''}</td>
+                            <td>${escapeHtml(i.email)}${i.name && i.name !== i.email.split('@')[0] ? `<br><small>${escapeHtml(i.name)}</small>` : ''}</td>
                             <td>${escapeHtml(ROLE_LABELS[i.role] || i.role)}</td>
                             <td>${escapeHtml(this.inviteLinkLabel(i))}</td>
                             <td>
