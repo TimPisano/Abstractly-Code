@@ -57,7 +57,12 @@ The IRS does not audit most properties directly. The state HCA monitors, and rep
 
 **Documents.**
 
-- Tenant Income Certification (state form). Each HCA publishes its own. Example: California's [CTCAC compliance forms page](https://www.treasurer.ca.gov/ctcac/compliance/index.asp) links a forms library; the names of its forms are on that page. [P as read: the page lists "Compliance Forms," "2025 Annual Owner Certification," and a "Rent Increase Limit Waiver Worksheet," among others. It does not list a TIC by that name, so confirm the exact form in the CTCAC library.] Verify with your state agency.
+- Tenant Income Certification (state form). Each HCA publishes its own. California (CTCAC) forms page, read via WebFetch this session [P as read: [CTCAC forms](https://www.treasurer.ca.gov/ctcac/compliance/forms.asp)]:
+  - Required: Tenant Income Certification (updated April 2021); Tenant Income Certification Questionnaire (July 2022); Under $5,000 Asset Certification (July 2022); Section 42 LIHTC Lease Rider (July 2022); Good Cause Eviction Documents (April 2022); Child/Spousal Support Affidavit (July 2022).
+  - If applicable: Tenant Household Information Form (April 2021); Verification of Employment; Certification of Zero Income; Student Verification; Single Parent Full-Time Student Self-Affidavit; Student Financial Aid Verification Form; Foster Care Verification Form; Live-In Aide Verification Form; Separated or Estranged Status Affidavit; Project Status Report (PSR) with PSR A.I.T. Form.
+  - HOTMA versions: HOTMA Tenant Income Certification Form (updated December 2025); HOTMA Under $52,787 Asset Certification Form (December 2025).
+  - The CTCAC forms page does not list a Unit Status Report or Annual Owner Certification by those names. The owner annual certification is listed on the compliance index page instead. [P as read]
+  - Verify with your state agency. Other states' form names differ.
 - Verification documents: pay stubs, benefit letters, bank statements, third-party income verification, self-certification where permitted.
 - Student status documentation (see §1.3).
 - Lease, and the household's signed rent disclosure.
@@ -94,7 +99,7 @@ The IRS does not audit most properties directly. The state HCA monitors, and rep
 
 ### 1.4 Self-certification and the 100% low-income exemption
 
-- **Federal waiver.** §42(g)(8)(B) lets the Secretary waive annual income recertification for a building where the entire building is occupied by low-income tenants. [P: 26 U.S.C. §42(g)(8)] The waiver is applied for by the owner, with the monitoring agency signing, on Form 8877, under Rev. Proc. 2004-38. [S: [Rev. Proc. 2004-38](https://www.irs.gov/pub/irs-drop/rp-04-38.pdf) and [Novoco on Form 8877](https://www.novoco.com/news/irs-invites-comments-form-8877-request-waiver-annual-income-recertification); the Rev. Proc. was not opened in full, so verify its current status.] The predecessor procedure is Rev. Proc. 94-64 [S: [NCSHA copy](https://ncsha.org/wp-content/uploads/2018/04/proc_94-64.pdf)].
+- **Federal waiver.** §42(g)(8)(B) lets the Secretary waive annual income recertification for a building where the entire building is occupied by low-income tenants. [P: 26 U.S.C. §42(g)(8)] The waiver is applied for by the owner, with the monitoring agency signing, on Form 8877, under Rev. Proc. 2004-38. Procedure details, from secondary summaries [S]: scope is projects consisting entirely of 100% low-income buildings; owner and agency each complete their part of Form 8877; the agency's signature confirms 100% status; the owner consents to IRS disclosure of later revocation; the waiver takes effect when the IRS signs and generally runs for the rest of the 15-year compliance period unless revoked (revocation on loss of 100% status, a serious violation, or change of federal tax ownership). The form version cited in these summaries is 7-2004; I did not confirm a newer revision. [U] [S: [Rev. Proc. 2004-38](https://www.irs.gov/pub/irs-drop/rp-04-38.pdf) and [Novoco on Form 8877](https://www.novoco.com/news/irs-invites-comments-form-8877-request-waiver-annual-income-recertification); the Rev. Proc. was not opened in full, so verify its current status.] The predecessor procedure is Rev. Proc. 94-64 [S: [NCSHA copy](https://ncsha.org/wp-content/uploads/2018/04/proc_94-64.pdf)].
 - **HERA 2008.** State agencies describe the 2008 change (HERA) as an exemption from annual recertification for 100% LIHTC buildings, subject to their own conditions. [S, state agency summaries]. I did not open HERA's text to confirm the wording. [U]
 - **State variation (examples, not a survey).**
   - **Maryland:** exemption requires that all units be set aside for tax-credit-eligible families, and 24 months after the end of the calendar year the last building is placed in service, so initial households have been recertified at least once. [S: [MD DHCD procedure](https://dhcd.maryland.gov/HousingDevelopment/Documents/lihtc/Annual-Income-Recertification-Exemption-Procedures.pdf)]
@@ -132,7 +137,7 @@ The IRS does not audit most properties directly. The state HCA monitors, and rep
 
 - HUD publishes Multifamily Tax Subsidy Project (MTSP) income limits each year for LIHTC and tax-exempt bond deals. [P/S: [HUD MTSP dataset page](https://www.huduser.gov/portal/datasets/mtsp.html). The page was empty when fetched in this session. Verify the current release.]
 - Several states publish their own limit charts (for example, [CTCAC's 2026 income limits](https://www.treasurer.ca.gov/ctcac/compliance/index.asp) appear on its page as "2026 Income Limits and Maximum Rents"). [P: page lists the document; contents not opened]
-- **Implementation deadline for new limits.** Section8.md says owners must implement new MTSP limits within 45 days of the effective date. **I could not verify this.** Do not use it in product logic until a primary source confirms it. [U]
+- **Implementation deadline for new limits.** Owners must adopt new limits by the later of the limits' effective date or 45 days after HUD publishes them, per Rev. Proc. 94-57. [S: search summary citing Rev. Proc. 94-57; the Rev. Proc. itself was not opened; secondary sources give the 2025 example of HUD publishing April 1, 2025 and a May 16, 2025 deadline.] Verify the 2026 release date on HUD's MTSP page (the page was empty on fetch). [U for 2026 date]
 
 ### 2.2 Set-asides (minimum set-aside tests)
 
@@ -215,7 +220,9 @@ Example structure (illustrative only, not a real limit): a 2-bedroom unit at 60%
 
 - HUD's NSPIRE (National Standards for the Physical Inspection of Real Estate) replaces UPCS and HQS for HUD programs. [S: [Habitat Group on NSPIRE](https://www.thehabitatgroup.com/nspire-inspection-protocols-to-replace-upcs-hqs-standards)]
 - The 2026 HOME/HTF Federal Register notice says the NSPIRE compliance date for CPD programs was pushed from October 2025 to October 1, 2026. [S: search summary; the Federal Register notice was not opened]
-- **LIHTC switch.** I did not find a 2026 IRS or HUD notice confirming that state HCAs must use NSPIRE for LIHTC monitoring. Older commentary says LIHTC monitoring points to 24 CFR 5.703 and UPCS, with NSPIRE expected to follow unless the IRS says otherwise. That commentary is from 2023. [S, U] Verify with your state agency.
+- **LIHTC switch.** Secondary sources say §1.42-5 points to the physical standards at 24 CFR 5.703, which HUD has moved to NSPIRE, replacing UPCS. [S: search summary citing Habitat Group commentary; the regulation paragraph was not confirmed from primary text] State agencies may still choose local codes or UPCS for LIHTC inspections, per the same commentary. [S]
+- **Open item at the IRS.** NCSHA's comments on the IRS priority guidance plans for 2024-2025 and 2025-2026 asked the IRS to clarify NSPIRE's application to the Housing Credit and to remove the word "uniform" from §1.42-5. [S: NCSHA comment letters] I found no published IRS notice or regulation from 2025 or 2026 that settles the question. [U]
+- **Notice mismatch flagged by NCSHA.** NSPIRE provides a 28-day reasonable notice period, while the Housing Credit regulations provide 15 days. [S: NCSHA comments] Verify with your state agency.
 
 ### 4.3 Form 8823 and the Guide
 
@@ -259,6 +266,7 @@ Example structure (illustrative only, not a real limit): a 2-bedroom unit at 60%
 
 - **Unit status reports and tenant data.** Usually submitted through state portals or spreadsheets. Names vary (for example, WCMS, Procorem, or state-specific systems). [S, verify each state's system]. I did not confirm WCMS or Procorem for any specific state in this session. [U]
 - **HUD annual tenant data (HERA §2835).** Each HFA that administers LIHTC must send HUD annual tenant data. The data covers race, ethnicity, family composition, age, income, use of rental assistance, disability, and monthly rent. [S: [NCHM on HUD data collection](https://www.nchm.org/hud-data-collection-for-lihtc/); [HUD LIHTC tenant data documentation](https://www.huduser.gov/portal/Datasets/lihtc/LIHTC-TenantDataDocumentation.pdf) (not opened in full)]
+- **Forms and renewal.** HUD's LIHTC collection uses HUD-52695 (Property Data Collection Form) and HUD-52697 (Tenant Data Collection Form). HUD did not require specific forms, so states could fold the data into their own forms. [S: search summary of HUD notices] HUD published a 60-day notice (Federal Register 2025-09866) and a 30-day notice (2025-21929) on renewing the collection, OMB Control No. 2528-0320. I did not confirm final OMB approval or the current submission deadline. [S/U]
 - **Owner's role.** The owner collects the data at move-in and at recert; the state transmits to HUD. [S] HUD's 2010 notice let states fold the required data into existing forms; after initial certification, only data at recerts and new move-ins are required. [S] Some states' submissions have been incomplete. [S]
 - **Demographic collection.** The CTCAC page lists "HUD Tenant Demographic Data Collection" guidance (Oct. 2025). [P as read; content not opened]
 
@@ -296,7 +304,7 @@ Section8.md is dated 2026-10-04. Corrections from this session's primary-source 
 
 1. **Inspection sample size.** Section8.md says the HCA inspects "the lesser of 20% of units or the IRS Minimum Unit Sample Size." The regulation uses a table of minimum units by project size. The 20% figure is not a general rule. [P: §1.42-5(c)(2)(iii)(B)]
 2. **UA implementation window.** Section8.md does not give a UA window. The 45-day figure for UA changes appeared in the task brief, and it is wrong: the regulation says 90 days for a UA change. [P: §1.42-10(c)(1)]
-3. **MTSP implementation window.** Section8.md says owners must implement new MTSP limits within 45 days. I could not verify this. Treat as unverified. [U]
+3. **MTSP implementation window.** Section8.md says owners must implement new MTSP limits within 45 days. Supported by a secondary summary of Rev. Proc. 94-57: the later of the effective date or 45 days after HUD publishes. [S] Confirm against the Rev. Proc. itself.
 4. **Annual recert exemption.** Section8.md says annual recert is "generally required" for mixed-income and deep-rent-skewed projects, not 100% buildings. That is directionally right, but the federal basis is §42(g)(8)(B) waiver through an IRS/agency procedure (Form 8877, Rev. Proc. 2004-38), with state conditions (MD, WV, NY examples). An exemption is not automatic. [P/S]
 5. **Form 8823 categories.** Section8.md says 17 possible failures and eight that can cause credit loss. I could not confirm these numbers. [U]
 6. **Form 8823 categories named.** Section8.md's 11a/11b/11c mapping matches the 2011 guide's table of contents, but the current Pub 5913 may differ. [U]
