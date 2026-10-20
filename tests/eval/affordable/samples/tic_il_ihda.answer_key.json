@@ -1,0 +1,173 @@
+{
+  "id": "tic_il_ihda",
+  "form": "IHDA (Illinois) / City of Chicago / Cook County Tenant Income Certification (rev. 11-2025)",
+  "program": "LIHTC",
+  "doc_type": "tic",
+  "source_file": "sources/tic_il_ihda.pdf",
+  "sample_file": "samples/tic_il_ihda.pdf",
+  "synthetic": true,
+  "notes": "Initial certification, 1-person household, studio designated at 70% AMI (income averaging). Assets under the threshold, actual asset income used. Id says 'in' but the issuer is Illinois.",
+  "lease_fields": {
+    "tenant": "Noor Vasquez-Hale",
+    "landlord": null,
+    "rent_amount": "$1,112",
+    "lease_start_date": null,
+    "lease_end_date": null,
+    "property_address": "1717 North Larchmere Avenue",
+    "security_deposit": null
+  },
+  "program_fields": {
+    "certification_type": {
+      "value": "Initial Certification",
+      "type": "checkbox"
+    },
+    "effective_date": {
+      "value": "12/01/2026",
+      "type": "date"
+    },
+    "move_in_date": {
+      "value": "12/01/2026",
+      "type": "date"
+    },
+    "property_name": {
+      "value": "Larchmere Lofts",
+      "type": "text"
+    },
+    "tc_number": {
+      "value": "TC-26-118",
+      "type": "text"
+    },
+    "building_address": {
+      "value": "1717 North Larchmere Avenue",
+      "type": "text"
+    },
+    "city": {
+      "value": "Fernwood Grove",
+      "type": "text"
+    },
+    "zip": {
+      "value": "60999",
+      "type": "int"
+    },
+    "bin": {
+      "value": "IL-26-00342",
+      "type": "text"
+    },
+    "county": {
+      "value": "Maple Ridge",
+      "type": "text"
+    },
+    "unit_number": {
+      "value": "107",
+      "type": "text"
+    },
+    "bedrooms": {
+      "value": "0",
+      "type": "int"
+    },
+    "head_of_household": {
+      "value": "Noor Vasquez-Hale",
+      "type": "text"
+    },
+    "member_1_last_name": {
+      "value": "Vasquez-Hale",
+      "type": "text"
+    },
+    "member_1_first_name": {
+      "value": "Noor",
+      "type": "text"
+    },
+    "member_1_dob": {
+      "value": "07/08/1997",
+      "type": "date"
+    },
+    "total_employment_income": {
+      "value": "$41,250",
+      "type": "money"
+    },
+    "total_other_income": {
+      "value": "$1,800",
+      "type": "money"
+    },
+    "total_income_e": {
+      "value": "$43,050",
+      "type": "money"
+    },
+    "asset_1_type": {
+      "value": "Checking account",
+      "type": "text"
+    },
+    "asset_1_cash_value": {
+      "value": "$2,150",
+      "type": "money"
+    },
+    "asset_2_type": {
+      "value": "Savings account",
+      "type": "text"
+    },
+    "asset_2_cash_value": {
+      "value": "$5,600",
+      "type": "money"
+    },
+    "total_asset_cash_value": {
+      "value": "$7,750",
+      "type": "money"
+    },
+    "passbook_rate": {
+      "value": "0.40%",
+      "type": "pct"
+    },
+    "asset_income": {
+      "value": "$24",
+      "type": "money"
+    },
+    "total_annual_income": {
+      "value": "$43,074",
+      "type": "money"
+    },
+    "income_limit": {
+      "value": "$48,050",
+      "type": "money"
+    },
+    "designated_income_restriction_pct": {
+      "value": "70%",
+      "type": "checkbox"
+    },
+    "household_income_at_move_in": {
+      "value": "$43,074",
+      "type": "money"
+    },
+    "household_size_at_move_in": {
+      "value": "1",
+      "type": "int"
+    },
+    "tenant_paid_rent": {
+      "value": "$1,112",
+      "type": "money"
+    },
+    "utility_allowance": {
+      "value": "$74",
+      "type": "money"
+    },
+    "gross_rent": {
+      "value": "$1,186",
+      "type": "money"
+    },
+    "maximum_rent_limit": {
+      "value": "$1,201",
+      "type": "money"
+    },
+    "program": {
+      "value": "Tax Credit",
+      "type": "checkbox"
+    },
+    "household_signature_date": {
+      "value": "11/20/2026",
+      "type": "date"
+    },
+    "owner_signature_date": {
+      "value": "11/24/2026",
+      "type": "date"
+    }
+  }
+}

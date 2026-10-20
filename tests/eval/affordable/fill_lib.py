@@ -159,6 +159,75 @@ def build(spec: Dict[str, Any]) -> Dict[str, Any]:
     return key
 
 
+def build_acroform(spec: Dict[str, Any]):
+    """
+    Write samples/<id>.acroform.pdf: the same values, but typed into the
+    form's own fields and saved without flattening, the way a form filled
+    in Acrobat or Preview usually arrives. Placements that aren't AcroForm
+    fields are still drawn on the page. Same answer key as the clean
+    sample. Returns the path, or None for a spec with no AcroForm fields.
+    """
+    acro = [p for p in spec["placements"] if "acro" in p]
+    if not acro:
+        return None
+    src = SOURCES / spec["source"]
+    reader = PdfReader(str(src))
+    page_heights = [float(p.mediabox.height) for p in reader.pages]
+    widgets = _widgets(reader)
+    writer = PdfWriter(clone_from=reader)
+
+    values: Dict[int, Dict[str, str]] = defaultdict(dict)
+    for p in acro:
+        page_i = widgets[p["acro"]][p.get("index", 0)][0]
+        values[page_i][p["acro"]] = p["text"]
+    for page_i, fields in values.items():
+        page = writer.pages[page_i]
+        text_fields = {}
+        for annot in page.get("/Annots") or []:
+            a = annot.get_object()
+            name = a.get("/T")
+            if name is None and a.get("/Parent") is not None:
+                name = a["/Parent"].get_object().get("/T")
+            if name is None or str(name) not in fields:
+                continue
+            ft = a.get("/FT") or (a["/Parent"].get_object().get("/FT") if a.get("/Parent") else None)
+            if ft == "/Btn":
+                on = [k for k in (a.get("/AP") or {}).get("/N", {}) if k != "/Off"]
+                if on:
+                    a[NameObject("/AS")] = NameObject(on[0])
+                    target = a["/Parent"].get_object() if a.get("/T") is None and a.get("/Parent") else a
+                    target[NameObject("/V")] = NameObject(on[0])
+            else:
+                text_fields[str(name)] = fields[str(name)]
+        if text_fields:
+            writer.update_page_form_field_values(page, text_fields, auto_regenerate=False)
+    writer.set_need_appearances_writer(True)
+
+    draws: Dict[int, List[Tuple[float, float, str, float]]] = defaultdict(list)
+    with pdfplumber.open(str(src)) as plumber_pdf:
+        for placement in spec["placements"]:
+            if "acro" in placement:
+                continue
+            page_i, x, y, size = _resolve(placement, widgets, plumber_pdf, page_heights)
+            draws[page_i].append((x, y, _fits_text(placement["text"]), size))
+    for page_i, items in draws.items():
+        page = writer.pages[page_i]
+        buf = io.BytesIO()
+        c = canvas.Canvas(buf, pagesize=(float(page.mediabox.width), float(page.mediabox.height)))
+        for x, y, text, size in items:
+            c.setFont(FONT, size)
+            c.drawString(x, y, text)
+        c.save()
+        buf.seek(0)
+        page.merge_page(PdfReader(buf).pages[0])
+    writer.add_metadata({"/Title": f"SYNTHETIC SAMPLE - {spec['form']} (unflattened form fields)",
+                         "/Subject": "Fictional values for extraction evals. Not a real filing."})
+    out = SAMPLES / f"{spec['id']}.acroform.pdf"
+    with open(out, "wb") as f:
+        writer.write(f)
+    return out
+
+
 def _flatten(writer: PdfWriter) -> None:
     """Drop form widgets and the AcroForm so only drawn content remains."""
     for page in writer.pages:

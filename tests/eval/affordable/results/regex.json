@@ -2,230 +2,608 @@
   "engine": "regex",
   "run_date": "2026-10-19",
   "summary": {
-    "overall": {
-      "docs": 1,
-      "lease_recall_pct": 0.0,
-      "lease_spurious": 0,
-      "lease_text_layer_pct": 100.0,
-      "program_extraction_pct": 0.0,
-      "program_text_layer_pct": 100.0
-    },
-    "by_doc_type": {
-      "rfta": {
-        "docs": 1,
-        "ocr_needed": 0,
-        "lease_stated": 6,
-        "lease_correct": 0,
-        "lease_wrong": 1,
-        "lease_missed": 5,
-        "lease_spurious": 0,
-        "lease_in_text_layer": 6,
-        "program_total": 10,
-        "program_in_text": 10,
+    "clean": {
+      "overall": {
+        "docs": 4,
         "lease_recall_pct": 0.0,
+        "lease_spurious": 0,
         "lease_text_layer_pct": 100.0,
+        "program_extraction_pct": 0.0,
         "program_text_layer_pct": 100.0
-      }
-    },
-    "by_field": {
-      "lease.tenant": {
-        "stated": 1,
-        "correct": 0,
-        "text": 1,
-        "docs_wrong": [
-          "hud_52517_rfta (missed: got None)"
-        ],
-        "recall_pct": 0.0,
-        "text_layer_pct": 100.0
       },
-      "lease.landlord": {
-        "stated": 1,
-        "correct": 0,
-        "text": 1,
-        "docs_wrong": [
-          "hud_52517_rfta (missed: got None)"
-        ],
-        "recall_pct": 0.0,
-        "text_layer_pct": 100.0
+      "by_doc_type": {
+        "tic": {
+          "docs": 4,
+          "ocr_needed": 0,
+          "lease_stated": 12,
+          "lease_correct": 0,
+          "lease_wrong": 8,
+          "lease_missed": 4,
+          "lease_spurious": 0,
+          "lease_in_text_layer": 12,
+          "program_total": 140,
+          "program_in_text": 140,
+          "lease_recall_pct": 0.0,
+          "lease_text_layer_pct": 100.0,
+          "program_text_layer_pct": 100.0
+        }
       },
-      "lease.rent_amount": {
-        "stated": 1,
-        "correct": 0,
-        "text": 1,
-        "docs_wrong": [
-          "hud_52517_rfta (missed: got None)"
-        ],
-        "recall_pct": 0.0,
-        "text_layer_pct": 100.0
-      },
-      "lease.lease_start_date": {
-        "stated": 1,
-        "correct": 0,
-        "text": 1,
-        "docs_wrong": [
-          "hud_52517_rfta (missed: got None)"
-        ],
-        "recall_pct": 0.0,
-        "text_layer_pct": 100.0
-      },
-      "lease.property_address": {
-        "stated": 1,
-        "correct": 0,
-        "text": 1,
-        "docs_wrong": [
-          "hud_52517_rfta (wrong: got 'of Unit (street address, unit #, city, state, zip code)')"
-        ],
-        "recall_pct": 0.0,
-        "text_layer_pct": 100.0
-      },
-      "lease.security_deposit": {
-        "stated": 1,
-        "correct": 0,
-        "text": 1,
-        "docs_wrong": [
-          "hud_52517_rfta (missed: got None)"
-        ],
-        "recall_pct": 0.0,
-        "text_layer_pct": 100.0
-      },
-      "program.pha_name": {
-        "stated": 1,
-        "correct": 0,
-        "text": 1,
-        "docs_wrong": [],
-        "recall_pct": 0.0,
-        "text_layer_pct": 100.0
-      },
-      "program.unit_address": {
-        "stated": 1,
-        "correct": 0,
-        "text": 1,
-        "docs_wrong": [],
-        "recall_pct": 0.0,
-        "text_layer_pct": 100.0
-      },
-      "program.requested_lease_start": {
-        "stated": 1,
-        "correct": 0,
-        "text": 1,
-        "docs_wrong": [],
-        "recall_pct": 0.0,
-        "text_layer_pct": 100.0
-      },
-      "program.bedrooms": {
-        "stated": 1,
-        "correct": 0,
-        "text": 1,
-        "docs_wrong": [],
-        "recall_pct": 0.0,
-        "text_layer_pct": 100.0
-      },
-      "program.year_constructed": {
-        "stated": 1,
-        "correct": 0,
-        "text": 1,
-        "docs_wrong": [],
-        "recall_pct": 0.0,
-        "text_layer_pct": 100.0
-      },
-      "program.proposed_rent": {
-        "stated": 1,
-        "correct": 0,
-        "text": 1,
-        "docs_wrong": [],
-        "recall_pct": 0.0,
-        "text_layer_pct": 100.0
-      },
-      "program.security_deposit": {
-        "stated": 1,
-        "correct": 0,
-        "text": 1,
-        "docs_wrong": [],
-        "recall_pct": 0.0,
-        "text_layer_pct": 100.0
-      },
-      "program.date_unit_available": {
-        "stated": 1,
-        "correct": 0,
-        "text": 1,
-        "docs_wrong": [],
-        "recall_pct": 0.0,
-        "text_layer_pct": 100.0
-      },
-      "program.owner_name": {
-        "stated": 1,
-        "correct": 0,
-        "text": 1,
-        "docs_wrong": [],
-        "recall_pct": 0.0,
-        "text_layer_pct": 100.0
-      },
-      "program.household_head": {
-        "stated": 1,
-        "correct": 0,
-        "text": 1,
-        "docs_wrong": [],
-        "recall_pct": 0.0,
-        "text_layer_pct": 100.0
+      "by_field": {
+        "lease.tenant": {
+          "stated": 4,
+          "correct": 0,
+          "text": 4,
+          "docs_wrong": [
+            "tic_in_ihda (wrong: got 'INCOME CERTIFICATION')",
+            "tic_la_lhc (wrong: got 'Income Certification')",
+            "tic_nj_scan (wrong: got 'Income Certification')",
+            "tic_sc (wrong: got 'Income Certification')"
+          ],
+          "recall_pct": 0.0,
+          "text_layer_pct": 100.0
+        },
+        "lease.rent_amount": {
+          "stated": 4,
+          "correct": 0,
+          "text": 4,
+          "docs_wrong": [
+            "tic_in_ihda (missed: got None)",
+            "tic_la_lhc (missed: got None)",
+            "tic_nj_scan (missed: got None)",
+            "tic_sc (missed: got None)"
+          ],
+          "recall_pct": 0.0,
+          "text_layer_pct": 100.0
+        },
+        "lease.property_address": {
+          "stated": 4,
+          "correct": 0,
+          "text": 4,
+          "docs_wrong": [
+            "tic_in_ihda (wrong: got '___________________________________ City: ____________ State: _____ Zip: ________')",
+            "tic_la_lhc (wrong: got 'Unit Number: #Bedrooms:')",
+            "tic_nj_scan (wrong: got 'Unit Number: #Bedrooms:')",
+            "tic_sc (wrong: got 'Unit Number: #Bedrooms:')"
+          ],
+          "recall_pct": 0.0,
+          "text_layer_pct": 100.0
+        },
+        "program.effective_date": {
+          "stated": 4,
+          "correct": 0,
+          "text": 4,
+          "docs_wrong": [],
+          "recall_pct": 0.0,
+          "text_layer_pct": 100.0
+        },
+        "program.move_in_date": {
+          "stated": 4,
+          "correct": 0,
+          "text": 4,
+          "docs_wrong": [],
+          "recall_pct": 0.0,
+          "text_layer_pct": 100.0
+        },
+        "program.property_name": {
+          "stated": 4,
+          "correct": 0,
+          "text": 4,
+          "docs_wrong": [],
+          "recall_pct": 0.0,
+          "text_layer_pct": 100.0
+        },
+        "program.tc_number": {
+          "stated": 1,
+          "correct": 0,
+          "text": 1,
+          "docs_wrong": [],
+          "recall_pct": 0.0,
+          "text_layer_pct": 100.0
+        },
+        "program.building_address": {
+          "stated": 4,
+          "correct": 0,
+          "text": 4,
+          "docs_wrong": [],
+          "recall_pct": 0.0,
+          "text_layer_pct": 100.0
+        },
+        "program.city": {
+          "stated": 1,
+          "correct": 0,
+          "text": 1,
+          "docs_wrong": [],
+          "recall_pct": 0.0,
+          "text_layer_pct": 100.0
+        },
+        "program.zip": {
+          "stated": 1,
+          "correct": 0,
+          "text": 1,
+          "docs_wrong": [],
+          "recall_pct": 0.0,
+          "text_layer_pct": 100.0
+        },
+        "program.bin": {
+          "stated": 4,
+          "correct": 0,
+          "text": 4,
+          "docs_wrong": [],
+          "recall_pct": 0.0,
+          "text_layer_pct": 100.0
+        },
+        "program.county": {
+          "stated": 4,
+          "correct": 0,
+          "text": 4,
+          "docs_wrong": [],
+          "recall_pct": 0.0,
+          "text_layer_pct": 100.0
+        },
+        "program.unit_number": {
+          "stated": 4,
+          "correct": 0,
+          "text": 4,
+          "docs_wrong": [],
+          "recall_pct": 0.0,
+          "text_layer_pct": 100.0
+        },
+        "program.bedrooms": {
+          "stated": 4,
+          "correct": 0,
+          "text": 4,
+          "docs_wrong": [],
+          "recall_pct": 0.0,
+          "text_layer_pct": 100.0
+        },
+        "program.head_of_household": {
+          "stated": 4,
+          "correct": 0,
+          "text": 4,
+          "docs_wrong": [],
+          "recall_pct": 0.0,
+          "text_layer_pct": 100.0
+        },
+        "program.member_1_last_name": {
+          "stated": 4,
+          "correct": 0,
+          "text": 4,
+          "docs_wrong": [],
+          "recall_pct": 0.0,
+          "text_layer_pct": 100.0
+        },
+        "program.member_1_first_name": {
+          "stated": 4,
+          "correct": 0,
+          "text": 4,
+          "docs_wrong": [],
+          "recall_pct": 0.0,
+          "text_layer_pct": 100.0
+        },
+        "program.member_1_dob": {
+          "stated": 4,
+          "correct": 0,
+          "text": 4,
+          "docs_wrong": [],
+          "recall_pct": 0.0,
+          "text_layer_pct": 100.0
+        },
+        "program.total_employment_income": {
+          "stated": 3,
+          "correct": 0,
+          "text": 3,
+          "docs_wrong": [],
+          "recall_pct": 0.0,
+          "text_layer_pct": 100.0
+        },
+        "program.total_other_income": {
+          "stated": 2,
+          "correct": 0,
+          "text": 2,
+          "docs_wrong": [],
+          "recall_pct": 0.0,
+          "text_layer_pct": 100.0
+        },
+        "program.total_income_e": {
+          "stated": 1,
+          "correct": 0,
+          "text": 1,
+          "docs_wrong": [],
+          "recall_pct": 0.0,
+          "text_layer_pct": 100.0
+        },
+        "program.asset_1_type": {
+          "stated": 1,
+          "correct": 0,
+          "text": 1,
+          "docs_wrong": [],
+          "recall_pct": 0.0,
+          "text_layer_pct": 100.0
+        },
+        "program.asset_1_cash_value": {
+          "stated": 1,
+          "correct": 0,
+          "text": 1,
+          "docs_wrong": [],
+          "recall_pct": 0.0,
+          "text_layer_pct": 100.0
+        },
+        "program.asset_2_type": {
+          "stated": 1,
+          "correct": 0,
+          "text": 1,
+          "docs_wrong": [],
+          "recall_pct": 0.0,
+          "text_layer_pct": 100.0
+        },
+        "program.asset_2_cash_value": {
+          "stated": 1,
+          "correct": 0,
+          "text": 1,
+          "docs_wrong": [],
+          "recall_pct": 0.0,
+          "text_layer_pct": 100.0
+        },
+        "program.total_asset_cash_value": {
+          "stated": 1,
+          "correct": 0,
+          "text": 1,
+          "docs_wrong": [],
+          "recall_pct": 0.0,
+          "text_layer_pct": 100.0
+        },
+        "program.passbook_rate": {
+          "stated": 1,
+          "correct": 0,
+          "text": 1,
+          "docs_wrong": [],
+          "recall_pct": 0.0,
+          "text_layer_pct": 100.0
+        },
+        "program.asset_income": {
+          "stated": 4,
+          "correct": 0,
+          "text": 4,
+          "docs_wrong": [],
+          "recall_pct": 0.0,
+          "text_layer_pct": 100.0
+        },
+        "program.total_annual_income": {
+          "stated": 4,
+          "correct": 0,
+          "text": 4,
+          "docs_wrong": [],
+          "recall_pct": 0.0,
+          "text_layer_pct": 100.0
+        },
+        "program.income_limit": {
+          "stated": 4,
+          "correct": 0,
+          "text": 4,
+          "docs_wrong": [],
+          "recall_pct": 0.0,
+          "text_layer_pct": 100.0
+        },
+        "program.household_income_at_move_in": {
+          "stated": 4,
+          "correct": 0,
+          "text": 4,
+          "docs_wrong": [],
+          "recall_pct": 0.0,
+          "text_layer_pct": 100.0
+        },
+        "program.household_size_at_move_in": {
+          "stated": 4,
+          "correct": 0,
+          "text": 4,
+          "docs_wrong": [],
+          "recall_pct": 0.0,
+          "text_layer_pct": 100.0
+        },
+        "program.tenant_paid_rent": {
+          "stated": 4,
+          "correct": 0,
+          "text": 4,
+          "docs_wrong": [],
+          "recall_pct": 0.0,
+          "text_layer_pct": 100.0
+        },
+        "program.utility_allowance": {
+          "stated": 4,
+          "correct": 0,
+          "text": 4,
+          "docs_wrong": [],
+          "recall_pct": 0.0,
+          "text_layer_pct": 100.0
+        },
+        "program.gross_rent": {
+          "stated": 4,
+          "correct": 0,
+          "text": 4,
+          "docs_wrong": [],
+          "recall_pct": 0.0,
+          "text_layer_pct": 100.0
+        },
+        "program.maximum_rent_limit": {
+          "stated": 2,
+          "correct": 0,
+          "text": 2,
+          "docs_wrong": [],
+          "recall_pct": 0.0,
+          "text_layer_pct": 100.0
+        },
+        "program.household_signature_date": {
+          "stated": 1,
+          "correct": 0,
+          "text": 1,
+          "docs_wrong": [],
+          "recall_pct": 0.0,
+          "text_layer_pct": 100.0
+        },
+        "program.owner_signature_date": {
+          "stated": 1,
+          "correct": 0,
+          "text": 1,
+          "docs_wrong": [],
+          "recall_pct": 0.0,
+          "text_layer_pct": 100.0
+        },
+        "program.initial_qualification_date": {
+          "stated": 3,
+          "correct": 0,
+          "text": 3,
+          "docs_wrong": [],
+          "recall_pct": 0.0,
+          "text_layer_pct": 100.0
+        },
+        "program.household_size": {
+          "stated": 3,
+          "correct": 0,
+          "text": 3,
+          "docs_wrong": [],
+          "recall_pct": 0.0,
+          "text_layer_pct": 100.0
+        },
+        "program.total_ss_pension_income": {
+          "stated": 1,
+          "correct": 0,
+          "text": 1,
+          "docs_wrong": [],
+          "recall_pct": 0.0,
+          "text_layer_pct": 100.0
+        },
+        "program.rental_assistance": {
+          "stated": 1,
+          "correct": 0,
+          "text": 1,
+          "docs_wrong": [],
+          "recall_pct": 0.0,
+          "text_layer_pct": 100.0
+        },
+        "program.member_1_relationship": {
+          "stated": 3,
+          "correct": 0,
+          "text": 3,
+          "docs_wrong": [],
+          "recall_pct": 0.0,
+          "text_layer_pct": 100.0
+        },
+        "program.member_2_last_name": {
+          "stated": 3,
+          "correct": 0,
+          "text": 3,
+          "docs_wrong": [],
+          "recall_pct": 0.0,
+          "text_layer_pct": 100.0
+        },
+        "program.member_2_first_name": {
+          "stated": 3,
+          "correct": 0,
+          "text": 3,
+          "docs_wrong": [],
+          "recall_pct": 0.0,
+          "text_layer_pct": 100.0
+        },
+        "program.member_2_relationship": {
+          "stated": 3,
+          "correct": 0,
+          "text": 3,
+          "docs_wrong": [],
+          "recall_pct": 0.0,
+          "text_layer_pct": 100.0
+        },
+        "program.member_2_dob": {
+          "stated": 3,
+          "correct": 0,
+          "text": 3,
+          "docs_wrong": [],
+          "recall_pct": 0.0,
+          "text_layer_pct": 100.0
+        },
+        "program.designated_limit_x_140": {
+          "stated": 1,
+          "correct": 0,
+          "text": 1,
+          "docs_wrong": [],
+          "recall_pct": 0.0,
+          "text_layer_pct": 100.0
+        },
+        "program.other_non_optional_fees": {
+          "stated": 1,
+          "correct": 0,
+          "text": 1,
+          "docs_wrong": [],
+          "recall_pct": 0.0,
+          "text_layer_pct": 100.0
+        },
+        "program.member_3_last_name": {
+          "stated": 2,
+          "correct": 0,
+          "text": 2,
+          "docs_wrong": [],
+          "recall_pct": 0.0,
+          "text_layer_pct": 100.0
+        },
+        "program.member_3_first_name": {
+          "stated": 2,
+          "correct": 0,
+          "text": 2,
+          "docs_wrong": [],
+          "recall_pct": 0.0,
+          "text_layer_pct": 100.0
+        },
+        "program.member_3_relationship": {
+          "stated": 2,
+          "correct": 0,
+          "text": 2,
+          "docs_wrong": [],
+          "recall_pct": 0.0,
+          "text_layer_pct": 100.0
+        },
+        "program.member_3_dob": {
+          "stated": 2,
+          "correct": 0,
+          "text": 2,
+          "docs_wrong": [],
+          "recall_pct": 0.0,
+          "text_layer_pct": 100.0
+        },
+        "program.member_4_last_name": {
+          "stated": 1,
+          "correct": 0,
+          "text": 1,
+          "docs_wrong": [],
+          "recall_pct": 0.0,
+          "text_layer_pct": 100.0
+        },
+        "program.member_4_first_name": {
+          "stated": 1,
+          "correct": 0,
+          "text": 1,
+          "docs_wrong": [],
+          "recall_pct": 0.0,
+          "text_layer_pct": 100.0
+        },
+        "program.member_4_relationship": {
+          "stated": 1,
+          "correct": 0,
+          "text": 1,
+          "docs_wrong": [],
+          "recall_pct": 0.0,
+          "text_layer_pct": 100.0
+        },
+        "program.member_4_dob": {
+          "stated": 1,
+          "correct": 0,
+          "text": 1,
+          "docs_wrong": [],
+          "recall_pct": 0.0,
+          "text_layer_pct": 100.0
+        },
+        "program.member_5_last_name": {
+          "stated": 1,
+          "correct": 0,
+          "text": 1,
+          "docs_wrong": [],
+          "recall_pct": 0.0,
+          "text_layer_pct": 100.0
+        },
+        "program.member_5_first_name": {
+          "stated": 1,
+          "correct": 0,
+          "text": 1,
+          "docs_wrong": [],
+          "recall_pct": 0.0,
+          "text_layer_pct": 100.0
+        },
+        "program.member_5_relationship": {
+          "stated": 1,
+          "correct": 0,
+          "text": 1,
+          "docs_wrong": [],
+          "recall_pct": 0.0,
+          "text_layer_pct": 100.0
+        },
+        "program.member_5_dob": {
+          "stated": 1,
+          "correct": 0,
+          "text": 1,
+          "docs_wrong": [],
+          "recall_pct": 0.0,
+          "text_layer_pct": 100.0
+        }
       }
     }
   },
+  "skipped": [
+    "tic_in_ihda (scan)",
+    "tic_la_lhc (scan)",
+    "tic_nj_scan (scan)",
+    "tic_sc (scan)"
+  ],
   "documents": [
     {
-      "id": "hud_52517_rfta",
-      "form": "HUD-52517 Request for Tenancy Approval (exp. 04/30/2026)",
-      "program": "HCV",
-      "doc_type": "rfta",
+      "id": "tic_in_ihda",
+      "form": "IHDA (Illinois) / City of Chicago / Cook County Tenant Income Certification (rev. 11-2025)",
+      "program": "LIHTC",
+      "doc_type": "tic",
+      "variant": "clean",
       "pipeline_status": "ok",
-      "lease_ranges": 1,
-      "pages": 2,
+      "low_text_pages": [],
+      "lease_ranges": 3,
+      "pages": 7,
+      "mean_ocr_confidence": null,
       "lease_fields": {
-        "stated": 6,
+        "stated": 3,
         "correct": 0,
-        "wrong": 1,
-        "missed": 5,
+        "wrong": 2,
+        "missed": 1,
         "spurious": 0,
-        "in_text_layer": 6,
+        "in_text_layer": 3,
         "scores": [
           {
             "field": "tenant",
-            "expected": "Renata Quillfeather",
-            "extracted": null,
-            "confidence": null,
+            "expected": "Noor Vasquez-Hale",
+            "extracted": "INCOME CERTIFICATION",
+            "confidence": "high",
             "correct": false,
-            "kind": "missed",
-            "asserted_wrong": false,
+            "kind": "wrong",
+            "asserted_wrong": true,
+            "app_matcher_correct": false,
             "in_text_layer": true
           },
           {
             "field": "landlord",
-            "expected": "Maple Ridge Housing Partners LP",
+            "expected": null,
             "extracted": null,
             "confidence": null,
-            "correct": false,
-            "kind": "missed",
+            "correct": true,
+            "kind": "correct_absent",
             "asserted_wrong": false,
-            "in_text_layer": true
+            "app_matcher_correct": true,
+            "in_text_layer": null
           },
           {
             "field": "rent_amount",
-            "expected": "$1,325.00",
+            "expected": "$1,112",
             "extracted": null,
             "confidence": null,
             "correct": false,
             "kind": "missed",
             "asserted_wrong": false,
+            "app_matcher_correct": false,
             "in_text_layer": true
           },
           {
             "field": "lease_start_date",
-            "expected": "12/01/2026",
+            "expected": null,
             "extracted": null,
             "confidence": null,
-            "correct": false,
-            "kind": "missed",
+            "correct": true,
+            "kind": "correct_absent",
             "asserted_wrong": false,
-            "in_text_layer": true
+            "app_matcher_correct": true,
+            "in_text_layer": null
           },
           {
             "field": "lease_end_date",
@@ -235,27 +613,30 @@
             "correct": true,
             "kind": "correct_absent",
             "asserted_wrong": false,
+            "app_matcher_correct": true,
             "in_text_layer": null
           },
           {
             "field": "property_address",
-            "expected": "1450 Maple Ridge Drive, Apt 2B, Riverbend, IN 46990",
-            "extracted": "of Unit (street address, unit #, city, state, zip code)",
+            "expected": "1717 North Larchmere Avenue",
+            "extracted": "___________________________________ City: ____________ State: _____ Zip: ________",
             "confidence": "high",
             "correct": false,
             "kind": "wrong",
             "asserted_wrong": true,
+            "app_matcher_correct": false,
             "in_text_layer": true
           },
           {
             "field": "security_deposit",
-            "expected": "$1,000.00",
+            "expected": null,
             "extracted": null,
             "confidence": null,
-            "correct": false,
-            "kind": "missed",
+            "correct": true,
+            "kind": "correct_absent",
             "asserted_wrong": false,
-            "in_text_layer": true
+            "app_matcher_correct": true,
+            "in_text_layer": null
           },
           {
             "field": "cam_charges",
@@ -265,6 +646,7 @@
             "correct": true,
             "kind": "correct_absent",
             "asserted_wrong": false,
+            "app_matcher_correct": true,
             "in_text_layer": null
           },
           {
@@ -275,6 +657,7 @@
             "correct": true,
             "kind": "correct_absent",
             "asserted_wrong": false,
+            "app_matcher_correct": true,
             "in_text_layer": null
           },
           {
@@ -285,6 +668,7 @@
             "correct": true,
             "kind": "correct_absent",
             "asserted_wrong": false,
+            "app_matcher_correct": true,
             "in_text_layer": null
           },
           {
@@ -295,6 +679,7 @@
             "correct": true,
             "kind": "correct_absent",
             "asserted_wrong": false,
+            "app_matcher_correct": true,
             "in_text_layer": null
           },
           {
@@ -305,6 +690,7 @@
             "correct": true,
             "kind": "correct_absent",
             "asserted_wrong": false,
+            "app_matcher_correct": true,
             "in_text_layer": null
           },
           {
@@ -315,6 +701,7 @@
             "correct": true,
             "kind": "correct_absent",
             "asserted_wrong": false,
+            "app_matcher_correct": true,
             "in_text_layer": null
           },
           {
@@ -325,6 +712,7 @@
             "correct": true,
             "kind": "correct_absent",
             "asserted_wrong": false,
+            "app_matcher_correct": true,
             "in_text_layer": null
           },
           {
@@ -335,35 +723,1506 @@
             "correct": true,
             "kind": "correct_absent",
             "asserted_wrong": false,
+            "app_matcher_correct": true,
             "in_text_layer": null
           }
         ]
       },
       "program_fields": {
-        "total": 10,
+        "total": 35,
         "correct": 0,
-        "in_text_layer": 10,
+        "in_text_layer": 35,
         "scores": [
           {
-            "field": "pha_name",
-            "type": "text",
-            "expected": "Riverbend Housing Authority",
-            "extracted": null,
-            "correct": false,
-            "in_text_layer": true
-          },
-          {
-            "field": "unit_address",
-            "type": "text",
-            "expected": "1450 Maple Ridge Drive, Apt 2B, Riverbend, IN 46990",
-            "extracted": null,
-            "correct": false,
-            "in_text_layer": true
-          },
-          {
-            "field": "requested_lease_start",
+            "field": "effective_date",
             "type": "date",
             "expected": "12/01/2026",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "move_in_date",
+            "type": "date",
+            "expected": "12/01/2026",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "property_name",
+            "type": "text",
+            "expected": "Larchmere Lofts",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "tc_number",
+            "type": "text",
+            "expected": "TC-26-118",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "building_address",
+            "type": "text",
+            "expected": "1717 North Larchmere Avenue",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "city",
+            "type": "text",
+            "expected": "Fernwood Grove",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "zip",
+            "type": "int",
+            "expected": "60999",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "bin",
+            "type": "text",
+            "expected": "IL-26-00342",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "county",
+            "type": "text",
+            "expected": "Maple Ridge",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "unit_number",
+            "type": "text",
+            "expected": "107",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "bedrooms",
+            "type": "int",
+            "expected": "0",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "head_of_household",
+            "type": "text",
+            "expected": "Noor Vasquez-Hale",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "member_1_last_name",
+            "type": "text",
+            "expected": "Vasquez-Hale",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "member_1_first_name",
+            "type": "text",
+            "expected": "Noor",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "member_1_dob",
+            "type": "date",
+            "expected": "07/08/1997",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "total_employment_income",
+            "type": "money",
+            "expected": "$41,250",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "total_other_income",
+            "type": "money",
+            "expected": "$1,800",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "total_income_e",
+            "type": "money",
+            "expected": "$43,050",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "asset_1_type",
+            "type": "text",
+            "expected": "Checking account",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "asset_1_cash_value",
+            "type": "money",
+            "expected": "$2,150",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "asset_2_type",
+            "type": "text",
+            "expected": "Savings account",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "asset_2_cash_value",
+            "type": "money",
+            "expected": "$5,600",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "total_asset_cash_value",
+            "type": "money",
+            "expected": "$7,750",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "passbook_rate",
+            "type": "pct",
+            "expected": "0.40%",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "asset_income",
+            "type": "money",
+            "expected": "$24",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "total_annual_income",
+            "type": "money",
+            "expected": "$43,074",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "income_limit",
+            "type": "money",
+            "expected": "$48,050",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "household_income_at_move_in",
+            "type": "money",
+            "expected": "$43,074",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "household_size_at_move_in",
+            "type": "int",
+            "expected": "1",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "tenant_paid_rent",
+            "type": "money",
+            "expected": "$1,112",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "utility_allowance",
+            "type": "money",
+            "expected": "$74",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "gross_rent",
+            "type": "money",
+            "expected": "$1,186",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "maximum_rent_limit",
+            "type": "money",
+            "expected": "$1,201",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "household_signature_date",
+            "type": "date",
+            "expected": "11/20/2026",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "owner_signature_date",
+            "type": "date",
+            "expected": "11/24/2026",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "tic_la_lhc",
+      "form": "Louisiana Housing Corporation Tenant Income Certification (HOTMA forms, 2024 layout)",
+      "program": "LIHTC",
+      "doc_type": "tic",
+      "variant": "clean",
+      "pipeline_status": "ok",
+      "low_text_pages": [],
+      "lease_ranges": 2,
+      "pages": 2,
+      "mean_ocr_confidence": null,
+      "lease_fields": {
+        "stated": 3,
+        "correct": 0,
+        "wrong": 2,
+        "missed": 1,
+        "spurious": 0,
+        "in_text_layer": 3,
+        "scores": [
+          {
+            "field": "tenant",
+            "expected": "Augustin Delacroix-Pell",
+            "extracted": "Income Certification",
+            "confidence": "high",
+            "correct": false,
+            "kind": "wrong",
+            "asserted_wrong": true,
+            "app_matcher_correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "landlord",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "rent_amount",
+            "expected": "$287",
+            "extracted": null,
+            "confidence": null,
+            "correct": false,
+            "kind": "missed",
+            "asserted_wrong": false,
+            "app_matcher_correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "lease_start_date",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "lease_end_date",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "property_address",
+            "expected": "2250 Magnolia Ferry Road, Port Allard, LA 70999",
+            "extracted": "Unit Number: #Bedrooms:",
+            "confidence": "high",
+            "correct": false,
+            "kind": "wrong",
+            "asserted_wrong": true,
+            "app_matcher_correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "security_deposit",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "cam_charges",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "rent_escalation",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "renewal_options",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "permitted_use",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "exclusivity_clause",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "insurance_requirements",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "default_cure_period",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "square_footage",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          }
+        ]
+      },
+      "program_fields": {
+        "total": 30,
+        "correct": 0,
+        "in_text_layer": 30,
+        "scores": [
+          {
+            "field": "effective_date",
+            "type": "date",
+            "expected": "09/01/2026",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "initial_qualification_date",
+            "type": "date",
+            "expected": "09/01/2023",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "move_in_date",
+            "type": "date",
+            "expected": "09/01/2023",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "property_name",
+            "type": "text",
+            "expected": "Bayou Cypress Commons",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "county",
+            "type": "text",
+            "expected": "Maple Ridge Parish",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "bin",
+            "type": "text",
+            "expected": "LA-23-00418",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "building_address",
+            "type": "text",
+            "expected": "2250 Magnolia Ferry Road, Port Allard, LA 70999",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "unit_number",
+            "type": "text",
+            "expected": "114",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "bedrooms",
+            "type": "int",
+            "expected": "1",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "household_size",
+            "type": "int",
+            "expected": "2",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "head_of_household",
+            "type": "text",
+            "expected": "Augustin Delacroix-Pell",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "total_ss_pension_income",
+            "type": "money",
+            "expected": "$27,840",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "asset_income",
+            "type": "money",
+            "expected": "$31",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "total_annual_income",
+            "type": "money",
+            "expected": "$27,871",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "income_limit",
+            "type": "money",
+            "expected": "$39,200",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "household_income_at_move_in",
+            "type": "money",
+            "expected": "$26,118",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "household_size_at_move_in",
+            "type": "int",
+            "expected": "2",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "tenant_paid_rent",
+            "type": "money",
+            "expected": "$287",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "utility_allowance",
+            "type": "money",
+            "expected": "$96",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "rental_assistance",
+            "type": "money",
+            "expected": "$520",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "gross_rent",
+            "type": "money",
+            "expected": "$383",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "member_1_last_name",
+            "type": "text",
+            "expected": "Delacroix-Pell",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "member_1_first_name",
+            "type": "text",
+            "expected": "Augustin",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "member_1_relationship",
+            "type": "text",
+            "expected": "Head",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "member_1_dob",
+            "type": "date",
+            "expected": "03/09/1958",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "member_2_last_name",
+            "type": "text",
+            "expected": "Delacroix-Pell",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "member_2_first_name",
+            "type": "text",
+            "expected": "Celestine",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "member_2_relationship",
+            "type": "text",
+            "expected": "Spouse",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "member_2_dob",
+            "type": "date",
+            "expected": "11/30/1959",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "designated_limit_x_140",
+            "type": "money",
+            "expected": "$54,880",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "tic_nj_scan",
+      "form": "NJ HMFA Tenant Income Certification (2025), scanned/OCR'd copy",
+      "program": "LIHTC",
+      "doc_type": "tic",
+      "variant": "clean",
+      "pipeline_status": "ok",
+      "low_text_pages": [],
+      "lease_ranges": 5,
+      "pages": 7,
+      "mean_ocr_confidence": null,
+      "lease_fields": {
+        "stated": 3,
+        "correct": 0,
+        "wrong": 2,
+        "missed": 1,
+        "spurious": 0,
+        "in_text_layer": 3,
+        "scores": [
+          {
+            "field": "tenant",
+            "expected": "Desmond Okafor-Lind",
+            "extracted": "Income Certification",
+            "confidence": "high",
+            "correct": false,
+            "kind": "wrong",
+            "asserted_wrong": true,
+            "app_matcher_correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "landlord",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "rent_amount",
+            "expected": "$1,810",
+            "extracted": null,
+            "confidence": null,
+            "correct": false,
+            "kind": "missed",
+            "asserted_wrong": false,
+            "app_matcher_correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "lease_start_date",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "lease_end_date",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "property_address",
+            "expected": "75 Quarry Lane, Bramwell, NJ 08999",
+            "extracted": "Unit Number: #Bedrooms:",
+            "confidence": "high",
+            "correct": false,
+            "kind": "wrong",
+            "asserted_wrong": true,
+            "app_matcher_correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "security_deposit",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "cam_charges",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "rent_escalation",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "renewal_options",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "permitted_use",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "exclusivity_clause",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "insurance_requirements",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "default_cure_period",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "square_footage",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          }
+        ]
+      },
+      "program_fields": {
+        "total": 41,
+        "correct": 0,
+        "in_text_layer": 41,
+        "scores": [
+          {
+            "field": "effective_date",
+            "type": "date",
+            "expected": "10/15/2026",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "initial_qualification_date",
+            "type": "date",
+            "expected": "10/15/2026",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "move_in_date",
+            "type": "date",
+            "expected": "10/15/2026",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "property_name",
+            "type": "text",
+            "expected": "Quarry Lane Residences",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "county",
+            "type": "text",
+            "expected": "Maple Ridge County",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "bin",
+            "type": "text",
+            "expected": "NJ-26-00977",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "building_address",
+            "type": "text",
+            "expected": "75 Quarry Lane, Bramwell, NJ 08999",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "unit_number",
+            "type": "text",
+            "expected": "3C",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "bedrooms",
+            "type": "int",
+            "expected": "3",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "household_size",
+            "type": "int",
+            "expected": "5",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "head_of_household",
+            "type": "text",
+            "expected": "Desmond Okafor-Lind",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "total_employment_income",
+            "type": "money",
+            "expected": "$76,000",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "asset_income",
+            "type": "money",
+            "expected": "$64",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "total_annual_income",
+            "type": "money",
+            "expected": "$76,064",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "income_limit",
+            "type": "money",
+            "expected": "$84,700",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "household_income_at_move_in",
+            "type": "money",
+            "expected": "$76,064",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "household_size_at_move_in",
+            "type": "int",
+            "expected": "5",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "tenant_paid_rent",
+            "type": "money",
+            "expected": "$1,810",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "utility_allowance",
+            "type": "money",
+            "expected": "$188",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "other_non_optional_fees",
+            "type": "money",
+            "expected": "$25",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "gross_rent",
+            "type": "money",
+            "expected": "$2,023",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "member_1_last_name",
+            "type": "text",
+            "expected": "Okafor-Lind",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "member_1_first_name",
+            "type": "text",
+            "expected": "Desmond",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "member_1_relationship",
+            "type": "text",
+            "expected": "Head",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "member_1_dob",
+            "type": "date",
+            "expected": "06/14/1982",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "member_2_last_name",
+            "type": "text",
+            "expected": "Okafor-Lind",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "member_2_first_name",
+            "type": "text",
+            "expected": "Priya",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "member_2_relationship",
+            "type": "text",
+            "expected": "Spouse",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "member_2_dob",
+            "type": "date",
+            "expected": "02/27/1985",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "member_3_last_name",
+            "type": "text",
+            "expected": "Okafor-Lind",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "member_3_first_name",
+            "type": "text",
+            "expected": "Rafael",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "member_3_relationship",
+            "type": "text",
+            "expected": "Child",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "member_3_dob",
+            "type": "date",
+            "expected": "09/05/2007",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "member_4_last_name",
+            "type": "text",
+            "expected": "Okafor-Lind",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "member_4_first_name",
+            "type": "text",
+            "expected": "Amara",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "member_4_relationship",
+            "type": "text",
+            "expected": "Child",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "member_4_dob",
+            "type": "date",
+            "expected": "12/11/2013",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "member_5_last_name",
+            "type": "text",
+            "expected": "Okafor-Lind",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "member_5_first_name",
+            "type": "text",
+            "expected": "Teo",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "member_5_relationship",
+            "type": "text",
+            "expected": "Child",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "member_5_dob",
+            "type": "date",
+            "expected": "05/20/2018",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "tic_sc",
+      "form": "SC Housing Tenant Income Certification (2024)",
+      "program": "LIHTC",
+      "doc_type": "tic",
+      "variant": "clean",
+      "pipeline_status": "ok",
+      "low_text_pages": [],
+      "lease_ranges": 2,
+      "pages": 2,
+      "mean_ocr_confidence": null,
+      "lease_fields": {
+        "stated": 3,
+        "correct": 0,
+        "wrong": 2,
+        "missed": 1,
+        "spurious": 0,
+        "in_text_layer": 3,
+        "scores": [
+          {
+            "field": "tenant",
+            "expected": "Marguerite Ashdown",
+            "extracted": "Income Certification",
+            "confidence": "high",
+            "correct": false,
+            "kind": "wrong",
+            "asserted_wrong": true,
+            "app_matcher_correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "landlord",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "rent_amount",
+            "expected": "$1,166",
+            "extracted": null,
+            "confidence": null,
+            "correct": false,
+            "kind": "missed",
+            "asserted_wrong": false,
+            "app_matcher_correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "lease_start_date",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "lease_end_date",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "property_address",
+            "expected": "410 Wren Hollow Road, Greenfield, SC 29640",
+            "extracted": "Unit Number: #Bedrooms:",
+            "confidence": "high",
+            "correct": false,
+            "kind": "wrong",
+            "asserted_wrong": true,
+            "app_matcher_correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "security_deposit",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "cam_charges",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "rent_escalation",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "renewal_options",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "permitted_use",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "exclusivity_clause",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "insurance_requirements",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "default_cure_period",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          },
+          {
+            "field": "square_footage",
+            "expected": null,
+            "extracted": null,
+            "confidence": null,
+            "correct": true,
+            "kind": "correct_absent",
+            "asserted_wrong": false,
+            "app_matcher_correct": true,
+            "in_text_layer": null
+          }
+        ]
+      },
+      "program_fields": {
+        "total": 34,
+        "correct": 0,
+        "in_text_layer": 34,
+        "scores": [
+          {
+            "field": "effective_date",
+            "type": "date",
+            "expected": "11/01/2026",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "initial_qualification_date",
+            "type": "date",
+            "expected": "11/01/2026",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "move_in_date",
+            "type": "date",
+            "expected": "11/01/2026",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "property_name",
+            "type": "text",
+            "expected": "Palmetto Bend Apartments",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "county",
+            "type": "text",
+            "expected": "Maple Ridge County",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "bin",
+            "type": "text",
+            "expected": "SC-26-00123",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "building_address",
+            "type": "text",
+            "expected": "410 Wren Hollow Road, Greenfield, SC 29640",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "unit_number",
+            "type": "text",
+            "expected": "C-204",
             "extracted": null,
             "correct": false,
             "in_text_layer": true
@@ -377,49 +2236,201 @@
             "in_text_layer": true
           },
           {
-            "field": "year_constructed",
+            "field": "household_size",
             "type": "int",
-            "expected": "1998",
+            "expected": "3",
             "extracted": null,
             "correct": false,
             "in_text_layer": true
           },
           {
-            "field": "proposed_rent",
+            "field": "head_of_household",
+            "type": "text",
+            "expected": "Marguerite Ashdown",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "total_employment_income",
             "type": "money",
-            "expected": "$1,325.00",
+            "expected": "$33,800",
             "extracted": null,
             "correct": false,
             "in_text_layer": true
           },
           {
-            "field": "security_deposit",
+            "field": "total_other_income",
             "type": "money",
-            "expected": "$1,000.00",
+            "expected": "$2,400",
             "extracted": null,
             "correct": false,
             "in_text_layer": true
           },
           {
-            "field": "date_unit_available",
+            "field": "asset_income",
+            "type": "money",
+            "expected": "$9",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "total_annual_income",
+            "type": "money",
+            "expected": "$36,209",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "income_limit",
+            "type": "money",
+            "expected": "$52,950",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "household_income_at_move_in",
+            "type": "money",
+            "expected": "$36,209",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "household_size_at_move_in",
+            "type": "int",
+            "expected": "3",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "tenant_paid_rent",
+            "type": "money",
+            "expected": "$1,166",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "utility_allowance",
+            "type": "money",
+            "expected": "$142",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "gross_rent",
+            "type": "money",
+            "expected": "$1,308",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "member_1_last_name",
+            "type": "text",
+            "expected": "Ashdown",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "member_1_first_name",
+            "type": "text",
+            "expected": "Marguerite",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "member_1_relationship",
+            "type": "text",
+            "expected": "Head",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "member_1_dob",
             "type": "date",
-            "expected": "11/01/2026",
+            "expected": "04/17/1992",
             "extracted": null,
             "correct": false,
             "in_text_layer": true
           },
           {
-            "field": "owner_name",
+            "field": "member_2_last_name",
             "type": "text",
-            "expected": "Maple Ridge Housing Partners LP",
+            "expected": "Ashdown",
             "extracted": null,
             "correct": false,
             "in_text_layer": true
           },
           {
-            "field": "household_head",
+            "field": "member_2_first_name",
             "type": "text",
-            "expected": "Renata Quillfeather",
+            "expected": "Felix",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "member_2_relationship",
+            "type": "text",
+            "expected": "Child",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "member_2_dob",
+            "type": "date",
+            "expected": "08/02/2017",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "member_3_last_name",
+            "type": "text",
+            "expected": "Ashdown",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "member_3_first_name",
+            "type": "text",
+            "expected": "Iris",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "member_3_relationship",
+            "type": "text",
+            "expected": "Child",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "member_3_dob",
+            "type": "date",
+            "expected": "01/23/2020",
+            "extracted": null,
+            "correct": false,
+            "in_text_layer": true
+          },
+          {
+            "field": "maximum_rent_limit",
+            "type": "money",
+            "expected": "$1,323",
             "extracted": null,
             "correct": false,
             "in_text_layer": true

@@ -15,7 +15,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
-from fill_lib import build  # noqa: E402
+from fill_lib import build, build_acroform  # noqa: E402
 
 
 def load_specs(only=None):
@@ -39,8 +39,10 @@ def main(argv):
         return 1
     for spec in specs:
         key = build(spec)
+        acro = build_acroform(spec)
         print(f"built {key['sample_file']}: {len(key['program_fields'])} program fields, "
-              f"{sum(1 for v in key['lease_fields'].values() if v is not None)} lease fields")
+              f"{sum(1 for v in key['lease_fields'].values() if v is not None)} lease fields"
+              + (f" (+ {acro.name})" if acro else ""))
     return 0
 
 

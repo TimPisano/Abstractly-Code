@@ -11,6 +11,10 @@ low-text "ocr_needed" gate, the rent-roll-table gate, lease boundary
 detection, then field extraction on the first lease range. It does not
 change any extraction code; it only measures it.
 
+Each document runs in up to three variants: "clean" (values drawn into the
+page and flattened), "acroform" (values typed into the form's own fields,
+not flattened), and "scan" (an image-only copy, so OCR runs).
+
 Two scores per document:
 
   1. Lease fields: our engine's 15 lease fields vs the answer key's
@@ -94,6 +98,7 @@ MONEY_RE = re.compile(r"\$?\s?\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?|\$?\s?\d+(?:\.\d{
 DATE_RES = [
     re.compile(r"\b\d{1,2}\s*/\s*\d{1,2}\s*/\s*\d{2,4}\b"),
     re.compile(r"\b\d{4}-\d{2}-\d{2}\b"),
+    re.compile(r"\b\d{4}/\d{1,2}/\d{1,2}\b"),
     re.compile(r"\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2},?\s+\d{4}\b", re.I),
 ]
 
@@ -106,6 +111,12 @@ def _as_date(s: str):
     d = parse_date(s)
     if isinstance(d, date):
         return d
+    m = re.match(r"^\s*(\d{4})/(\d{1,2})/(\d{1,2})\s*$", s)
+    if m:
+        try:
+            return date(*(int(g) for g in m.groups()))
+        except ValueError:
+            return None
     m = re.match(r"^\s*(\d{1,2})\s*/\s*(\d{1,2})\s*/\s*(\d{2,4})\s*$", s)
     if m:
         mo, dd, yy = (int(g) for g in m.groups())
@@ -160,9 +171,12 @@ def in_text(value: str, vtype: str, text: str) -> bool:
 # scoring
 # ---------------------------------------------------------------------------
 
+VARIANTS = ("clean", "acroform", "scan")
+
+
 def sample_path(key: dict, variant: str) -> Path:
     clean = HERE / key["sample_file"]
-    return clean if variant == "clean" else clean.with_name(f"{clean.stem}.scan.pdf")
+    return clean if variant == "clean" else clean.with_name(f"{clean.stem}.{variant}.pdf")
 
 
 def evaluate(key: dict, engine: str, variant: str = "clean") -> dict:
@@ -281,9 +295,10 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--engine", choices=("regex", "ai"), default="regex")
     ap.add_argument("--only", nargs="*", help="answer-key ids to run")
-    ap.add_argument("--variants", nargs="*", choices=("clean", "scan"), default=["clean", "scan"],
-                    help="clean = the digitally filled PDF; scan = the image-only copy from make_scans.py "
-                         "(skipped for any sample without one)")
+    ap.add_argument("--variants", nargs="*", choices=VARIANTS, default=list(VARIANTS),
+                    help="clean = filled and flattened; acroform = values left in unflattened form fields "
+                         "(AcroForm documents only); scan = image-only copy from make_scans.py. "
+                         "A variant with no file for a document is skipped and listed.")
     args = ap.parse_args(argv)
 
     if args.engine == "ai" and not os.environ.get("ANTHROPIC_API_KEY"):
