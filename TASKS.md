@@ -109,6 +109,7 @@ those by taking **main's** TASKS.md, not the branch's.
 | `feature/loan-underwriting` | `~/dev/projects/abstractly-loan` | +2 / −16 | ~19 uncommitted files (`api.py`, `database.py`, tests, plan); not pushed. Feature-flagged off. Merge **after** team isolation (its plan defers all tenancy to it). Another session may be active — don't touch. |
 | `feature/deal-assistant` | `~/dev/projects/abstractly-assistant` | 0 / −7 | Worktree only, nothing built. Not started. |
 | `feature/affordable-real-accuracy` | `~/dev/projects/abstractly-affordable-real` | — | Claimed 2026-10-21. **Stacked on `feature/affordable-forms` `c6a14ff`** (merge only after it). Raise the 11-real-document affordable eval from 85/159 (53%) toward 90%: free fixes first (eval response cache keyed by request hash, OCR/value cleanup, 50059 mapping, arithmetic cross-checks that flag but never alter, Amasa bedroom sums, OCR-gated docs unblocked inside the affordable router, PBV Exhibit A table reader), then one paid AI run (~$0.75–0.90) only after a cost estimate + user OK. User has ~$14 API credit total. Behind `AFFORDABLE_FORMS_MODE`. Plan: `docs/plans/feature-affordable-real-accuracy.md`. |
+| `fix/upload-hardening` | `~/dev/projects/abstractly-upload-hardening` | — | Claimed 2026-10-21. **Stacked on `feature/large-files-any-type` `085debe`** (merge only after it). Security re-audit follow-ups, one commit each, suite after each: (1) no route accepts the .xlsx entity bomb (`POST /leases`, `/leases/import-rent-roll`), regression test per route; (2) time limit on PDF reading; (3) 3-active-jobs cap holds under simultaneous uploads; (4) rate limit on `POST /uploads`. User's prompt is the spec and approval; don't merge. |
 
 | `qa/overnight-gauntlet` | `~/dev/projects/abstractly-gauntlet` | — | **Reviewed: MERGE (reviewer + security-auditor).** Branched off `main` `3f1d3aa` 2026-10-05. Overnight reliability gauntlet: 60+ synthetic messy rent rolls, 30+ T-12s, matching leases with planted mismatches + manifest; full local pipeline graded each cycle; root-cause fixes with regression tests; `QA_REPORT.md` updated per cycle. User's prompt is the approved scope (autonomous, no questions). Never merges/deploys. |
 | `audit/production-readiness` | `~/dev/projects/abstractly-audit` | 0 | Started 2026-10-05 off `origin/main` `3f1d3aa`. **Read-only** production readiness audit (DB, security, reliability, cost, Section 8 trust) → `AUDIT.md` at the worktree root, **uncommitted by user instruction** (no code edits, commits, pushes, or Render changes). Overnight deep pass: every route + job traced, bugs added ranked by severity. |
@@ -117,6 +118,14 @@ those by taking **main's** TASKS.md, not the branch's.
 
 
 ### Handoff blocks
+
+### fix/upload-hardening
+- Worktree: ~/dev/projects/abstractly-upload-hardening
+- Base: stacked on feature/large-files-any-type 085debe (unmerged); merge only after it
+- Goal: close the security auditor's open upload items (entity bomb on existing routes, PDF read time limit, atomic job cap, POST /uploads rate limit)
+- Loop step: 4 — building (user's 2026-10-21 prompt is the spec and approval)
+- Last update: 2026-10-21 by the large-files session
+- Next action: fix 1 (entity bomb on existing routes)
 
 ### feature/affordable-real-accuracy
 - Worktree: ~/dev/projects/abstractly-affordable-real
