@@ -25,7 +25,7 @@ from .forms import all_forms
 from .forms.base import Anchor, FormSpec, Rule
 from .layout import PageLayout, Word, chains, group_lines, ocr_region, read_layout
 from .pii import is_restricted_field, mask_ssns
-from .values import coerce
+from .values import coerce, tidy
 
 Source = Union[bytes, str]
 
@@ -239,7 +239,7 @@ def extract_document(source: Source, *, use_acroform: bool = True, ocr: bool = T
             continue
         value, page_no, raw = found
         result["program_fields"][rule.name] = {
-            "value": value,
+            "value": tidy(rule.name, value),
             "source": {"page": page_no, "quote": mask_ssns(raw)[:200]},
             "confidence": "high" if method == "acroform" else "medium",
             "method": method,

@@ -145,3 +145,32 @@ def coerce(raw: str, vtype: str, label_phrases: Iterable[str] = (), *, label_gua
     if any(rx.fullmatch(stripped) for rx in (NUM_DATE, ISO_DATE, WORD_DATE)):
         return None
     return text
+
+
+# ---------------------------------------------------------------------------
+# cleanup of read values (form reader and AI alike)
+# ---------------------------------------------------------------------------
+
+FRACTIONS = {"¼": "1/4", "½": "1/2", "¾": "3/4", "⅓": "1/3", "⅔": "2/3", "⅛": "1/8"}
+# OCR reads a Roman numeral's capital I as lowercase l: "Cottonwood ll" (II), "Phase lll".
+# Lowercase only: "ll" and "lll" are never words, but "Ill" is (Illinois).
+OCR_ROMAN = re.compile(r"(?<=[A-Za-z] )l{2,3}(?=$|[\s,.;:)])")
+# HUD Section 8 contract numbers: state, 2 digits, a letter, 6 digits ("TX24E000008");
+# documents print them with hyphens or spaces ("TX24-E000-008").
+HUD_CONTRACT = re.compile(r"([A-Z]{2})\s?-?\s?(\d{2})\s?-?\s?([A-Z])\s?-?\s?(\d{3})\s?-?\s?(\d{3})")
+
+
+def tidy(name: str, value):
+    """Clean OCR and typing noise out of a read value. Only rewrites shapes
+    that can't be anything else; never turns one number into another."""
+    if not isinstance(value, str):
+        return value
+    text = value
+    for sym, frac in FRACTIONS.items():
+        text = re.sub(rf"(?<=\d){sym}", f" {frac}", text).replace(sym, frac)
+    text = OCR_ROMAN.sub(lambda m: "I" * len(m.group(0)), text)
+    if name.startswith("contract_number"):
+        m = HUD_CONTRACT.fullmatch(text.strip())
+        if m:
+            text = "".join(m.groups())
+    return text

@@ -129,6 +129,7 @@ UNIT_TESTS = [
     "test_affordable_route.py",
     "test_affordable_eval_cache.py",
     "test_affordable_checks.py",
+    "test_affordable_tidy.py",
     "test_affordable_ai_fields.py",
 ]
 

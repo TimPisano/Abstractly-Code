@@ -26,6 +26,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from .. import ai_extraction
 from .checks import run_checks
+from .values import tidy
 
 PROMPT_VERSION = "affordable-v1"
 MAX_TOKENS = 8192
@@ -197,8 +198,9 @@ def _number(value: Optional[str]) -> Optional[str]:
     return m.group(0) if m else None
 
 
-def _program_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
-    return {"value": entry["value"], "source": entry["source"], "confidence": entry["confidence"], "method": "ai"}
+def _program_entry(entry: Dict[str, Any], name: str = "") -> Dict[str, Any]:
+    return {"value": tidy(name, entry["value"]), "source": entry["source"], "confidence": entry["confidence"],
+            "method": "ai"}
 
 
 def _flatten_tables(payload: Dict[str, Any], kind: str, pages) -> Dict[str, Dict[str, Any]]:
@@ -213,7 +215,7 @@ def _flatten_tables(payload: Dict[str, Any], kind: str, pages) -> Dict[str, Dict
 
         def put(name, value):
             if value not in (None, "") and name not in out:
-                out[name] = _program_entry({**source, "value": str(value).strip()})
+                out[name] = _program_entry({**source, "value": str(value).strip()}, name)
 
         for i, row in enumerate(r for r in raw["rows"] if isinstance(r, dict)):
             if table == "bins":
@@ -257,7 +259,7 @@ def extract_program_fields(pages: List[Dict[str, Any]], kind: str, *, client=Non
     for name, _, _ in FIELD_LISTS[kind][0]:
         entry = ai_extraction._coerce_field_entry(payload.get(name), pages)
         if entry["value"] is not None:
-            program[name] = _program_entry(entry)
+            program[name] = _program_entry(entry, name)
     program.update({k: v for k, v in _flatten_tables(payload, kind, pages).items() if k not in program})
     checks = run_checks(program)
 
