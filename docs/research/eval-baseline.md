@@ -497,3 +497,26 @@ The 4 scanned documents (the 2013 renewal and the three PBV contracts) were left
 
 ### Not wired into uploads
 The router and the field lists are called by the eval, not by `api.py`. Program fields have nowhere to be stored until the Section 8 data model (T1) lands. Wiring is a separate change behind `AFFORDABLE_FORMS_MODE`, and it needs `check_team_quota` before the AI call. The rent-roll gate fix is the exception: it is live on this branch for every upload.
+
+## Free fixes toward 90% (`feature/affordable-real-accuracy`, 2026-10-21)
+
+**No API calls.** Plan: `docs/plans/feature-affordable-real-accuracy.md`. Starting point: 85 / 159 (53%) after fix 3.
+
+| Step | What | Effect on the 11 real documents |
+|---|---|---|
+| 0 | Eval AI cache keyed by a hash of the exact request (`tests/eval/real/cache/`); `--estimate` prices only uncached requests | Reruns pay only for documents whose request changed |
+| 1 | `values.tidy()`: OCR `ll` → II, ¾ → 3/4, HUD contract numbers without hyphens | Cottonwood owner + landlord right (+2); Grand Junction address (+2) and Coppertree contract number (+1) once the AI documents run again |
+| 2 | Values drawn in nameless form widgets are placed on the page layout | HUD-50059 sample 18 / 25 → **25 / 25**; all three rent identities hold on its real numbers |
+| 3 | Arithmetic cross-checks (`checks.py`) that flag, never change | Coppertree 1990 Exhibit 1 1BR row ($250 + $35 vs $295 printed) flagged low confidence, value kept (user checked by hand) |
+| 4 | Unit-mix rows that repeat a bedroom size add up | Amasa 1/1/8 → 27/11/12 expected once its AI response is re-read |
+| 5 | PBV Exhibit A reader; only low-text pages are OCR'd; short pages no longer stop a document | 5th Street 3 → **10 / 12**, Cottonwood 1 → **10 / 13**, Oak View 0 → **8 / 12** with no AI. Cottonwood's 3BR rent line doesn't add up on the document ($2,225 − $84 ≠ $2,041): flagged |
+
+**Measured now (cache-only run, `results/routed_free_step5.json`):** the 4 documents the form reader handles score **53 / 62**, up from 22. The other 7 need the AI. Their last paid scores (fix 3, older code) were 63 / 97, so the combined figure is about **116 / 159 (73%)**. That mixes two runs and is an estimate until the paid run below.
+
+**Not done, and why:**
+- Re-OCR of garbled text layers. The share of dictionary words per page doesn't separate them: every page on Oak View scores ≥ 0.77, and the junk sits in one stamped box. The word list also isn't on Render.
+- "Courtvards" / "Moreno Vallev" on Cottonwood come from the PDF's own OCR layer. No safe deterministic fix.
+- The 5th Street and Oak View keys put the full address in `street_address`. The reader keeps "street only" semantics, so those 2 fields score as misses (open question).
+
+**Synthetic set unchanged:** clean 93.8% / 91.7%, acroform 91.7% / 95.2%, scan 87.5% / 85.0%, holdout 93.8% / 89.4%, holdout scan 56.2% / 57.8% (lease / program).
+**Suite:** 102 / 102 offline.
