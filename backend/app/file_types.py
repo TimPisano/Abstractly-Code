@@ -52,6 +52,13 @@ MAX_DOCX_ELEMENTS = 500_000
 # EMF is checked by its signature at byte 40.
 _BINARY_PART_MAGIC = (b"\x89PNG", b"\xff\xd8\xff", b"GIF8", b"BM", b"II*\x00", b"MM\x00*", b"\xd7\xcd\xc6\x9a",
                       b"\x01\x00\x09\x00", b"\x02\x00\x09\x00", b"\xd0\xcf\x11\xe0", b"PK\x03\x04", b"%PDF")
+# Office never writes a DOCTYPE. One with nested <!ENTITY> definitions
+# ("billion laughs") passes every cap above at ~1 KB, then openpyxl's
+# stdlib XML parser expands it: a 300-million-character cell and ~2.5 GB
+# (security re-audit of this branch). The byte markers are the fallback
+# for parts lxml can't read up to their root element.
+_DTD_MARKERS = tuple(marker.encode(codec) for marker in ("<!DOCTYPE", "<!ENTITY")
+                     for codec in ("utf-8", "utf-16-le", "utf-16-be"))
 # BITMAPINFOHEADER sizes a real .bmp carries at byte 14 -- so a text file
 # that merely starts with "BM" isn't mistaken for an image.
 _BMP_DIB_HEADER_SIZES = {12, 40, 52, 56, 64, 108, 124}
@@ -165,6 +172,7 @@ def _detect_zip(path: str, upload_kind: str, original_extension: str) -> str:
                 )
             extension = _office_type(entries, upload_kind, original_extension)
             parts = xml_parts(archive)
+            declares_dtd = any(_declares_dtd(archive, info) for info in parts)
             xml_bytes = sum(e.file_size for e in parts)
             too_dense = (extension == "docx" and xml_bytes <= MAX_ZIP_XML_BYTES["docx"]
                          and _more_elements_than(archive, parts, MAX_DOCX_ELEMENTS))
@@ -173,6 +181,11 @@ def _detect_zip(path: str, upload_kind: str, original_extension: str) -> str:
         raise UnsupportedFileType(
             "This file appears to be a damaged Office document or ZIP archive. "
             "Open it, save a fresh copy, and upload that."
+        )
+    if declares_dtd:
+        raise UnsupportedFileType(
+            "This file contains XML settings that Word and Excel never write, so it wasn't opened. "
+            "Open it in Word or Excel, save a fresh copy, and upload that."
         )
     if xml_bytes > MAX_ZIP_XML_BYTES[extension]:
         mb, limit_mb = xml_bytes / (1024 * 1024), MAX_ZIP_XML_BYTES[extension] // (1024 * 1024)
@@ -191,6 +204,30 @@ def _detect_zip(path: str, upload_kind: str, original_extension: str) -> str:
             "Save it as a PDF and upload that."
         )
     return extension
+
+
+def _declares_dtd(archive: zipfile.ZipFile, info: zipfile.ZipInfo) -> bool:
+    """True when the part declares a DOCTYPE. lxml reads only the prolog, in whatever encoding the part declares, without resolving anything; a part it can't parse that far is searched for the raw markers instead."""
+    with archive.open(info) as part:
+        try:
+            for _, element in etree.iterparse(part, events=("start",), resolve_entities=False, no_network=True,
+                                              load_dtd=False):
+                docinfo = element.getroottree().docinfo
+                return bool(docinfo.doctype) or docinfo.internalDTD is not None or docinfo.externalDTD is not None
+            return False
+        except etree.XMLSyntaxError:
+            pass
+    overlap = max(len(marker) for marker in _DTD_MARKERS) - 1
+    tail = b""
+    with archive.open(info) as part:
+        while True:
+            chunk = part.read(1024 * 1024)
+            if not chunk:
+                return False
+            window = tail + chunk
+            if any(marker in window for marker in _DTD_MARKERS):
+                return True
+            tail = window[-overlap:]
 
 
 def _more_elements_than(archive: zipfile.ZipFile, parts: List[zipfile.ZipInfo], limit: int) -> bool:

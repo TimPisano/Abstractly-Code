@@ -311,6 +311,66 @@ def test_office_xml_that_would_need_too_much_memory_is_refused():
     print("✓ test_office_xml_that_would_need_too_much_memory_is_refused: PASS")
 
 
+def _entity_bomb(root, encoding="UTF-8"):
+    """XML whose 1 KB of nested <!ENTITY> definitions ("billion laughs") expands to 300 MB in a parser that resolves them."""
+    entities = '<!ENTITY l0 "lol">' + "".join(f'<!ENTITY l{i} "{("&l%d;" % (i - 1)) * 10}">' for i in range(1, 9))
+    xml = f'<?xml version="1.0" encoding="{encoding}"?><!DOCTYPE {root} [{entities}]>{{body}}'
+    return xml, ("utf-16" if encoding == "UTF-16" else "utf-8")
+
+
+def test_xml_entity_bombs_in_office_files_are_refused():
+    """
+    Security re-audit: a ~1 KB .xlsx whose sheet declares nested entities
+    passed every size cap, then openpyxl (stdlib XML parser, entities
+    resolved) built a 300-million-character cell and peaked at ~2.5 GB.
+    Office never writes a DOCTYPE, so any part declaring one is refused
+    before a parser runs -- whatever the part's name or text encoding.
+    """
+    tmpdir = tempfile.mkdtemp()
+    try:
+        sheet_body = ('<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>'
+                      '<row r="1"><c r="A1" t="inlineStr"><is><t>&l8;</t></is></c></row></sheetData></worksheet>')
+        xml, codec = _entity_bomb("worksheet")
+        bomb = _office_with(_xlsx_bytes(), {"xl/worksheets/sheet1.xml": xml.format(body=sheet_body).encode(codec)})
+        assert len(bomb) < 10 * 1024, "the bomb itself is tiny"
+        for kind in ("rent_roll", "lease"):
+            _expect_rejection(tmpdir, "roll.xlsx", bomb, "save a fresh copy", kind=kind)
+
+        # Shared strings, encoded as UTF-16 so a byte search for "<!ENTITY" would miss it.
+        strings_body = '<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><si><t>&l8;</t></si></sst>'
+        xml, codec = _entity_bomb("sst", encoding="UTF-16")
+        _expect_rejection(tmpdir, "roll.xlsx",
+                          _office_with(_xlsx_bytes(), {"xl/sharedStrings.xml": xml.format(body=strings_body).encode(codec)}),
+                          "save a fresh copy", kind="rent_roll")
+
+        # Word, and a bomb hidden under an image's name (parts are found by content).
+        doc_body = ('<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>'
+                    '<w:p><w:r><w:t>&l8;</w:t></w:r></w:p></w:body></w:document>')
+        xml, codec = _entity_bomb("w:document")
+        _expect_rejection(tmpdir, "lease.docx",
+                          _office_with(_docx_bytes(), {"word/document.xml": xml.format(body=doc_body).encode(codec)}),
+                          "save a fresh copy")
+        _expect_rejection(tmpdir, "lease.docx",
+                          _office_with(_docx_bytes(), {"word/media/image1.png": xml.format(body=doc_body).encode(codec)}),
+                          "save a fresh copy")
+
+        # An external DTD, and a declaration malformed enough that the prolog can't be parsed.
+        external = ('<?xml version="1.0"?><!DOCTYPE worksheet SYSTEM "http://example.com/x.dtd">'
+                    + sheet_body.replace("&l8;", "Unit 101"))
+        _expect_rejection(tmpdir, "roll.xlsx", _office_with(_xlsx_bytes(), {"xl/worksheets/sheet1.xml": external.encode()}),
+                          "save a fresh copy", kind="rent_roll")
+        broken = '<?xml version="1.0"?><!DOCTYPE s [<!ENTITY a "x"> not xml' + sheet_body
+        _expect_rejection(tmpdir, "roll.xlsx", _office_with(_xlsx_bytes(), {"xl/worksheets/sheet1.xml": broken.encode()}),
+                          "save a fresh copy", kind="rent_roll")
+
+        # Real Office files still pass.
+        assert _detect(tmpdir, "roll.xlsx", _xlsx_bytes(), kind="rent_roll").extension == "xlsx"
+        assert _detect(tmpdir, "lease.docx", _docx_bytes()).extension == "docx"
+    finally:
+        shutil.rmtree(tmpdir)
+    print("✓ test_xml_entity_bombs_in_office_files_are_refused: PASS")
+
+
 if __name__ == "__main__":
     test_every_supported_format_is_recognized_from_its_bytes()
     test_mislabeled_files_are_processed_as_what_they_really_are()
@@ -320,4 +380,5 @@ if __name__ == "__main__":
     test_magic_checks_dont_misread_text_that_happens_to_start_like_a_binary()
     test_zip_bombs_are_refused_from_the_directory_alone()
     test_office_xml_that_would_need_too_much_memory_is_refused()
+    test_xml_entity_bombs_in_office_files_are_refused()
     print("\nAll file-type tests passed!")
