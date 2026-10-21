@@ -15,6 +15,7 @@ Three pieces, usable on their own:
   extract.extract_document()    recognise a known form and read its fields
                                 (program fields like HAP and TTP, plus the
                                 lease fields the rest of the app uses)
+  route.choose_route()          form reader or AI, from extract_document's result
 
 Tenant data rules: SSN fields are never read, SSN-shaped strings are masked,
 dates of birth are not extracted, and no field value is ever logged.
@@ -24,3 +25,4 @@ from .acroform import read_acroform, acroform_page_text  # noqa: F401
 from .config import is_enabled  # noqa: F401
 from .extract import extract_document  # noqa: F401
 from .layout import layout_pages, read_layout  # noqa: F401
+from .route import choose_route  # noqa: F401

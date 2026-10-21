@@ -115,6 +115,14 @@ UNIT_TESTS = [
     # Overnight reliability gauntlet (qa/overnight-gauntlet, 2026-10-05):
     # one regression test per bug the gauntlet found.
     "test_gauntlet_regressions.py",
+    # Affordable-housing forms and routing (feature/affordable-forms).
+    "test_affordable_forms.py",
+    "test_affordable_forms_hap.py",
+    "test_affordable_forms_irs.py",
+    "test_affordable_forms_pbra.py",
+    "test_affordable_forms_tic.py",
+    "test_affordable_route.py",
+    "test_affordable_ai_fields.py",
 ]
 
 LIVE_API_TESTS = [

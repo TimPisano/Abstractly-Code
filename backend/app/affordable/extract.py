@@ -3,6 +3,7 @@ Recognise a known HUD / LIHTC form and read its fields.
 
     result = extract_document(pdf_bytes)
     result["form_id"]          # e.g. "hud_52641", or None if unrecognised
+    result["route"]            # "form" or "ai": who should read it (app.affordable.route)
     result["program_fields"]   # {name: {"value", "source", "confidence", "method"}}
     result["lease_fields"]     # the 15 lease fields, same shape as FieldExtractor's
 
@@ -210,6 +211,8 @@ def extract_document(source: Source, *, use_acroform: bool = True, ocr: bool = T
         "form_name": spec.name if spec else None,
         "doc_kind": spec.doc_kind if spec else None,
         "program": spec.program if spec else None,
+        "route": spec.route if spec else None,
+        "fields_possible": sum(1 for r in spec.rules if not is_restricted_field(r.name)) if spec else 0,
         "detect_score": score,
         "had_form_fields": bool(acro),
         "ocr_pages": [p.page for p in pages if p.source == "ocr"],

@@ -18,6 +18,7 @@ from .base import Anchor, FormSpec, Rule
 
 CHFA_LURA = FormSpec(
     id="chfa_lura",
+    route="ai",                     # prose with inline blanks; and the title also matches non-CHFA LURAs
     name="CHFA Low-Income Housing Tax Credit Land Use Restriction Agreement",
     doc_kind="lura",
     program="LIHTC",

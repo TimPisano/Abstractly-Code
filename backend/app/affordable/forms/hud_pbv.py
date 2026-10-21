@@ -61,6 +61,7 @@ def _signature_block(sig_page, pha_name_acro, pha_title_acro, pha_date_acro,
 
 PBV_NEW_CONSTRUCTION = FormSpec(
     id="hud_52530a",
+    route="ai",                 # units, bedroom mix and rents are in the PHA's own Exhibit A
     name="HUD-52530A PBV HAP Contract, Part 1 (New Construction/Rehab)",
     doc_kind="hap_contract",
     program="PBV",
@@ -84,6 +85,7 @@ PBV_NEW_CONSTRUCTION = FormSpec(
 
 PBV_EXISTING = FormSpec(
     id="hud_52530b",
+    route="ai",                 # units, bedroom mix and rents are in the PHA's own Exhibit A
     name="HUD-52530B PBV HAP Contract, Part 1 (Existing Housing)",
     doc_kind="hap_contract",
     program="PBV",

@@ -108,6 +108,32 @@ def main():
         looks_like_rent_roll_table(multi_page) is True,
     )
 
+    # Regression (feature/affordable-forms, 2026-10-20): a Utah tax-credit
+    # agreement with no dollar amounts was refused as a rent roll because
+    # statute citations ("Utah Code Ann. § 59-7-607", "§ 59-10-1010") have
+    # the shape d-d-d and were counted as 25 dates. They aren't calendar dates.
+    citations = "\n".join(
+        f"Section {i}. The Owner may claim the credit under Utah Code Ann. § 59-7-607 and § 59-10-1010 "
+        f"for each Building, and shall comply with Section 42 of the Code."
+        for i in range(1, 14)
+    )
+    agreement_text = ("LOW-INCOME HOUSING CREDIT COMMITMENT AGREEMENT AND DECLARATION OF RESTRICTIVE COVENANTS\n"
+                      "Dated as of January 1, 2026.\n" + citations)
+    check(
+        "an agreement citing statute sections (59-7-607) is NOT flagged",
+        looks_like_rent_roll_table([_page(agreement_text)]) is False,
+        "statute citations must not count as dates",
+    )
+
+    us_dates_table = "Unit  Tenant  Lease Start  Lease End\n" + "\n".join(
+        f"{100 + i}  Tenant {i}  {1 + i % 12:02d}/{1 + i % 28:02d}/2024  {1 + i % 12:02d}/{1 + i % 28:02d}/2025"
+        for i in range(12)
+    )
+    check(
+        "a rent roll with MM/DD/YYYY dates and no dollar signs IS still flagged",
+        looks_like_rent_roll_table([_page(us_dates_table)]) is True,
+    )
+
     print("\n" + "=" * 70)
     passed = sum(1 for _, ok, _ in checks if ok)
     print(f"RESULT: {passed}/{len(checks)} checks passed")

@@ -16,7 +16,9 @@
 > - **CRE synthetic (60 leases):** 97% raw, **99% after review** (895 / 900). All 5 real errors are on scanned copies.
 > - **Affordable real documents (11):** lease fields 0 / 2 verified, 7 / 21 unverified. **Program fields 0 / 136**, because the AI engine has no slots for them. Only 6 of the 11 documents reach the AI at all.
 >
-> See "AI engine: real and synthetic CRE, real affordable", the last section.
+> See "AI engine: real and synthetic CRE, real affordable".
+
+> **Update, routing and field lists (2026-10-21).** Three fixes, a real-document eval after each, $1.03 in API calls in total. Forms go to the form reader first; HAP contracts and LURAs get their own AI field lists; a tax-credit agreement is no longer refused as a rent roll. Program fields on the 11 real documents: **0 / 25 → 13 / 25 verified, 0 / 111 → 59 / 111 proposed**. Lease fields: 6 / 21 → 12 / 21 proposed. See "Routing and AI field lists", the last section.
 
 ## What was measured
 
@@ -400,3 +402,98 @@ What the numbers say:
 - The synthetic affordable forms (`run_eval.py --engine ai`, 41 calls): not asked for this time. The "Regex vs AI" table above is still empty.
 - The training harness's rent-roll validation step.
 - The 4 EDGAR leases in `tests/eval/real/` (no download, no answer keys).
+
+## Routing and AI field lists: three fixes, real documents
+
+**Date:** 2026-10-20/21 · **Engine:** `routed` (`run_eval.py --set real --engine routed`) · **Model:** `claude-sonnet-5`; lease prompt v2, new affordable prompt `affordable-v1` · **Raw results:** `tests/eval/real/results/routed_fix{1,2,3}.json`
+
+**Cost check before each run**, as in the last session: the key loads from `backend/.env` in the primary checkout (only `ANTHROPIC_API_KEY` is read). Then `run_eval.py --estimate` runs the whole pipeline with the API call stubbed out and prints the calls and tokens a real run would send. Its token ratio is calibrated on the previous run: estimate $0.29 against $0.30 billed for the same 6 calls.
+
+| Run | What changed | Calls | Estimated | Billed (tokens in / out) |
+|---|---|---|---|---|
+| Fix 1 | Forms to the form reader first, AI as fallback | 5 | $0.27 | **$0.27** (108,386 / 5,338) |
+| Fix 2 | Separate AI field lists for HAP contracts and LURAs | 5 | $0.39 | **$0.34** (129,737 / 8,486) |
+| Fix 3 | Rent-roll gate no longer counts statute citations as dates | 6 | $0.47 | **$0.42** (151,720 / 11,167) |
+| **Total** | | **16** | $1.13 | **$1.03** |
+
+### Scores after each fix (11 real documents)
+
+| Engine | Lease, verified | Lease, proposed | Program, verified | Program, proposed | Wrong program values | Spurious lease values |
+|---|---|---|---|---|---|---|
+| `ai` (last run, raw) | 0 / 2 | 6 / 21 | 0 / 25 | 0 / 111 | 0 | 14 |
+| `affordable+fallback` | 0 / 2 | 4 / 21 | 0 / 25 | 18 / 111 | – | 5 |
+| **Fix 1**: routed | 0 / 2 | 10 / 21 (48%) | 0 / 25 | 18 / 111 (16%) | 3 | 13 |
+| **Fix 2**: + HAP / LURA field lists | 1 / 2 | 12 / 21 (57%) | 12 / 25 (48%) | 45 / 111 (41%) | 8 | 10 |
+| **Fix 3**: + rent-roll gate | **1 / 2** | **12 / 21 (57%)** | **13 / 25 (52%)** | **59 / 111 (53%)** | 11 | 10 |
+
+"Proposed" answers are still unchecked in REVIEW.md, as before. Wrong values went up because more fields are filled (see below for each).
+
+**By document type, after fix 3:**
+
+| Doc type | Docs | Reader | Lease (ver / prop) | Program (ver / prop) |
+|---|---|---|---|---|
+| LURA / regulatory agreement | 3 | AI, LURA list | 1/1 · 0/2 | **5/5 · 31/36** |
+| HAP renewal request (letter) | 1 | AI, HAP list | – | **7/8 · 7/7** |
+| HAP contract, 1990 PBRA (typewritten scan) | 1 | AI, HAP list | – · 2/2 | 1/2 · 3/7 |
+| PBV HAP contracts | 3 | form reader (AI path blocked by the OCR gate) | – · 1/6 | 0/6 · 3/25 |
+| HAP renewal 2013 | 1 | none (OCR gate) | 0/1 · 0/2 | 0/4 · 0/10 |
+| HUD-50059 | 1 | form reader, no AI call | – · 3/3 | – · 15/22 |
+| 811 PRA lease | 1 | AI, lease list | – · 6/6 | – · 0/4 |
+
+The 4 scanned documents (the 2013 renewal and the three PBV contracts) were left alone, as asked. They still stop at the "needs OCR" gate until the large-files OCR work merges. For the three PBVs, which the form reader recognises, the routed engine keeps the form reader's read rather than nothing.
+
+### What each fix did
+
+**Fix 1: route forms to the form reader first.** `app/affordable/route.py`, `choose_route()`.
+- A recognised form goes to the form reader when its mapping says `route="form"`: HUD-50059, TICs, RFTA, HUD-52641, 52697, 52670, IRS forms. The AI is the fallback when:
+  - the document isn't recognised;
+  - the form's facts live in prose or exhibits (`route="ai"`: PBV 52530A/B and the CHFA LURA mapping, whose title also matches non-CHFA LURAs like Grand Junction);
+  - or the reader fills under a quarter of the form's fields (a different edition, a bad scan).
+- **Effect:** the 50059 goes from 0 / 25 under the AI to 18 / 25 with the reader, and costs no AI call. Everything else runs as before.
+
+**Fix 2: HAP contract and LURA field lists.** `app/affordable/ai_fields.py`.
+- **Classifying the document.** Title phrases near the start pick `hap_contract` or `lura`: the first 3 pages, capped at 5,000 characters. A recognised form's own kind wins. Phrases are full titles ("regulatory agreement", "declaration of restrictive covenants", "housing assistance payments contract", ...).
+  - "Restrictive covenant" on its own appears in 3 of the 12 EDGAR retail leases.
+  - After the last run I found one more case. The Family Steak lease (a `.txt`, so one long "page") names a "declaration of restrictive covenants" 130,000 characters in, in its subordination clause, and was classified as a LURA. The 5,000-character cap fixes it, and a test covers it.
+  - Now none of the 55 CRE benchmark files classify as affordable. The 11 real documents classify exactly as in the runs (every deciding phrase is within the first ~2,100 characters), so the scores above stand.
+- **HAP list:**
+  - contract number, HUD property ID, program, PHA, contract administrator, owner, assignee;
+  - project, address, total and contract (assisted) units;
+  - effective and expiration dates, initial term, renewal term and option, document date, AMI limit;
+  - a unit-mix table (bedrooms, total units, contract units, contract rent, proposed rent).
+- **LURA list:**
+  - project, owner, agency, address, county, total and low-income units;
+  - minimum applicable fraction, AMI limit and income-limit area;
+  - compliance and extended-use periods, effective, recording date and number;
+  - tables for unit mix, set-asides (AMI %, units, % of units) and BINs.
+- **How the call works.** These documents are read whole, not split into "leases". The AI is not asked the 15 CRE lease fields. The lease fields the app shows come from the program values: owner → landlord, property address, effective date → lease start, expiration → lease end. No HUD rule is applied; the prompt says to report only what the document states.
+- **Effect:** program fields 18 → 45 proposed, and 0 → 12 verified against HUD data. The renewal letter (14 / 15), Olympia Oaks (14 / 14) and Grand Junction (8 / 9) are almost complete.
+
+**Fix 3: the Utah agreement refused as a rent roll.**
+- **Cause:** it has no dollar amounts at all. The rent-roll gate counted 25 "dates" that were two Utah Code citations, `59-7-607` (13 times) and `59-10-1010` (12 times). `DATE_REGEX` matches any `d-d-d` shape.
+- **Fix:** `looks_like_rent_roll_table` now counts only matches that can be calendar dates (month and day in range, 2- or 4-digit year, not part of a longer number). `DATE_REGEX` itself is unchanged, so lease date extraction is untouched.
+- **Regression test:** two checks in `test_rent_roll_shape_detection.py`. An agreement citing statutes is not flagged; this failed before the fix. A rent roll with `MM/DD/YYYY` dates and no `$` is still flagged. The existing rent-roll checks all still pass.
+- **This changes the shared upload path for every document, not behind a flag**, since it's a bug fix. It only ever removes non-dates from the count.
+- **Effect:** Amasa reaches the AI and scores 14 / 18.
+
+### What's still wrong (after fix 3)
+
+- **Amasa unit mix: 1 / 1 / 8 instead of 27 / 11 / 12.** The agreement lists units per building. The AI returned one row per building and bedroom size, and the flattening keeps only the first row for each size. **Fix:** sum the rows per bedroom size, or ask for project totals. Not done: found after the last run.
+- **Coppertree 1990 rents: 260 / 305 against the key's 250 / 350.** Typewritten scan. The key values are "proposed" (REVIEW.md, p.11 Exhibit 1) and the OCR text is garbled, so it isn't clear which side is wrong. Its contract number came back as `TX24-E000-008` (hyphens) and scores as wrong.
+- **Spurious lease values: 10.**
+  - 5 are the 811 lease's, from the lease engine, as before: renewal, use and cure clauses the key doesn't list.
+  - 4 are on LURAs: owner → landlord on all three, and "August, 2013" as Olympia's lease start. A LURA has no landlord or lease term. **Fix:** for LURAs, map only the property address to lease fields. Not done, for the same reason.
+  - 1 is "Normal, Illinois" as the renewal letter's address: a city only.
+- **Fields the lists don't ask for:** Coppertree's stage 1 / 2 unit counts, and the 811 lease's HAP / tenant rent / utility allowance. The lease engine has no slot for those; an 811 lease field list would.
+- **Run-to-run variation:** fix 2 and fix 3 sent identical requests for the 5 documents both sent to the AI. Coppertree 1990 scored 2 / 7 once and 3 / 7 the other time; the other 4 scored the same both times.
+
+### How the eval scores these names
+- **Aliases.** A few answer-key names differ from the product's field names for the same thing. `run_eval.py` maps them when the exact name is missing (`KEY_ALIASES`, `_alias`):
+  - reception number → recording number; area → income-limit area; term years → extended-use years (Grand Junction's 40-year covenant term); buyer → assignee; letter date → document date;
+  - current rent / PBV units per bedroom → contract rent / contract units per bedroom.
+  - **7 of the 72 correct program values** come through an alias.
+- **Overfitting risk.** I wrote the field lists after seeing these answer keys. The lists are the general fields an owner or PM would want from these documents, not one per key: the stage counts and the 811 lease's figures are still missed. The numbers should be re-checked on documents outside this set.
+- **Prompt version.** The result files show `prompt_version: v2` even though the HAP and LURA calls used `affordable-v1`; the summary recorded only the lease prompt's version. Fixed for future runs.
+
+### Not wired into uploads
+The router and the field lists are called by the eval, not by `api.py`. Program fields have nowhere to be stored until the Section 8 data model (T1) lands. Wiring is a separate change behind `AFFORDABLE_FORMS_MODE`, and it needs `check_team_quota` before the AI call. The rent-roll gate fix is the exception: it is live on this branch for every upload.

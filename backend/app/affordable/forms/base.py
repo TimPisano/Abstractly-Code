@@ -60,6 +60,11 @@ class FormSpec:
     # lease field -> rule name, or a tuple of rule names joined with ", "
     lease_map: Dict[str, Union[str, Tuple[str, ...]]] = field(default_factory=dict)
     notes: str = ""
+    # "form": this reader handles the document (tenant-level forms filled by
+    # software). "ai": recognise it here, but the facts that matter live in
+    # prose or the issuer's own exhibits, so app.affordable.route sends it to
+    # the AI with its doc_kind's field list.
+    route: str = "form"
 
     def label_phrases(self):
         return [a.phrase for r in self.rules for a in r.anchors]

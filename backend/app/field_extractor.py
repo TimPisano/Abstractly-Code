@@ -138,8 +138,33 @@ def looks_like_rent_roll_table(pages: List[Dict[str, Any]]) -> bool:
     """
     full_text, _ = _concat_pages(pages)
     currency_count = len(re.findall(CURRENCY_REGEX, full_text))
-    date_count = len(re.findall(f"{DATE_REGEX}|{_ISO_DATE_REGEX}", full_text))
+    date_count = sum(1 for m in re.finditer(f"{DATE_REGEX}|{_ISO_DATE_REGEX}", full_text)
+                     if _is_calendar_date_match(full_text, m))
     return currency_count >= _RENT_ROLL_CURRENCY_THRESHOLD or date_count >= _RENT_ROLL_DATE_THRESHOLD
+
+
+def _is_calendar_date_match(text: str, m: "re.Match") -> bool:
+    """
+    False for a numeric DATE_REGEX match that can't be a calendar date:
+    statute citations ("Utah Code Ann. § 59-7-607", "59-10-1010") and
+    fragments of longer numbers. A tax-credit agreement citing two code
+    sections 25 times was refused as a rent roll before this check.
+    Month-name dates are always kept.
+    """
+    token = m.group(0)
+    parts = re.split(r"[/-]", token)
+    if len(parts) != 3 or not all(p.isdigit() for p in parts):
+        return True
+    before = text[m.start() - 1] if m.start() > 0 else " "
+    after = text[m.end()] if m.end() < len(text) else " "
+    if before.isdigit() or before in ("-", "/") or after.isdigit() or after in ("-", "/"):
+        return False
+    a, b, c = (int(p) for p in parts)
+    if len(parts[0]) == 4:                       # ISO: yyyy-mm-dd
+        return 1 <= b <= 12 and 1 <= c <= 31
+    if len(parts[2]) not in (2, 4):
+        return False
+    return (1 <= a <= 12 and 1 <= b <= 31) or (1 <= b <= 12 and 1 <= a <= 31)
 
 
 def _concat_pages(pages: List[Dict[str, Any]]):

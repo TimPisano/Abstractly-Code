@@ -68,10 +68,15 @@ REAL = HERE.parent / "real"
 # pipeline (mirrors api.py's upload path)
 # ---------------------------------------------------------------------------
 
-ENGINES = ("regex", "regex+acroform", "regex+layout", "affordable", "affordable+fallback", "ai")
+ENGINES = ("regex", "regex+acroform", "regex+layout", "affordable", "affordable+fallback", "ai", "routed")
+AI_ENGINES = ("ai", "routed")
+
+# Per-token prices for the cost check (claude-sonnet-5, the app's default
+# model): $2 per million input tokens, $10 per million output.
+PRICE_IN, PRICE_OUT = 2.0 / 1e6, 10.0 / 1e6
 
 
-def run_pipeline(pdf_path: Path, engine: str):
+def run_pipeline(pdf_path: Path, engine: str, routed_res=None):
     """
     regex           today's upload path, unchanged
     regex+acroform  same, but each page's text also gets its fillable-form
@@ -86,8 +91,31 @@ def run_pipeline(pdf_path: Path, engine: str):
                     the form reader, and today's upload path for documents
                     it doesn't recognise -- how the plan wires it in
     ai              today's upload path with the AI engine
+    routed          app.affordable.route: the form reader for the forms it
+                    reads well, the AI for everything else. If the AI path
+                    is stopped by a gate before any reader sees the
+                    document, a recognised form keeps the form reader's read
     """
     data = pdf_path.read_bytes()
+    if engine == "routed":
+        from app.affordable import choose_route, extract_document, layout_pages
+        res = extract_document(data)
+        form_out = {
+            "pages": layout_pages(data, include_acroform=True),
+            "status": "form",
+            "ranges": 1,
+            "fields": res["lease_fields"],
+            "program_fields": res["program_fields"],
+            "form_id": res["form_id"],
+        }
+        if choose_route(res) == "form":
+            return form_out
+        out = run_pipeline(pdf_path, "ai", routed_res=res)
+        if res["form_id"] and out["status"] in ("ocr_needed", "rejected_as_rent_roll"):
+            form_out.update(status=f"form (ai blocked: {out['status']})", low_text_pages=out.get("low_text_pages", []))
+            return form_out
+        out.update(status=f"ai:{out['status']}", form_id=res["form_id"])
+        return out
     if engine in ("affordable", "affordable+fallback"):
         from app.affordable import extract_document, layout_pages
         res = extract_document(data)
@@ -126,6 +154,23 @@ def run_pipeline(pdf_path: Path, engine: str):
     if looks_like_rent_roll_table(pages):
         out.update(status="rejected_as_rent_roll")
         return out
+
+    if engine == "ai" and routed_res is not None:
+        # HAP contracts and LURAs: read whole, with their own field list
+        from app import ai_extraction
+        from app.affordable.ai_fields import FIELD_LISTS, extract_program_fields
+        from app.affordable.route import ai_doc_kind
+        kind = ai_doc_kind(routed_res, pages)
+        out["doc_kind"] = kind
+        if kind in FIELD_LISTS:
+            try:
+                res = extract_program_fields(pages, kind)
+            except ai_extraction.AIExtractionError as e:
+                out.update(status="ai_error", ai_error=str(e)[:300])
+                return out
+            out.update(ranges=1, fields=res["lease_fields"], program_fields=res["program_fields"],
+                       ai_meta=res["_ai_meta"])
+            return out
 
     fx = FieldExtractor()
     boundaries = fx.detect_lease_boundaries(pages)
@@ -256,6 +301,22 @@ def program_match(vtype: str, got: str, expected: str) -> bool:
 VARIANTS = ("clean", "acroform", "scan", "holdout", "holdout_scan")
 
 
+# Answer-key names (written per document) -> the product's field names, where
+# they name the same thing differently. Used only when the exact name is absent.
+KEY_ALIASES = {"reception_number": "recording_number", "area": "income_limit_area",
+               "term_years": "extended_use_years", "buyer_name": "assignee_name", "letter_date": "document_date"}
+
+
+def _alias(name: str):
+    m = re.fullmatch(r"current_rent_(\d)br", name)
+    if m:
+        return f"contract_rent_{m.group(1)}br"
+    m = re.fullmatch(r"pbv_units_(\d)br", name)
+    if m:
+        return f"contract_units_{m.group(1)}br"
+    return KEY_ALIASES.get(name)
+
+
 def sample_path(key: dict, variant: str) -> Path:
     if key.get("real"):
         return REAL / key["doc_file"]      # one copy: the document as published
@@ -289,14 +350,15 @@ def evaluate(key: dict, engine: str, variant: str = "clean") -> dict:
         if entry["type"] == "checkbox":
             continue
         shown = entry.get("shown_as", entry["value"])
-        got = (extracted_program.get(name) or {}).get("value")
+        hit = extracted_program.get(name) or extracted_program.get(_alias(name) or "") or {}
+        got = hit.get("value")
         correct = got is not None and program_match(entry["type"], got, str(entry["value"]))
         program_scores.append({
             "field": name,
             "type": entry["type"],
             "expected": entry["value"],
             "extracted": got,               # None for engines without program fields
-            "method": (extracted_program.get(name) or {}).get("method"),
+            "method": hit.get("method"),
             "correct": correct,
             "kind": "correct" if correct else ("missed" if got is None else "wrong"),
             "in_text_layer": in_text(str(shown), entry["type"], text),
@@ -312,6 +374,7 @@ def evaluate(key: dict, engine: str, variant: str = "clean") -> dict:
         "variant": variant,
         "pipeline_status": result["status"],
         "form_id": result.get("form_id"),
+        "doc_kind": result.get("doc_kind"),
         "low_text_pages": result.get("low_text_pages", []),
         "lease_ranges": result["ranges"],
         "pages": len(result["pages"]),
@@ -419,6 +482,35 @@ def summarize_real(docs):
     return {"overall": block(docs), "by_doc_type": {t: block(ds) for t, ds in sorted(by_type.items())}}
 
 
+# ---------------------------------------------------------------------------
+# cost check
+# ---------------------------------------------------------------------------
+
+_ESTIMATE = {"calls": []}
+CHARS_PER_TOKEN = 2.6          # calibrated on the 2026-10-20 run: prompt characters per billed input token (2.5-2.8 per document)
+OUTPUT_TOKENS_GUESS = {"record_lease_abstraction": 1_000, "record_affordable_abstraction": 3_000}
+
+
+def _stub_ai_for_estimate():
+    """Replace the one function every AI path calls with a stub that records
+    the request's size and returns an empty tool call (every field not found),
+    so the whole pipeline runs and nothing reaches the API."""
+    import json as _json
+    from types import SimpleNamespace
+    from app import ai_extraction
+
+    def fake_call(*, system, user_content, tool, **_):
+        chars = len(system) + len(user_content) + len(_json.dumps(tool))
+        est_in = int(chars / CHARS_PER_TOKEN)
+        est_out = OUTPUT_TOKENS_GUESS.get(tool["name"], 2_000)
+        _ESTIMATE["calls"].append({"tool": tool["name"], "input_tokens": est_in, "output_tokens": est_out})
+        return SimpleNamespace(content=[SimpleNamespace(type="tool_use", input={})],
+                               usage=SimpleNamespace(input_tokens=est_in, output_tokens=est_out),
+                               stop_reason="tool_use")
+
+    ai_extraction.call_forced_tool = fake_call
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--engine", choices=ENGINES, default="regex")
@@ -431,9 +523,14 @@ def main(argv=None):
                          "(AcroForm documents only); scan = image-only copy from make_scans.py. "
                          "A variant with no file for a document is skipped and listed.")
     ap.add_argument("--out", help="results file name (default: results/<engine>.json)")
+    ap.add_argument("--estimate", action="store_true",
+                    help="cost check: run everything with the API call stubbed out, print the calls and "
+                         "estimated tokens and dollars that a real run would send, and write nothing")
     args = ap.parse_args(argv)
 
-    if args.engine == "ai" and not os.environ.get("ANTHROPIC_API_KEY"):
+    if args.estimate:
+        _stub_ai_for_estimate()
+    elif args.engine in AI_ENGINES and not os.environ.get("ANTHROPIC_API_KEY"):
         print("--engine ai needs ANTHROPIC_API_KEY in the environment. Nothing was sent.", file=sys.stderr)
         return 2
 
@@ -458,17 +555,28 @@ def main(argv=None):
                    if any(d["variant"] == v for d in docs)}
     report = {"engine": args.engine, "set": args.doc_set, "run_date": date.today().isoformat(), "summary": summary,
               "skipped": skipped, "documents": docs}
-    if args.engine == "ai":
+    if args.estimate:
+        calls = _ESTIMATE["calls"]
+        tin = sum(c["input_tokens"] for c in calls)
+        tout = sum(c["output_tokens"] for c in calls)
+        print(f"COST CHECK engine={args.engine} set={args.doc_set}: nothing was sent.")
+        for c in calls:
+            print(f"  {c['tool']:34} ~{c['input_tokens']:>7,} in  ~{c['output_tokens']:>5,} out")
+        print(f"  {len(calls)} calls, ~{tin:,} input + ~{tout:,} output tokens, ~${tin * PRICE_IN + tout * PRICE_OUT:.2f}")
+        return 0
+    if args.engine in AI_ENGINES:
         from app import ai_extraction
         metas = [d["ai_meta"] for d in docs if d.get("ai_meta")]
         report["ai"] = {
             "model": ai_extraction.DEFAULT_MODEL,
-            "prompt_version": ai_extraction.PROMPT_VERSION,
+            "prompt_version": sorted({m.get("prompt_version") for m in metas if m.get("prompt_version")})
+                              or ai_extraction.PROMPT_VERSION,
             "calls": len(metas),
             "errors": sum(1 for d in docs if d.get("ai_error")),
             "input_tokens": sum(m.get("input_tokens") or 0 for m in metas),
             "output_tokens": sum(m.get("output_tokens") or 0 for m in metas),
         }
+        report["ai"]["cost_usd"] = round(report["ai"]["input_tokens"] * PRICE_IN + report["ai"]["output_tokens"] * PRICE_OUT, 2)
 
     results_dir = REAL / "results" if real else RESULTS
     results_dir.mkdir(exist_ok=True)
