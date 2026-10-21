@@ -113,7 +113,7 @@ those by taking **main's** TASKS.md, not the branch's.
 | `qa/overnight-gauntlet` | `~/dev/projects/abstractly-gauntlet` | — | **Reviewed: MERGE (reviewer + security-auditor).** Branched off `main` `3f1d3aa` 2026-10-05. Overnight reliability gauntlet: 60+ synthetic messy rent rolls, 30+ T-12s, matching leases with planted mismatches + manifest; full local pipeline graded each cycle; root-cause fixes with regression tests; `QA_REPORT.md` updated per cycle. User's prompt is the approved scope (autonomous, no questions). Never merges/deploys. |
 | `audit/production-readiness` | `~/dev/projects/abstractly-audit` | 0 | Started 2026-10-05 off `origin/main` `3f1d3aa`. **Read-only** production readiness audit (DB, security, reliability, cost, Section 8 trust) → `AUDIT.md` at the worktree root, **uncommitted by user instruction** (no code edits, commits, pushes, or Render changes). Overnight deep pass: every route + job traced, bugs added ranked by severity. |
 | `pivot/section8` | `~/dev/projects/abstractly-pivot-section8` | — | Branched off `main` `323d85f` 2026-10-11. **Plan only, no code:** `PIVOT_PLAN.md` — audit (KEEP/ADAPT/REMOVE), Section 8 feature set, copy/positioning, parallel build order for pivoting Abstractly to Section 8 landlords/PMs. **Plan approved 2026-10-11** (`623e884`); tasks T0–T13 queued in Up next → "Section 8 pivot". Open questions Q1–Q7 still unanswered — plan defaults assumed. Builds on `research/section8`, `feature/lease-intelligence`, `feature/s8-hud-data`, `feature/s8-demo-files`. |
-| `chore/repo-layout` | `~/dev/projects/abstractly-repo-layout` | — | Branched off `main` `1d203d2` 2026-10-05. Repo tidy-up: move stray root reports/plans into `docs/`, fill `.gitignore` gaps, README project-layout section. File moves + doc-comment path fixes only, no code behavior change. **Plan written, awaiting user approval** — `docs/plans/chore-repo-layout.md`. |
+| `chore/repo-layout` | `~/dev/projects/abstractly-repo-layout` | — | Branched off `main` `1d203d2` 2026-10-05. Repo tidy-up: move stray root reports/plans into `docs/`, fill `.gitignore` gaps, README project-layout section. File moves + doc-comment path fixes only, no code behavior change. **Plan approved 2026-10-21** (`3fb8583`, not pushed) — `docs/plans/chore-repo-layout.md`; now also covers `feature/large-files-any-type` and `feature/affordable-forms` files. Moves not started: wait for both to land on main. |
 
 
 ### Handoff blocks
@@ -236,9 +236,9 @@ those by taking **main's** TASKS.md, not the branch's.
 #### chore/repo-layout
 - Worktree: `~/dev/projects/abstractly-repo-layout`
 - Goal: a clean, self-explanatory repo layout (root = README, CLAUDE, TASKS, render.yaml; docs grouped by purpose) with nothing broken.
-- Loop step: 3 — plan written, waiting for user approval
-- Last update: 2026-10-05 by start-task
-- Next action: user reviews `docs/plans/chore-repo-layout.md` and answers its open questions
+- Loop step: 3 done — plan approved 2026-10-21 (`3fb8583`, not pushed). Plan now also covers files added by `feature/large-files-any-type` and `feature/affordable-forms` (rows tagged LF/AF).
+- Last update: 2026-10-21
+- Next action: wait for large-files and affordable-forms to land on main, sync this branch with main, then start the moves. Open questions 1-4 in the plan are still unanswered (README positioning, depth, public repo, fold in main's newer root files).
 
 #### feature/lease-intelligence
 - Worktree: `~/dev/projects/abstractly-lease-intel`
