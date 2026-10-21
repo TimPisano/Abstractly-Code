@@ -142,6 +142,42 @@ def test_bedroom_counts_that_dont_add_up_are_flagged():
     assert fields["contract_units"]["value"] == "40" and fields["contract_units"]["confidence"] == "low"
 
 
+def _lura_payload(rows, total_units="50"):
+    fields, tables = ai_fields.FIELD_LISTS["lura"]
+    payload = {name: {"value": None, "confidence": None, "source_text": None} for name, _, _ in fields}
+    payload["total_units"] = {"value": total_units, "confidence": "high", "source_text": f"{total_units} units"}
+    for name in tables:
+        payload[name] = {"rows": [], "confidence": None, "source_text": None}
+    payload["unit_mix"] = {"rows": rows, "confidence": "medium", "source_text": "Building 1 ..."}
+    return payload
+
+
+# One row per building and bedroom size, the way a multi-building tax-credit
+# agreement lists its units (fictional buildings, 27 / 11 / 12 in total).
+PER_BUILDING_ROWS = [
+    {"bedrooms": "2", "units": "1"}, {"bedrooms": "3", "units": "1"}, {"bedrooms": "4", "units": "8"},
+    {"bedrooms": "2", "units": "14"}, {"bedrooms": "3", "units": "6"},
+    {"bedrooms": "2", "units": "12"}, {"bedrooms": "3", "units": "4"}, {"bedrooms": "4", "units": "4"},
+]
+LURA_PAGES = [{"page": 1, "text": "REGULATORY AGREEMENT\nBuilding 1: 1 two-bedroom, 1 three-bedroom, 8 four-bedroom."}]
+
+
+def test_unit_mix_rows_for_the_same_size_add_up():
+    """Regression: only the first row per bedroom size was kept (1 / 1 / 8 instead of 27 / 11 / 12)."""
+    out = ai_fields.extract_program_fields(LURA_PAGES, "lura", client=_mock_client(_lura_payload(PER_BUILDING_ROWS)))
+    pf = out["program_fields"]
+    assert (pf["units_2br"]["value"], pf["units_3br"]["value"], pf["units_4br"]["value"]) == ("27", "11", "12"), pf
+    assert [c["status"] for c in out["checks"]] == ["ok"], out["checks"]
+
+
+def test_lura_unit_mix_that_matches_no_total_is_flagged():
+    out = ai_fields.extract_program_fields(LURA_PAGES, "lura",
+                                           client=_mock_client(_lura_payload(PER_BUILDING_ROWS, total_units="60")))
+    flagged = [c for c in out["checks"] if c["status"] == "mismatch"]
+    assert len(flagged) == 1 and "50" in flagged[0]["message"] and "60" in flagged[0]["message"], out["checks"]
+    assert out["program_fields"]["total_units"]["value"] == "60"
+
+
 if __name__ == "__main__":
     test_coppertree_1br_row_is_flagged_and_keeps_its_printed_rent()
     test_checks_never_change_an_extracted_value()
@@ -150,4 +186,6 @@ if __name__ == "__main__":
     test_utility_allowance_above_ttp_floors_tenant_rent_at_zero()
     test_no_derivation_from_a_doubtful_number()
     test_bedroom_counts_that_dont_add_up_are_flagged()
+    test_unit_mix_rows_for_the_same_size_add_up()
+    test_lura_unit_mix_that_matches_no_total_is_flagged()
     print("\nAll affordable cross-check tests passed.")

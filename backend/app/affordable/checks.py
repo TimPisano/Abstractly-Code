@@ -19,7 +19,8 @@ practitioner check pending, so every note says "Verify with your PHA"):
     allowance is larger (24 CFR 5.634; the excess is a utility reimbursement)
   - assistance payment = gross rent - total tenant payment
     (the HUD-50059 rent computation lines)
-  - units per bedroom size add up to the contract's units
+  - units per bedroom size add up to the contract's units (a use agreement's
+    to its total or low-income units)
 """
 
 import re
@@ -138,6 +139,25 @@ def _bedroom_sum(fields, checks):
         checks.append({"status": "ok", "fields": [*rows, "contract_units"], "citation": "the document's own unit counts"})
 
 
+def _lura_bedroom_sum(fields, checks):
+    """A use agreement's unit mix may list every unit or only the restricted
+    ones, so it is flagged only when it matches neither count."""
+    if any(re.fullmatch(r"contract_units_\d+br", n) for n in fields):
+        return
+    rows = sorted(n for n in fields if re.fullmatch(r"units_\d+br", n))
+    totals = {n: _int(fields, n) for n in ("total_units", "low_income_units") if _int(fields, n) is not None}
+    counts = [_int(fields, n) for n in rows]
+    if len(rows) < 2 or not totals or any(c is None for c in counts):
+        return
+    named = list(totals)
+    if sum(counts) in totals.values():
+        checks.append({"status": "ok", "fields": [*rows, *named], "citation": "the document's own unit counts"})
+        return
+    said = " and ".join(f"{n.replace('_', ' ')} {v}" for n, v in totals.items())
+    _flag(fields, [*rows, *named], f"The units by bedroom size add up to {sum(counts)}, but the document says {said}.",
+          "the document's own unit counts", checks)
+
+
 def run_checks(fields: Dict[str, Dict]) -> List[Dict]:
     """Run every check that has its numbers present. Edits confidence and
     adds derived fields in place; never changes an extracted value."""
@@ -150,4 +170,5 @@ def run_checks(fields: Dict[str, Dict]) -> List[Dict]:
     _tenant_rent(fields, checks)
     _assistance(fields, checks)
     _bedroom_sum(fields, checks)
+    _lura_bedroom_sum(fields, checks)
     return checks

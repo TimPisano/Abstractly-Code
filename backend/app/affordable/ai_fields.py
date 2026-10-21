@@ -217,6 +217,16 @@ def _flatten_tables(payload: Dict[str, Any], kind: str, pages) -> Dict[str, Dict
             if value not in (None, "") and name not in out:
                 out[name] = _program_entry({**source, "value": str(value).strip()}, name)
 
+        def add(name, value):
+            """Unit counts: rows that repeat a bedroom size (one row per building
+            or stage) add up; rents and other values keep the first row."""
+            if value in (None, ""):
+                return
+            if name in out:
+                out[name]["value"] = str(int(float(out[name]["value"])) + int(float(value)))
+            else:
+                put(name, value)
+
         for i, row in enumerate(r for r in raw["rows"] if isinstance(r, dict)):
             if table == "bins":
                 put("bin" if i == 0 else f"bin_{i + 1}", row.get("bin"))
@@ -231,11 +241,11 @@ def _flatten_tables(payload: Dict[str, Any], kind: str, pages) -> Dict[str, Dict
             if beds is None:
                 continue
             if kind == "lura":
-                put(f"units_{beds}br", _number(row.get("units")))
+                add(f"units_{beds}br", _number(row.get("units")))
                 continue
             total, contract = _number(row.get("total_units")), _number(row.get("contract_units"))
-            put(f"units_{beds}br", total or contract)
-            put(f"contract_units_{beds}br", contract)
+            add(f"units_{beds}br", total or contract)
+            add(f"contract_units_{beds}br", contract)
             put(f"contract_rent_{beds}br", row.get("contract_rent"))
             put(f"utility_allowance_{beds}br", row.get("utility_allowance"))
             put(f"gross_rent_{beds}br", row.get("gross_rent"))
