@@ -11,6 +11,7 @@ landlord, effective date -> lease start), the way the form reader does it.
     kind = classify_doc_kind(pages)            # "hap_contract", "lura" or None
     out = extract_program_fields(pages, kind)
     out["program_fields"]    # {name: {"value", "source", "confidence", "method": "ai"}}
+    out["checks"]            # arithmetic cross-checks (checks.py): flags, never changes values
     out["lease_fields"]      # the 15 lease fields, same shape as the lease engine's
     out["_ai_meta"]          # model, tokens, latency
 
@@ -24,6 +25,7 @@ import time
 from typing import Any, Dict, List, Optional, Tuple
 
 from .. import ai_extraction
+from .checks import run_checks
 
 PROMPT_VERSION = "affordable-v1"
 MAX_TOKENS = 8192
@@ -77,6 +79,8 @@ HAP_TABLES = {
          ("total_units", "int", "Units of this size in the whole property, if stated separately."),
          ("contract_units", "int", "Units of this size covered by the contract."),
          ("contract_rent", "money", "Current monthly contract rent for this size."),
+         ("utility_allowance", "money", "Monthly utility allowance for this size, if the table gives one."),
+         ("gross_rent", "money", "Monthly gross rent for this size, if the table gives one. Copy it as printed, even if it doesn't equal rent plus allowance."),
          ("proposed_rent", "money", "New monthly contract rent the document requests or sets, if any.")],
     ),
 }
@@ -231,6 +235,8 @@ def _flatten_tables(payload: Dict[str, Any], kind: str, pages) -> Dict[str, Dict
             put(f"units_{beds}br", total or contract)
             put(f"contract_units_{beds}br", contract)
             put(f"contract_rent_{beds}br", row.get("contract_rent"))
+            put(f"utility_allowance_{beds}br", row.get("utility_allowance"))
+            put(f"gross_rent_{beds}br", row.get("gross_rent"))
             put(f"proposed_rent_{beds}br", row.get("proposed_rent"))
     return out
 
@@ -253,6 +259,7 @@ def extract_program_fields(pages: List[Dict[str, Any]], kind: str, *, client=Non
         if entry["value"] is not None:
             program[name] = _program_entry(entry)
     program.update({k: v for k, v in _flatten_tables(payload, kind, pages).items() if k not in program})
+    checks = run_checks(program)
 
     lease = {f: {"value": None, "source": None, "confidence": None} for f in ai_extraction.LEASE_FIELDS}
     for lease_field, name in LEASE_MAP.items():
@@ -270,4 +277,4 @@ def extract_program_fields(pages: List[Dict[str, Any]], kind: str, *, client=Non
         "output_tokens": getattr(usage, "output_tokens", None),
         "found_count": len(program),
     }
-    return {"program_fields": program, "lease_fields": lease, "doc_kind": kind, "_ai_meta": meta}
+    return {"program_fields": program, "lease_fields": lease, "doc_kind": kind, "checks": checks, "_ai_meta": meta}

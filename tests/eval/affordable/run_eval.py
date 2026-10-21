@@ -110,6 +110,7 @@ def run_pipeline(pdf_path: Path, engine: str, routed_res=None):
             "fields": res["lease_fields"],
             "program_fields": res["program_fields"],
             "form_id": res["form_id"],
+            "checks": res.get("checks", []),
         }
         if choose_route(res) == "form":
             return form_out
@@ -130,6 +131,7 @@ def run_pipeline(pdf_path: Path, engine: str, routed_res=None):
                 "fields": res["lease_fields"],
                 "program_fields": res["program_fields"],
                 "form_id": res["form_id"],
+                "checks": res.get("checks", []),
             }
         out = run_pipeline(pdf_path, "regex")
         out["status"] = f"fallback:{out['status']}"
@@ -172,7 +174,7 @@ def run_pipeline(pdf_path: Path, engine: str, routed_res=None):
                 out.update(status="ai_error", ai_error=str(e)[:300])
                 return out
             out.update(ranges=1, fields=res["lease_fields"], program_fields=res["program_fields"],
-                       ai_meta=res["_ai_meta"])
+                       ai_meta=res["_ai_meta"], checks=res.get("checks", []))
             return out
 
     fx = FieldExtractor()
@@ -387,6 +389,7 @@ def evaluate(key: dict, engine: str, variant: str = "clean") -> dict:
         "ai_meta": result.get("ai_meta"),
         "ai_error": result.get("ai_error"),
         "ai_cached": ai_cached,
+        "checks": [c for c in result.get("checks", []) if c["status"] != "ok"],
         "lease_fields": {
             "stated": len(stated),
             "correct": sum(1 for s in stated if s["correct"]),

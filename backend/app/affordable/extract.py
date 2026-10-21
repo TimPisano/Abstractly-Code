@@ -5,6 +5,7 @@ Recognise a known HUD / LIHTC form and read its fields.
     result["form_id"]          # e.g. "hud_52641", or None if unrecognised
     result["route"]            # "form" or "ai": who should read it (app.affordable.route)
     result["program_fields"]   # {name: {"value", "source", "confidence", "method"}}
+    result["checks"]           # arithmetic cross-checks (checks.py): flags, never changes values
     result["lease_fields"]     # the 15 lease fields, same shape as FieldExtractor's
 
 Values come from fillable-form fields when the PDF still has them, otherwise
@@ -19,6 +20,7 @@ import re
 from typing import Dict, List, Optional, Tuple, Union
 
 from .acroform import FormFieldValue, read_acroform
+from .checks import run_checks
 from .forms import all_forms
 from .forms.base import Anchor, FormSpec, Rule
 from .layout import PageLayout, Word, chains, group_lines, ocr_region, read_layout
@@ -218,6 +220,7 @@ def extract_document(source: Source, *, use_acroform: bool = True, ocr: bool = T
         "ocr_pages": [p.page for p in pages if p.source == "ocr"],
         "program_fields": {},
         "lease_fields": _empty_lease_fields(),
+        "checks": [],
         "warnings": [],
     }
     if spec is None:
@@ -242,6 +245,7 @@ def extract_document(source: Source, *, use_acroform: bool = True, ocr: bool = T
             "method": method,
             "canonical": rule.canonical,
         }
+    result["checks"] = run_checks(result["program_fields"])
 
     for lease_field, ref in spec.lease_map.items():
         names = (ref,) if isinstance(ref, str) else tuple(ref)
