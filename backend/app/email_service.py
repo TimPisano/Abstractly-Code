@@ -603,6 +603,51 @@ def send_team_setup_email(to_email: str, name: str, firm_name: str, setup_url: s
     return _send(to_email, subject, text_body, html_body)
 
 
+def _one_line(text: str, max_length: int = 80) -> str:
+    """A stored name or team name made safe for a subject line: control characters (incl. CR/LF) become spaces, whitespace collapses, long values are cut."""
+    text = "".join(" " if (ord(ch) < 32 or ord(ch) == 127) else ch for ch in (text or ""))
+    text = " ".join(text.split())
+    return text if len(text) <= max_length else text[:max_length - 1].rstrip() + "…"
+
+
+def send_team_invite_email(to_email: str, name: str, team_name: str, inviter_name: str, invite_url: str) -> bool:
+    """
+    Sent when a team admin invites a teammate (POST /team/invites, and
+    again on Resend). The URL carries a single-use, 72-hour token; the
+    invitee sets their own password on team-setup.html and joins
+    `team_name`. Returns False if sending failed or email isn't
+    configured -- the route then shows the admin the link to share by
+    hand, same fallback as send_team_setup_email.
+    """
+    first = _greeting_name(name)
+    team = _one_line(team_name)
+    inviter = _one_line(inviter_name) or "Your team admin"
+    subject = f"Join {team} on Abstractly"
+    text_body = "\n".join([
+        f"Hi {first},",
+        "",
+        f"{inviter} invited you to join {team} on Abstractly. Choose a password here and you're in:",
+        "",
+        invite_url,
+        "",
+        "The link works for 72 hours, and only once. If you weren't expecting this, "
+        "you can ignore this email and nothing will happen.",
+        "",
+        *_SIGN_OFF_TEXT,
+    ])
+    html_body = _personal_email_html([
+        f"Hi {html.escape(first)},",
+        f"{html.escape(inviter)} invited you to join {html.escape(team)} on Abstractly. "
+        "Choose a password here and you&rsquo;re in:",
+        _email_button(invite_url, f"Join {team}"),
+        "The link works for 72 hours, and only once. If you weren&rsquo;t expecting this, "
+        "you can ignore this email and nothing will happen.",
+        _SIGN_OFF_HTML,
+        _raw_link_note(invite_url),
+    ])
+    return _send(to_email, subject, text_body, html_body)
+
+
 def _personal_email_html(paragraphs) -> str:
     """
     Reads like a normal email from a person, not a branded template: white

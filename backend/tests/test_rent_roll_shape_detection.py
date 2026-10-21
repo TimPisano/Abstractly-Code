@@ -17,6 +17,7 @@ a clean 422 and persist nothing) lives in test_security_hardening.py,
 using the tests/synthetic_rent_roll_report.pdf fixture.
 """
 
+import _test_env  # noqa: F401  -- first: temp DB, no .env, no real network (see _test_env.py)
 import os
 import sys
 

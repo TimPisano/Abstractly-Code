@@ -13,6 +13,7 @@ Uses Flask's in-process test_client() against an isolated temp SQLite
 file, same pattern as every other route-level test in this suite.
 """
 
+import _test_env  # noqa: F401  -- first: temp DB, no .env, no real network (see _test_env.py)
 import io
 import os
 import sys

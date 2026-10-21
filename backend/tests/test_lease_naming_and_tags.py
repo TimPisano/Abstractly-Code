@@ -7,6 +7,7 @@ test_sheets_export.py) against an isolated temp DB, plus a couple of
 checks against database.py's tag functions directly.
 """
 
+import _test_env  # noqa: F401  -- first: temp DB, no .env, no real network (see _test_env.py)
 import os
 import sys
 import tempfile

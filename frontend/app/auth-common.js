@@ -71,11 +71,19 @@ realestate realestate1 multifamily apartments rentroll123 qwerty123456
      * page we're leaving (a used link, a submitted password form) should
      * not be one Back press away.
      */
-    function finishLogin(data) {
-        clearToken();
-        const store = data.remember ? local : sess;
-        if (data.token && store) store.setItem(TOKEN_KEY, data.token);
-        window.location.replace('index.html');
+    function finishLogin(data, returnToView) {
+        // Write the new token straight over the old one, never clear-then-
+        // set: other open tabs watch the shared (localStorage) slot, and a
+        // momentary "empty" there reads to them as "signed out".
+        if (data.remember) {
+            if (sess) sess.removeItem(TOKEN_KEY);
+            if (data.token && local) local.setItem(TOKEN_KEY, data.token);
+        } else {
+            if (local) local.removeItem(TOKEN_KEY);
+            if (data.token && sess) sess.setItem(TOKEN_KEY, data.token);
+        }
+        const view = /^[a-z0-9-]{1,40}$/.test(returnToView || '') ? `#${returnToView}` : '';
+        window.location.replace(`index.html${view}`);
     }
 
     /**
@@ -191,9 +199,18 @@ realestate realestate1 multifamily apartments rentroll123 qwerty123456
 
     // ---- link tokens -----------------------------------------------------
 
+    // Tokens are secrets.token_urlsafe(32): letters, digits, "-" and "_",
+    // 43 characters. Links copied out of a sentence often pick up a
+    // trailing "." or ")" (or a space from a wrapped line); keep the
+    // leading token-shaped run instead of calling the whole link broken.
+    function cleanLinkToken(raw) {
+        const match = /^[A-Za-z0-9_-]+/.exec((raw || '').trim());
+        return match && match[0].length >= 40 ? match[0] : (raw || '').trim();
+    }
+
     function takeLinkToken(storageKey) {
         const params = new URLSearchParams(window.location.search);
-        const fromUrl = params.get('token');
+        const fromUrl = params.get('token') ? cleanLinkToken(params.get('token')) : null;
         if (fromUrl) {
             if (sess) sess.setItem(storageKey, fromUrl);
             params.delete('token');

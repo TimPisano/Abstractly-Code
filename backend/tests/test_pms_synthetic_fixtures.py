@@ -25,6 +25,7 @@ content, not against any platform-specific assumption baked into the
 test itself, so real files should need no test changes beyond updating
 the expected values to match.
 """
+import _test_env  # noqa: F401  -- first: temp DB, no .env, no real network (see _test_env.py)
 import os
 import sys
 

@@ -6,6 +6,7 @@ total rows, currency formatting variety, and missing columns, not just
 one clean example.
 """
 
+import _test_env  # noqa: F401  -- first: temp DB, no .env, no real network (see _test_env.py)
 import csv
 import io
 import os

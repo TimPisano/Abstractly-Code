@@ -11,6 +11,7 @@ a server running in its own separate process. Points database.py at an
 isolated temp SQLite file so nothing here touches the real dev database.
 """
 
+import _test_env  # noqa: F401  -- first: temp DB, no .env, no real network (see _test_env.py)
 import email
 import email.header
 import os

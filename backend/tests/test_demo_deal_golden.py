@@ -31,6 +31,7 @@ confirms the date-independent findings (rent_mismatch, unit_no_lease)
 exactly through the real route with real wall-clock today, since those
 two discrepancy types don't depend on "today" at all.
 """
+import _test_env  # noqa: F401  -- first: temp DB, no .env, no real network (see _test_env.py)
 import io
 import os
 import sys

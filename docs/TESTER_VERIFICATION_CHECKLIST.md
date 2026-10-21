@@ -22,12 +22,18 @@ Each item: what's checked, how, and the result.
 
 ## 2. Data isolation — does it leak?
 
-This app has **no per-account data isolation within one deployment**
-(single shared `leases` table, confirmed in `HARDENING_LOG.md` 4.3 — the
-multi-tenant work lives only in the unmerged, stale
-`worktree-agent-ade7619750bfa9a9f` branch and is explicitly not part of
-this scope). The mitigation is architectural, not code-level: **one
-tester gets their own isolated Render deployment**
+> **Updated 2026-10-19:** the paragraph below is out of date. Team-level
+> data isolation merged on 2026-10-04 (`feature/team-isolation`,
+> `3cff20b`): every document query is scoped to the caller's `team_id`,
+> covered by `backend/tests/test_team_isolation.py`. Testers now sign in
+> to **production** as teams; the tester deployment is a throwaway staging
+> copy that wipes on every deploy. The table below records what was
+> checked on 2026-09-25 and is kept as history.
+
+*Original (2026-09-25):* this app had no per-account data isolation
+within one deployment (single shared `leases` table, confirmed in
+`HARDENING_LOG.md` 4.3). The mitigation was architectural, not
+code-level: one tester got their own isolated Render deployment
 (`abstractly-tester-api`/`abstractly-tester`), separate from prod and
 demo.
 

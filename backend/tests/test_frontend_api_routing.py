@@ -18,6 +18,7 @@ updating config.js fails this test instead of silently routing to prod:
 config.js is parsed, not executed, so this needs no Node install.
 """
 
+import _test_env  # noqa: F401  -- first: temp DB, no .env, no real network (see _test_env.py)
 import os
 import re
 

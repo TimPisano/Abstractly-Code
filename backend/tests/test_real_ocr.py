@@ -17,6 +17,7 @@ Homebrew's build-from-source path hit an outdated Command Line Tools
 wall) and what a fresh environment needs to run this for real.
 """
 
+import _test_env  # noqa: F401  -- first: temp DB, no .env, no real network (see _test_env.py)
 import os
 import shutil
 import sys

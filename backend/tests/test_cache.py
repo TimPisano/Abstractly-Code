@@ -13,6 +13,7 @@ database.configure()'s own automatic clear -- see that function's
 docstring) to keep each test's cache state fully self-contained.
 """
 
+import _test_env  # noqa: F401  -- first: temp DB, no .env, no real network (see _test_env.py)
 import os
 import sys
 import tempfile

@@ -3,6 +3,7 @@ Tests for Phase 5 observability: app/extraction_quality.py (pure) and
 the GET /extraction-quality/{trend,field-reliability} routes.
 """
 
+import _test_env  # noqa: F401  -- first: temp DB, no .env, no real network (see _test_env.py)
 import os
 import sys
 import tempfile

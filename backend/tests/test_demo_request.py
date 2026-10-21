@@ -8,6 +8,7 @@ Follows test_waitlist_email.py's pattern: Flask's in-process test_client(),
 mocked smtplib.SMTP_SSL, an isolated temp SQLite file per test.
 """
 
+import _test_env  # noqa: F401  -- first: temp DB, no .env, no real network (see _test_env.py)
 import email
 import email.header
 import json

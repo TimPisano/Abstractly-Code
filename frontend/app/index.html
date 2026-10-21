@@ -990,7 +990,35 @@
                 </div>
 
                 <div id="teamContent" style="display:none;">
-                    <div class="panel">
+                    <!-- Invite by email: shown instead of the add-with-a-password
+                         panel below when GET /team/invites says invites are on
+                         (TEAM_INVITES_ENABLED). See team-view.js. -->
+                    <div class="panel" id="teamInvitePanel" hidden>
+                        <div class="panel-header">
+                            <h2>Invite a Teammate</h2>
+                        </div>
+                        <form id="teamInviteForm" class="team-add-form">
+                            <input type="email" id="teamInviteEmail" class="text-input" placeholder="email@company.com" required aria-label="Email address" autocomplete="off">
+                            <input type="text" id="teamInviteName" class="text-input" placeholder="Name (optional)" aria-label="Name (optional)" autocomplete="off">
+                            <select id="teamInviteRole" class="text-input" aria-label="Role">
+                                <option value="viewer">Viewer</option>
+                                <option value="analyst" selected>Analyst</option>
+                                <option value="admin">Admin</option>
+                            </select>
+                            <button type="submit" class="btn-primary" id="teamInviteSubmitBtn">Send Invite</button>
+                        </form>
+                        <p id="teamInviteMessage" class="access-gate-message"></p>
+                        <p class="panel-description">They get an email with a link to set their own password and join your team. The link works for 72 hours, once.</p>
+                    </div>
+
+                    <div class="panel" id="teamPendingInvitesPanel" hidden>
+                        <div class="panel-header">
+                            <h2>Pending Invites</h2>
+                        </div>
+                        <div id="teamPendingInvitesContainer"></div>
+                    </div>
+
+                    <div class="panel" id="teamAddMemberPanel">
                         <div class="panel-header">
                             <h2>Add Team Member</h2>
                         </div>

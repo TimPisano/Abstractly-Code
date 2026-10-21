@@ -3,6 +3,7 @@ Rent roll edge-case coverage: negative/zero rents, non-revenue units,
 multiple tenants per unit, and 500-unit file performance.
 """
 
+import _test_env  # noqa: F401  -- first: temp DB, no .env, no real network (see _test_env.py)
 import csv
 import io
 import os

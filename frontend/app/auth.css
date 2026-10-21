@@ -534,3 +534,5 @@ a.auth-button.is-secondary:hover { color: var(--auth-text); }
     line-height: inherit;
     vertical-align: baseline;
 }
+
+.auth-notice a { color: inherit; font-weight: 600; text-underline-offset: 3px; }
