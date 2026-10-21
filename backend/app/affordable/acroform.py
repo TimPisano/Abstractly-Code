@@ -9,6 +9,7 @@ unflattened forms were invisible that way.
 """
 
 import io
+import re
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple, Union
 
@@ -109,6 +110,60 @@ def read_acroform(source: Source) -> List[FormFieldValue]:
                 continue
             seen.add(key)
             out.append(FormFieldValue(name=name, label=label, value=value, kind=kind, page=page_no, rect=rect))
+    return out
+
+
+_SHOW_TEXT = re.compile(rb"\(((?:\\.|[^\\)])*)\)\s*Tj")
+
+
+def _appearance_text(annot) -> str:
+    """The text a widget's normal appearance stream draws ("(Lorena ) Tj")."""
+    ap = annot.get("/AP")
+    if ap is None or "/N" not in ap:
+        return ""
+    stream = ap["/N"].get_object()
+    if not hasattr(stream, "get_data"):
+        return ""
+    try:
+        data = stream.get_data()
+    except Exception:
+        return ""
+    parts = [re.sub(rb"\\(.)", rb"\1", m).decode("latin-1") for m in _SHOW_TEXT.findall(data)]
+    return re.sub(r"\s+", " ", "".join(parts)).strip()
+
+
+def appearance_words(source: Source) -> Dict[int, List[Tuple[str, Tuple[float, float, float, float]]]]:
+    """Per page, (text, rect) for widgets that draw a value but have no field
+    name or no value of their own -- some form tools save filled boxes that
+    way, so neither the field reader nor the page text sees them. The rect
+    is x0, top, x1, bottom from the page's top-left, like FormFieldValue.
+    Named restricted fields (SSN, date of birth) are skipped and SSN-shaped
+    text is masked, as in read_acroform."""
+    try:
+        reader = _reader(source)
+        if reader.is_encrypted and reader.decrypt("") == 0:
+            return {}
+    except Exception:
+        return {}
+    out: Dict[int, List[Tuple[str, Tuple[float, float, float, float]]]] = {}
+    for page_no, page in enumerate(reader.pages, start=1):
+        height = float(page.mediabox.height)
+        for ref in page.get("/Annots") or []:
+            annot = ref.get_object()
+            if annot.get("/Subtype") != "/Widget":
+                continue
+            name = _full_name(annot)
+            if name and (_inherited(annot, "/V") not in (None, "") or is_restricted_field(name)):
+                continue
+            tooltip = _inherited(annot, "/TU")
+            if tooltip and is_restricted_field(str(tooltip)):
+                continue
+            text = _appearance_text(annot)
+            if not text:
+                continue
+            x0, y0, x1, y1 = (float(v) for v in annot["/Rect"])
+            rect = (min(x0, x1), height - max(y0, y1), max(x0, x1), height - min(y0, y1))
+            out.setdefault(page_no, []).append((mask_ssns(text), rect))
     return out
 
 

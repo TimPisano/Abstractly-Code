@@ -127,6 +127,8 @@ def read_layout(source: Source, *, ocr: bool = True) -> List[PageLayout]:
         return _CACHE[key]
     _IMAGES.clear()   # page images are kept for the current document only
 
+    from .acroform import appearance_words
+    drawn = appearance_words(data)
     pages: List[PageLayout] = []
     with pdfplumber.open(io.BytesIO(data)) as pdf:
         for i, page in enumerate(pdf.pages, start=1):
@@ -139,6 +141,9 @@ def read_layout(source: Source, *, ocr: bool = True) -> List[PageLayout]:
                 Word(w["text"], float(w["x0"]), float(w["x1"]), float(w["top"]), float(w["bottom"]))
                 for w in page.extract_words(x_tolerance=2.0, y_tolerance=2.0, keep_blank_chars=False)
             ]
+            # Filled boxes some form tools save as a drawing only (no field name or
+            # value): place their text where the box is, like printed text.
+            words += [Word(text, x0, x1, top, bottom) for text, (x0, top, x1, bottom) in drawn.get(i, [])]
             layout = PageLayout(page=i, width=float(page.width), height=float(page.height), words=words)
             if ocr and sum(len(w.text) for w in words) < MIN_TEXT_CHARS:
                 ocr_layout = _ocr_page(data, i, float(page.width), float(page.height))
