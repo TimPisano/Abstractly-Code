@@ -62,6 +62,9 @@ from app.normalize import parse_currency, parse_date  # noqa: E402
 SAMPLES = HERE / "samples"
 RESULTS = HERE / "results"
 REAL = HERE.parent / "real"
+AI_CACHE = REAL / "cache"
+_CACHE_STATS = {"hits": [], "misses": []}   # replaced by ai_cache.install() in main()
+sys.path.insert(0, str(HERE))
 
 
 # ---------------------------------------------------------------------------
@@ -325,7 +328,9 @@ def sample_path(key: dict, variant: str) -> Path:
 
 
 def evaluate(key: dict, engine: str, variant: str = "clean") -> dict:
+    hits_before = len(_CACHE_STATS["hits"])
     result = run_pipeline(sample_path(key, variant), engine)
+    ai_cached = len(_CACHE_STATS["hits"]) > hits_before
     text = "\n".join(p.get("text") or "" for p in result["pages"])
     ocr = [p["ocr_confidence"] for p in result["pages"] if p.get("ocr_confidence") is not None]
 
@@ -381,6 +386,7 @@ def evaluate(key: dict, engine: str, variant: str = "clean") -> dict:
         "mean_ocr_confidence": round(sum(ocr) / len(ocr), 1) if ocr else None,
         "ai_meta": result.get("ai_meta"),
         "ai_error": result.get("ai_error"),
+        "ai_cached": ai_cached,
         "lease_fields": {
             "stated": len(stated),
             "correct": sum(1 for s in stated if s["correct"]),
@@ -525,14 +531,22 @@ def main(argv=None):
     ap.add_argument("--out", help="results file name (default: results/<engine>.json)")
     ap.add_argument("--estimate", action="store_true",
                     help="cost check: run everything with the API call stubbed out, print the calls and "
-                         "estimated tokens and dollars that a real run would send, and write nothing")
+                         "estimated tokens and dollars that a real run would send, and write nothing. "
+                         "Requests already in the AI cache are listed as cached and cost $0")
+    ap.add_argument("--no-cache", action="store_true",
+                    help="send every AI request even if its answer is cached (the new answers are still stored)")
     args = ap.parse_args(argv)
 
+    import ai_cache
     if args.estimate:
         _stub_ai_for_estimate()
-    elif args.engine in AI_ENGINES and not os.environ.get("ANTHROPIC_API_KEY"):
-        print("--engine ai needs ANTHROPIC_API_KEY in the environment. Nothing was sent.", file=sys.stderr)
-        return 2
+    global _CACHE_STATS
+    offline = args.engine in AI_ENGINES and not args.estimate and not os.environ.get("ANTHROPIC_API_KEY")
+    if offline:
+        print("No ANTHROPIC_API_KEY: cache-only run. Uncached requests are not sent and score as nothing extracted.",
+              file=sys.stderr)
+    cache_stats = _CACHE_STATS = ai_cache.install(AI_CACHE, write=not args.estimate, use_cache=not args.no_cache,
+                                                  offline=offline)
 
     real = args.doc_set == "real"
     key_dir = REAL / "answer_keys" if real else SAMPLES
@@ -560,9 +574,13 @@ def main(argv=None):
         tin = sum(c["input_tokens"] for c in calls)
         tout = sum(c["output_tokens"] for c in calls)
         print(f"COST CHECK engine={args.engine} set={args.doc_set}: nothing was sent.")
+        for d in docs:
+            if d.get("ai_meta"):
+                print(f"  {d['id']:36} {'cached $0' if d.get('ai_cached') else 'would send'}")
         for c in calls:
             print(f"  {c['tool']:34} ~{c['input_tokens']:>7,} in  ~{c['output_tokens']:>5,} out")
-        print(f"  {len(calls)} calls, ~{tin:,} input + ~{tout:,} output tokens, ~${tin * PRICE_IN + tout * PRICE_OUT:.2f}")
+        print(f"  {len(cache_stats['hits'])} cached (free), {len(calls)} to send: "
+              f"~{tin:,} input + ~{tout:,} output tokens, ~${tin * PRICE_IN + tout * PRICE_OUT:.2f}")
         return 0
     if args.engine in AI_ENGINES:
         from app import ai_extraction
@@ -575,8 +593,15 @@ def main(argv=None):
             "errors": sum(1 for d in docs if d.get("ai_error")),
             "input_tokens": sum(m.get("input_tokens") or 0 for m in metas),
             "output_tokens": sum(m.get("output_tokens") or 0 for m in metas),
+            "cached_calls": len(cache_stats["hits"]),
+            "sent_calls": len(cache_stats["misses"]),
         }
-        report["ai"]["cost_usd"] = round(report["ai"]["input_tokens"] * PRICE_IN + report["ai"]["output_tokens"] * PRICE_OUT, 2)
+        # Billed now = only the requests actually sent; cached ones were paid for on an earlier run.
+        sent_in = sum(m["input_tokens"] for m in cache_stats["misses"])
+        sent_out = sum(m["output_tokens"] for m in cache_stats["misses"])
+        report["ai"]["cost_usd"] = round(sent_in * PRICE_IN + sent_out * PRICE_OUT, 2)
+        print(f"AI: {len(cache_stats['hits'])} cached, {len(cache_stats['misses'])} sent, "
+              f"billed this run ~${report['ai']['cost_usd']:.2f}")
 
     results_dir = REAL / "results" if real else RESULTS
     results_dir.mkdir(exist_ok=True)
