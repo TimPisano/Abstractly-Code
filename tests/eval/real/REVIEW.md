@@ -18,7 +18,7 @@ In the tables, "p." means a page of the cut document in `docs/`, not of the orig
 
 1. **`hap_tx_coppertree_renewal_2013`, 1-bedroom units.** The OCR text says 158; HUD's database says 156. Page 1's total (263) only adds up with 156. I put 156.
 2. **`hap_il_amanda_brooke_request`, letter date.** It's printed "April 14, 2024", but the file name says 2025 and the letter cites 2025 FMRs. The key keeps the printed date.
-3. **`hap_tx_coppertree_1990` is a compilation.** Page 10 is headed "HUNTINGTON FOREST". Pages 22-27 are a HAP addendum signed for "Owner Shannon Place, Ltd." in July 1986. Are those earlier names of Coppertree, or other projects' pages? The stage unit counts (114 + 90) also don't reach today's 263.
+3. *(Exhibit 1 stage 2 rents and units checked by hand 2026-10-21; the compilation question below is still open.)* **`hap_tx_coppertree_1990` is a compilation.** Page 10 is headed "HUNTINGTON FOREST". Pages 22-27 are a HAP addendum signed for "Owner Shannon Place, Ltd." in July 1986. Are those earlier names of Coppertree, or other projects' pages? The stage unit counts (114 + 90) also don't reach today's 263.
 4. **`pbv_ca_rivco_cottonwood2`, address.** Exhibit A says "24550 & 24570 Cottonwood"; HUD's LIHTC database says "24580 Cottonwood Ave". I used Exhibit A.
 5. **`sample_tx_811_*`, rent.** I used contract rent ($841) as `rent_amount`, which matches the synthetic HUD-form keys. The tenant pays $350 of it.
 6. **`pbv_ca_rivco_5th_street`, owner name: changed after the first run.** I first keyed page 1's "Mercy Housing Living Centers". The form reader returned "Mercy House Living Centers" from the execution page. That is what the execution page prints, and it matches the cover letter ("Mercy House"), so I changed the key. The PDF disagrees with itself; please confirm the legal name. Also, what is the fillable-field value "7"?
@@ -49,6 +49,16 @@ Heavy OCR noise in the text layer. Two stages: Exhibit 1 lists 114 units (stage 
 
 Verified against HUD data (no action needed): `contract_number`, `rems_property_id`.
 
+**Checked by hand by the user, 2026-10-21 (p.11, Exhibit 1, stage 2).** The typed values are:
+
+| Bedrooms | Units | Contract rent | Utility allowance | Gross rent |
+|---|---|---|---|---|
+| 1 | 49 | $250 | $35 | $295 |
+| 2 | 39 | $350 | $45 | $395 |
+| 3 | 2 | $395 | $53 | $448 |
+
+Total: 90 units. The key is correct; the AI's earlier read of $260 / $305 was wrong. **The 1BR row doesn't add up on the document itself:** $250 + $35 = $285, not the $295 printed. A handwritten note dated 2-11-91 flags it as a known error needing correction. The key keeps the printed $250. The extractor must keep $250 too, flag the row as inconsistent at low confidence with "Verify with your PHA", and never change a value to make the arithmetic work (regression test on `feature/affordable-real-accuracy`). The ticked rows below are hand-checked. Their `status` in the answer key is still `proposed`, since nobody has asked for it to change.
+
 | OK? | Field | Proposed value | Where it comes from |
 |---|---|---|---|
 | [ ] | `lease.landlord` | Texas-Coppertree Village Limited Partnership | p.2 (OCR: 'TFXAS- CnPPgRTP.F.E VIT,LAGE LIMITED PARTNERSHIP') |
@@ -56,10 +66,10 @@ Verified against HUD data (no action needed): `contract_number`, `rems_property_
 | [ ] | `owner_name` | Texas-Coppertree Village Limited Partnership | p.2 |
 | [ ] | `effective_date` | 11/03/1990 | p.2 s.1.1(a) stage 1 |
 | [ ] | `stage1_units` | 114 | p.8 Exhibit 1 stage 1: 64 + 49 + 1 |
-| [ ] | `stage2_units` | 90 | p.11 Exhibit 1 stage 2: 49 + 39 + 2 |
-| [ ] | `contract_rent_1br` | 250 | p.11 Exhibit 1 |
-| [ ] | `contract_rent_2br` | 350 | p.11 Exhibit 1 |
-| [ ] | `contract_rent_3br` | 395 | p.8/p.11 Exhibit 1 |
+| [x] | `stage2_units` | 90 | p.11 Exhibit 1 stage 2: 49 + 39 + 2 (checked by hand 2026-10-21) |
+| [x] | `contract_rent_1br` | 250 | p.11 Exhibit 1 (checked by hand 2026-10-21; row doesn't add up on the document, see note) |
+| [x] | `contract_rent_2br` | 350 | p.11 Exhibit 1 (checked by hand 2026-10-21) |
+| [x] | `contract_rent_3br` | 395 | p.8/p.11 Exhibit 1 (checked by hand 2026-10-21 on p.11) |
 
 ### `hap_tx_coppertree_renewal_2013`
 
