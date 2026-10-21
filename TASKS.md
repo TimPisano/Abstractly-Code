@@ -121,7 +121,7 @@ those by taking **main's** TASKS.md, not the branch's.
 - Worktree: ~/dev/projects/abstractly-affordable-real
 - Base: stacked on feature/affordable-forms c6a14ff (unmerged); merge only after it
 - Goal: 11 real affordable documents from 85/159 (53%) toward 90%, free fixes first, cached AI responses, every API call estimated and approved first.
-- Loop step: 3 — plan written; user approved the approach in chat 2026-10-21 (answered Coppertree question, asked for the fix-3 inconsistency flag + regression test)
+- Loop step: 4 — building (approach approved in chat 2026-10-21; plan committed 3893d2f)
 - Last update: 2026-10-21 by start-task
 - Spent: $0.00 this task. Budget: ~$14 total left; projected ~$1.00–1.20
 - Next action: build steps 0–5 (no API calls), then show cost estimate for the combined run
