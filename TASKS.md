@@ -108,7 +108,7 @@ those by taking **main's** TASKS.md, not the branch's.
 | `fix/quick-wins` | `~/dev/projects/abstractly-quick-wins` | — | Branched off `main` 2026-10-06. (1) lease detail cards cut off on the right at 375px + sweep every page at 375px; (2) upgrade Pillow and every dependency with a known security advisory, full suite green. **Plan approved, building** — `docs/plans/fix-quick-wins.md`. |
 | `feature/loan-underwriting` | `~/dev/projects/abstractly-loan` | +2 / −16 | ~19 uncommitted files (`api.py`, `database.py`, tests, plan); not pushed. Feature-flagged off. Merge **after** team isolation (its plan defers all tenancy to it). Another session may be active — don't touch. |
 | `feature/deal-assistant` | `~/dev/projects/abstractly-assistant` | 0 / −7 | Worktree only, nothing built. Not started. |
-| `feature/affordable-real-accuracy` | `~/dev/projects/abstractly-affordable-real` | — | Claimed 2026-10-21. **Stacked on `feature/affordable-forms` `c6a14ff`** (merge only after it). Raise the 11-real-document affordable eval from 85/159 (53%) toward 90%: free fixes first (eval response cache keyed by request hash, OCR/value cleanup, 50059 mapping, arithmetic cross-checks that flag but never alter, Amasa bedroom sums, OCR-gated docs unblocked inside the affordable router, PBV Exhibit A table reader), then one paid AI run (~$0.75–0.90) only after a cost estimate + user OK. User has ~$14 API credit total. Behind `AFFORDABLE_FORMS_MODE`. Plan: `docs/plans/feature-affordable-real-accuracy.md`. |
+| `feature/affordable-real-accuracy` | `~/dev/projects/abstractly-affordable-real` | — | Claimed 2026-10-21. **Stacked on `feature/affordable-forms` `c6a14ff`** (merge only after it). Raise the 11-real-document affordable eval from 85/159 (53%) toward 90%: free fixes first (eval response cache keyed by request hash, OCR/value cleanup, 50059 mapping, arithmetic cross-checks that flag but never alter, Amasa bedroom sums, OCR-gated docs unblocked inside the affordable router, PBV Exhibit A table reader), one paid run done ($0.64, approved). **151/165 (91.5%)** on the real set. User has ~$13 API credit left. Behind `AFFORDABLE_FORMS_MODE`. Plan: `docs/plans/feature-affordable-real-accuracy.md`. |
 | `fix/upload-hardening` | `~/dev/projects/abstractly-upload-hardening` | — | Claimed 2026-10-21. **Stacked on `feature/large-files-any-type` `085debe`** (merge only after it). Security re-audit follow-ups, one commit each, suite after each: (1) no route accepts the .xlsx entity bomb (`POST /leases`, `/leases/import-rent-roll`), regression test per route; (2) time limit on PDF reading; (3) 3-active-jobs cap holds under simultaneous uploads; (4) rate limit on `POST /uploads`. User's prompt is the spec and approval; don't merge. |
 
 | `qa/overnight-gauntlet` | `~/dev/projects/abstractly-gauntlet` | — | **Reviewed: MERGE (reviewer + security-auditor).** Branched off `main` `3f1d3aa` 2026-10-05. Overnight reliability gauntlet: 60+ synthetic messy rent rolls, 30+ T-12s, matching leases with planted mismatches + manifest; full local pipeline graded each cycle; root-cause fixes with regression tests; `QA_REPORT.md` updated per cycle. User's prompt is the approved scope (autonomous, no questions). Never merges/deploys. |
@@ -130,12 +130,14 @@ those by taking **main's** TASKS.md, not the branch's.
 ### feature/affordable-real-accuracy
 - Worktree: ~/dev/projects/abstractly-affordable-real
 - Base: stacked on feature/affordable-forms c6a14ff (unmerged); merge only after it
-- Goal: 11 real affordable documents from 85/159 (53%) toward 90%, free fixes first, cached AI responses, every API call estimated and approved first.
-- Loop step: 4 — building free steps (user's 2026-10-21 reply asked for the fix-3 flag + regression test + REVIEW note; taken as go-ahead for the no-cost steps 0–5 only; no API calls without estimate + OK)
+- Goal: 11 real affordable documents to 90%, free fixes first, cached AI responses, every API call estimated and approved first.
+- Loop step: 4 — built and pushed; ready for /review-branch once the user is happy with the score
 - Last update: 2026-10-21 by build session
-- Spent: $0.00 this task. Budget: ~$14 total left; projected ~$1.00–1.20
-- Done (pushed 2026-10-21, tip after `9212f7e`): steps 0–5, all free. 4 form-reader docs 22 → 53/62; combined est. ~116/159 (73%) mixing runs. Suite 102/102; synthetic unchanged. Scores in docs/research/eval-baseline.md (last section).
-- Next action: user approves the combined paid run (10 calls, estimate ~$0.72), then score, then optional follow-ups (811 lease list, street_address key question)
+- Spent: **$0.64** this task (one approved run, 10 calls, 223,377 in / 19,441 out at $2/$10 per M). All 10 cached in tests/eval/real/cache/ — rescoring is free unless a prompt or document text changes.
+- Score: **151/165 (91.5%)** (key grew 159→165: city/state/zip for 5th Street + Oak View, per user). Start was 85/159 (53%). Suite 102/102; synthetic unchanged.
+- User decisions 2026-10-21: Coppertree key correct ($250/$350, checked by hand); street_address = street only + city/state/zip fields; Amasa address list containing the key's address scores correct, extract all six.
+- Open: 14 misses listed in docs/research/eval-baseline.md (last section). Optional paid follow-ups, each needs estimate + OK: multi-stage HAP table for Coppertree (~$0.13), 811 lease field list (~$0.05). Overfitting caveat: tuned on the same 11 docs.
+- Next action: user decides on follow-ups or runs `/review-branch feature/affordable-real-accuracy`
 
 ### feature/lease-accuracy
 - Worktree: ~/dev/projects/abstractly-accuracy
