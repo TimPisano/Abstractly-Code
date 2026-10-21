@@ -21,6 +21,7 @@ pillow-heif==1.1.1       # decode iPhone .heic/.heif images before OCR
 Pillow==11.3.0
 reportlab==4.0.7
 openpyxl==3.1.5
+defusedxml==0.7.1        # openpyxl uses it when installed: Excel XML entities are refused, never expanded
 xlrd==2.0.2
 python-docx==1.2.0
 olefile==0.47

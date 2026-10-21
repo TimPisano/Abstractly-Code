@@ -841,6 +841,11 @@ def _precheck_upload_file(user, file_bytes, filename):
     if msg:
         return (msg, 400)
 
+    # An Office file declaring XML entities ("billion laughs") is a few KB
+    # that expands to gigabytes in a parser; Office never writes one.
+    if file_types.office_bytes_declare_dtd(file_bytes):
+        return (file_types.DTD_REJECTION_MESSAGE, 400)
+
     if usage_limits._extraction_rate_limited(user["id"]):
         return (f"Rate limit exceeded: maximum {usage_limits.EXTRACTION_RATE_LIMIT_PER_USER_PER_MINUTE} extractions per minute.", 429)
 
@@ -1574,6 +1579,8 @@ def import_rent_roll():
 
     base_property_address = (request.form.get('property_address') or '').strip() or None
     file_bytes = file_storage.read()
+    if file_types.office_bytes_declare_dtd(file_bytes):
+        return jsonify({"error": file_types.DTD_REJECTION_MESSAGE}), 400
 
     try:
         parsed = parse_rent_roll_file(file_bytes, filename, base_property_address)
