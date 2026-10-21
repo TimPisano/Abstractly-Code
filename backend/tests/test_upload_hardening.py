@@ -253,6 +253,100 @@ def test_pdf_reading_stops_at_the_overall_time_limit():
     print("✓ test_pdf_reading_stops_at_the_overall_time_limit: PASS")
 
 
+# ---------------------------------------------------------------------------
+# Fixes 3-4: POST /uploads (LARGE_FILE_UPLOADS on)
+
+LEASE_TEXT = b"Lease between Example Landlord LLC and Example Tenant Inc. Base Rent of $2,500.00 per month.\n" * 20
+
+
+def _large_uploads_on():
+    """LARGE_FILE_UPLOADS on (read per request) with a throwaway upload dir; jobs are recorded, never run."""
+    from unittest import mock
+    from app import upload_jobs
+    upload_dir = tempfile.mkdtemp(prefix="abstractly-test-uploads-")
+    patches = [
+        mock.patch.dict(os.environ, {"LARGE_FILE_UPLOADS": "true", "LARGE_FILE_UPLOAD_DIR": upload_dir}),
+        mock.patch.object(upload_jobs, "start_job", lambda job_id: None),
+    ]
+    for p in patches:
+        p.start()
+    return upload_dir, patches
+
+
+def _post_upload(client, n=0, kind="lease"):
+    body = LEASE_TEXT + f"Copy {n}\n".encode()  # distinct content: no duplicate-upload short cut
+    return client.post("/uploads", data={"file": (io.BytesIO(body), f"lease{n}.txt"), "kind": kind},
+                       content_type="multipart/form-data")
+
+
+def _active_jobs(team_id=1):
+    return database.count_active_upload_jobs(team_id)
+
+
+def test_simultaneous_uploads_cannot_pass_the_active_job_cap():
+    """
+    Security re-audit: the 3-active-jobs cap was count-then-insert, so
+    uploads that arrived together all saw room and all queued. Both
+    requests passing the early count (as two simultaneous requests do)
+    must still leave the team at the cap.
+    """
+    from unittest import mock
+    from app import upload_jobs
+    db = _fresh_db()
+    upload_dir, patches = _large_uploads_on()
+    try:
+        client = _client()
+        for n in range(upload_jobs.MAX_ACTIVE_JOBS_PER_TEAM):
+            assert _post_upload(client, n).status_code == 202
+        assert _active_jobs() == upload_jobs.MAX_ACTIVE_JOBS_PER_TEAM
+
+        # Both requests checked the count before either one's job existed.
+        with mock.patch.object(database, "count_active_upload_jobs", return_value=0):
+            resp = _post_upload(client, 99)
+        assert resp.status_code == 429, (resp.status_code, resp.get_json())
+        assert "uploads processing" in resp.get_json()["error"]
+        assert _active_jobs() == upload_jobs.MAX_ACTIVE_JOBS_PER_TEAM, "a job past the cap was queued"
+        assert len([n for n in os.listdir(upload_dir) if n.endswith(".upload")]) == upload_jobs.MAX_ACTIVE_JOBS_PER_TEAM, \
+            "the refused upload's file was left behind"
+        # Another team has its own cap.
+        assert _post_upload(_client(user_id=2, team_id=2), 100).status_code == 202
+    finally:
+        for p in patches:
+            p.stop()
+        os.unlink(db)
+    print("✓ test_simultaneous_uploads_cannot_pass_the_active_job_cap: PASS")
+
+
+def test_concurrent_job_creation_holds_the_cap_exactly():
+    """Eight threads creating jobs at the same moment, cap 3: exactly three rows."""
+    import threading
+    db = _fresh_db()
+    try:
+        _client()  # creates user 1 / team 1
+        barrier = threading.Barrier(8)
+        created, errors = [], []
+
+        def create(n):
+            barrier.wait()
+            try:
+                created.append(database.create_upload_job(1, 1, "lease", f"l{n}.txt", f"/nowhere/{n}", 1, f"h{n}",
+                                                          "txt", max_active=3))
+            except Exception as e:  # noqa: BLE001 -- reported below
+                errors.append(repr(e))
+
+        threads = [threading.Thread(target=create, args=(n,)) for n in range(8)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        assert not errors, errors
+        assert len([c for c in created if c is not None]) == 3, created
+        assert _active_jobs() == 3
+    finally:
+        os.unlink(db)
+    print("✓ test_concurrent_job_creation_holds_the_cap_exactly: PASS")
+
+
 if __name__ == "__main__":
     test_post_leases_refuses_an_excel_entity_bomb()
     test_post_leases_batch_refuses_an_excel_entity_bomb()
@@ -261,4 +355,6 @@ if __name__ == "__main__":
     test_real_excel_uploads_still_import()
     test_a_hung_pdf_renderer_is_stopped_at_its_time_limit()
     test_pdf_reading_stops_at_the_overall_time_limit()
+    test_simultaneous_uploads_cannot_pass_the_active_job_cap()
+    test_concurrent_job_creation_holds_the_cap_exactly()
     print("\nAll upload hardening tests passed!")

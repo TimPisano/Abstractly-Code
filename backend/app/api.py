@@ -1765,9 +1765,12 @@ def create_upload():
         if msg:
             return jsonify({"error": msg}), 403
 
+    too_many_jobs = (f"Your team already has {upload_jobs.MAX_ACTIVE_JOBS_PER_TEAM} uploads processing. "
+                     "Wait for one to finish, then upload this file.")
+    # Checked again atomically when the job is created (below); this one
+    # just saves receiving a file that would be refused anyway.
     if database.count_active_upload_jobs(team_id) >= upload_jobs.MAX_ACTIVE_JOBS_PER_TEAM:
-        return jsonify({"error": f"Your team already has {upload_jobs.MAX_ACTIVE_JOBS_PER_TEAM} uploads processing. "
-                                 "Wait for one to finish, then upload this file."}), 429
+        return jsonify({"error": too_many_jobs}), 429
     if not upload_jobs.has_room_for_an_upload():
         logger.error("Upload refused: not enough free disk in the upload directory")
         return jsonify({"error": "The server can't take large uploads right now. Please try again in a few minutes."}), 503
@@ -1811,7 +1814,10 @@ def create_upload():
         options["property_address"] = (request.form.get('property_address') or '').strip() or None
 
     job_id = database.create_upload_job(team_id, user["id"], kind, filename, stored_path, size, content_hash,
-                                        detected.extension, options)
+                                        detected.extension, options, max_active=upload_jobs.MAX_ACTIVE_JOBS_PER_TEAM)
+    if job_id is None:
+        upload_jobs.remove_file(stored_path)
+        return jsonify({"error": too_many_jobs}), 429
     try:
         upload_jobs.start_job(job_id)
     except Exception:

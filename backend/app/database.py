@@ -4944,10 +4944,24 @@ def _upload_job_row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
 
 def create_upload_job(team_id: int, user_id: Optional[int], kind: str, filename: str, stored_path: str,
                       size_bytes: int, content_hash: str, detected_type: str,
-                      options: Optional[Dict[str, Any]] = None) -> int:
+                      options: Optional[Dict[str, Any]] = None, max_active: Optional[int] = None) -> Optional[int]:
+    """
+    The new job's id. With `max_active`, None instead when the team already
+    has that many jobs queued or processing: the count and the insert run
+    under one write lock (BEGIN IMMEDIATE), so uploads arriving together
+    can't all see room under the cap.
+    """
     now = datetime.now(timezone.utc).isoformat()
     conn = _patient_connection()
     try:
+        conn.execute("BEGIN IMMEDIATE")
+        if max_active is not None:
+            active = conn.execute(
+                "SELECT COUNT(*) FROM upload_jobs WHERE team_id = ? AND status IN ('queued', 'processing')",
+                (team_id,)).fetchone()[0]
+            if active >= max_active:
+                conn.rollback()
+                return None
         cur = conn.execute(
             "INSERT INTO upload_jobs (team_id, user_id, kind, filename, stored_path, size_bytes, content_hash, "
             "detected_type, options, status, stage, message, created_at, updated_at) "
