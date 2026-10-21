@@ -136,6 +136,7 @@ those by taking **main's** TASKS.md, not the branch's.
 - Done: tooling committed `cf1e75e` (grader, generator, verifier, renderer, 8 tests). Synthetic: 7/30 leases verified with keys (s01–s06, s09), 5 more have ground truth only (s07, s08, s10–s12). EDGAR10: none downloaded yet (agent stopped after picking 10 candidates; UA with user's Gmail approved).
 - Found: the rent-roll gate (`field_extractor.looks_like_rent_roll_table`) refuses 5/12 existing EDGAR leases + 1 synthetic lease at upload; fix (density per 1,000 words) designed, not applied.
 - Next action: user decides what to approve next (finish generation / AI baseline / EDGAR set), with cost estimates.
+- Follow-up (not building now, user asked 2026-10-21): if a rent roll gets past `looks_like_rent_roll_table`, it is saved and shown as a normal lease with confidently wrong values. There's no error and no message; `_looks_like_lease` (`api.py:896`) only checks that an identity field has a value. The user wants a clear message instead (e.g. a second check after extraction, or a "this may be a rent roll" warning on the lease). Needs its own task + plan.
 
 #### feature/tester-ready
 - Worktree: ~/dev/projects/abstractly-tester-ready (venv symlinked to the primary checkout's)
