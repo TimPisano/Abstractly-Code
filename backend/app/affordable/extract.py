@@ -25,7 +25,7 @@ from .forms import all_forms
 from .forms.base import Anchor, FormSpec, Rule
 from .layout import PageLayout, Word, chains, group_lines, ocr_region, read_layout
 from .pii import is_restricted_field, mask_ssns
-from .values import coerce, tidy
+from .values import coerce, fill_address_parts, tidy
 
 Source = Union[bytes, str]
 
@@ -251,6 +251,7 @@ def extract_document(source: Source, *, use_acroform: bool = True, ocr: bool = T
         from .layout import layout_pages
         for name, entry in read_exhibit_a(layout_pages(data, ocr=ocr, include_acroform=False)).items():
             result["program_fields"].setdefault(name, entry)
+    fill_address_parts(result["program_fields"])
     result["checks"] = run_checks(result["program_fields"])
 
     for lease_field, ref in spec.lease_map.items():

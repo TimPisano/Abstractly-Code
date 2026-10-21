@@ -64,10 +64,28 @@
       "basis": "Exhibit A"
     },
     "street_address": {
-      "value": "926 and 932 W. 5th Street, Corona, CA 92882",
+      "value": "926 and 932 W. 5th Street",
       "type": "text",
       "status": "proposed",
-      "basis": "Exhibit A"
+      "basis": "Exhibit A (street only; changed 2026-10-21 at the user's request)"
+    },
+    "city": {
+      "value": "Corona",
+      "type": "text",
+      "status": "proposed",
+      "basis": "Exhibit A address (added 2026-10-21 at the user's request)"
+    },
+    "state": {
+      "value": "CA",
+      "type": "text",
+      "status": "proposed",
+      "basis": "Exhibit A address (added 2026-10-21 at the user's request)"
+    },
+    "zip": {
+      "value": "92882",
+      "type": "text",
+      "status": "proposed",
+      "basis": "Exhibit A address (added 2026-10-21 at the user's request)"
     },
     "contract_units": {
       "value": "11",

@@ -26,7 +26,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from .. import ai_extraction
 from .checks import run_checks
-from .values import tidy
+from .values import fill_address_parts, tidy
 
 PROMPT_VERSION = "affordable-v1"
 MAX_TOKENS = 8192
@@ -53,6 +53,9 @@ _COMMON = [
     ("property_address", "text", "Full address of the property as written: street, city, state, ZIP."),
     ("street_address", "text", "Street address only (no city, state or ZIP)."),
     ("city", "text", "City where the property is."),
+    ("state", "text", "State where the property is, as written."),
+    ("zip", "text", "ZIP code of the property."),
+    ("building_addresses", "text", "Every street address the document lists for the property's buildings, as written (e.g. \"57, 81 and 101 Main St\"), if it lists more than one; otherwise null."),
     ("county", "text", "County where the property is, without the word \"County\"."),
     ("total_units", "int", "Total number of units in the whole property, assisted or not."),
 ]
@@ -271,6 +274,7 @@ def extract_program_fields(pages: List[Dict[str, Any]], kind: str, *, client=Non
         if entry["value"] is not None:
             program[name] = _program_entry(entry, name)
     program.update({k: v for k, v in _flatten_tables(payload, kind, pages).items() if k not in program})
+    fill_address_parts(program)
     checks = run_checks(program)
 
     lease = {f: {"value": None, "source": None, "confidence": None} for f in ai_extraction.LEASE_FIELDS}

@@ -58,10 +58,28 @@
       "basis": "Exhibit A"
     },
     "street_address": {
-      "value": "24960 Adams Avenue, Murrieta CA 92562",
+      "value": "24960 Adams Avenue",
       "type": "text",
       "status": "proposed",
-      "basis": "Exhibit A"
+      "basis": "Exhibit A (street only; changed 2026-10-21 at the user's request)"
+    },
+    "city": {
+      "value": "Murrieta",
+      "type": "text",
+      "status": "proposed",
+      "basis": "Exhibit A address (added 2026-10-21 at the user's request)"
+    },
+    "state": {
+      "value": "CA",
+      "type": "text",
+      "status": "proposed",
+      "basis": "Exhibit A address (added 2026-10-21 at the user's request)"
+    },
+    "zip": {
+      "value": "92562",
+      "type": "text",
+      "status": "proposed",
+      "basis": "Exhibit A address (added 2026-10-21 at the user's request)"
     },
     "total_units": {
       "value": "81",

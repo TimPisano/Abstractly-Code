@@ -12,7 +12,7 @@ Each answer key in `answer_keys/` tags every field one of two ways:
 
 In the tables, "p." means a page of the cut document in `docs/`, not of the original packet.
 
-**Totals:** 11 documents, 159 answer fields: 27 verified, 132 proposed (below).
+**Totals:** 11 documents, 165 answer fields: 27 verified, 138 proposed (below). (159 → 165 on 2026-10-21: city, state and ZIP added for 5th Street and Oak View at the user's request.)
 
 ## Questions worth a look first
 
@@ -150,7 +150,7 @@ Verified against HUD data (no action needed): `bin`.
 | [ ] | `agency_name` | Utah Housing Corporation | p.1 |
 | [ ] | `bin_2` | UT-25-25001 | s.1 table |
 | [ ] | `bin_3` | UT-25-25002 | s.1 table |
-| [ ] | `street_address` | 109 Kane Creek Blvd. | s.1 table, first building |
+| [ ] | `street_address` | 109 Kane Creek Blvd. | s.1 table, first building. Scoring rule (user, 2026-10-21): an extracted list of building addresses that contains this one counts as correct |
 | [ ] | `city` | Moab | s.1 |
 | [ ] | `county` | Grand | Exhibit A 'situated in Grand County' |
 | [ ] | `total_units` | 50 | s.2 'all 50 of the units' |
@@ -177,7 +177,10 @@ Form of contract approved by the board; effective date blank. The owner's name i
 | [ ] | `owner_name` | Mercy House Living Centers | p.8 execution page and the packet's cover letter ('Mercy House'); p.1 s.1a prints 'Mercy Housing Living Centers'. Corrected after the first run, see REVIEW.md |
 | [ ] | `initial_term` | 20 years | fillable form field 'Textfield-2' on Part 1 (the value is in the PDF's form fields, not its printed text) |
 | [ ] | `project_name` | 5th Street Housing | Exhibit A |
-| [ ] | `street_address` | 926 and 932 W. 5th Street, Corona, CA 92882 | Exhibit A |
+| [ ] | `street_address` | 926 and 932 W. 5th Street | Exhibit A (street only, per user 2026-10-21) |
+| [ ] | `city` | Corona | Exhibit A (added per user 2026-10-21) |
+| [ ] | `state` | CA | Exhibit A (added per user 2026-10-21) |
+| [ ] | `zip` | 92882 | Exhibit A (added per user 2026-10-21) |
 | [ ] | `contract_units` | 11 | Exhibit A |
 | [ ] | `total_units` | 12 | Exhibit A |
 | [ ] | `pbv_units_1br` | 4 | Exhibit A |
@@ -215,7 +218,10 @@ Form of contract approved by the board; dates blank. Not in HUD's LIHTC database
 | [ ] | `pha_name` | Housing Authority of the County of Riverside | Part 1 s.1a |
 | [ ] | `owner_name` | NCRC Murrieta Senior Housing LP | Part 1 s.1a |
 | [ ] | `project_name` | Oak View Ranch Senior Apartments | Exhibit A |
-| [ ] | `street_address` | 24960 Adams Avenue, Murrieta CA 92562 | Exhibit A |
+| [ ] | `street_address` | 24960 Adams Avenue | Exhibit A (street only, per user 2026-10-21) |
+| [ ] | `city` | Murrieta | Exhibit A (added per user 2026-10-21) |
+| [ ] | `state` | CA | Exhibit A (added per user 2026-10-21) |
+| [ ] | `zip` | 92562 | Exhibit A (added per user 2026-10-21) |
 | [ ] | `total_units` | 81 | Exhibit A |
 | [ ] | `contract_units` | 40 | Exhibit A |
 | [ ] | `pbv_units_1br` | 35 | Exhibit A |

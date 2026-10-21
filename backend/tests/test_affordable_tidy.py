@@ -16,7 +16,8 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 from anthropic.types import ToolUseBlock
 
 from app.affordable import ai_fields
-from app.affordable.values import tidy
+from app.affordable.exhibits import read_exhibit_a
+from app.affordable.values import expand_address_list, fill_address_parts, split_address, tidy
 
 
 def test_ocr_lowercase_roman_numerals():
@@ -67,7 +68,47 @@ def test_ai_values_are_tidied():
     assert out["lease_fields"]["landlord"]["value"] == "Maple Ridge II, L.P."
 
 
+def test_split_address_into_street_city_state_zip():
+    assert split_address("100 and 102 W. Example Street, Springfield, ZZ 00000") == {
+        "street": "100 and 102 W. Example Street", "city": "Springfield", "state": "ZZ", "zip": "00000"}
+    assert split_address("24 Example Avenue, Springfield ZZ 00000-1234")["city"] == "Springfield"
+    assert split_address("9 Example Blvd., Moab, Utah 84532")["state"] == "Utah"
+    assert split_address("24550 & 24570 Example  Springfeld  00000") is None      # no commas, no state: don't guess
+
+
+def test_expand_a_list_of_building_addresses():
+    assert expand_address_list("57, 81, 101, 109, 115 and 119 Example Creek Blvd, Building 1") == [
+        "57 Example Creek Blvd", "81 Example Creek Blvd", "101 Example Creek Blvd", "109 Example Creek Blvd",
+        "115 Example Creek Blvd", "119 Example Creek Blvd"]
+    assert expand_address_list("926 and 932 W. Example Street") == ["926 W. Example Street", "932 W. Example Street"]
+    assert expand_address_list("9 Example Blvd.") == ["9 Example Blvd."]
+
+
+def test_address_parts_are_their_own_fields():
+    """Regression: the PBV exhibit reader returned only the full address."""
+    text = ("EXHIBIT A\nProject Name: Maple Ridge\nAddress: 100 and 102 W. Example Street, Springfield, ZZ 00000\n"
+            "Total Number of PBV Units in Project Covered by HAP Contract: 4\n")
+    f = read_exhibit_a([{"page": 9, "text": text}])
+    fill_address_parts(f)
+    assert (f["street_address"]["value"], f["city"]["value"], f["state"]["value"], f["zip"]["value"]) == (
+        "100 and 102 W. Example Street", "Springfield", "ZZ", "00000")
+    assert f["property_address"]["value"] == "100 and 102 W. Example Street, Springfield, ZZ 00000"
+    assert [f[f"building_address_{i}"]["value"] for i in (1, 2)] == ["100 W. Example Street", "102 W. Example Street"]
+
+
+def test_all_listed_building_addresses_come_out():
+    fields = {"street_address": {"value": "57, 81 and 119 Example Creek Blvd", "source": {"page": 1}, "confidence": "high"}}
+    fill_address_parts(fields)
+    assert [fields[f"building_address_{i}"]["value"] for i in (1, 2, 3)] == [
+        "57 Example Creek Blvd", "81 Example Creek Blvd", "119 Example Creek Blvd"]
+    assert fields["street_address"]["value"] == "57, 81 and 119 Example Creek Blvd"   # the read value is kept
+
+
 if __name__ == "__main__":
+    test_split_address_into_street_city_state_zip()
+    test_expand_a_list_of_building_addresses()
+    test_address_parts_are_their_own_fields()
+    test_all_listed_building_addresses_come_out()
     test_ocr_lowercase_roman_numerals()
     test_vulgar_fractions_are_spelled_out()
     test_hud_contract_numbers_lose_separators()

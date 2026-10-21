@@ -187,7 +187,9 @@ def run_pipeline(pdf_path: Path, engine: str, routed_res=None):
                 return out
             from app.affordable.checks import run_checks
             from app.affordable.route import merge_reads
+            from app.affordable.values import fill_address_parts
             program = merge_reads(res["program_fields"], routed_res.get("program_fields") or {})
+            fill_address_parts(program)
             lease = dict(res["lease_fields"])
             for f, v in (routed_res.get("lease_fields") or {}).items():
                 if v.get("value") and not (lease.get(f) or {}).get("value"):
@@ -322,6 +324,24 @@ def program_match(vtype: str, got: str, expected: str) -> bool:
     return short in long_ and len(short) >= 0.8 * len(long_)
 
 
+ADDRESS_FIELDS = ("property_address", "street_address")
+
+
+def address_list_match(got, expected) -> bool:
+    """A list of building addresses ("57, 81, 109 and 119 Kane Creek Blvd")
+    counts as right when one of them is the key's address (user's rule,
+    2026-10-21). Compared on the street part, ignoring punctuation."""
+    from app.affordable.values import expand_address_list, split_address
+    if not got or not expected:
+        return False
+    listed = expand_address_list(str(got))
+    if len(listed) < 2:
+        return False
+    parts = split_address(str(expected))
+    want = _norm_text(parts["street"] if parts else str(expected))
+    return any(_norm_text(a) == want for a in listed)
+
+
 VARIANTS = ("clean", "acroform", "scan", "holdout", "holdout_scan")
 
 
@@ -364,6 +384,8 @@ def evaluate(key: dict, engine: str, variant: str = "clean") -> dict:
             a, b = money_value(s["extracted"]), money_value(expected)
             if a is not None and b is not None and abs(a - b) <= 1.0:
                 s.update(correct=True, kind="correct_found", asserted_wrong=False)
+        if field in ADDRESS_FIELDS and not s["correct"] and address_list_match(s["extracted"], expected):
+            s.update(correct=True, kind="correct_found", asserted_wrong=False, address_list_match=True)
         s["in_text_layer"] = None if expected is None else in_text(
             expected, "money" if field in MONEY_FIELDS else "date" if field.endswith("_date") else "text", text)
         if key.get("real") and expected is not None:
@@ -379,6 +401,8 @@ def evaluate(key: dict, engine: str, variant: str = "clean") -> dict:
         hit = extracted_program.get(name) or extracted_program.get(_alias(name) or "") or {}
         got = hit.get("value")
         correct = got is not None and program_match(entry["type"], got, str(entry["value"]))
+        if not correct and name in ADDRESS_FIELDS:
+            correct = address_list_match(got, entry["value"])
         program_scores.append({
             "field": name,
             "type": entry["type"],

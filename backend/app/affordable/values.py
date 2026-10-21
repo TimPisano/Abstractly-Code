@@ -9,7 +9,7 @@ safe here, where we already know the field holds money.
 
 import re
 from datetime import date
-from typing import Iterable, Optional
+from typing import Iterable, List, Optional
 
 MONTHS = {m: i for i, m in enumerate(
     ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"], start=1)}
@@ -174,3 +174,67 @@ def tidy(name: str, value):
         if m:
             text = "".join(m.groups())
     return text
+
+
+# ---------------------------------------------------------------------------
+# addresses
+# ---------------------------------------------------------------------------
+
+STATES = {"alabama": "AL", "alaska": "AK", "arizona": "AZ", "arkansas": "AR", "california": "CA", "colorado": "CO",
+          "connecticut": "CT", "delaware": "DE", "florida": "FL", "georgia": "GA", "hawaii": "HI", "idaho": "ID",
+          "illinois": "IL", "indiana": "IN", "iowa": "IA", "kansas": "KS", "kentucky": "KY", "louisiana": "LA",
+          "maine": "ME", "maryland": "MD", "massachusetts": "MA", "michigan": "MI", "minnesota": "MN",
+          "mississippi": "MS", "missouri": "MO", "montana": "MT", "nebraska": "NE", "nevada": "NV",
+          "new hampshire": "NH", "new jersey": "NJ", "new mexico": "NM", "new york": "NY", "north carolina": "NC",
+          "north dakota": "ND", "ohio": "OH", "oklahoma": "OK", "oregon": "OR", "pennsylvania": "PA",
+          "rhode island": "RI", "south carolina": "SC", "south dakota": "SD", "tennessee": "TN", "texas": "TX",
+          "utah": "UT", "vermont": "VT", "virginia": "VA", "washington": "WA", "west virginia": "WV",
+          "wisconsin": "WI", "wyoming": "WY", "district of columbia": "DC", "puerto rico": "PR"}
+_STATE = r"(?P<state>[A-Z]{2}|" + "|".join(sorted((s.title() for s in STATES), key=len, reverse=True)) + r")"
+ADDRESS = re.compile(rf"^(?P<street>.+?),\s*(?P<city>[A-Za-z][A-Za-z .'\-]*?),?\s+{_STATE}\.?,?\s+(?P<zip>\d{{5}}(?:-\d{{4}})?)$")
+STREET_NO = re.compile(r"^\s*\d+[A-Za-z]?\b")
+
+
+def split_address(text: str) -> Optional[dict]:
+    """"926 and 932 W. 5th Street, Corona, CA 92882" -> street, city, state, zip.
+    Only for a one-line address that ends in state and ZIP; else None. The
+    state is returned as written ("Utah" stays "Utah")."""
+    m = ADDRESS.match(re.sub(r"\s+", " ", (text or "").strip()).rstrip("."))
+    if not m:
+        return None
+    return {k: m.group(k).strip().rstrip(",") for k in ("street", "city", "state", "zip")}
+
+
+def expand_address_list(text: str) -> List[str]:
+    """"57, 81, 101 and 119 Kane Creek Blvd" -> ["57 Kane Creek Blvd", ..., "119 Kane Creek Blvd"].
+    Also splits "; "-separated lists. A single address comes back as a
+    one-item list. Only the street part is expanded; anything after the
+    first comma that follows the street name is dropped."""
+    out: List[str] = []
+    for chunk in re.split(r"\s*;\s*", text or ""):
+        m = re.match(r"^\s*((?:\d+[A-Za-z]?\s*(?:,|&|and)\s*)+(?:and\s+|&\s*)?)(\d+[A-Za-z]?)\s+([A-Za-z].*?)(?:,|$)", chunk)
+        if m:
+            numbers = re.findall(r"\d+[A-Za-z]?", m.group(1)) + [m.group(2)]
+            out += [f"{n} {m.group(3).strip()}" for n in numbers]
+        elif chunk.strip():
+            out.append(chunk.strip())
+    return out
+
+
+def fill_address_parts(fields: dict) -> None:
+    """Fill street_address / city / state / zip from property_address when the
+    reader didn't return them, and list every building address
+    (building_address_1, _2, ...) when the document lists several. Values are
+    split out of what the document states, never looked up; method "split"."""
+    full = fields.get("property_address")
+    parts = split_address(str(full["value"])) if full and full.get("value") else None
+    if parts:
+        for name, key in (("street_address", "street"), ("city", "city"), ("state", "state"), ("zip", "zip")):
+            if not (fields.get(name) or {}).get("value"):
+                fields[name] = {**full, "value": parts[key], "method": "split"}
+    listed = fields.get("building_addresses") or fields.get("street_address")
+    if listed and listed.get("value") and not any(n.startswith("building_address_") for n in fields):
+        addresses = expand_address_list(str(listed["value"]))
+        if len(addresses) > 1:
+            for i, a in enumerate(addresses, start=1):
+                fields[f"building_address_{i}"] = {**listed, "value": a, "method": "split"}
