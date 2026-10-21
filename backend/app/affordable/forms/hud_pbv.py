@@ -80,7 +80,7 @@ PBV_NEW_CONSTRUCTION = FormSpec(
         Rule("elderly_designated_units", "int", acro=(r"^Text28$",),
              anchors=(_below("contract units shall be rented to elderly families:", 270, page=7, dy0=10, dy1=36),)),
     ) + _signature_block(9, r"^Text30$", r"^Text31$", r"^Text32$", r"^Text33$", r"^Text34$", r"^Text35$"),
-    lease_map={"landlord": "owner_name", "lease_start_date": "effective_date"},
+    lease_map={"landlord": "owner_name", "lease_start_date": "effective_date", "property_address": "property_address"},
 )
 
 PBV_EXISTING = FormSpec(
@@ -106,7 +106,7 @@ PBV_EXISTING = FormSpec(
         Rule("elderly_designated_units", "int", acro=(r"^Text21$",),
              anchors=(_below("contract units shall be rented to elderly families:", 270, page=7, dy0=10, dy1=36),)),
     ) + _signature_block(8, r"^Text23$", r"^Text24$", r"^Text25$", r"^Text26$", r"^Text27$", r"^Text28$"),
-    lease_map={"landlord": "owner_name", "lease_start_date": "effective_date"},
+    lease_map={"landlord": "owner_name", "lease_start_date": "effective_date", "property_address": "property_address"},
 )
 
 FORMS = [PBV_NEW_CONSTRUCTION, PBV_EXISTING]

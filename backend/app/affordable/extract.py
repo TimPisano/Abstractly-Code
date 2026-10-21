@@ -245,6 +245,12 @@ def extract_document(source: Source, *, use_acroform: bool = True, ocr: bool = T
             "method": method,
             "canonical": rule.canonical,
         }
+    if spec.program == "PBV" and spec.doc_kind == "hap_contract":
+        # units, bedroom mix and rents live in the PHA's Exhibit A, not on the form
+        from .exhibits import read_exhibit_a
+        from .layout import layout_pages
+        for name, entry in read_exhibit_a(layout_pages(data, ocr=ocr, include_acroform=False)).items():
+            result["program_fields"].setdefault(name, entry)
     result["checks"] = run_checks(result["program_fields"])
 
     for lease_field, ref in spec.lease_map.items():

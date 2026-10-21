@@ -56,7 +56,8 @@ def _flag(fields: Dict[str, Dict], names: List[str], message: str, citation: str
     for n in names:
         entry = fields[n]
         entry["confidence"] = "low"
-        entry["check_note"] = note if not entry.get("check_note") else f"{entry['check_note']} {note}"
+        if note not in (entry.get("check_note") or ""):
+            entry["check_note"] = note if not entry.get("check_note") else f"{entry['check_note']} {note}"
     checks.append({"status": "mismatch", "fields": names, "message": note, "citation": citation})
 
 

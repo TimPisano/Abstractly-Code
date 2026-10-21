@@ -115,7 +115,7 @@ def run_pipeline(pdf_path: Path, engine: str, routed_res=None):
         if choose_route(res) == "form":
             return form_out
         out = run_pipeline(pdf_path, "ai", routed_res=res)
-        if res["form_id"] and out["status"] in ("ocr_needed", "rejected_as_rent_roll"):
+        if res["form_id"] and out["status"] in ("ocr_needed", "rejected_as_rent_roll", "ai_error"):
             form_out.update(status=f"form (ai blocked: {out['status']})", low_text_pages=out.get("low_text_pages", []))
             return form_out
         out.update(status=f"ai:{out['status']}", form_id=res["form_id"])
@@ -152,6 +152,18 @@ def run_pipeline(pdf_path: Path, engine: str, routed_res=None):
 
     out = {"pages": pages, "status": "ok", "ranges": 0, "fields": {}}
     low = document_extractor.find_low_text_pages(pages)
+    if low and routed_res is not None:
+        # affordable route: OCR just the low-text pages with the module's own reader
+        from app.affordable.route import fill_low_text_pages
+        out["ocr_filled_pages"] = [p["page"] for p in low]
+        pages = fill_low_text_pages(pages, data, out["ocr_filled_pages"])
+        out["pages"] = pages
+        low = document_extractor.find_low_text_pages(pages)
+        # Still short after OCR = a short page (an exhibit cover sheet), not an
+        # unreadable one; stop only if most of the document is unusable.
+        out["short_pages"] = [p["page"] for p in low]
+        if len(low) * 2 <= len(pages):
+            low = []
     if low:
         # The app saves the document as 'ocr_needed' with all fields empty.
         out.update(status="ocr_needed", low_text_pages=[p["page"] for p in low])
@@ -173,8 +185,15 @@ def run_pipeline(pdf_path: Path, engine: str, routed_res=None):
             except ai_extraction.AIExtractionError as e:
                 out.update(status="ai_error", ai_error=str(e)[:300])
                 return out
-            out.update(ranges=1, fields=res["lease_fields"], program_fields=res["program_fields"],
-                       ai_meta=res["_ai_meta"], checks=res.get("checks", []))
+            from app.affordable.checks import run_checks
+            from app.affordable.route import merge_reads
+            program = merge_reads(res["program_fields"], routed_res.get("program_fields") or {})
+            lease = dict(res["lease_fields"])
+            for f, v in (routed_res.get("lease_fields") or {}).items():
+                if v.get("value") and not (lease.get(f) or {}).get("value"):
+                    lease[f] = v
+            out.update(ranges=1, fields=lease, program_fields=program,
+                       ai_meta=res["_ai_meta"], checks=run_checks(program))
             return out
 
     fx = FieldExtractor()

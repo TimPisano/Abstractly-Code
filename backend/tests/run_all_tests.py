@@ -131,6 +131,7 @@ UNIT_TESTS = [
     "test_affordable_checks.py",
     "test_affordable_tidy.py",
     "test_affordable_drawn_widgets.py",
+    "test_affordable_exhibits.py",
     "test_affordable_ai_fields.py",
 ]
 
