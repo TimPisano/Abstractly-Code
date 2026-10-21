@@ -201,6 +201,15 @@ def _number(value: Optional[str]) -> Optional[str]:
     return m.group(0) if m else None
 
 
+def _numbers_in(text: Optional[str]) -> Optional[set]:
+    """Whole numbers in a quote, with thousands separators (and OCR spaces
+    after them, "1, 099") removed. None when there is no quote to check."""
+    if not text:
+        return None
+    text = re.sub(r",\s*(?=\d{3}\b)", "", text)
+    return {m.split(".")[0] for m in re.findall(r"\d+(?:\.\d+)?", text)}
+
+
 def _program_entry(entry: Dict[str, Any], name: str = "") -> Dict[str, Any]:
     return {"value": tidy(name, entry["value"]), "source": entry["source"], "confidence": entry["confidence"],
             "method": "ai"}
@@ -215,10 +224,16 @@ def _flatten_tables(payload: Dict[str, Any], kind: str, pages) -> Dict[str, Dict
             continue
         source = ai_extraction._coerce_field_entry(
             {"value": "table", "confidence": raw.get("confidence"), "source_text": raw.get("source_text")}, pages)
+        quoted = _numbers_in(raw.get("source_text"))
 
         def put(name, value):
             if value not in (None, "") and name not in out:
                 out[name] = _program_entry({**source, "value": str(value).strip()}, name)
+                digits = re.sub(r"[^\d.]", "", str(value)).split(".")[0]
+                if quoted is not None and digits and digits not in quoted:
+                    out[name]["confidence"] = "low"
+                    out[name]["check_note"] = (f"{value} doesn't appear in the text quoted for this table; it may "
+                                               "have been worked out rather than read. Check it against the document.")
 
         def add(name, value):
             """Unit counts: rows that repeat a bedroom size (one row per building
@@ -247,7 +262,12 @@ def _flatten_tables(payload: Dict[str, Any], kind: str, pages) -> Dict[str, Dict
                 add(f"units_{beds}br", _number(row.get("units")))
                 continue
             total, contract = _number(row.get("total_units")), _number(row.get("contract_units"))
-            add(f"units_{beds}br", total or contract)
+            if total:
+                # "units of this size in the whole property": one figure per size,
+                # repeated on every row of that size (one row per income tier)
+                put(f"units_{beds}br", total)
+            else:
+                add(f"units_{beds}br", contract)
             add(f"contract_units_{beds}br", contract)
             put(f"contract_rent_{beds}br", row.get("contract_rent"))
             put(f"utility_allowance_{beds}br", row.get("utility_allowance"))

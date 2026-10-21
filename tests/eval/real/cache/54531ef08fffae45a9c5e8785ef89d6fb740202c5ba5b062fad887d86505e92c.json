@@ -1,0 +1,166 @@
+{
+ "model": "claude-sonnet-5",
+ "tool": "record_affordable_abstraction",
+ "max_tokens": 8192,
+ "created": "2026-10-21T22:18:33+00:00",
+ "usage": {
+  "input_tokens": 21367,
+  "output_tokens": 2034
+ },
+ "stop_reason": "tool_use",
+ "tool_input": {
+  "project_name": {
+   "value": "Texas Coppertree aka Coppertree Village",
+   "confidence": "high",
+   "source_text": "Project Name: Texas Coppertree aka Coppertree Village"
+  },
+  "owner_name": {
+   "value": "2005 West Gulf Complex, L.P.",
+   "confidence": "high",
+   "source_text": "2005 West Gulf Complex, L. P."
+  },
+  "property_address": {
+   "value": "1415 Gulf Bank Road, Houston, TX 77088",
+   "confidence": "high",
+   "source_text": "1415 Gulf Bank Road, Houston, TX 77088"
+  },
+  "street_address": {
+   "value": "1415 Gulf Bank Road",
+   "confidence": "high",
+   "source_text": "1415 Gulf Bank Road, Houston, TX 77088"
+  },
+  "city": {
+   "value": "Houston",
+   "confidence": "high",
+   "source_text": "1415 Gulf Bank Road, Houston, TX 77088"
+  },
+  "state": {
+   "value": "TX",
+   "confidence": "high",
+   "source_text": "1415 Gulf Bank Road, Houston, TX 77088"
+  },
+  "zip": {
+   "value": "77088",
+   "confidence": "high",
+   "source_text": "1415 Gulf Bank Road, Houston, TX 77088"
+  },
+  "building_addresses": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "county": {
+   "value": "Harris",
+   "confidence": "high",
+   "source_text": "Harris County"
+  },
+  "total_units": {
+   "value": "263",
+   "confidence": "high",
+   "source_text": "for 263 units in Coppertree Village Apartments"
+  },
+  "contract_number": {
+   "value": "TX24E000008",
+   "confidence": "high",
+   "source_text": "HAP Contract Number\nTX24E000008"
+  },
+  "rems_property_id": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "program_type": {
+   "value": "PBRA (Project-based Section 8)",
+   "confidence": "high",
+   "source_text": "Project- based Section 8\nHOUSING ASSISTANCE PAYMENTS\nBASIC RENEWAL CONTRACT"
+  },
+  "pha_name": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "contract_administrator": {
+   "value": "Southwest Housing Compliance Corporation",
+   "confidence": "high",
+   "source_text": "Name of Contract Administrator\nSouthwest Housing Compliance Corporation"
+  },
+  "assignee_name": {
+   "value": "Coppertree Village Holdings LLC",
+   "confidence": "high",
+   "source_text": "CoppertreeVillageHoldingsLLC, alimitedliabilitycompany (hereincalledthe Buyer\")"
+  },
+  "contract_units": {
+   "value": "265",
+   "confidence": "medium",
+   "source_text": "158 1 SIR 767 75 842\n102 2 BR 979 120 1, 099\n5 3 BR 1, 130 145 1, 275"
+  },
+  "effective_date": {
+   "value": "April 1, 2013",
+   "confidence": "high",
+   "source_text": "The Renewal contract begins on Aprll 1, 20136"
+  },
+  "expiration_date": {
+   "value": "March 31, 2033",
+   "confidence": "high",
+   "source_text": "Expiration Date:       3/ 31/ 2033"
+  },
+  "initial_term": {
+   "value": "20 years",
+   "confidence": "high",
+   "source_text": "shall run for a\nperiod of Twenty? years."
+  },
+  "renewal_term_years": {
+   "value": "20",
+   "confidence": "high",
+   "source_text": "shall run for a\nperiod of Twenty? years."
+  },
+  "renewal_option": {
+   "value": "Section 524(b) exception rents renewal",
+   "confidence": "medium",
+   "source_text": "X Check this box for a project renewed at exception rents under Section\n524( b) of MAHRA"
+  },
+  "document_date": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "ami_limit_pct": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "unit_mix": {
+   "rows": [
+    {
+     "bedrooms": "0 (SRO/efficiency - 1 SIR)",
+     "total_units": null,
+     "contract_units": "158",
+     "contract_rent": "$767",
+     "utility_allowance": "$75",
+     "gross_rent": "$842",
+     "proposed_rent": null
+    },
+    {
+     "bedrooms": "2",
+     "total_units": null,
+     "contract_units": "102",
+     "contract_rent": "$979",
+     "utility_allowance": "$120",
+     "gross_rent": "$1,099",
+     "proposed_rent": null
+    },
+    {
+     "bedrooms": "3",
+     "total_units": null,
+     "contract_units": "5",
+     "contract_rent": "$1,130",
+     "utility_allowance": "$145",
+     "gross_rent": "$1,275",
+     "proposed_rent": null
+    }
+   ],
+   "confidence": "medium",
+   "source_text": "158 1 SIR 767 75 842\n102 2 BR 979 120 1, 099\n5 3 BR 1, 130 145 1, 275"
+  }
+ }
+}

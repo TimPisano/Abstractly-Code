@@ -56,7 +56,8 @@ def _hap_payload(rows):
     payload["contract_units"] = {"value": "90", "confidence": "medium", "source_text": "49 1 ... 39 2 ... 2 3"}
     for name in tables:
         payload[name] = {"rows": [], "confidence": None, "source_text": None}
-    payload["unit_mix"] = {"rows": rows, "confidence": "medium", "source_text": "49  1  $250  $35  $295"}
+    payload["unit_mix"] = {"rows": rows, "confidence": "medium",
+                           "source_text": "1 49 Family 250 35 295\n2 39 Family 350 45 395\n3 2 Family 395 53 448"}
     return payload
 
 
@@ -178,6 +179,35 @@ def test_lura_unit_mix_that_matches_no_total_is_flagged():
     assert out["program_fields"]["total_units"]["value"] == "60"
 
 
+def test_a_rent_the_ai_worked_out_instead_of_read_is_flagged():
+    """Regression: on an illegible exhibit row ("1 64 Family 35 295") the AI
+    reported a $260 rent -- $295 - $35 -- that the text doesn't contain. The
+    row then added up, so the arithmetic check couldn't catch it."""
+    rows = [{"bedrooms": "1", "total_units": None, "contract_units": "64", "contract_rent": "260",
+             "utility_allowance": "35", "gross_rent": "295", "proposed_rent": None}]
+    payload = _hap_payload(rows)
+    payload["unit_mix"]["source_text"] = "1 64  `/       Family 35 295"
+    payload["contract_units"]["value"] = None
+    pf = ai_fields.extract_program_fields(COPPERTREE_PAGES, "hap_contract", client=_mock_client(payload))["program_fields"]
+    assert pf["contract_rent_1br"]["value"] == "260"
+    assert pf["contract_rent_1br"]["confidence"] == "low"
+    assert "doesn't appear in the text quoted" in pf["contract_rent_1br"]["check_note"]
+    assert pf["gross_rent_1br"]["confidence"] != "low" and pf["utility_allowance_1br"]["confidence"] != "low"
+
+
+def test_a_sizes_total_repeated_on_each_tier_row_is_not_added_up():
+    """Regression: one row per income tier, each repeating "16 units of this size", came out as 32."""
+    rows = [{"bedrooms": "2", "total_units": "16", "contract_units": "2", "contract_rent": "$1,592",
+             "utility_allowance": None, "gross_rent": None, "proposed_rent": None},
+            {"bedrooms": "2", "total_units": "16", "contract_units": "1", "contract_rent": "$1,592",
+             "utility_allowance": None, "gross_rent": None, "proposed_rent": None}]
+    payload = _hap_payload(rows)
+    payload["unit_mix"]["source_text"] = "Two Bedroom 30% 2 40% 1 ... Total units: 16 2-bedroom $1,592"
+    payload["contract_units"]["value"] = "3"
+    pf = ai_fields.extract_program_fields(COPPERTREE_PAGES, "hap_contract", client=_mock_client(payload))["program_fields"]
+    assert pf["units_2br"]["value"] == "16" and pf["contract_units_2br"]["value"] == "3"
+
+
 if __name__ == "__main__":
     test_coppertree_1br_row_is_flagged_and_keeps_its_printed_rent()
     test_checks_never_change_an_extracted_value()
@@ -188,4 +218,6 @@ if __name__ == "__main__":
     test_bedroom_counts_that_dont_add_up_are_flagged()
     test_unit_mix_rows_for_the_same_size_add_up()
     test_lura_unit_mix_that_matches_no_total_is_flagged()
+    test_a_rent_the_ai_worked_out_instead_of_read_is_flagged()
+    test_a_sizes_total_repeated_on_each_tier_row_is_not_added_up()
     print("\nAll affordable cross-check tests passed.")

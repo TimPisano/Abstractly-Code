@@ -1,0 +1,166 @@
+{
+ "model": "claude-sonnet-5",
+ "tool": "record_affordable_abstraction",
+ "max_tokens": 8192,
+ "created": "2026-10-21T22:17:51+00:00",
+ "usage": {
+  "input_tokens": 12869,
+  "output_tokens": 1868
+ },
+ "stop_reason": "tool_use",
+ "tool_input": {
+  "project_name": {
+   "value": "Amanda Brooke",
+   "confidence": "high",
+   "source_text": "Re: Amanda Brooke (the “ Project”)"
+  },
+  "owner_name": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "property_address": {
+   "value": "Normal, Illinois",
+   "confidence": "medium",
+   "source_text": "Normal, Illinois"
+  },
+  "street_address": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "city": {
+   "value": "Normal",
+   "confidence": "high",
+   "source_text": "Normal, Illinois"
+  },
+  "state": {
+   "value": "Illinois",
+   "confidence": "high",
+   "source_text": "Normal, Illinois"
+  },
+  "zip": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "building_addresses": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "county": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "total_units": {
+   "value": "120",
+   "confidence": "high",
+   "source_text": "The Project has 120 dwelling units, and the HAP Contract benefits all 120 units."
+  },
+  "contract_number": {
+   "value": "IL06H121160",
+   "confidence": "high",
+   "source_text": "Section 8 Contract No. IL06H121160"
+  },
+  "rems_property_id": {
+   "value": "800005699",
+   "confidence": "high",
+   "source_text": "Property ID #800005699"
+  },
+  "program_type": {
+   "value": "PBRA (Section 8, MAHRA Option 1-A Mark-Up-to-Market)",
+   "confidence": "high",
+   "source_text": "a new MAHRA HAP contract under Option 1-A of the Section 8 Renewal Policy Guide"
+  },
+  "pha_name": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "contract_administrator": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "assignee_name": {
+   "value": "FH Amanda Brooke LLC",
+   "confidence": "high",
+   "source_text": "We are consultants to FH Amanda Brooke LLC (the “Purchaser”), the proposed owner of the Project referenced above."
+  },
+  "contract_units": {
+   "value": "120",
+   "confidence": "high",
+   "source_text": "The Project has 120 dwelling units, and the HAP Contract benefits all 120 units."
+  },
+  "effective_date": {
+   "value": null,
+   "confidence": "low",
+   "source_text": "a new Option 1 HAP Contract with a term of 20 years commencing on the first day of the first month following the closing of the acquisition"
+  },
+  "expiration_date": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "initial_term": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "renewal_term_years": {
+   "value": "20 years",
+   "confidence": "high",
+   "source_text": "The Purchaser requests that HUD enter into a new Option 1 HAP Contract with a term of 20 years commencing on the first day of the first month following the closing of the acquisition"
+  },
+  "renewal_option": {
+   "value": "Option 1-A, Mark-Up-to-Market",
+   "confidence": "high",
+   "source_text": "Option 1-A Rent Increase"
+  },
+  "document_date": {
+   "value": "April 14, 2024",
+   "confidence": "high",
+   "source_text": "April 14, 2024"
+  },
+  "ami_limit_pct": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "unit_mix": {
+   "rows": [
+    {
+     "bedrooms": "1",
+     "total_units": null,
+     "contract_units": null,
+     "contract_rent": "$740",
+     "utility_allowance": "$99",
+     "gross_rent": null,
+     "proposed_rent": "$1,035"
+    },
+    {
+     "bedrooms": "2",
+     "total_units": null,
+     "contract_units": null,
+     "contract_rent": "$838",
+     "utility_allowance": "$137",
+     "gross_rent": null,
+     "proposed_rent": "$1,285"
+    },
+    {
+     "bedrooms": "3",
+     "total_units": null,
+     "contract_units": null,
+     "contract_rent": "$945",
+     "utility_allowance": "$175",
+     "gross_rent": null,
+     "proposed_rent": "$1,530"
+    }
+   ],
+   "confidence": "high",
+   "source_text": "1-Bedroom $740 $0 $295 $0 $1,035 $0 $99 $99\n2-Bedroom $838 $0 $447 $0 $1,285 $0 $137 $137\n3-Bedroom $945 $0 $585 $0 $1,530 $0 $175 $175"
+  }
+ }
+}

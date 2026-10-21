@@ -1,0 +1,93 @@
+{
+ "model": "claude-sonnet-5",
+ "tool": "record_lease_abstraction",
+ "max_tokens": 4096,
+ "created": "2026-10-21T22:20:31+00:00",
+ "usage": {
+  "input_tokens": 14675,
+  "output_tokens": 1440
+ },
+ "stop_reason": "tool_use",
+ "tool_input": {
+  "tenant": {
+   "value": "Charlie Cole",
+   "confidence": "high",
+   "source_text": "Charlie Cole"
+  },
+  "landlord": {
+   "value": "Lorena Springs",
+   "confidence": "high",
+   "source_text": "between ___________________________ as \nLANDLORD, and ________________________________as Tenant. ... Lorena Springs"
+  },
+  "rent_amount": {
+   "value": "$841.00",
+   "confidence": "high",
+   "source_text": "2. The total rent (Contract Rent) shall be $__________ per\nmonth. ... 841"
+  },
+  "lease_start_date": {
+   "value": "December 1, 2021",
+   "confidence": "high",
+   "source_text": "for a term of one year commencing on \nthe _____ day of ____________________________, 20__, and ending on the ... 1st \nDecember 21"
+  },
+  "lease_end_date": {
+   "value": "November 30, 2022",
+   "confidence": "high",
+   "source_text": "30th November 22"
+  },
+  "property_address": {
+   "value": "Lorena Springs",
+   "confidence": "low",
+   "source_text": "dwelling unit in the project known as \n____________________________________ for a term of one year commencing on ... Lorena Springs"
+  },
+  "security_deposit": {
+   "value": "$400.00",
+   "confidence": "high",
+   "source_text": "Accordingly, TENANT hereby makes a \ndeposit of $__________________ against any damage except reasonable wear ... 400"
+  },
+  "cam_charges": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "rent_escalation": {
+   "value": "TENANT's share of the monthly rental payment is subject to adjustment by the LANDLORD to reflect income changes",
+   "confidence": "low",
+   "source_text": "TENANT agrees that the TENANT's share of the monthly rental\npayment is subject to adjust\nment by the LANDLORD to reflect income \nchanges which are disclosed on any of TENANT's recertification of \nincome, and TENANT agrees to be bound by such adjustment."
+  },
+  "renewal_options": {
+   "value": "Automatically renewed for successive one-month terms at the same rental, subject to adjustment; tenant may terminate with 30 days written notice",
+   "confidence": "high",
+   "source_text": "Unless terminated or modified as provided herein, this\nAgreement shall be automatically renewed for successive terms of One \nmonth each at the aforesaid rental, subject to adjustment as herein \nprovided."
+  },
+  "permitted_use": {
+   "value": "Use solely as a private dwelling for the Tenant and his/her family",
+   "confidence": "high",
+   "source_text": "The TENANT shall not assign this lease, sublet the premises,\ngive accommodation to any roomers or\n-lodgers, or permit the use of the \npremises for any purpose other than as a private dwelling solely for the \nTENANT and his/her family."
+  },
+  "exclusivity_clause": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "insurance_requirements": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "default_cure_period": {
+   "value": "30 days after receipt of notice (good cause termination); payment within grace period permitted under State law is not a violation",
+   "confidence": "medium",
+   "source_text": "the termination notice shall so state, at the end of a term and \nin accordance with the termination provisions of this Agreement, but in \nno case earlier than 30 days after receipt by the TENANT of the notice."
+  },
+  "square_footage": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "concessions": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  }
+ }
+}

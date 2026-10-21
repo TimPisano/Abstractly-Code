@@ -520,3 +520,33 @@ The router and the field lists are called by the eval, not by `api.py`. Program 
 
 **Synthetic set unchanged:** clean 93.8% / 91.7%, acroform 91.7% / 95.2%, scan 87.5% / 85.0%, holdout 93.8% / 89.4%, holdout scan 56.2% / 57.8% (lease / program).
 **Suite:** 102 / 102 offline.
+
+### Paid run 1 (2026-10-21, user-approved)
+
+- **Cost check:** 10 calls, ~$0.73 estimated.
+- **Billed:** 223,377 input + 19,441 output tokens = **$0.64** at the runner's claude-sonnet-5 rates ($2 / $10 per million), 0 errors.
+- **Cache:** all 10 responses are cached in `tests/eval/real/cache/`. A rescore after three post-processing fixes sent **0** requests ($0.00).
+
+**Key changes first (user, 2026-10-21):**
+- 5th Street and Oak View: `street_address` now holds the street only, with `city`, `state` and `zip` as their own fields.
+- The total goes from 159 to **165** fields.
+- Scoring: a list of building addresses counts as right when it contains the key's address (Amasa). All six Amasa building addresses are extracted (`building_address_1..6`).
+
+| | Lease verified | Lease proposed | Program verified | Program proposed | **All** |
+|---|---|---|---|---|---|
+| Start (fix 3, 159 fields) | 1 / 2 | 12 / 21 | 13 / 25 | 59 / 111 | 85 / 159 (53%) |
+| Paid run 1, raw | 2 / 2 | 20 / 21 | 21 / 25 | 105 / 117 | 148 / 165 (89.7%) |
+| **+ three fixes, rescored from cache** | **2 / 2** | **20 / 21** | **23 / 25** | **106 / 117** | **151 / 165 (91.5%)** |
+
+**The three fixes, all post-processing, so free on the cache:**
+1. **A size's total repeated on each tier row isn't added up.** Cottonwood 2BR/3BR read 32/48, now 16/12. This was a bug from step 4, and the merge had flagged it against the exhibit reader.
+2. **Legal-entity descriptors come off party names.** ", a California limited partnership" (Oak View owner).
+3. **A table number that isn't in the AI's own quote is flagged low confidence.** On Coppertree 1990's illegible stage-1 row ("1 64 Family 35 295") the AI reported a **$260** rent, which is $295 − $35, calculated despite the prompt. It reported $310 / $455 for the garbled 2BR row. All three are now flagged "may have been worked out rather than read"; the correct 3BR $395 is not. Values are never changed.
+
+**Still wrong (14):**
+- **Coppertree 1990 (4).** The AI tabled stage 1 (p.8) instead of stage 2 (p.11, the key and the user's hand check), and it has no slot for stage unit counts. A multi-stage table in the HAP field list would need a prompt change and one re-send (~$0.13 for this 62k-token document).
+- **811 lease (4).** HAP, tenant rent, utility allowance, project: no 811 field list yet (~$0.05).
+- **2013 renewal (3).** OCR "158" 1BR units (key 156, from HUD's data) gives 265 vs 263 contract units; the 1BR rent row is missed.
+- **5th Street initial term (1).** It's in a form field with a PHA-specific name; the AI didn't return it.
+- **Amanda Brooke owner (1).**
+- **Cottonwood address (1).** The key has "Cottonwood Ave."; the exhibit prints "Cottonwood".

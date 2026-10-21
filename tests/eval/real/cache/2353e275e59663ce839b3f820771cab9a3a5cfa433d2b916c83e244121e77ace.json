@@ -1,0 +1,230 @@
+{
+ "model": "claude-sonnet-5",
+ "tool": "record_affordable_abstraction",
+ "max_tokens": 8192,
+ "created": "2026-10-21T22:19:25+00:00",
+ "usage": {
+  "input_tokens": 22649,
+  "output_tokens": 3048
+ },
+ "stop_reason": "tool_use",
+ "tool_input": {
+  "project_name": {
+   "value": "Amasa Apartments",
+   "confidence": "high",
+   "source_text": "known as Amasa Apartments (the “Project”)"
+  },
+  "owner_name": {
+   "value": "Amasa Apartments LLC",
+   "confidence": "high",
+   "source_text": "AMASA APARTMENTS LLC, a Utah  limited liability company , its successors and assigns (the “Project Owner”)"
+  },
+  "property_address": {
+   "value": "57, 81, 101, 109, 115 and 119 Kane Creek Blvd, Buildings 1 – 6, Moab, Utah 84532",
+   "confidence": "high",
+   "source_text": "Address: 57, 81, 101, 109, 115 and 119 Kane Creek Blvd, Buildings 1 – 6, Moab Utah 84532"
+  },
+  "street_address": {
+   "value": "57, 81, 101, 109, 115 and 119 Kane Creek Blvd",
+   "confidence": "high",
+   "source_text": "Address: 57, 81, 101, 109, 115 and 119 Kane Creek Blvd, Buildings 1 – 6, Moab Utah 84532"
+  },
+  "city": {
+   "value": "Moab",
+   "confidence": "high",
+   "source_text": "109 Kane Creek Blvd., Moab, Utah 84532"
+  },
+  "state": {
+   "value": "Utah",
+   "confidence": "high",
+   "source_text": "109 Kane Creek Blvd., Moab, Utah 84532"
+  },
+  "zip": {
+   "value": "84532",
+   "confidence": "high",
+   "source_text": "109 Kane Creek Blvd., Moab, Utah 84532"
+  },
+  "building_addresses": {
+   "value": "109 Kane Creek Blvd., 107 Kane Creek Blvd., 103 Kane Creek Blvd., Moab, Utah 84532; also 57, 81, 101, 109, 115 and 119 Kane Creek Blvd, Buildings 1-6, Moab Utah 84532",
+   "confidence": "high",
+   "source_text": "UT-93-18004   109 Kane Creek Blvd., Moab, Utah 84532 \nUT-25-25001   107 Kane Creek Blvd., Moab, Utah 84532 \nUT-25-25002   103 Kane Creek Blvd., Moab, Utah 84532"
+  },
+  "county": {
+   "value": "Grand",
+   "confidence": "high",
+   "source_text": "situated in Grand County, State of Utah"
+  },
+  "total_units": {
+   "value": "50",
+   "confidence": "high",
+   "source_text": "The Project Owner agrees that all 50 of the units of the Project shall be restricted as provided for herein and paragraph 13."
+  },
+  "agency_name": {
+   "value": "Utah Housing Corporation",
+   "confidence": "high",
+   "source_text": "UTAH HOUSING CORPORATION, a public corporation of the State of Utah (“Utah Housing”)"
+  },
+  "low_income_units": {
+   "value": "50",
+   "confidence": "high",
+   "source_text": "The Project Owner agrees that 50 units of the Project will be leased, throughout the extended use period as set forth in paragraph 9 above"
+  },
+  "min_applicable_fraction": {
+   "value": "100%",
+   "confidence": "high",
+   "source_text": "the applicable fraction, as defined in IRC § 42(c)(1), for each taxable year in the extended use period... will not be less than 100%"
+  },
+  "ami_limit_pct": {
+   "value": "60%",
+   "confidence": "high",
+   "source_text": "whose income is 60%  or less of the area median gross income"
+  },
+  "income_limit_area": {
+   "value": "county in which the Project is located",
+   "confidence": "medium",
+   "source_text": "with respect to the county in which the Project is located, as annually determined and published by H.U.D."
+  },
+  "compliance_period_years": {
+   "value": "15",
+   "confidence": "high",
+   "source_text": "the initial 15- year compliance period, as defined in IRC § 42(i)(1)"
+  },
+  "extended_use_years": {
+   "value": "50",
+   "confidence": "high",
+   "source_text": "for a total extended use period of 50 years from the beginning date of the compliance period for a qualified low-income building"
+  },
+  "effective_date": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "recording_date": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "recording_number": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "unit_mix": {
+   "rows": [
+    {
+     "bedrooms": "2",
+     "units": "1"
+    },
+    {
+     "bedrooms": "3",
+     "units": "1"
+    },
+    {
+     "bedrooms": "4",
+     "units": "8"
+    },
+    {
+     "bedrooms": "2",
+     "units": "20"
+    },
+    {
+     "bedrooms": "3",
+     "units": "7"
+    },
+    {
+     "bedrooms": "4",
+     "units": "3"
+    },
+    {
+     "bedrooms": "2",
+     "units": "1"
+    },
+    {
+     "bedrooms": "3",
+     "units": "3"
+    },
+    {
+     "bedrooms": "4",
+     "units": "1"
+    },
+    {
+     "bedrooms": "2",
+     "units": "5"
+    }
+   ],
+   "confidence": "high",
+   "source_text": "1  2 bedroom, 1 bathroom unit            55% of area median income \n1   3 bedroom, 1 bathroom unit  55% of area median income \n8  4 bedroom, 2 bathroom units  55% of area median income \n20  2 bedroom, 1 bathroom units  50% of area median income \n7  3 bedroom, 1 bathroom units  50% of area median income \n3  4 bedroom, 2 bathroom units  50% of area median income \n1  2 bedroom, 1 bathroom unit  44% of area median income \n3  3 bedroom, 1 bathroom units  44% of area median income \n1  4 bedroom, 2 bathroom unit  44% of area median income \n5  2 bedroom, 1 bathroom units  30% of area median income"
+  },
+  "set_asides": {
+   "rows": [
+    {
+     "ami_pct": "55%",
+     "units": "1",
+     "pct_of_units": null
+    },
+    {
+     "ami_pct": "55%",
+     "units": "1",
+     "pct_of_units": null
+    },
+    {
+     "ami_pct": "55%",
+     "units": "8",
+     "pct_of_units": null
+    },
+    {
+     "ami_pct": "50%",
+     "units": "20",
+     "pct_of_units": null
+    },
+    {
+     "ami_pct": "50%",
+     "units": "7",
+     "pct_of_units": null
+    },
+    {
+     "ami_pct": "50%",
+     "units": "3",
+     "pct_of_units": null
+    },
+    {
+     "ami_pct": "44%",
+     "units": "1",
+     "pct_of_units": null
+    },
+    {
+     "ami_pct": "44%",
+     "units": "3",
+     "pct_of_units": null
+    },
+    {
+     "ami_pct": "44%",
+     "units": "1",
+     "pct_of_units": null
+    },
+    {
+     "ami_pct": "30%",
+     "units": "5",
+     "pct_of_units": null
+    }
+   ],
+   "confidence": "high",
+   "source_text": "1  2 bedroom, 1 bathroom unit            55% of area median income \n1   3 bedroom, 1 bathroom unit  55% of area median income \n8  4 bedroom, 2 bathroom units  55% of area median income \n20  2 bedroom, 1 bathroom units  50% of area median income \n7  3 bedroom, 1 bathroom units  50% of area median income \n3  4 bedroom, 2 bathroom units  50% of area median income \n1  2 bedroom, 1 bathroom unit  44% of area median income \n3  3 bedroom, 1 bathroom units  44% of area median income \n1  4 bedroom, 2 bathroom unit  44% of area median income \n5  2 bedroom, 1 bathroom units  30% of area median income"
+  },
+  "bins": {
+   "rows": [
+    {
+     "bin": "UT-93-18004"
+    },
+    {
+     "bin": "UT-25-25001"
+    },
+    {
+     "bin": "UT-25-25002"
+    }
+   ],
+   "confidence": "high",
+   "source_text": "UT-93-18004   109 Kane Creek Blvd., Moab, Utah 84532 \nUT-25-25001   107 Kane Creek Blvd., Moab, Utah 84532 \nUT-25-25002   103 Kane Creek Blvd., Moab, Utah 84532"
+  }
+ }
+}

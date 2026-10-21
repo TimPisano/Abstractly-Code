@@ -42,6 +42,16 @@ def test_hud_contract_numbers_lose_separators():
     assert tidy("contract_number", "2013-0042") == "2013-0042"
 
 
+def test_legal_entity_descriptors_are_not_part_of_the_name():
+    assert tidy("owner_name", "Maple Ridge Senior Housing LP, a California limited partnership") == \
+        "Maple Ridge Senior Housing LP"
+    assert tidy("assignee_name", "Maple Ridge Holdings LLC, a Delaware limited liability company") == \
+        "Maple Ridge Holdings LLC"
+    assert tidy("project_name", "Maple Ridge, a California limited partnership") == \
+        "Maple Ridge, a California limited partnership"      # only party names
+    assert tidy("owner_name", "Maple Ridge II, L.P.") == "Maple Ridge II, L.P."
+
+
 def test_numbers_are_never_rewritten():
     for v in ("$1,592.00", "32", "30%", "04/01/2013"):
         assert tidy("contract_rent_2br", v) == v
@@ -112,6 +122,7 @@ if __name__ == "__main__":
     test_ocr_lowercase_roman_numerals()
     test_vulgar_fractions_are_spelled_out()
     test_hud_contract_numbers_lose_separators()
+    test_legal_entity_descriptors_are_not_part_of_the_name()
     test_numbers_are_never_rewritten()
     test_ai_values_are_tidied()
     print("\nAll affordable value cleanup tests passed.")

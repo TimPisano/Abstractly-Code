@@ -1,0 +1,157 @@
+{
+ "model": "claude-sonnet-5",
+ "tool": "record_affordable_abstraction",
+ "max_tokens": 8192,
+ "created": "2026-10-21T22:20:17+00:00",
+ "usage": {
+  "input_tokens": 16223,
+  "output_tokens": 1796
+ },
+ "stop_reason": "tool_use",
+ "tool_input": {
+  "project_name": {
+   "value": "Oak View Ranch Senior Apartments",
+   "confidence": "high",
+   "source_text": "Project Name: Oak View Ranch Senior Apartments"
+  },
+  "owner_name": {
+   "value": "NCRC Murrieta Senior Housing LP, a California limited partnership",
+   "confidence": "high",
+   "source_text": "Borrower/Owner: \nNCRC Murrieta Senior Housing LP, \na California limited partnership"
+  },
+  "property_address": {
+   "value": "24960 Adams Avenue, Murrieta CA 92562",
+   "confidence": "high",
+   "source_text": "Address: 24960 Adams Avenue, Murrieta CA 92562"
+  },
+  "street_address": {
+   "value": "24960 Adams Avenue",
+   "confidence": "high",
+   "source_text": "Address: 24960 Adams Avenue, Murrieta CA 92562"
+  },
+  "city": {
+   "value": "Murrieta",
+   "confidence": "high",
+   "source_text": "Address: 24960 Adams Avenue, Murrieta CA 92562"
+  },
+  "state": {
+   "value": "CA",
+   "confidence": "high",
+   "source_text": "Address: 24960 Adams Avenue, Murrieta CA 92562"
+  },
+  "zip": {
+   "value": "92562",
+   "confidence": "high",
+   "source_text": "Address: 24960 Adams Avenue, Murrieta CA 92562"
+  },
+  "building_addresses": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "county": {
+   "value": "Riverside",
+   "confidence": "medium",
+   "source_text": "Housing Authority of the County of Riverside"
+  },
+  "total_units": {
+   "value": "81",
+   "confidence": "high",
+   "source_text": "Total Number Units in the Project:   81"
+  },
+  "contract_number": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "rems_property_id": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "program_type": {
+   "value": "PBV",
+   "confidence": "high",
+   "source_text": "Project-Based Voucher Program \nHAP Contract for New Construction/Rehab"
+  },
+  "pha_name": {
+   "value": "Housing Authority of the County of Riverside",
+   "confidence": "high",
+   "source_text": "Housing Authority of the County of Riverside"
+  },
+  "contract_administrator": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "assignee_name": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "contract_units": {
+   "value": "40",
+   "confidence": "high",
+   "source_text": "Total Number of Project Based Voucher (PBV) Units in Project Covered by HAP Contract: 40"
+  },
+  "effective_date": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "expiration_date": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "initial_term": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "renewal_term_years": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "renewal_option": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "document_date": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "ami_limit_pct": {
+   "value": "30%",
+   "confidence": "high",
+   "source_text": "One Bedroom/ \nOne Bathroom \n30% 35"
+  },
+  "unit_mix": {
+   "rows": [
+    {
+     "bedrooms": "1",
+     "total_units": "72",
+     "contract_units": "35",
+     "contract_rent": "$1,937",
+     "utility_allowance": "$65",
+     "gross_rent": null,
+     "proposed_rent": null
+    },
+    {
+     "bedrooms": "2",
+     "total_units": "8",
+     "contract_units": "5",
+     "contract_rent": "$2,226",
+     "utility_allowance": "$95",
+     "gross_rent": null,
+     "proposed_rent": null
+    }
+   ],
+   "confidence": "high",
+   "source_text": "1 -bedroom units 72 (35 PBV Units) \n2-bedroom units 8 (5 PBV Units) \n... Contract rent for \no 1br $2,002 - $65 (Utility Allowance) = $1,937 Contract Rent \no 2br $2,321 - $95 (Utility Allowance) = $2,226 Contract Rent"
+  }
+ }
+}

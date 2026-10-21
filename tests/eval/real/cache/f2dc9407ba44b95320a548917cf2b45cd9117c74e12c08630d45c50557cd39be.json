@@ -1,0 +1,128 @@
+{
+ "model": "claude-sonnet-5",
+ "tool": "record_affordable_abstraction",
+ "max_tokens": 8192,
+ "created": "2026-10-21T22:18:45+00:00",
+ "usage": {
+  "input_tokens": 11924,
+  "output_tokens": 1550
+ },
+ "stop_reason": "tool_use",
+ "tool_input": {
+  "project_name": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "owner_name": {
+   "value": "Grand Junction Housing Authority",
+   "confidence": "high",
+   "source_text": "GRAND JUNCTION HOUSING AUTHORITY, a body corporate and politic (\"GJHA\")"
+  },
+  "property_address": {
+   "value": "674 23¾ Road, Grand Junction, Colorado 81505",
+   "confidence": "high",
+   "source_text": "referred to by street addresses 674 23¾ Road, Grand Junction, Colorado 81505"
+  },
+  "street_address": {
+   "value": "674 23¾ Road",
+   "confidence": "high",
+   "source_text": "674 23¾ Road, Grand Junction, Colorado 81505"
+  },
+  "city": {
+   "value": "Grand Junction",
+   "confidence": "high",
+   "source_text": "674 23¾ Road, Grand Junction, Colorado 81505"
+  },
+  "state": {
+   "value": "Colorado",
+   "confidence": "high",
+   "source_text": "674 23¾ Road, Grand Junction, Colorado 81505"
+  },
+  "zip": {
+   "value": "81505",
+   "confidence": "high",
+   "source_text": "674 23¾ Road, Grand Junction, Colorado 81505"
+  },
+  "building_addresses": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "county": {
+   "value": "Mesa",
+   "confidence": "high",
+   "source_text": "Bobbie Gross, Mesa County, CO."
+  },
+  "total_units": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "agency_name": {
+   "value": "City of Grand Junction",
+   "confidence": "high",
+   "source_text": "CITY OF GRAND JUNCTION, (\"City\")"
+  },
+  "low_income_units": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "min_applicable_fraction": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "ami_limit_pct": {
+   "value": "80%",
+   "confidence": "high",
+   "source_text": "shall not exceed eighty percent (80%) of AMI as determined by The U.S. Department of Housing and Urban Development (\"HUD\") and Colorado Housing and Finance Authority (\"CHFA\") regulations"
+  },
+  "income_limit_area": {
+   "value": "Mesa County",
+   "confidence": "high",
+   "source_text": "the annually updated Income Limit and Maximum Rent Table for Mesa County (\"Guidelines\")"
+  },
+  "compliance_period_years": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "extended_use_years": {
+   "value": "40",
+   "confidence": "high",
+   "source_text": "the term of this Agreement (\"Term\") shall be for a period of forty (40) years from the Effective Date"
+  },
+  "effective_date": {
+   "value": null,
+   "confidence": "low",
+   "source_text": "October- «~ olOcil~ (\"Effective Date'1), at Grand Junction, Colorado"
+  },
+  "recording_date": {
+   "value": "October 29, 2025",
+   "confidence": "high",
+   "source_text": "RECEPTION# : 3141336 \n10/29/2025 2:14:01 PM, 1 of 7"
+  },
+  "recording_number": {
+   "value": "3141336",
+   "confidence": "high",
+   "source_text": "RECEPTION# : 3141336"
+  },
+  "unit_mix": {
+   "rows": [],
+   "confidence": null,
+   "source_text": null
+  },
+  "set_asides": {
+   "rows": [],
+   "confidence": null,
+   "source_text": null
+  },
+  "bins": {
+   "rows": [],
+   "confidence": null,
+   "source_text": null
+  }
+ }
+}

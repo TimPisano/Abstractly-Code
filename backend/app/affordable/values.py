@@ -160,6 +160,12 @@ OCR_ROMAN = re.compile(r"(?<=[A-Za-z] )l{2,3}(?=$|[\s,.;:)])")
 HUD_CONTRACT = re.compile(r"([A-Z]{2})\s?-?\s?(\d{2})\s?-?\s?([A-Z])\s?-?\s?(\d{3})\s?-?\s?(\d{3})")
 
 
+ENTITY_DESCRIPTOR = re.compile(
+    r",?\s+an?\s+(?:[A-Z][A-Za-z]+\s+){0,3}(?:limited partnership|limited liability company|"
+    r"general partnership|corporation|nonprofit corporation|non-profit corporation|public body|"
+    r"public agency|municipal corporation)\.?$", re.I)
+
+
 def tidy(name: str, value):
     """Clean OCR and typing noise out of a read value. Only rewrites shapes
     that can't be anything else; never turns one number into another."""
@@ -169,6 +175,9 @@ def tidy(name: str, value):
     for sym, frac in FRACTIONS.items():
         text = re.sub(rf"(?<=\d){sym}", f" {frac}", text).replace(sym, frac)
     text = OCR_ROMAN.sub(lambda m: "I" * len(m.group(0)), text)
+    if name.endswith(("owner_name", "assignee_name", "landlord")) or name in ("landlord",):
+        # "NCRC Example LP, a California limited partnership": the descriptor isn't part of the name
+        text = ENTITY_DESCRIPTOR.sub("", text)
     if name.startswith("contract_number"):
         m = HUD_CONTRACT.fullmatch(text.strip())
         if m:

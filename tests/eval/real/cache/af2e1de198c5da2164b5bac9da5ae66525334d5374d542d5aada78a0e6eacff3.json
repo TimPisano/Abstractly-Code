@@ -1,0 +1,147 @@
+{
+ "model": "claude-sonnet-5",
+ "tool": "record_affordable_abstraction",
+ "max_tokens": 8192,
+ "created": "2026-10-21T22:19:02+00:00",
+ "usage": {
+  "input_tokens": 27860,
+  "output_tokens": 1741
+ },
+ "stop_reason": "tool_use",
+ "tool_input": {
+  "project_name": {
+   "value": "Olympia Oaks",
+   "confidence": "high",
+   "source_text": "housing development is known as or to be known as Olympia Oaks (the “Project”)"
+  },
+  "owner_name": {
+   "value": "Olympia Amherst Limited Partnership",
+   "confidence": "high",
+   "source_text": "Olympia Amherst Limited Partnership, a Massachusetts limited partnership"
+  },
+  "property_address": {
+   "value": "85 Olympia Drive, Amherst, Massachusetts",
+   "confidence": "high",
+   "source_text": "The land described on Exhibit A attached hereto situated at 85 Olympia Drive, Amherst, Massachusetts."
+  },
+  "street_address": {
+   "value": "85 Olympia Drive",
+   "confidence": "high",
+   "source_text": "situated at 85 Olympia Drive, Amherst, Massachusetts"
+  },
+  "city": {
+   "value": "Amherst",
+   "confidence": "high",
+   "source_text": "85 Olympia Drive, Amherst, Massachusetts"
+  },
+  "state": {
+   "value": "Massachusetts",
+   "confidence": "high",
+   "source_text": "85 Olympia Drive, Amherst, Massachusetts"
+  },
+  "zip": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "building_addresses": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "county": {
+   "value": "Hampshire",
+   "confidence": "high",
+   "source_text": "recorded with the Hampshire Registry of Deeds"
+  },
+  "total_units": {
+   "value": "42",
+   "confidence": "high",
+   "source_text": "a 42 residential rental unit housing development"
+  },
+  "agency_name": {
+   "value": "Department of Housing and Community Development",
+   "confidence": "high",
+   "source_text": "the Commonwealth of Massachusetts, acting by and through the Department of Housing and Community Development (“DHCD”)"
+  },
+  "low_income_units": {
+   "value": "42",
+   "confidence": "high",
+   "source_text": "no less than 100 percent of the residential units in the Project shall be both rent-restricted and occupied by Low-Income Tenants. Initially, Low-Income Tenants shall occupy all of the units"
+  },
+  "min_applicable_fraction": {
+   "value": "100%",
+   "confidence": "high",
+   "source_text": "which has been determined for the purposes of this Agreement to be 100%."
+  },
+  "ami_limit_pct": {
+   "value": null,
+   "confidence": "low",
+   "source_text": "does not exceed _________________  percent of the median gross income for the Area, adjusted for family size."
+  },
+  "income_limit_area": {
+   "value": "Springfield, MA HMFA",
+   "confidence": "high",
+   "source_text": "Area: Springfield, MA HMFA"
+  },
+  "compliance_period_years": {
+   "value": "15",
+   "confidence": "high",
+   "source_text": "The 15-year compliance period under Section 42 of the Code."
+  },
+  "extended_use_years": {
+   "value": "99",
+   "confidence": "high",
+   "source_text": "shall end on the date ninety-nine (99) years after the commencement of the Compliance Period."
+  },
+  "effective_date": {
+   "value": "August 2013",
+   "confidence": "medium",
+   "source_text": "is made and entered into as of August __, 2013"
+  },
+  "recording_date": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "recording_number": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "unit_mix": {
+   "rows": [
+    {
+     "bedrooms": "3",
+     "units": "13"
+    },
+    {
+     "bedrooms": "2",
+     "units": "21"
+    },
+    {
+     "bedrooms": "1",
+     "units": "8"
+    }
+   ],
+   "confidence": "high",
+   "source_text": "13 of which shall be three bedroom units, 21 of which shall be two bedroom units and 8 of which shall be one bedroom units."
+  },
+  "set_asides": {
+   "rows": [
+    {
+     "ami_pct": "30%",
+     "units": "8",
+     "pct_of_units": null
+    }
+   ],
+   "confidence": "high",
+   "source_text": "no less than 8 of the Low-Income Units shall be occupied by Low-Income Tenants whose income is 30% or less of the median gross income of the Area."
+  },
+  "bins": {
+   "rows": [],
+   "confidence": null,
+   "source_text": null
+  }
+ }
+}
