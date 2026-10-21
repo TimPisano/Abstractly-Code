@@ -95,6 +95,7 @@ those by taking **main's** TASKS.md, not the branch's.
 
 | Branch | Worktree | +/− main | State |
 |---|---|---|---|
+| `feature/lease-accuracy` | `~/dev/projects/abstractly-accuracy` | — | Branched off `origin/main` 2026-10-21. Step 1: 30-lease LLM-written synthetic CRE + multifamily corpus (JSON answer key first, then the lease is written from it; amendments, rent tables, scanned PDFs) + grader. Step 2 of the user's prompt was cut off. **Plan written, awaiting user approval**: `docs/plans/feature-lease-accuracy.md`. |
 | `fix/ai-not-found-values` | `~/dev/projects/abstractly-ai-not-found` | +1 / 0 | **Built 2026-10-20, not reviewed, not pushed** (`6b72165`). The AI's "Not found" / "None" / "N/A" text is now saved as empty, not as a value: lease fields and rent-roll validation values both go through `ai_extraction.clean_ai_value`. Prompt bumped to v3: null instead of placeholder text, and flat rent reported as "Flat -- no escalation". 2 regression tests fail before the fix, plus 1 over-matching guard. Suite **90/90**. Plan: `docs/plans/fix-ai-not-found-values.md`. Follow-ups: rows already saved with placeholder values aren't cleaned; eval-baseline AI numbers are for prompt v2. Next: `/review-branch fix/ai-not-found-values`, then merge. |
 | `fix/test-isolation` | `~/dev/projects/abstractly-test-isolation` | +1 / 0 | **Reviewed 2026-10-20: MERGE** (reviewer + security-auditor both MERGE, no critical/high/medium; reviewer re-ran suite 90/90 in the worktree). Not pushed (`b6303c8`). **Merge hazard:** after this lands, any branch adding a `test_*.py` fails the runner until the new file starts with `import _test_env` (affordable-forms, deal-assistant, demo-requests-view, large-files-any-type, lease-intelligence, loan-underwriting, section8-tenant-share, S8 branches). Optional nits: bytes host in `_guarded_connect`, patch `gethostbyname`, `import _test_env` in the two child scripts (test_auth_flow, test_demo_request), `test_live_assistant_api.py:104` uses the real DB path. Suite failed 9 files in the primary checkout because `app/api.py` loaded the real `backend/.env` into tests (ADMIN_EMAIL seeded into test DBs, real Gmail login sent real email, init_db() opened the real `backend/lease_portfolio.db`). New `tests/_test_env.py` imported first by every offline test: no .env, no app env vars, temp DB (real one refused), outbound network blocked. Suite **90/90** plainly and with main's .env + real shell env loaded. Real DB unmodified (mtime Oct 13); backup in `~/dev/projects/abstractly-db-backups/`. Next: user pushes the branch and merges. |
 | `feature/tester-ready` | `~/dev/projects/abstractly-tester-ready` | +13 / 0 | **Reviewed 2026-10-20: MERGE** (reviewer + security-auditor both MERGE, no critical/high). Pushed. Testers on prod as teams: auth-hardening merged; invites by email behind `TEAM_INVITES_ENABLED`; removal ends sessions; monthly page limit (default 1,000) before any AI; two-team isolation test; headless click-through 16/16 (desktop + iPhone). Suite **89/89** at `e733412`. Report: `docs/plans/tester-ready-REPORT.md` on the branch. **Owns usage limits.** Non-blocking follow-ups in the handoff block. Steps 7 and 9 undefined; waiting on user. |
@@ -113,6 +114,13 @@ those by taking **main's** TASKS.md, not the branch's.
 
 
 ### Handoff blocks
+
+### feature/lease-accuracy
+- Worktree: ~/dev/projects/abstractly-accuracy
+- Goal: raise lease extraction accuracy toward ~90% on realistic leases; step 1 = 30-lease LLM-written synthetic corpus with exact answer keys + grader.
+- Loop step: 3 — plan written, waiting for user approval
+- Last update: 2026-10-21 by start-task
+- Next action: user reviews docs/plans/feature-lease-accuracy.md (open questions: where the 19% comes from; step 2 missing)
 
 #### feature/tester-ready
 - Worktree: ~/dev/projects/abstractly-tester-ready (venv symlinked to the primary checkout's)
