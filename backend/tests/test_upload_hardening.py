@@ -347,6 +347,64 @@ def test_concurrent_job_creation_holds_the_cap_exactly():
     print("✓ test_concurrent_job_creation_holds_the_cap_exactly: PASS")
 
 
+def test_rent_roll_uploads_are_rate_limited_like_leases():
+    """Security re-audit: POST /uploads rate-limited lease uploads only; rent rolls could be sent without limit."""
+    from unittest import mock
+    from app import upload_jobs
+    db = _fresh_db()
+    upload_dir, patches = _large_uploads_on()
+    try:
+        client = _client()
+        limit = usage_limits.EXTRACTION_RATE_LIMIT_PER_USER_PER_MINUTE
+        with mock.patch.object(upload_jobs, "MAX_ACTIVE_JOBS_PER_TEAM", limit + 10):
+            statuses = [_post_upload(client, n, kind="rent_roll").status_code for n in range(limit)]
+            assert statuses == [202] * limit, statuses
+            stored = len(os.listdir(upload_dir))
+            resp = _post_upload(client, limit, kind="rent_roll")
+            assert resp.status_code == 429, (resp.status_code, resp.get_json())
+            assert "Rate limit exceeded" in resp.get_json()["error"]
+            assert len(os.listdir(upload_dir)) == stored, "a rate-limited upload was still saved"
+            # Per user: a teammate isn't held up.
+            assert _post_upload(_client(user_id=2, team_id=1), 999, kind="rent_roll").status_code == 202
+    finally:
+        for p in patches:
+            p.stop()
+        os.unlink(db)
+    print("✓ test_rent_roll_uploads_are_rate_limited_like_leases: PASS")
+
+
+def test_refused_uploads_are_refused_before_the_body_is_read():
+    """
+    Security re-audit: a rate-limited (or capped) request still had its
+    whole body, up to 150 MB, received and spooled to disk before being
+    refused. Those checks now run before the form is parsed at all.
+    """
+    from unittest import mock
+    from app import upload_jobs
+    db = _fresh_db()
+    upload_dir, patches = _large_uploads_on()
+    body_read = mock.PropertyMock(side_effect=AssertionError("request body parsed before the refusal"))
+    try:
+        client = _client()
+        with mock.patch.object(usage_limits, "_extraction_rate_limited", return_value=True), \
+                mock.patch.object(app.request_class, "form", body_read, create=True), \
+                mock.patch.object(app.request_class, "files", body_read, create=True):
+            for kind in ("lease", "rent_roll"):
+                resp = _post_upload(client, 1, kind=kind)
+                assert resp.status_code == 429, (kind, resp.status_code, resp.get_json())
+        with mock.patch.object(database, "count_active_upload_jobs", return_value=upload_jobs.MAX_ACTIVE_JOBS_PER_TEAM), \
+                mock.patch.object(app.request_class, "form", body_read, create=True), \
+                mock.patch.object(app.request_class, "files", body_read, create=True):
+            resp = _post_upload(client, 2)
+            assert resp.status_code == 429 and "uploads processing" in resp.get_json()["error"], resp.get_json()
+        assert not os.listdir(upload_dir)
+    finally:
+        for p in patches:
+            p.stop()
+        os.unlink(db)
+    print("✓ test_refused_uploads_are_refused_before_the_body_is_read: PASS")
+
+
 if __name__ == "__main__":
     test_post_leases_refuses_an_excel_entity_bomb()
     test_post_leases_batch_refuses_an_excel_entity_bomb()
@@ -357,4 +415,6 @@ if __name__ == "__main__":
     test_pdf_reading_stops_at_the_overall_time_limit()
     test_simultaneous_uploads_cannot_pass_the_active_job_cap()
     test_concurrent_job_creation_holds_the_cap_exactly()
+    test_rent_roll_uploads_are_rate_limited_like_leases()
+    test_refused_uploads_are_refused_before_the_body_is_read()
     print("\nAll upload hardening tests passed!")

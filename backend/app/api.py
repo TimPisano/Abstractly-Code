@@ -1744,27 +1744,17 @@ def create_upload():
     if not upload_jobs.enabled():
         return jsonify({"error": "Not found"}), 404
 
-    kind = (request.form.get('kind') or 'lease').strip()
-    if kind not in ('lease', 'rent_roll'):
-        return jsonify({"error": "kind must be 'lease' or 'rent_roll'."}), 400
-    if 'file' not in request.files:
-        return jsonify({"error": "No file uploaded"}), 400
-    file = request.files['file']
-    if not file.filename:
-        return jsonify({"error": "No file selected"}), 400
-
     from app import usage_limits
     user = current_user()
     team_id = current_team_id()
-    if kind == 'lease':
-        # The same request-time checks POST /leases makes (usage limits are
-        # owned by feature/tester-ready; this only calls them).
-        if usage_limits._extraction_rate_limited(user["id"]):
-            return jsonify({"error": f"Rate limit exceeded: maximum {usage_limits.EXTRACTION_RATE_LIMIT_PER_USER_PER_MINUTE} extractions per minute."}), 429
-        msg = usage_limits.check_team_quota(team_id)
-        if msg:
-            return jsonify({"error": msg}), 403
 
+    # Everything that can refuse an upload without looking at it runs
+    # before request.form / request.files: reading either receives the
+    # whole body (up to 150 MB, spooled to disk) first. The rate limit
+    # is the same per-user one POST /leases uses, for every kind (usage
+    # limits are owned by feature/tester-ready; this only calls them).
+    if usage_limits._extraction_rate_limited(user["id"]):
+        return jsonify({"error": f"Rate limit exceeded: maximum {usage_limits.EXTRACTION_RATE_LIMIT_PER_USER_PER_MINUTE} extractions per minute."}), 429
     too_many_jobs = (f"Your team already has {upload_jobs.MAX_ACTIVE_JOBS_PER_TEAM} uploads processing. "
                      "Wait for one to finish, then upload this file.")
     # Checked again atomically when the job is created (below); this one
@@ -1774,6 +1764,20 @@ def create_upload():
     if not upload_jobs.has_room_for_an_upload():
         logger.error("Upload refused: not enough free disk in the upload directory")
         return jsonify({"error": "The server can't take large uploads right now. Please try again in a few minutes."}), 503
+
+    kind = (request.form.get('kind') or 'lease').strip()
+    if kind not in ('lease', 'rent_roll'):
+        return jsonify({"error": "kind must be 'lease' or 'rent_roll'."}), 400
+    if 'file' not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
+    file = request.files['file']
+    if not file.filename:
+        return jsonify({"error": "No file selected"}), 400
+
+    if kind == 'lease':
+        msg = usage_limits.check_team_quota(team_id)
+        if msg:
+            return jsonify({"error": msg}), 403
 
     try:
         stored_path, size, content_hash = upload_jobs.save_upload(file)
