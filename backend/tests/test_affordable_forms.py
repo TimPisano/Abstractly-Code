@@ -6,6 +6,7 @@ synthetic eval samples in tests/eval/affordable/samples/ for end-to-end
 checks. Run: python backend/tests/test_affordable_forms.py
 """
 
+import _test_env  # noqa: F401  -- first: temp DB, no .env, no real network (see _test_env.py)
 import io
 import json
 import os

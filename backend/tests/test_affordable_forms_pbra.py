@@ -8,6 +8,7 @@ the extractor normalises (so "1,045.00" and "$1,045.00" compare equal).
 Run: python backend/tests/test_affordable_forms_pbra.py
 """
 
+import _test_env  # noqa: F401  -- first: temp DB, no .env, no real network (see _test_env.py)
 import json
 import os
 import sys

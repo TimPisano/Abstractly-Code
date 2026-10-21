@@ -7,6 +7,7 @@ tests/eval/affordable/samples/ (fictional values). No API, no DB.
 Run: python backend/tests/test_affordable_forms_hap.py
 """
 
+import _test_env  # noqa: F401  -- first: temp DB, no .env, no real network (see _test_env.py)
 import json
 import os
 import sys

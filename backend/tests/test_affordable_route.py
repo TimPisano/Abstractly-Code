@@ -6,6 +6,7 @@ Uses the synthetic eval samples in tests/eval/affordable/samples/ (fictional
 values only). Run: python backend/tests/test_affordable_route.py
 """
 
+import _test_env  # noqa: F401  -- first: temp DB, no .env, no real network (see _test_env.py)
 import os
 import sys
 
