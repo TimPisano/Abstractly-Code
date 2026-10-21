@@ -182,10 +182,83 @@ def test_real_excel_uploads_still_import():
     print("✓ test_real_excel_uploads_still_import: PASS")
 
 
+# ---------------------------------------------------------------------------
+# Fix 2: time limits on reading a PDF in the background pipeline
+
+
+def _pdf(path, pages_text):
+    from reportlab.pdfgen import canvas
+    c = canvas.Canvas(path)
+    for text in pages_text:
+        if text:
+            c.drawString(72, 720, text)
+        c.showPage()
+    c.save()
+    return path
+
+
+def test_a_hung_pdf_renderer_is_stopped_at_its_time_limit():
+    """
+    Security re-audit: rendering a page for OCR had no time limit, so a
+    crafted PDF that hangs poppler held the single worker for up to the
+    3-hour job timeout. A stand-in pdftoppm that never finishes must be
+    stopped at the per-page limit; that page just comes back without text.
+    """
+    import time
+    from unittest import mock
+    from app import document_extractor
+
+    tmpdir = tempfile.mkdtemp()
+    fake_bin = os.path.join(tmpdir, "bin")
+    os.mkdir(fake_bin)
+    for tool in ("pdftoppm", "pdfinfo", "pdftocairo"):
+        with open(os.path.join(fake_bin, tool), "w") as f:
+            f.write("#!/bin/sh\nexec sleep 30\n")
+        os.chmod(os.path.join(fake_bin, tool), 0o755)
+    scan = _pdf(os.path.join(tmpdir, "scan.pdf"), [""])  # no text layer, so it's sent to OCR
+    try:
+        with mock.patch.dict(os.environ, {"PATH": fake_bin + os.pathsep + os.environ["PATH"]}), \
+                mock.patch.object(document_extractor, "_PDF_RASTERIZE_TIMEOUT_S", 1, create=True):
+            started = time.monotonic()
+            pages = document_extractor.extract_pages_from_path(scan, "pdf")
+            elapsed = time.monotonic() - started
+        assert elapsed < 10, f"a hung renderer held the reader for {elapsed:.0f} s"
+        assert [p["page"] for p in pages] == [1] and not pages[0]["text"].strip()
+    finally:
+        import shutil
+        shutil.rmtree(tmpdir)
+    print("✓ test_a_hung_pdf_renderer_is_stopped_at_its_time_limit: PASS")
+
+
+def test_pdf_reading_stops_at_the_overall_time_limit():
+    """A PDF that takes longer than the read limit in all is stopped with a message saying so, not read for hours."""
+    from unittest import mock
+    from app import document_extractor
+    from app.document_extractor import DocumentExtractionError
+
+    tmpdir = tempfile.mkdtemp()
+    lease = _pdf(os.path.join(tmpdir, "lease.pdf"), [f"Page {n}: Tenant shall pay rent monthly." for n in range(1, 4)])
+    try:
+        with mock.patch.object(document_extractor, "PDF_READ_LIMIT_SECONDS", 0, create=True):
+            try:
+                pages = document_extractor.extract_pages_from_path(lease, "pdf")
+            except DocumentExtractionError as e:
+                assert "took longer than" in str(e), e
+            else:
+                raise AssertionError(f"read all {len(pages)} pages past the time limit")
+        assert len(document_extractor.extract_pages_from_path(lease, "pdf")) == 3, "a normal PDF still reads"
+    finally:
+        import shutil
+        shutil.rmtree(tmpdir)
+    print("✓ test_pdf_reading_stops_at_the_overall_time_limit: PASS")
+
+
 if __name__ == "__main__":
     test_post_leases_refuses_an_excel_entity_bomb()
     test_post_leases_batch_refuses_an_excel_entity_bomb()
     test_import_rent_roll_refuses_an_excel_entity_bomb()
     test_every_excel_reader_refuses_entities_instead_of_expanding_them()
     test_real_excel_uploads_still_import()
+    test_a_hung_pdf_renderer_is_stopped_at_its_time_limit()
+    test_pdf_reading_stops_at_the_overall_time_limit()
     print("\nAll upload hardening tests passed!")

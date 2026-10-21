@@ -6,12 +6,21 @@ and falling back to OCR (pytesseract + pdf2image) for scanned PDFs.
 """
 
 import logging
-from typing import Dict, Any, List
+import os
+import subprocess
+import tempfile
+import time
+from typing import Dict, Any, List, Optional
 import pypdf
 from pdf2image import convert_from_path
+from PIL import Image
 import pytesseract
 
 logger = logging.getLogger(__name__)
+
+
+class PDFReadTimeout(Exception):
+    """extract_text_per_page ran past its `deadline_s` and stopped. str(e) says how far it got."""
 
 
 class PDFExtractor:
@@ -144,7 +153,8 @@ class PDFExtractor:
         return pages
 
     def extract_text_per_page(self, pdf_path: str, progress=None, ocr_dpi: int = 200,
-                              min_chars: int = 50, ocr_timeout_s: int = 120) -> List[Dict[str, Any]]:
+                              min_chars: int = 50, ocr_timeout_s: int = 120, rasterize_timeout_s: int = 60,
+                              deadline_s: Optional[float] = None) -> List[Dict[str, Any]]:
         """
         Large-document variant of extract_text, used by the background
         upload pipeline (app/upload_jobs.py). Differences, all deliberate:
@@ -158,20 +168,26 @@ class PDFExtractor:
             grayscale. extract_text's convert_from_path(path) renders every
             page up front: about 3 GB of RGB bitmaps for 300 pages at
             200 DPI, against 512 MB of RAM on the API container.
-          - Each page's OCR has a timeout, so one pathological page can't
-            hang the job; that page just comes back without text.
+          - Each page's rendering (`rasterize_timeout_s`) and OCR
+            (`ocr_timeout_s`) has a time limit, so one pathological page
+            can't hang the job; that page just comes back without text.
+          - `deadline_s`: the whole read stops with PDFReadTimeout once it
+            has run this long, checked before each page.
           - `progress(done, total)` is called after every page.
 
         Returns the same [{"page", "text", ["ocr_confidence"]}] shape.
         Raises on a file pypdf can't open at all (the caller turns that
         into a user-facing message).
         """
+        started = time.monotonic()
         reader = pypdf.PdfReader(pdf_path)
         if reader.is_encrypted:
             reader.decrypt("")
         total = len(reader.pages)
         pages = []
         for page_num in range(1, total + 1):
+            if deadline_s is not None and time.monotonic() - started > deadline_s:
+                raise PDFReadTimeout(f"stopped after {page_num - 1} of {total} pages")
             try:
                 text = reader.pages[page_num - 1].extract_text() or ""
             except Exception:
@@ -184,7 +200,8 @@ class PDFExtractor:
                     logger.warning("Page %d is too large to rasterize for OCR; skipped", page_num)
                     ocr_text, confidence = "", None
                 else:
-                    ocr_text, confidence = self._ocr_single_pdf_page(pdf_path, page_num, dpi, ocr_timeout_s)
+                    ocr_text, confidence = self._ocr_single_pdf_page(pdf_path, page_num, dpi, ocr_timeout_s,
+                                                                     rasterize_timeout_s)
                 if len(ocr_text.strip()) > len(text.strip()):
                     entry["text"] = ocr_text
                     if confidence is not None:
@@ -215,16 +232,17 @@ class PDFExtractor:
             return None
         return min(dpi, fitting)
 
-    def _ocr_single_pdf_page(self, pdf_path: str, page_num: int, dpi: int, timeout_s: int):
-        """(text, mean_confidence) for one page, or ("", None) if rasterizing or OCR fails."""
+    def _ocr_single_pdf_page(self, pdf_path: str, page_num: int, dpi: int, timeout_s: int,
+                             rasterize_timeout_s: int = 60):
+        """(text, mean_confidence) for one page, or ("", None) if rasterizing or OCR fails or runs out of time."""
         try:
-            images = convert_from_path(pdf_path, dpi=dpi, first_page=page_num, last_page=page_num, grayscale=True)
+            image = self._rasterize_page(pdf_path, page_num, dpi, rasterize_timeout_s)
+        except subprocess.TimeoutExpired:
+            logger.warning("Rendering page %d for OCR took over %d s; skipped", page_num, rasterize_timeout_s)
+            return "", None
         except Exception:
             logger.exception("Could not rasterize page %d for OCR", page_num)
             return "", None
-        if not images:
-            return "", None
-        image = images[0]
         try:
             return self._ocr_page_with_confidence(image, timeout_s=timeout_s)
         except Exception:
@@ -232,6 +250,26 @@ class PDFExtractor:
             return "", None
         finally:
             image.close()
+
+    @staticmethod
+    def _rasterize_page(pdf_path: str, page_num: int, dpi: int, timeout_s: int):
+        """
+        One page as a grayscale PIL image, rendered by poppler's pdftoppm,
+        which is killed after `timeout_s`. Called directly, not through
+        pdf2image: its convert_from_path also runs pdfinfo and
+        `pdftoppm -v` first with no time limit at all, and a PDF crafted
+        to hang poppler hangs those too.
+        """
+        with tempfile.TemporaryDirectory(prefix="abstractly-page-") as tmpdir:
+            out = os.path.join(tmpdir, "page")
+            subprocess.run(
+                ["pdftoppm", "-r", str(dpi), "-f", str(page_num), "-l", str(page_num), "-gray", "-singlefile",
+                 pdf_path, out],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=timeout_s or None, check=True,
+            )
+            with Image.open(out + ".pgm") as image:
+                image.load()
+                return image.copy()
 
     def _ocr_page_with_confidence(self, image, timeout_s=0):
         """

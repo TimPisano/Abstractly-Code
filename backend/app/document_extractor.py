@@ -34,7 +34,7 @@ from docx import Document as DocxDocument
 from PIL import Image, UnidentifiedImageError
 import pypdf
 
-from .pdf_extractor import PDFExtractor
+from .pdf_extractor import PDFExtractor, PDFReadTimeout
 
 logger = logging.getLogger(__name__)
 
@@ -437,6 +437,14 @@ def _extract_plain_text(file_bytes: bytes) -> List[Dict[str, Any]]:
 # better than a 4,000 px one and takes several times as long.
 _MAX_OCR_IMAGE_SIDE = 4000
 _OCR_TIMEOUT_S = 120
+# Rendering one PDF page for OCR takes about a second; a page that takes
+# a minute is pathological (security re-audit: a crafted PDF could hang
+# poppler and the single worker with it).
+_PDF_RASTERIZE_TIMEOUT_S = 60
+# The whole PDF, text layer + OCR. The 300-page scanned fixture reads in
+# ~5 minutes and the 1,000-page cap in ~17, so 30 minutes is room to
+# spare, well inside the job timeout (LARGE_FILE_JOB_TIMEOUT_SECONDS).
+PDF_READ_LIMIT_SECONDS = int(os.environ.get("LARGE_FILE_PDF_READ_LIMIT_SECONDS", "1800"))
 
 
 def extract_pages_from_path(path: str, extension: str, progress=None,
@@ -498,7 +506,16 @@ def _extract_pdf_per_page(path: str, progress) -> List[Dict[str, Any]]:
         raise DocumentExtractionError("This PDF couldn't be opened. It may be damaged; try saving a fresh copy.") from e
 
     try:
-        return PDFExtractor().extract_text_per_page(path, progress=progress, ocr_timeout_s=_OCR_TIMEOUT_S)
+        return PDFExtractor().extract_text_per_page(path, progress=progress, ocr_timeout_s=_OCR_TIMEOUT_S,
+                                                    rasterize_timeout_s=_PDF_RASTERIZE_TIMEOUT_S,
+                                                    deadline_s=PDF_READ_LIMIT_SECONDS)
+    except PDFReadTimeout as e:
+        logger.warning("PDF read stopped at its %d s limit: %s", PDF_READ_LIMIT_SECONDS, e)
+        minutes = max(1, round(PDF_READ_LIMIT_SECONDS / 60))
+        raise DocumentExtractionError(
+            f"Reading this PDF took longer than {minutes} minute{'s' if minutes != 1 else ''}, so it was stopped. "
+            "Split it into smaller PDFs and upload each one."
+        ) from e
     except Exception as e:
         logger.exception("Per-page PDF extraction failed")
         raise DocumentExtractionError("Failed to extract text from this PDF. The file may be corrupted or unsupported.") from e

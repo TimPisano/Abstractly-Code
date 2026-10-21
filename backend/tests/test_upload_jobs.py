@@ -289,7 +289,7 @@ def test_120mb_scanned_pdf_is_streamed_not_held_in_memory():
 
         ocr_calls = []
 
-        def fake_ocr(self, pdf_path, page_num, dpi, timeout_s):
+        def fake_ocr(self, pdf_path, page_num, dpi, timeout_s, rasterize_timeout_s):
             ocr_calls.append(page_num)
             text = ("This Commercial Lease is entered into by and between Harborline Commons LLC (\"Landlord\") and "
                     "Northwind Outfitters, Inc. (\"Tenant\"). Base Rent of $18,750.00 per month."
