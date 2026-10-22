@@ -26,3 +26,6 @@ drafts/
 !.env.example
 .env
 backend/tools/gauntlet/results/
+
+# Large-file fixtures: tens of MB, rebuilt by backend/tests/create_large_fixtures.py.
+backend/tests/fixtures/large/

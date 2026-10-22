@@ -1,0 +1,74 @@
+Output of backend/tests/repro_large_files.py run against commit 5580c7d (pre-fix code, identical to main
+for every file it exercises), 2026-10-19, on a MacBook (Apple Silicon), Python 3.9.6, regex engine, Anthropic mocked.
+Tracebacks from the deliberately-bad files in scenario F are omitted; everything else is verbatim.
+    pdf_reader = pypdf.PdfReader(pdf_file)
+    self._initialize_stream(stream)
+    self.read(stream)
+    self._find_eof_marker(stream)
+    line = read_previous_line(stream)
+    raise PdfStreamError(STREAM_TRUNCATED_PREMATURELY)
+    raise ValueError
+    images = convert_from_path(pdf_path)
+    page_count = pdfinfo_from_path(
+    raise PDFPageCountError(
+    pdf_reader = pypdf.PdfReader(pdf_file)
+    self._initialize_stream(stream)
+    self.read(stream)
+    self._find_eof_marker(stream)
+    line = read_previous_line(stream)
+    raise PdfStreamError(STREAM_TRUNCATED_PREMATURELY)
+    raise ValueError
+    images = convert_from_path(pdf_path)
+    page_count = pdfinfo_from_path(
+    raise PDFPageCountError(
+==============================================================================
+A. 300-page scanned PDF (image-only) uploaded to POST /leases
+==============================================================================
+file size: 119.9 MB; Flask MAX_CONTENT_LENGTH: 16 MB
+-> HTTP 413 in 0.2s: {'error': 'File too large. Maximum size is 16MB.'}
+   Also: frontend/app/upload-view.js drops any file over 16 MB before it is ever sent.
+==============================================================================
+B. OCR runs inside the web request and rasterizes every page at once
+==============================================================================
+12-page subset (4.5 MB) -> HTTP 201 in 40.7s, all of it inside the request
+   convert_from_path called 1x with kwargs [{}] (no first_page/last_page: whole document at once)
+   peak RSS grew 170 -> 370 MB for 12 pages
+   tenant found: 'Northwind Outfitters, Inc.'
+   projected for 300 pages: ~1017s (gunicorn kills the worker at 120s)
+   projected raster memory for 300 pages at pdf2image's default 200 DPI RGB: 3.1 GB held at once (Render starter = 512 MB RAM)
+==============================================================================
+C. 500-page text lease, regex engine (the default), POST /leases
+==============================================================================
+-> HTTP 201 in 43.4s; split into 1 lease(s); Python peak alloc 13 MB
+   usage limit MAX_PAGES_PER_FILE = 150, but a 500-page file was accepted (usage_limits.check_file_limits passes temp_path=None -> open(None) raises -> swallowed)
+   pages 1-500: tenant='Northwind Outfitters, Inc.' deposit='$56,250.00' sqft=None
+==============================================================================
+D. 500-page text lease, AI engine: what the model is actually sent
+==============================================================================
+document: 500 pages, 1,417,177 chars; prompt sent: 200,476 chars, last page included: 71
+   truncated: True
+   security_deposit (page 262) sent to the model: False
+   square_footage (page 333) sent to the model: False
+   renewal_options (page 431) sent to the model: False
+   exclusivity_clause (page 478) sent to the model: False
+==============================================================================
+E. 5,000-row messy rent roll (messy_rent_roll_5000.xlsx) via POST /leases/import-rent-roll
+==============================================================================
+-> HTTP 201 in 55.8s (gunicorn limit 120s); Python peak alloc 266 MB
+   imported 4816 (expected 4816 occupied); skipped 285 rows
+==============================================================================
+E. 5,000-row messy rent roll (messy_rent_roll_5000.csv) via POST /leases/import-rent-roll
+==============================================================================
+-> HTTP 201 in 72.2s (gunicorn limit 120s); Python peak alloc 385 MB
+   imported 4816 (expected 4816 occupied); skipped 285 rows
+==============================================================================
+F. File type is decided by extension only
+==============================================================================
+   PNG bytes named lease.pdf: HTTP 422: Failed to extract text from this PDF. The file may be corrupted or unsupported.
+   PDF bytes named lease.txt: HTTP 201: accepted, 1 lease(s) created
+   Windows executable named tool.pdf: HTTP 422: Failed to extract text from this PDF. The file may be corrupted or unsupported.
+   HEIC lease photo (iPhone default) (.heic): HTTP 400: Unsupported file type. Please upload one of: PDF, Excel (.xlsx/.xls/.xlsm), CSV/TSV, Word (.docx/.doc), images (.jpg/.png/.tiff), or plain text (.txt).
+==============================================================================
+G. The upload is copied into memory several times per request
+==============================================================================
+   14.4 MB upload -> 43 MB peak Python allocation just to receive it (3.0x the file): read() in _validate_upload, again in upload_lease, and again from the temp file in _extract_leases_from_file_storage
