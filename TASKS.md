@@ -132,12 +132,12 @@ those by taking **main's** TASKS.md, not the branch's.
 - Base: stacked on feature/affordable-forms c6a14ff (unmerged); merge only after it
 - Goal: 11 real affordable documents to 90%, free fixes first, cached AI responses, every API call estimated and approved first.
 - Loop step: 4 — built and pushed; ready for /review-branch once the user is happy with the score
-- Last update: 2026-10-21 by build session
-- Spent: **$0.64** this task (one approved run, 10 calls, 223,377 in / 19,441 out at $2/$10 per M). All 10 cached in tests/eval/real/cache/ — rescoring is free unless a prompt or document text changes.
-- Score: **151/165 (91.5%)** (key grew 159→165: city/state/zip for 5th Street + Oak View, per user). Start was 85/159 (53%). Suite 102/102; synthetic unchanged.
+- Last update: 2026-10-22 by build session (7f128b8)
+- Spent: **$0.64** this task (one approved run, 10 calls). 2026-10-22 step 7 free parts: 0 requests sent, $0.00. All 10 responses cached in tests/eval/real/cache/.
+- Score: **156/165 (94.5%)** (151 → 156: 811 PRA lease form reader 4/4, 5th Street renamed form field read by label). Start was 85/159 (53%). Suite 103/103; synthetic unchanged (holdout 93.8% lease / 89.4% program).
 - User decisions 2026-10-21: Coppertree key correct ($250/$350, checked by hand); street_address = street only + city/state/zip fields; Amasa address list containing the key's address scores correct, extract all six.
-- Open: 14 misses listed in docs/research/eval-baseline.md (last section). Optional paid follow-ups, each needs estimate + OK: multi-stage HAP table for Coppertree (~$0.13), 811 lease field list (~$0.05). Overfitting caveat: tuned on the same 11 docs.
-- Next action: user decides on follow-ups or runs `/review-branch feature/affordable-real-accuracy`
+- Open (user): REVIEW.md Q7 Amanda Brooke owner (letter names FH Amanda Brooke LLC only as proposed owner/assignee; recommend moving the key to assignee_name) and Q8 Cottonwood "Ave." in the key (Exhibit A has none). Paid option: Coppertree stage-2 table changes the shared HAP field list, so all 6 HAP docs are re-sent, ~$0.41 (over the user's $0.30 limit; needs an OK). 2013 renewal: the PDF's OCR layer says 158/"1 SIR" where the image prints 156/"1 BR"; no safe free fix. Overfitting caveat: no real holdout documents.
+- Next action: user answers Q7/Q8 and the $0.41 question, or runs `/review-branch feature/affordable-real-accuracy`
 
 ### feature/lease-accuracy
 - Worktree: ~/dev/projects/abstractly-accuracy
