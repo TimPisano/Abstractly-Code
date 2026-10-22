@@ -149,7 +149,8 @@ def _is_calendar_date_match(text: str, m: "re.Match") -> bool:
     statute citations ("Utah Code Ann. § 59-7-607", "59-10-1010") and
     fragments of longer numbers. A tax-credit agreement citing two code
     sections 25 times was refused as a rent roll before this check.
-    Month-name dates are always kept.
+    Month-name dates are always kept, and so is each end of a range
+    written without spaces ("01/01/2024-12/31/2024").
     """
     token = m.group(0)
     parts = re.split(r"[/-]", token)
@@ -157,8 +158,32 @@ def _is_calendar_date_match(text: str, m: "re.Match") -> bool:
         return True
     before = text[m.start() - 1] if m.start() > 0 else " "
     after = text[m.end()] if m.end() < len(text) else " "
-    if before.isdigit() or before in ("-", "/") or after.isdigit() or after in ("-", "/"):
+    if before.isdigit() or after.isdigit():
         return False
+    if before in ("-", "/") and not _calendar_date_ends_at(text, m.start() - 1):
+        return False
+    if after in ("-", "/") and not _calendar_date_starts_at(text, m.end() + 1):
+        return False
+    return _calendar_date_shape(parts)
+
+
+# A numeric date standing on its own: the other end of a range, read
+# without looking past it (so "12-3-45-6-78-9" has no date in it).
+_NUMERIC_DATE_END = re.compile(r"(?<![\d/-])(?:\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{1,2}-\d{1,2})$")
+_NUMERIC_DATE_START = re.compile(r"(?:\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{1,2}-\d{1,2})(?![\d/-])")
+
+
+def _calendar_date_ends_at(text: str, end: int) -> bool:
+    m = _NUMERIC_DATE_END.search(text, max(0, end - 10), end)
+    return bool(m) and _calendar_date_shape(re.split(r"[/-]", m.group(0)))
+
+
+def _calendar_date_starts_at(text: str, start: int) -> bool:
+    m = _NUMERIC_DATE_START.match(text, start)
+    return bool(m) and _calendar_date_shape(re.split(r"[/-]", m.group(0)))
+
+
+def _calendar_date_shape(parts: List[str]) -> bool:
     a, b, c = (int(p) for p in parts)
     if len(parts[0]) == 4:                       # ISO: yyyy-mm-dd
         return 1 <= b <= 12 and 1 <= c <= 31

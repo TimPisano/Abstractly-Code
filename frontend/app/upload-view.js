@@ -87,9 +87,134 @@ function fileTypeIconHtml(filename) {
     `;
 }
 
+/**
+ * Large-file background uploads (server flag LARGE_FILE_UPLOADS; see
+ * backend/app/upload_jobs.py). When the server says they're on, both the
+ * lease upload and the rent-roll import send the file to POST /uploads,
+ * which answers at once with a job, and this polls GET /uploads/<id> to
+ * show real progress ("Reading page 120 of 300") until it's done. When
+ * they're off -- or /uploads/config can't be reached -- nothing here
+ * changes how the page behaves.
+ */
+const LEGACY_MAX_UPLOAD_MB = 16;
+
+const LargeUploads = {
+    config: null,
+    _loading: null,
+
+    load() {
+        if (!this._loading) {
+            this._loading = Api.getUploadConfig()
+                .then(config => { this.config = config; this.applyToPage(); return config; })
+                .catch(() => { this.config = { large_file_uploads: false }; return this.config; });
+        }
+        return this._loading;
+    },
+
+    enabled() {
+        return !!(this.config && this.config.large_file_uploads);
+    },
+
+    maxMb() {
+        return this.enabled() ? this.config.max_upload_mb : LEGACY_MAX_UPLOAD_MB;
+    },
+
+    // File pickers and the drop-zone hints follow what the server accepts.
+    applyToPage() {
+        if (!this.enabled()) return;
+        const { accepted, max_upload_mb: maxMb } = this.config;
+        const leaseInput = document.getElementById('fileInput');
+        const rentRollInput = document.getElementById('rentRollFileInput');
+        if (leaseInput) leaseInput.accept = accepted.lease.extensions.join(',');
+        if (rentRollInput) rentRollInput.accept = accepted.rent_roll.extensions.join(',');
+        const leaseHint = document.querySelector('#uploadBox .upload-subtext');
+        if (leaseHint) leaseHint.textContent = `${accepted.lease.label}. Up to ${maxMb} MB each; multiple files allowed`;
+        const rentRollHint = document.querySelector('#rentRollUploadBox .upload-subtext');
+        if (rentRollHint) rentRollHint.textContent = `One file at a time, up to ${maxMb} MB`;
+    },
+
+    // Sends one file and resolves with the job's result once processing
+    // finishes; rejects with the server's own message if it fails.
+    // onProgress(job) is called with every status the server reports.
+    async run(file, kind, propertyAddress, onProgress) {
+        const response = await Api.startUpload(file, kind, propertyAddress);
+        if (response.reused_existing_upload) {
+            return { leases: response.leases, split_count: 1, warnings: [response.message] };
+        }
+        let job = response.upload;
+        onProgress(job);
+        const started = Date.now();
+        let failedPolls = 0;
+        while (job.status === 'queued' || job.status === 'processing') {
+            // Every 1.5 s for the first minute, then every 3 s: a 300-page
+            // scan takes several minutes, and the server itself fails a
+            // job that stops making progress, so there's no client timeout.
+            await new Promise(r => setTimeout(r, Date.now() - started < 60000 ? 1500 : 3000));
+            try {
+                job = (await Api.getUpload(job.id)).upload;
+                failedPolls = 0;
+            } catch (err) {
+                failedPolls += 1;
+                if (failedPolls >= 5) {
+                    throw new Error('Lost contact with the server while this file was processing. It may still finish; check the lease list in a few minutes.');
+                }
+                continue;
+            }
+            onProgress(job);
+        }
+        if (job.status === 'failed') throw new Error(job.error || 'Processing failed for this file.');
+        return job.result;
+    },
+
+    statusText(job) {
+        if (job.status === 'queued') return 'Waiting to start…';
+        const { current, total, percent } = job.progress || {};
+        const pct = percent != null && total > 1 ? ` (${percent}%)` : '';
+        return `${job.message || 'Processing'}${pct}`;
+    },
+
+    // A thin bar under the row: determinate when the server knows the
+    // total (pages, AI parts), indeterminate otherwise.
+    renderBar(container, job) {
+        let bar = container.querySelector('.upload-progress-bar');
+        if (!bar) {
+            bar = document.createElement('div');
+            bar.className = 'upload-progress-bar';
+            bar.setAttribute('role', 'progressbar');
+            bar.setAttribute('aria-valuemin', '0');
+            bar.setAttribute('aria-valuemax', '100');
+            bar.innerHTML = '<span></span>';
+            container.appendChild(bar);
+        }
+        const percent = job && job.progress ? job.progress.percent : null;
+        const determinate = percent != null && job.progress.total > 1;
+        bar.classList.toggle('indeterminate', !determinate);
+        bar.firstElementChild.style.width = determinate ? `${percent}%` : '';
+        if (determinate) bar.setAttribute('aria-valuenow', String(percent));
+        else bar.removeAttribute('aria-valuenow');
+        bar.setAttribute('aria-label', job ? this.statusText(job) : 'Uploading');
+    },
+
+    removeBar(container) {
+        const bar = container && container.querySelector('.upload-progress-bar');
+        if (bar) bar.remove();
+    },
+};
+
+function warningsHtml(warnings) {
+    if (!warnings || warnings.length === 0) return '';
+    return `
+        <div class="upload-result-warning">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/></svg>
+            <span>${warnings.map(w => escapeHtml(w)).join('<br>')}</span>
+        </div>
+    `;
+}
+
 const Upload = {
     load() {
         this.reset();
+        LargeUploads.load();
     },
 
     reset() {
@@ -104,17 +229,23 @@ const Upload = {
     },
 
     async handleFiles(fileList) {
-        const files = Array.from(fileList).filter(f => hasSupportedLeaseExtension(f.name));
+        await LargeUploads.load();
+        const large = LargeUploads.enabled();
+        // With background uploads on, the server checks each file's type
+        // from its content and explains any rejection in that file's row,
+        // so nothing is filtered by extension here.
+        const files = large ? Array.from(fileList) : Array.from(fileList).filter(f => hasSupportedLeaseExtension(f.name));
         if (files.length === 0) {
-            showError(`Please select a supported file type: ${SUPPORTED_LEASE_FORMATS_LABEL}.`);
+            showError(`Please select a supported file type: ${large ? LargeUploads.config.accepted.lease.label : SUPPORTED_LEASE_FORMATS_LABEL}.`);
             return;
         }
 
-        const oversized = files.filter(f => f.size > 16 * 1024 * 1024);
+        const maxMb = LargeUploads.maxMb();
+        const oversized = files.filter(f => f.size > maxMb * 1024 * 1024);
         if (oversized.length > 0) {
-            showError(`${oversized.length} file(s) exceed the 16MB limit and were skipped.`);
+            showError(`${oversized.length} file(s) exceed the ${maxMb}MB limit and were skipped.`);
         }
-        const validFiles = files.filter(f => f.size <= 16 * 1024 * 1024);
+        const validFiles = files.filter(f => f.size <= maxMb * 1024 * 1024);
         if (validFiles.length === 0) return;
 
         document.getElementById('uploadResults').style.display = 'none';
@@ -133,23 +264,30 @@ const Upload = {
         for (let i = 0; i < validFiles.length; i++) {
             const file = validFiles[i];
             const itemEl = document.getElementById(`uploadProgressItem-${i}`);
-            const stopReassurance = this.setProgressItemProcessing(itemEl);
+            const stopReassurance = large ? this.setProgressItemLive(itemEl) : this.setProgressItemProcessing(itemEl);
 
             let result;
             try {
-                let response = await Api.uploadLease(file);
-                if (response.processing) {
-                    // The leases exist but are still being extracted by
-                    // the model on the server -- poll each one until it's
-                    // done (or failed), then continue as normal.
-                    response = { ...response, leases: await this.waitForProcessing(response.leases, itemEl) };
+                let response;
+                if (large) {
+                    const jobResult = await LargeUploads.run(file, 'lease', null, job => this.setProgressItemJob(itemEl, job));
+                    response = { leases: jobResult.leases, split_count: jobResult.split_count, warnings: jobResult.warnings };
+                } else {
+                    response = await Api.uploadLease(file);
+                    if (response.processing) {
+                        // The leases exist but are still being extracted by
+                        // the model on the server -- poll each one until it's
+                        // done (or failed), then continue as normal.
+                        response = { ...response, leases: await this.waitForProcessing(response.leases, itemEl) };
+                    }
                 }
                 response.leases.forEach(lease => recordStats(file.name, lease.extracted_fields));
-                result = { filename: file.name, success: true, leases: response.leases, split_count: response.split_count };
+                result = { filename: file.name, success: true, leases: response.leases, split_count: response.split_count, warnings: response.warnings };
             } catch (err) {
-                result = { filename: file.name, success: false, error: err.message };
+                result = { filename: file.name, success: false, error: err.message, wrapError: large };
             }
             stopReassurance();
+            if (large) LargeUploads.removeBar(itemEl);
             fileResults.push(result);
             this.setProgressItemDone(itemEl, result);
         }
@@ -177,6 +315,24 @@ const Upload = {
         textEl.textContent = messages[0][1];
         const timers = messages.slice(1).map(([delay, text]) => setTimeout(() => { textEl.textContent = text; }, delay));
         return () => timers.forEach(clearTimeout);
+    },
+
+    // Background-upload counterparts of setProgressItemProcessing: the row
+    // shows what the server reports (stage, page N of M) instead of
+    // time-based reassurance text, plus a progress bar.
+    setProgressItemLive(itemEl) {
+        if (!itemEl) return () => {};
+        itemEl.classList.remove('pending');
+        itemEl.classList.add('processing', 'has-bar');
+        itemEl.querySelector('.upload-progress-status-text').textContent = 'Uploading…';
+        LargeUploads.renderBar(itemEl, null);
+        return () => {};
+    },
+
+    setProgressItemJob(itemEl, job) {
+        if (!itemEl) return;
+        itemEl.querySelector('.upload-progress-status-text').textContent = LargeUploads.statusText(job);
+        LargeUploads.renderBar(itemEl, job);
     },
 
     // Poll GET /leases/<id> for each still-'processing' lease from an
@@ -236,7 +392,7 @@ const Upload = {
                 <strong>${totalLeasesCreated}</strong> lease(s) created from <strong>${succeededFiles.length}</strong> file(s)
                 &mdash; <strong>${failedFiles.length}</strong> file(s) failed (${fileResults.length} total)
             </p>
-        ` + fileResults.map(r => this.resultRowsHtml(r)).join('');
+        ` + fileResults.map(r => this.resultRowsHtml(r) + (r.success ? warningsHtml(r.warnings) : '')).join('');
 
         document.getElementById('uploadResults').style.display = 'block';
 
@@ -248,7 +404,7 @@ const Upload = {
     resultRowsHtml(r) {
         if (!r.success) {
             return `
-                <div class="upload-result-item failure">
+                <div class="upload-result-item failure${r.wrapError ? ' wrap-detail' : ''}">
                     ${fileTypeIconHtml(r.filename)}
                     <span class="upload-result-icon">✗</span>
                     <span class="upload-result-name">${escapeHtml(r.filename)}</span>
@@ -354,13 +510,30 @@ const RentRollImport = {
         // read. Letting it through and showing that message beats
         // guessing here from the extension.
         document.getElementById('rentRollResults').style.display = 'none';
-        document.getElementById('rentRollProgress').style.display = 'block';
+        const progressEl = document.getElementById('rentRollProgress');
+        progressEl.style.display = 'block';
 
         const propertyAddress = document.getElementById('rentRollPropertyAddress').value.trim();
+        await LargeUploads.load();
+        const large = LargeUploads.enabled();
 
         try {
-            const response = await Api.importRentRoll(file, propertyAddress);
-            this.showResults(file.name, response);
+            let response;
+            if (large) {
+                if (file.size > LargeUploads.maxMb() * 1024 * 1024) {
+                    throw new Error(`This file is over the ${LargeUploads.maxMb()} MB limit.`);
+                }
+                const status = this._liveStatusEl(progressEl);
+                status.textContent = 'Uploading…';
+                LargeUploads.renderBar(progressEl, null);
+                response = await LargeUploads.run(file, 'rent_roll', propertyAddress, job => {
+                    status.textContent = LargeUploads.statusText(job);
+                    LargeUploads.renderBar(progressEl, job);
+                });
+            } else {
+                response = await Api.importRentRoll(file, propertyAddress);
+            }
+            this.showResults(file.name, response, large ? { maxRows: 200 } : {});
             if (response.imported_count > 0) {
                 showToast(`${response.imported_count} lease(s) imported from ${file.name}.`, 'success');
             }
@@ -372,8 +545,22 @@ const RentRollImport = {
             // generic "couldn't import" that buries the actual reason.
             showError(err.message);
         } finally {
-            document.getElementById('rentRollProgress').style.display = 'none';
+            progressEl.style.display = 'none';
+            LargeUploads.removeBar(progressEl);
+            const status = progressEl.querySelector('.upload-progress-live-status');
+            if (status) status.remove();
         }
+    },
+
+    _liveStatusEl(progressEl) {
+        let el = progressEl.querySelector('.upload-progress-live-status');
+        if (!el) {
+            el = document.createElement('p');
+            el.className = 'upload-progress-live-status';
+            el.setAttribute('aria-live', 'polite');
+            progressEl.appendChild(el);
+        }
+        return el;
     },
 
     // Human label for the import response's `source_kind` -- only shown
@@ -396,7 +583,9 @@ const RentRollImport = {
         return `<p class="upload-source-kind">${escapeHtml(label + conf)}</p>`;
     },
 
-    showResults(filename, response) {
+    // options.maxRows (background uploads only): a 5,000-unit roll would
+    // otherwise put 5,000 rows in the page at once. Old imports show all.
+    showResults(filename, response, options = {}) {
         const container = document.getElementById('rentRollResultsList');
         const skipped = response.skipped_rows || [];
         const warnings = response.warnings || [];
@@ -425,13 +614,21 @@ const RentRollImport = {
             ${this.sourceKindNote(response.source_kind, response.ocr_confidence)}
         `;
 
-        html += response.leases.map(lease => `
+        const shown = options.maxRows ? response.leases.slice(0, options.maxRows) : response.leases;
+        html += shown.map(lease => `
             <div class="upload-result-item success">
                 <span class="upload-result-icon">✓</span>
                 <span class="upload-result-name">${escapeHtml(lease.display_name)}</span>
                 <span class="upload-result-detail">${escapeHtml(fieldValue(lease, 'tenant') || 'Tenant not found')}</span>
             </div>
         `).join('');
+        if (shown.length < response.leases.length) {
+            html += `
+                <div class="upload-result-item wrap-detail">
+                    <span class="upload-result-detail">…and ${(response.leases.length - shown.length).toLocaleString()} more. All of them are in your lease list.</span>
+                </div>
+            `;
+        }
 
         // Every skipped row is shown, not just a count -- a real broker
         // file commonly has several vacant/total rows, and a user

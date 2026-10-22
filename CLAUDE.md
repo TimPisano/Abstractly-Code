@@ -30,6 +30,7 @@ Lease abstraction and rent roll validation for CRE firms. Live at getabstractly.
 - New features behind an env flag, default off.
 - Section 8: code on main stays; `SECTION8_MODE` off in every environment. Don't merge S8 branches (`feature/s8-*`, `fix/section8-*`, `pivot/section8`, `research/section8`); leave them pushed.
 - Don't touch pricing, legal pages, demo button, existing routes, signup.
+- HOLDOUT: don't read, tune on, or look at `tests/eval/holdout_public/` (any branch, any copy) until Tim says so. Only `feature/holdout-public` builds it.
 - In Section 8 code: never invent HUD/PHA rules; cite the HUD source and label "Verify with your PHA".
 - No PII in logs or fixtures. Use Maple Ridge (`backend/benchmark_data/demo_deal/`) and `backend/tests/` fixtures.
 - Every route gets `@require_role(...)`; every document query is scoped to the authenticated caller's `team_id`. Never add an `accounts`/`account_id` schema.

@@ -93,3 +93,15 @@ def run_deferred_extraction(filename, items, team_id):
             database.insert_activity("lease_processing_failed", f"Extraction failed for {failed} lease(s) from {filename}", team_id)
     except Exception:
         logger.exception("Post-extraction activity log failed (non-fatal)")
+
+
+def run_upload_job(job_id):
+    """
+    RQ entry point for a large-file upload job (LARGE_FILE_UPLOADS). The
+    whole job lives in app/upload_jobs.py; this wrapper exists so the queue
+    message names a function in this module, which the worker already
+    imports, same as run_deferred_extraction above.
+    """
+    from app import upload_jobs
+
+    upload_jobs.run_upload_job(job_id)
