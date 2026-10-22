@@ -225,7 +225,34 @@ def test_a_sizes_total_repeated_on_each_tier_row_is_not_added_up():
     assert pf["units_2br"]["value"] == "16" and pf["contract_units_2br"]["value"] == "3"
 
 
+
+def test_a_total_built_from_doubtful_counts_is_flagged_too():
+    """Regression: on the 2013 renewal the second OCR pass flagged the 158 and
+    102 unit counts, but the contract total of 265 (158 + 102 + 5) kept
+    medium confidence."""
+    note = "The document's OCR text reads '158' here, but a second OCR pass reads '156'. Verify against the document."
+    fields = {"contract_units": _f("265"),
+              "contract_units_1br": {**_f("158", "low"), "check_note": note},
+              "contract_units_2br": {**_f("102", "low"), "check_note": note.replace("158", "102").replace("156", "162")},
+              "contract_units_3br": _f("5")}
+    run_checks(fields)
+    total = fields["contract_units"]
+    assert total["value"] == "265" and total["confidence"] == "low"
+    assert "contract_units_1br" in total["check_note"] and "contract_units_2br" in total["check_note"]
+    assert "Verify against the document" in total["check_note"]
+    assert fields["contract_units_3br"]["confidence"] == "medium"
+
+
+def test_a_total_of_sure_counts_is_left_alone():
+    fields = {"contract_units": _f("265"), "contract_units_1br": _f("158"), "contract_units_2br": _f("102"),
+              "contract_units_3br": _f("5")}
+    run_checks(fields)
+    assert fields["contract_units"]["confidence"] == "medium" and "check_note" not in fields["contract_units"]
+
+
 if __name__ == "__main__":
+    test_a_total_built_from_doubtful_counts_is_flagged_too()
+    test_a_total_of_sure_counts_is_left_alone()
     test_coppertree_1br_row_is_flagged_and_keeps_its_printed_rent()
     test_checks_never_change_an_extracted_value()
     test_consistent_50059_numbers_pass_untouched()

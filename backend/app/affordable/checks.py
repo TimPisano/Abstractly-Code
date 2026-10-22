@@ -154,8 +154,28 @@ def _bedroom_sum(fields, checks):
         _flag(fields, [*rows, "contract_units"],
               f"The contract units by bedroom size add up to {sum(counts)}, but the contract says {total}.",
               "the document's own unit counts", checks)
-    else:
+    elif not _doubtful_total(fields, "contract_units", rows, checks):
         checks.append({"status": "ok", "fields": [*rows, "contract_units"], "citation": "the document's own unit counts"})
+
+
+def _doubtful_total(fields, total_name: str, rows: List[str], checks) -> bool:
+    """A total equal to the sum of its rows is only as sure as those rows: if
+    any of them is already in doubt (low confidence with a note, e.g. two OCR
+    readings that disagree), the total is marked low too. Returns True when it
+    marked the total."""
+    doubtful = [n for n in rows if fields[n].get("confidence") == "low" and fields[n].get("check_note")]
+    if not doubtful:
+        return False
+    note = (f"This total adds up {', '.join(rows)}, and {', '.join(doubtful)} "
+            f"{'is' if len(doubtful) == 1 else 'are'} in doubt (see {'its' if len(doubtful) == 1 else 'their'} notes). "
+            "Verify against the document.")
+    entry = fields[total_name]
+    if note not in (entry.get("check_note") or ""):
+        entry["confidence"] = "low"
+        entry["check_note"] = f"{entry.get('check_note', '')} {note}".strip()
+        checks.append({"status": "doubtful_total", "fields": [total_name, *doubtful], "message": note,
+                       "citation": "the document's own unit counts"})
+    return True
 
 
 def _lura_bedroom_sum(fields, checks):
