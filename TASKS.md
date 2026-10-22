@@ -132,12 +132,12 @@ those by taking **main's** TASKS.md, not the branch's.
 - Base: stacked on feature/affordable-forms c6a14ff (unmerged); merge only after it
 - Goal: 11 real affordable documents to 90%, free fixes first, cached AI responses, every API call estimated and approved first.
 - Loop step: 4 — built and pushed; ready for /review-branch once the user is happy with the score
-- Last update: 2026-10-22 by build session (paid run 2)
-- Spent: **$1.06** this task: run 1 $0.64 + run 2 $0.4198 (6 calls, 147,619 in / 12,460 out; user cap $0.45). All responses cached in tests/eval/real/cache/ (16 files, including the 6 for the old prompt).
-- Score: **163/165 (98.8%)**. Left: 2013 renewal units_1br 158 (flagged low by the second OCR pass) and contract_units 265 (the AI's total over the disputed row; not flagged). Suite 105/105. Synthetic unchanged: holdout 93.8% lease / 89.4% program; holdout scan 56.2% / 57.8%.
-- User decisions 2026-10-22: Amanda Brooke owner_name null, assignee_name = FH Amanda Brooke LLC; Cottonwood "Ave." dropped; OCR disagreements flagged, never resolved by picking a value.
-- Open: three scanned-holdout fixes proposed, not built (eval-baseline.md, last section): fuzzy form detection on OCR pages, re-OCR of typed value boxes, a wider box when an OCR page's label is found but its box is empty. Optional: carry an OCR flag through to a total built from flagged cells. Overfitting caveat: no real holdout documents.
-- Next action: user picks the scanned-holdout fixes, or runs `/review-branch feature/affordable-real-accuracy`
+- Last update: 2026-10-22 by build session (scanned-form fixes)
+- Spent: **$1.06** this task (run 1 $0.64 + run 2 $0.4198). Scanned-form fixes: $0.
+- Score: **163/165 (98.8%)** real. Scanned holdout 56.2% / 57.8% -> **70.8% / 71.7%** (lease / program) after fix 1 (recognise scanned forms by their labels) and fix 2 (second reading of typed value boxes; flags disagreements, fills empties at low confidence). Synthetic holdout unchanged 93.8% / 89.4%. Suite 106/106.
+- Fix 3 not built: bigger boxes found 0 right values; page straightening was accurate but lowered program reads. Both measured; details in eval-baseline.md. The 2013 contract_units 265 is now flagged as a total of doubtful counts.
+- Note: tests/eval/affordable/results/base_hs.json appeared 12:54 2026-10-22, not from this session; left untracked on disk.
+- Next action: user runs `/review-branch feature/affordable-real-accuracy`
 
 ### feature/lease-accuracy
 - Worktree: ~/dev/projects/abstractly-accuracy
