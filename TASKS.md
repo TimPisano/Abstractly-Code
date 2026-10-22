@@ -95,6 +95,7 @@ those by taking **main's** TASKS.md, not the branch's.
 
 | Branch | Worktree | +/− main | State |
 |---|---|---|---|
+| `feature/holdout-public` | `~/dev/projects/abstractly-holdout-public` | — | Claimed 2026-10-22. Public real-document **HOLDOUT** set (affordable HAP/renewal/LIHTC docs, real rent rolls, non-EDGAR city leases) in `tests/eval/holdout_public/`, hand-keyed, never used for tuning. **No session may read, tune on, or look at `tests/eval/holdout_public/` until Tim says so.** Plan awaiting approval: `docs/plans/feature-holdout-public.md`. |
 | `refactor/organize` | `~/dev/projects/lease-abstraction/.claude/worktrees/abstractly-refactor-organize-6c64dd` | +42 / −(main moved) | **Built 2026-10-22, not pushed, not reviewed** (`c326981`). Structural refactor only: app factory (`create_app()` in `app/__init__.py`, `app/wsgi.py`; gunicorn runs `app.wsgi:app`), `app/config.py` for every env var, all 174 routes split from `api.py` into 16 blueprints (`app/shared/routes/`, `app/cre/routes/`), modules moved into `app/shared/*` and `app/cre/*`, admin scripts in `backend/scripts/`, smoke tests, README "How the code is organized". Every commit verified: suite **91/91** + gunicorn live probe (80+ requests) identical to main. Dead code kept per user. **Conflicts with main**: `feature/large-files-any-type` merged into local main (`971fefb`) after branching -- its ~200 lines of `api.py` changes + `upload_jobs.py`/`file_types.py` must be ported into the new layout before merge. Every other open branch that edits `api.py` needs the same porting. Plan + outcome: `docs/plans/refactor-organize.md`. Next: port large-files, then `/review-branch refactor/organize`. |
 | `feature/lease-accuracy` | `~/dev/projects/abstractly-accuracy` | +10 / 0 | **Steps 1–5 of the user's 2026-10-21 list done, not pushed** (tip `bd60f2d`, suite 92/92). Rent-roll gate no longer refuses long real leases (`899e496`); 7 synthetic + 7 EDGAR leases with keys; per-call spend log; grader runs the app's real upload function. **AI "before": synthetic 70/84 = 83.3%** ($0.7052 exact); EDGAR not run on AI yet (~$1.05 estimate after fixes). Regex reference: synthetic 45.2%, EDGAR 24.7%. Big causes found: lease splitting (up to 18 pieces), low-text gate blocks 3/7 real leases. Fixes listed, none built. Full status + questions: `STATUS_FOR_TIM.md` and `docs/eval-accuracy.md` in the worktree. Don't push/merge/deploy. |
 | `fix/ai-not-found-values` | `~/dev/projects/abstractly-ai-not-found` | +1 / 0 | **Built 2026-10-20, not reviewed, not pushed** (`6b72165`). The AI's "Not found" / "None" / "N/A" text is now saved as empty, not as a value: lease fields and rent-roll validation values both go through `ai_extraction.clean_ai_value`. Prompt bumped to v3: null instead of placeholder text, and flat rent reported as "Flat -- no escalation". 2 regression tests fail before the fix, plus 1 over-matching guard. Suite **90/90**. Plan: `docs/plans/fix-ai-not-found-values.md`. Follow-ups: rows already saved with placeholder values aren't cleaned; eval-baseline AI numbers are for prompt v2. Next: `/review-branch fix/ai-not-found-values`, then merge. |
@@ -117,6 +118,14 @@ those by taking **main's** TASKS.md, not the branch's.
 
 
 ### Handoff blocks
+
+#### feature/holdout-public
+- Worktree: ~/dev/projects/abstractly-holdout-public
+- Goal: a public real-document holdout set (8 affordable docs, 6 rent rolls, up to 4 non-EDGAR commercial leases) with hand-written answer keys, never used for tuning.
+- **Do not read, tune on, or look at `tests/eval/holdout_public/` (any branch) until Tim says so.**
+- Loop step: 3. Plan written, waiting for user approval.
+- Last update: 2026-10-22 by start-task
+- Next action: user reviews docs/plans/feature-holdout-public.md
 
 ### feature/affordable-real-accuracy
 - Worktree: ~/dev/projects/abstractly-affordable-real
