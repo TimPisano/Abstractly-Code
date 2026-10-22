@@ -97,7 +97,7 @@ def test_checks_never_change_an_extracted_value():
     before = {k: v["value"] for k, v in fields.items()}
     checks = run_checks(fields)
     assert {k: fields[k]["value"] for k in before} == before
-    assert sum(c["status"] == "mismatch" for c in checks) == 3, checks
+    assert sum(c["status"] == "mismatch" for c in checks) == 4, checks
     assert all(fields[k]["confidence"] == "low" for k in before)
 
 
@@ -108,7 +108,24 @@ def test_consistent_50059_numbers_pass_untouched():
     snapshot = copy.deepcopy(fields)
     checks = run_checks(fields)
     assert fields == snapshot
-    assert [c["status"] for c in checks] == ["ok", "ok", "ok"], checks
+    assert [c["status"] for c in checks] == ["ok", "ok", "ok", "ok"], checks
+
+
+def test_hap_plus_tenant_rent_that_misses_contract_rent_is_flagged():
+    fields = {"contract_rent": _f("$900.00"), "assistance_payment": _f("$520.00"), "tenant_rent": _f("$330.00")}
+    checks = run_checks(fields)
+    assert [c["status"] for c in checks] == ["mismatch"], checks
+    assert fields["tenant_rent"]["value"] == "$330.00"
+    for name in ("contract_rent", "assistance_payment", "tenant_rent"):
+        assert fields[name]["confidence"] == "low"
+        assert "$850" in fields[name]["check_note"] and "Verify with your PHA" in fields[name]["check_note"]
+
+
+def test_rent_split_is_not_checked_at_zero_tenant_rent():
+    """At $0 tenant rent a utility reimbursement can put HUD's share above the contract rent."""
+    fields = {"contract_rent": _f("$900.00"), "assistance_payment": _f("$935.00"), "tenant_rent": _f("$0.00")}
+    assert run_checks(fields) == []
+    assert fields["assistance_payment"]["confidence"] == "medium"
 
 
 def test_missing_values_are_derived_and_labelled():
@@ -212,6 +229,8 @@ if __name__ == "__main__":
     test_coppertree_1br_row_is_flagged_and_keeps_its_printed_rent()
     test_checks_never_change_an_extracted_value()
     test_consistent_50059_numbers_pass_untouched()
+    test_hap_plus_tenant_rent_that_misses_contract_rent_is_flagged()
+    test_rent_split_is_not_checked_at_zero_tenant_rent()
     test_missing_values_are_derived_and_labelled()
     test_utility_allowance_above_ttp_floors_tenant_rent_at_zero()
     test_no_derivation_from_a_doubtful_number()

@@ -550,3 +550,26 @@ The router and the field lists are called by the eval, not by `api.py`. Program 
 - **5th Street initial term (1).** It's in a form field with a PHA-specific name; the AI didn't return it.
 - **Amanda Brooke owner (1).**
 - **Cottonwood address (1).** The key has "Cottonwood Ave."; the exhibit prints "Cottonwood".
+
+### Step 7, free parts (2026-10-22, no API calls)
+
+Rescored from the cache: 10 cached, **0 sent, $0.00**. Results: `results/routed_free_step7.json`.
+
+| | Lease verified | Lease proposed | Program verified | Program proposed | **All** |
+|---|---|---|---|---|---|
+| After paid run 1 + fixes | 2 / 2 | 20 / 21 | 23 / 25 | 106 / 117 | 151 / 165 (91.5%) |
+| **Step 7, free parts** | **2 / 2** | **20 / 21** | **23 / 25** | **111 / 117** | **156 / 165 (94.5%)** |
+
+**What changed:**
+1. **811 PRA lease reader** (`forms/hud_811.py`, form HUD-92236-PRA). It reads the money blanks the form prints in fixed places: project, contract rent, utility allowance, HUD's payment, tenant rent, deposit. The AI still reads the lease terms, and the eval keeps both reads. 811 lease 0 → **4 / 4**, with no new AI call; the plan had expected one (~$0.05).
+2. **New check: HUD's payment + tenant rent = contract rent.** It follows from the two cited identities, and the 811 lease's paragraph 4 splits "the total rent" this way. It flags and never changes a value, and it's skipped at $0 tenant rent, where a utility reimbursement can make HUD's share larger. It holds on both 811 documents.
+3. **Renamed form fields are read by their label.** A PHA re-made HUD-52530B with its own field names ("Textfield-2" for HUD's "Text4"). Filled fields that no rule asks for by name are now placed on the page where their box is, so the label rule finds them. 5th Street initial term → **20 years**.
+
+**Holdout:** no real documents outside the 11 have been scored, so the real-set score is still tuned on its own test set. Synthetic set (the form reader, no AI), unchanged: holdout 93.8% lease / 89.4% program, holdout scan 56.2% / 57.8%; clean 93.8% / 91.7%.
+
+**Still wrong (9):**
+- **Coppertree 1990 (4).** The AI tables stage 1, not stage 2, and has no slot for stage unit counts. Fixing it changes the HAP field list, which all 6 HAP documents share, so all 6 would be re-sent: 146,269 input + 11,662 output tokens at the cached sizes = **~$0.41**. Not run (over the $0.30 limit).
+- **2013 renewal (3).** The page image prints 156 / "1 BR", but the PDF's own OCR layer says 158 / "1 SIR". The AI reads the layer, so it files the row as a studio and sums 265 units. Fresh tesseract at 400 DPI fixes those two but misreads 102 → 162 and $145 → $445, so it isn't a safe swap.
+- **Amanda Brooke owner (1)** and **Cottonwood "Ave." (1).** These are answer-key questions (REVIEW.md, questions 7 and 8), not reader bugs.
+
+**Suite:** 103 / 103 offline.

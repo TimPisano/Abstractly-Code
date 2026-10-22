@@ -19,6 +19,10 @@ practitioner check pending, so every note says "Verify with your PHA"):
     allowance is larger (24 CFR 5.634; the excess is a utility reimbursement)
   - assistance payment = gross rent - total tenant payment
     (the HUD-50059 rent computation lines)
+  - assistance payment + tenant rent = contract rent, when the tenant pays
+    some rent (follows from the two above; the 811 PRA lease, HUD-92236-PRA
+    paragraph 4, splits "the total rent" this way). Skipped at $0 tenant
+    rent, where a utility reimbursement can make HUD's share larger.
   - units per bedroom size add up to the contract's units (a use agreement's
     to its total or low-income units)
 """
@@ -33,6 +37,7 @@ TOLERANCE = 1.0    # dollars; forms round to whole dollars
 CITE_GROSS = "HUD Handbook 4350.3 REV-1, Glossary; 24 CFR 982.4"
 CITE_TENANT_RENT = "24 CFR 5.634"
 CITE_HAP = "HUD-50059 rent computation"
+CITE_SPLIT = "24 CFR 5.634; HUD-50059 rent computation; HUD-92236-PRA paragraph 4"
 
 BR_SUFFIX = re.compile(r"^(contract_rent|utility_allowance|gross_rent)_(\d+)br$")
 
@@ -124,6 +129,19 @@ def _assistance(fields, checks):
                        "citation": CITE_HAP})
 
 
+def _rent_split(fields, checks):
+    contract, hap, rent = (_money(fields, n) for n in ("contract_rent", "assistance_payment", "tenant_rent"))
+    if contract is None or hap is None or rent is None or rent <= 0:
+        return
+    names = ["contract_rent", "assistance_payment", "tenant_rent"]
+    if abs(hap + rent - contract) > TOLERANCE:
+        _flag(fields, names,
+              f"Assistance payment {_fmt(hap)} + tenant rent {_fmt(rent)} = {_fmt(hap + rent)}, "
+              f"but the contract rent shows {_fmt(contract)}.", CITE_SPLIT, checks)
+    else:
+        checks.append({"status": "ok", "fields": names, "citation": CITE_SPLIT})
+
+
 def _bedroom_sum(fields, checks):
     rows = sorted(n for n in fields if re.fullmatch(r"contract_units_\d+br", n))
     total = _int(fields, "contract_units")
@@ -170,6 +188,7 @@ def run_checks(fields: Dict[str, Dict]) -> List[Dict]:
         _rent_identity(fields, f"contract_rent_{n}br", f"utility_allowance_{n}br", f"gross_rent_{n}br", label, checks)
     _tenant_rent(fields, checks)
     _assistance(fields, checks)
+    _rent_split(fields, checks)
     _bedroom_sum(fields, checks)
     _lura_bedroom_sum(fields, checks)
     return checks

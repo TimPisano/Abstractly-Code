@@ -15,6 +15,7 @@ gate. Unrecognised documents return form_id None and no fields, so callers
 fall back to the existing lease extractor.
 """
 
+import dataclasses
 import difflib
 import re
 from typing import Dict, List, Optional, Tuple, Union
@@ -173,6 +174,23 @@ def _from_anchors(rule: Rule, pages: List[PageLayout], phrases, data: bytes) -> 
     return None
 
 
+def _with_unclaimed_values(pages: List[PageLayout], spec: FormSpec, acro: List[FormFieldValue]) -> List[PageLayout]:
+    """Filled form fields no rule asks for by name, placed on the page where
+    their box is, like printed text. A PHA that re-makes a HUD form gives
+    its fields its own names ("Textfield-2" for HUD's "Text4"); the value
+    still sits under the printed label, where the label rule looks.
+    Returns copies: the layout cache is shared."""
+    patterns = [rx for r in spec.rules for rx in r.acro]
+    extra: Dict[int, List[Word]] = {}
+    for v in acro:
+        if v.kind == "text" and v.value.strip() and not any(re.search(rx, v.name) for rx in patterns):
+            x0, top, x1, bottom = v.rect
+            extra.setdefault(v.page, []).append(Word(v.value.strip(), x0, x1, top, bottom))
+    if not extra:
+        return pages
+    return [dataclasses.replace(p, words=p.words + extra[p.page]) if p.page in extra else p for p in pages]
+
+
 def _parse(rule: Rule, raw: str, phrases) -> Optional[str]:
     for rx in rule.strip:
         raw = re.sub(rx, " ", raw, flags=re.I)
@@ -227,6 +245,7 @@ def extract_document(source: Source, *, use_acroform: bool = True, ocr: bool = T
         result["warnings"].append("Not a recognised affordable-housing form; use the lease extractor.")
         return result
 
+    pages = _with_unclaimed_values(pages, spec, acro)
     phrases = spec.label_phrases()
     for rule in spec.rules:
         if is_restricted_field(rule.name):

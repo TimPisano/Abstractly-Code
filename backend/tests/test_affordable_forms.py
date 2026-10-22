@@ -167,6 +167,34 @@ def test_reads_unflattened_form_values():
     print("✓ test_reads_unflattened_form_values: PASS")
 
 
+def test_a_renamed_form_field_is_read_by_its_label():
+    """Regression: a PHA re-made HUD-52530B with its own field names
+    ("Textfield-2" for HUD's "Text4"), so the field-name rule missed the
+    initial term and the label rule saw an empty page."""
+    from app.affordable.forms.base import Anchor, FormSpec, Rule
+    spec = FormSpec(id="zz_term", name="test form", doc_kind="hap_contract", program="PBV",
+                    detect=(("Example Term Form", 2.0),),
+                    rules=(Rule("initial_term", "text", acro=(r"^Text4$",),
+                                anchors=(Anchor("all contract units is:", (-12, 14, 260, 36), origin="x0"),)),
+                           Rule("contract_rent", "money", acro=(r"^contract_rent$",))))
+
+    def draw(c):
+        c.setFont("Helvetica", 10)
+        c.drawString(72, 740, "Example Term Form")
+        c.drawString(108, 792 - 590.4 - 8, "all contract units is:")
+        c.acroForm.textfield(name="Textfield-2", x=198, y=792 - 628.1, width=192, height=13.7)
+        c.acroForm.textfield(name="contract_rent", x=198, y=400, width=120, height=20)
+    writer = PdfWriter(clone_from=PdfReader(io.BytesIO(_pdf(draw))))
+    writer.update_page_form_field_values(writer.pages[0], {"Textfield-2": "20 years", "contract_rent": "1,045.00"},
+                                         auto_regenerate=False)
+    out = io.BytesIO()
+    writer.write(out)
+    f = extract_document(out.getvalue(), forms=[spec])["program_fields"]
+    assert f["initial_term"]["value"] == "20 years"
+    assert f["contract_rent"]["value"] == "$1,045.00" and f["contract_rent"]["method"] == "acroform"
+    print("✓ test_a_renamed_form_field_is_read_by_its_label: PASS")
+
+
 def test_layout_pages_include_form_values():
     data = _fillable_pdf({"head_name": "Dana Example", "contract_rent": "1,045.00"})
     text = layout_pages(data)[0]["text"]
@@ -245,6 +273,7 @@ def test_rfta_sample_flattened_and_unflattened():
 
 
 if __name__ == "__main__":
+    test_a_renamed_form_field_is_read_by_its_label()
     test_money_without_dollar_sign()
     test_dates_in_form_formats()
     test_label_text_is_not_a_value()

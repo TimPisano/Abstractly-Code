@@ -16,12 +16,14 @@ In the tables, "p." means a page of the cut document in `docs/`, not of the orig
 
 ## Questions worth a look first
 
-1. **`hap_tx_coppertree_renewal_2013`, 1-bedroom units.** The OCR text says 158; HUD's database says 156. Page 1's total (263) only adds up with 156. I put 156.
+1. **`hap_tx_coppertree_renewal_2013`, 1-bedroom units.** The OCR text says 158; HUD's database says 156. Page 1's total (263) only adds up with 156. I put 156. *(2026-10-22: I looked at the page 20 image. It prints **156** and **1 BR**; "158" and "1 SIR" come from the PDF's own OCR text layer, which is what the AI reads. Not yet checked by you.)*
 2. **`hap_il_amanda_brooke_request`, letter date.** It's printed "April 14, 2024", but the file name says 2025 and the letter cites 2025 FMRs. The key keeps the printed date.
 3. *(Exhibit 1 stage 2 rents and units checked by hand 2026-10-21; the compilation question below is still open.)* **`hap_tx_coppertree_1990` is a compilation.** Page 10 is headed "HUNTINGTON FOREST". Pages 22-27 are a HAP addendum signed for "Owner Shannon Place, Ltd." in July 1986. Are those earlier names of Coppertree, or other projects' pages? The stage unit counts (114 + 90) also don't reach today's 263.
 4. **`pbv_ca_rivco_cottonwood2`, address.** Exhibit A says "24550 & 24570 Cottonwood"; HUD's LIHTC database says "24580 Cottonwood Ave". I used Exhibit A.
 5. **`sample_tx_811_*`, rent.** I used contract rent ($841) as `rent_amount`, which matches the synthetic HUD-form keys. The tenant pays $350 of it.
 6. **`pbv_ca_rivco_5th_street`, owner name: changed after the first run.** I first keyed page 1's "Mercy Housing Living Centers". The form reader returned "Mercy House Living Centers" from the execution page. That is what the execution page prints, and it matches the cover letter ("Mercy House"), so I changed the key. The PDF disagrees with itself; please confirm the legal name. Also, what is the fillable-field value "7"?
+7. **`hap_il_amanda_brooke_request`, owner (verified field, scored as a miss).** The letter never names the current owner, only "the Seller". It names FH Amanda Brooke LLC as "the Purchaser, the proposed owner". The AI puts that in `assignee_name` and leaves `owner_name` empty, which matches the page. The key's `owner_name` comes from HUD's database after the sale closed. Options: move the key value to `assignee_name` (what the letter says; my recommendation), or keep it. I won't make the code copy a proposed owner into `owner_name`.
+8. **`pbv_ca_rivco_cottonwood2`, "Ave." in the key.** Question 4 says the key uses Exhibit A, but the key reads "24550 & 24570 Cottonwood **Ave.**, Moreno Valley, CA 92553", and Exhibit A prints no "Ave.". The extracted value is Exhibit A's text. Drop "Ave." from the key?
 
 ### `hap_il_amanda_brooke_request`
 

@@ -214,6 +214,12 @@ def run_pipeline(pdf_path: Path, engine: str, routed_res=None):
         out["ai_meta"] = fields.pop("_ai_meta", None)
     else:
         fields = fx.extract_fields(sub_pages)
+    if routed_res is not None and routed_res.get("program_fields"):
+        # a recognised lease form (811 PRA): the AI reads the lease, the form reader its blanks
+        for f, v in (routed_res.get("lease_fields") or {}).items():
+            if v.get("value") and not (fields.get(f) or {}).get("value"):
+                fields[f] = v
+        out.update(program_fields=routed_res["program_fields"], checks=routed_res.get("checks", []))
     out["fields"] = fields
     return out
 
