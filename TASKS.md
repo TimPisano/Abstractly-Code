@@ -123,12 +123,12 @@ those by taking **main's** TASKS.md, not the branch's.
 - Base: stacked on feature/affordable-forms c6a14ff (unmerged); merge only after it
 - Goal: 11 real affordable documents to 90%, free fixes first, cached AI responses, every API call estimated and approved first.
 - Loop step: 4 — built and pushed; ready for /review-branch once the user is happy with the score
-- Last update: 2026-10-22 by build session (7f128b8)
-- Spent: **$0.64** this task (one approved run, 10 calls). 2026-10-22 step 7 free parts: 0 requests sent, $0.00. All 10 responses cached in tests/eval/real/cache/.
-- Score: **156/165 (94.5%)** (151 → 156: 811 PRA lease form reader 4/4, 5th Street renamed form field read by label). Start was 85/159 (53%). Suite 103/103; synthetic unchanged (holdout 93.8% lease / 89.4% program).
-- User decisions 2026-10-21: Coppertree key correct ($250/$350, checked by hand); street_address = street only + city/state/zip fields; Amasa address list containing the key's address scores correct, extract all six.
-- Open (user): REVIEW.md Q7 Amanda Brooke owner (letter names FH Amanda Brooke LLC only as proposed owner/assignee; recommend moving the key to assignee_name) and Q8 Cottonwood "Ave." in the key (Exhibit A has none). Paid option: Coppertree stage-2 table changes the shared HAP field list, so all 6 HAP docs are re-sent, ~$0.41 (over the user's $0.30 limit; needs an OK). 2013 renewal: the PDF's OCR layer says 158/"1 SIR" where the image prints 156/"1 BR"; no safe free fix. Overfitting caveat: no real holdout documents.
-- Next action: user answers Q7/Q8 and the $0.41 question, or runs `/review-branch feature/affordable-real-accuracy`
+- Last update: 2026-10-22 by build session (paid run 2)
+- Spent: **$1.06** this task: run 1 $0.64 + run 2 $0.4198 (6 calls, 147,619 in / 12,460 out; user cap $0.45). All responses cached in tests/eval/real/cache/ (16 files, including the 6 for the old prompt).
+- Score: **163/165 (98.8%)**. Left: 2013 renewal units_1br 158 (flagged low by the second OCR pass) and contract_units 265 (the AI's total over the disputed row; not flagged). Suite 105/105. Synthetic unchanged: holdout 93.8% lease / 89.4% program; holdout scan 56.2% / 57.8%.
+- User decisions 2026-10-22: Amanda Brooke owner_name null, assignee_name = FH Amanda Brooke LLC; Cottonwood "Ave." dropped; OCR disagreements flagged, never resolved by picking a value.
+- Open: three scanned-holdout fixes proposed, not built (eval-baseline.md, last section): fuzzy form detection on OCR pages, re-OCR of typed value boxes, a wider box when an OCR page's label is found but its box is empty. Optional: carry an OCR flag through to a total built from flagged cells. Overfitting caveat: no real holdout documents.
+- Next action: user picks the scanned-holdout fixes, or runs `/review-branch feature/affordable-real-accuracy`
 
 ### feature/lease-accuracy
 - Worktree: ~/dev/projects/abstractly-accuracy
