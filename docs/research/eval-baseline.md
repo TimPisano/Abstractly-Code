@@ -605,3 +605,29 @@ Rescored from the cache: 10 cached, **0 sent, $0.00**. Results: `results/routed_
 1. **58: the form isn't recognised once scanned** (tic_sc, tic_la_lhc). Detection needs exact title phrases; OCR garbles "Initial LIHTC Qualification Date", so the score is 3.0 against a 3.5 minimum.
 2. **29: OCR misreads the value itself.** Digits and commas are dropped from money amounts ($44,100 → $600, $1,308 → $5.00, $29,800 → $29.00), and dates are off by a digit.
 3. **24: the value is in the OCR text but the reader doesn't pick it up.** OCR shifts or garbles the label, so the box lands next to the value or the label isn't found (household size, dependents, city, signature dates).
+
+### Scanned-form fixes (2026-10-22, no API calls)
+
+| Step | 11 real documents | Synthetic holdout (lease / program) | Scanned holdout (lease / program) |
+|---|---|---|---|
+| Before | 163 / 165 | 93.8% / 89.4% | 56.2% / 57.8% |
+| Fix 1: recognise a scanned form by its labels | 163 / 165 | 93.8% / 89.4% | **68.8% / 70.2%** |
+| Fix 2: second reading of typed value boxes | 163 / 165 | 93.8% / 89.4% | **70.8% / 71.7%** |
+| Fix 3: not built (see below) | — | — | — |
+| Follow-up: totals of doubtful counts flagged | 163 / 165 | 93.8% / 89.4% | 70.8% / 71.7% |
+
+Other variants: clean, acroform and holdout unchanged. Scan program 85.0% → 85.5% after fix 2.
+
+**Fix 1.** On OCR'd pages only, when no form reaches its title-phrase minimum, recognition falls back to the form's own field labels. The form must have ≥ 75% of its labels present, lead the next form by 10 points, and show at least one title phrase. On every scanned sample the right form had the top label share. A near-match search for the garbled phrase was tried first: OCR left nothing to match ("ne bce Date!"), and it took over 10 minutes per pass.
+
+**Fix 2, measured before building.** A 400 DPI box read on its own was right 64 / 169 times against the page read's 124, so it never replaces the page value.
+- Where both read a number and differ, the page was right 17 times and wrong 17 times. Those are flagged low with both readings, not picked.
+- Where the page found nothing, the box read filled 5 right and 1 wrong; those fills are low confidence too.
+- A box read alone on a dusty scan returned "" until a despeckle filter went in; the regression test covers that.
+
+**Fix 3: not built.**
+- **Bigger box when the label is found but the box is empty.** It found 0 right values at three sizes, and 5–46 wrong ones (neighbouring labels and values).
+- **Substitute tried: straightening the page before OCR.** The scans are rotated up to 0.6°. The angle estimate matched the true angle to within ~0.1°, but program reads fell (scan 85.5% → 84.1%, scanned holdout 71.7% → 70.2%) while lease rose (70.8% → 72.9%); the extra rotation probably blurs already-blurred text. Reverted.
+- **What's left in this category:** labels OCR garbles past matching ("Effective Date:", "53. Number of Family Members"), lines OCR reads out of order, and zeros read as letters ("go" for 0.00). No single cheap fix covers them.
+
+**Follow-up.** When contract units equal the sum of the per-size counts and any count is already in doubt, the total is flagged low and names the doubtful rows. The 2013 renewal's 265 (158 + 102 + 5) is now flagged.
