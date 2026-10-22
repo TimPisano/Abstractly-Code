@@ -125,7 +125,8 @@ those by taking **main's** TASKS.md, not the branch's.
 - Goal: one `PRODUCT_MODE` switch turns Abstractly into an affordable-housing product (CRE hidden, not deleted), tested in both modes, plus a Render hosting audit.
 - Loop step: 3 — plan written, waiting for user approval
 - Last update: 2026-10-22 by start-task
-- Next action: user reviews docs/plans/feature-product-mode.md and picks a production launch option
+- Decisions 2026-10-22: build on refactor/organize (this task takes over finishing it: port large-files + upload-hardening, review); launch option D (prod = affordable landing + beta waitlist, approved people invited to tester in affordable mode); T12 s8-app-reframe folded in; Tim will upgrade tester (Starter + disk), demo (Starter), Redis -> Render Key Value in the dashboard.
+- Next action: Tim approves the plan to start building; still open Q4 (domain registrar)
 
 #### feature/holdout-public
 - Worktree: ~/dev/projects/abstractly-holdout-public
@@ -376,7 +377,7 @@ Claim with `/start-task <branch>`; read PIVOT_PLAN.md Step 4 first (`git show pi
 
 **Phase 3 — repositioning**
 - T11 `feature/s8-marketing-copy` (M) — **can be drafted now; must NOT merge until T3 + T5 are live on tester** (one push to main = public on prod). Pricing waits on Q2.
-- T12 `feature/s8-app-reframe` (M) — nav/labels, hide CRE views under the flag. Needs T1.
+- ~~T12 `feature/s8-app-reframe`~~ — **folded into `feature/product-mode`** (Tim, 2026-10-22).
 - T13 `feature/s8-sample-data` (S–M) — Section 8 sample + DEMO_MODE seed under the flag. Needs P4, T1.
 
 **Phase 4** — T14 `feature/s8-assistant` on `feature/deal-assistant`; plan later.
