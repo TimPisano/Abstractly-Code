@@ -13,7 +13,7 @@ import tempfile
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from app.api import app
-from app import database
+from app import database, usage_limits
 from app.portfolio import FIELD_NAMES
 
 
@@ -25,6 +25,7 @@ def _fresh_temp_db():
     tmp.close()
     database.configure(tmp.name)
     database.init_db()
+    usage_limits._reset_extraction_rate_limit_for_tests()
     # a real base lease so /leases/<id>/amendments reaches file validation
     # instead of 404-ing on a missing lease
     lid = database.insert_lease("base.pdf", {n: {"value": None, "source": None, "confidence": None} for n in FIELD_NAMES}, team_id=1)

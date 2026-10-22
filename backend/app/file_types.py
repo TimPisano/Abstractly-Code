@@ -18,6 +18,7 @@ so a mislabeled-but-valid file is processed as what it actually is.
 Only the first few KB are read (plus the ZIP/OLE2 directory for Office
 files), so this is cheap on a 150 MB upload.
 """
+import io
 import os
 import zipfile
 import zlib
@@ -59,6 +60,8 @@ _BINARY_PART_MAGIC = (b"\x89PNG", b"\xff\xd8\xff", b"GIF8", b"BM", b"II*\x00", b
 # for parts lxml can't read up to their root element.
 _DTD_MARKERS = tuple(marker.encode(codec) for marker in ("<!DOCTYPE", "<!ENTITY")
                      for codec in ("utf-8", "utf-16-le", "utf-16-be"))
+DTD_REJECTION_MESSAGE = ("This file contains XML settings that Word and Excel never write, so it wasn't opened. "
+                         "Open it in Word or Excel, save a fresh copy, and upload that.")
 # BITMAPINFOHEADER sizes a real .bmp carries at byte 14 -- so a text file
 # that merely starts with "BM" isn't mistaken for an image.
 _BMP_DIB_HEADER_SIZES = {12, 40, 52, 56, 64, 108, 124}
@@ -183,10 +186,7 @@ def _detect_zip(path: str, upload_kind: str, original_extension: str) -> str:
             "Open it, save a fresh copy, and upload that."
         )
     if declares_dtd:
-        raise UnsupportedFileType(
-            "This file contains XML settings that Word and Excel never write, so it wasn't opened. "
-            "Open it in Word or Excel, save a fresh copy, and upload that."
-        )
+        raise UnsupportedFileType(DTD_REJECTION_MESSAGE)
     if xml_bytes > MAX_ZIP_XML_BYTES[extension]:
         mb, limit_mb = xml_bytes / (1024 * 1024), MAX_ZIP_XML_BYTES[extension] // (1024 * 1024)
         if extension == "docx":
@@ -228,6 +228,43 @@ def _declares_dtd(archive: zipfile.ZipFile, info: zipfile.ZipInfo) -> bool:
             if any(marker in window for marker in _DTD_MARKERS):
                 return True
             tail = window[-overlap:]
+
+
+def require_safe_excel_parser() -> None:
+    """
+    Refuse to start the app unless openpyxl parses with defusedxml. The
+    DOCTYPE checks only cover the upload routes; every other Excel reader
+    (T-12, deal mismatch, the table path in POST /leases) relies on
+    openpyxl refusing entities, which it does only when defusedxml is
+    installed and OPENPYXL_DEFUSEDXML isn't turned off. Without it, one
+    ~1 KB .xlsx expands to gigabytes (security re-audit).
+    """
+    import openpyxl
+    if not openpyxl.DEFUSEDXML:
+        raise RuntimeError("openpyxl is not using defusedxml, so Excel uploads could expand XML entities. "
+                           "Run `pip install -r backend/requirements.txt` and don't set OPENPYXL_DEFUSEDXML.")
+
+
+def office_bytes_declare_dtd(file_bytes: bytes) -> bool:
+    """
+    _declares_dtd for the routes that hold an upload in memory (POST
+    /leases, /leases/batch, /leases/import-rent-roll): True when
+    `file_bytes` is a ZIP-based Office file with an XML part declaring a
+    DOCTYPE. Anything else -- not a ZIP, damaged, or bigger than the ZIP
+    caps (not scanned, so this stays cheap) -- is False and left to the
+    route's parser, which refuses entities anyway (openpyxl uses
+    defusedxml; python-docx doesn't resolve them).
+    """
+    if not file_bytes.startswith(b"PK\x03\x04"):
+        return False
+    try:
+        with zipfile.ZipFile(io.BytesIO(file_bytes)) as archive:
+            entries = archive.infolist()
+            if len(entries) > MAX_ZIP_ENTRIES or sum(e.file_size for e in entries) > MAX_ZIP_UNCOMPRESSED_BYTES:
+                return False
+            return any(_declares_dtd(archive, info) for info in xml_parts(archive))
+    except (zipfile.BadZipFile, zlib.error, EOFError, RuntimeError, OSError):
+        return False
 
 
 def _more_elements_than(archive: zipfile.ZipFile, parts: List[zipfile.ZipInfo], limit: int) -> bool:

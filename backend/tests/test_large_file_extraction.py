@@ -59,23 +59,20 @@ def test_scanned_pages_are_rasterized_one_at_a_time_and_ocrd():
     tmpdir = tempfile.mkdtemp()
     try:
         pdf = _pdf_from([(path_of(SCANNED_LEASE), i) for i in range(4)], os.path.join(tmpdir, "scan4.pdf"))
-        import app.pdf_extractor as pe
-        real = pe.convert_from_path
+        real = PDFExtractor._rasterize_page
         calls = []
 
-        def spy(path, **kwargs):
-            calls.append(kwargs)
-            return real(path, **kwargs)
+        def spy(path, page_num, dpi, timeout_s):
+            image = real(path, page_num, dpi, timeout_s)
+            calls.append((page_num, image.mode))
+            return image
 
         progress = []
-        with mock.patch.object(pe, "convert_from_path", side_effect=spy):
+        with mock.patch.object(PDFExtractor, "_rasterize_page", side_effect=spy):
             pages = PDFExtractor().extract_text_per_page(pdf, progress=lambda d, t: progress.append((d, t)))
 
         assert len(pages) == 4
-        assert len(calls) == 4, f"expected one rasterization per page, got {len(calls)}"
-        for n, kwargs in enumerate(calls, start=1):
-            assert kwargs.get("first_page") == n and kwargs.get("last_page") == n, kwargs
-            assert kwargs.get("grayscale") is True
+        assert calls == [(n, "L") for n in range(1, 5)], f"expected one grayscale rasterization per page, got {calls}"
         assert TENANT in pages[0]["text"], pages[0]["text"][:300]
         assert all("ocr_confidence" in p for p in pages), "every scanned page went through OCR"
         assert progress == [(1, 4), (2, 4), (3, 4), (4, 4)]
@@ -275,7 +272,7 @@ def test_raster_bombs_are_refused_before_ocr():
         assert PDFExtractor._ocr_dpi_for(reader.pages[2], 200) is None
         calls = []
         with mock.patch.object(PDFExtractor, "_ocr_single_pdf_page",
-                               side_effect=lambda path, n, dpi, t: calls.append((n, dpi)) or ("", None)):
+                               side_effect=lambda path, n, dpi, t, rt: calls.append((n, dpi)) or ("", None)):
             pages = PDFExtractor().extract_text_per_page(sized)
         assert [n for n, _ in calls] == [1, 2], "the 300-inch page is never rasterized"
         assert calls[1][1] == lowered and len(pages) == 3

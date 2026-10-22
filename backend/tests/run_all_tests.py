@@ -126,6 +126,8 @@ UNIT_TESTS = [
     "test_ai_chunked_extraction.py",
     "test_upload_jobs.py",
     "test_large_upload_frontend.py",
+    # Upload hardening (fix/upload-hardening): security re-audit follow-ups.
+    "test_upload_hardening.py",
 ]
 
 LIVE_API_TESTS = [

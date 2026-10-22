@@ -142,6 +142,10 @@ class _UploadSizedRequest(Request):
         return LEGACY_MAX_CONTENT_LENGTH
 
 
+# Fails startup (gunicorn and run.py) if Excel parsing isn't entity-safe.
+file_types.require_safe_excel_parser()
+
+
 app = Flask(__name__)
 app.request_class = _UploadSizedRequest
 
@@ -840,6 +844,11 @@ def _precheck_upload_file(user, file_bytes, filename):
     msg = usage_limits.check_file_limits(file_bytes, filename)
     if msg:
         return (msg, 400)
+
+    # An Office file declaring XML entities ("billion laughs") is a few KB
+    # that expands to gigabytes in a parser; Office never writes one.
+    if file_types.office_bytes_declare_dtd(file_bytes):
+        return (file_types.DTD_REJECTION_MESSAGE, 400)
 
     if usage_limits._extraction_rate_limited(user["id"]):
         return (f"Rate limit exceeded: maximum {usage_limits.EXTRACTION_RATE_LIMIT_PER_USER_PER_MINUTE} extractions per minute.", 429)
@@ -1560,6 +1569,13 @@ def import_rent_roll():
     never fatal to the rest of the file -- see `skipped_rows` in the
     response for what got skipped and why.
     """
+    # Same per-user rate limit as POST /leases and POST /uploads, checked
+    # before request.files receives the body (usage limits are owned by
+    # feature/tester-ready; this only calls them).
+    from app import usage_limits
+    if usage_limits._extraction_rate_limited(current_user()["id"]):
+        return jsonify({"error": f"Rate limit exceeded: maximum {usage_limits.EXTRACTION_RATE_LIMIT_PER_USER_PER_MINUTE} extractions per minute."}), 429
+
     if 'file' not in request.files:
         return jsonify({"error": "No file uploaded"}), 400
     file_storage = request.files['file']
@@ -1574,6 +1590,8 @@ def import_rent_roll():
 
     base_property_address = (request.form.get('property_address') or '').strip() or None
     file_bytes = file_storage.read()
+    if file_types.office_bytes_declare_dtd(file_bytes):
+        return jsonify({"error": file_types.DTD_REJECTION_MESSAGE}), 400
 
     try:
         parsed = parse_rent_roll_file(file_bytes, filename, base_property_address)
@@ -1737,6 +1755,27 @@ def create_upload():
     if not upload_jobs.enabled():
         return jsonify({"error": "Not found"}), 404
 
+    from app import usage_limits
+    user = current_user()
+    team_id = current_team_id()
+
+    # Everything that can refuse an upload without looking at it runs
+    # before request.form / request.files: reading either receives the
+    # whole body (up to 150 MB, spooled to disk) first. The rate limit
+    # is the same per-user one POST /leases uses, for every kind (usage
+    # limits are owned by feature/tester-ready; this only calls them).
+    if usage_limits._extraction_rate_limited(user["id"]):
+        return jsonify({"error": f"Rate limit exceeded: maximum {usage_limits.EXTRACTION_RATE_LIMIT_PER_USER_PER_MINUTE} extractions per minute."}), 429
+    too_many_jobs = (f"Your team already has {upload_jobs.MAX_ACTIVE_JOBS_PER_TEAM} uploads processing. "
+                     "Wait for one to finish, then upload this file.")
+    # Checked again atomically when the job is created (below); this one
+    # just saves receiving a file that would be refused anyway.
+    if database.count_active_upload_jobs(team_id) >= upload_jobs.MAX_ACTIVE_JOBS_PER_TEAM:
+        return jsonify({"error": too_many_jobs}), 429
+    if not upload_jobs.has_room_for_an_upload():
+        logger.error("Upload refused: not enough free disk in the upload directory")
+        return jsonify({"error": "The server can't take large uploads right now. Please try again in a few minutes."}), 503
+
     kind = (request.form.get('kind') or 'lease').strip()
     if kind not in ('lease', 'rent_roll'):
         return jsonify({"error": "kind must be 'lease' or 'rent_roll'."}), 400
@@ -1746,24 +1785,10 @@ def create_upload():
     if not file.filename:
         return jsonify({"error": "No file selected"}), 400
 
-    from app import usage_limits
-    user = current_user()
-    team_id = current_team_id()
     if kind == 'lease':
-        # The same request-time checks POST /leases makes (usage limits are
-        # owned by feature/tester-ready; this only calls them).
-        if usage_limits._extraction_rate_limited(user["id"]):
-            return jsonify({"error": f"Rate limit exceeded: maximum {usage_limits.EXTRACTION_RATE_LIMIT_PER_USER_PER_MINUTE} extractions per minute."}), 429
         msg = usage_limits.check_team_quota(team_id)
         if msg:
             return jsonify({"error": msg}), 403
-
-    if database.count_active_upload_jobs(team_id) >= upload_jobs.MAX_ACTIVE_JOBS_PER_TEAM:
-        return jsonify({"error": f"Your team already has {upload_jobs.MAX_ACTIVE_JOBS_PER_TEAM} uploads processing. "
-                                 "Wait for one to finish, then upload this file."}), 429
-    if not upload_jobs.has_room_for_an_upload():
-        logger.error("Upload refused: not enough free disk in the upload directory")
-        return jsonify({"error": "The server can't take large uploads right now. Please try again in a few minutes."}), 503
 
     try:
         stored_path, size, content_hash = upload_jobs.save_upload(file)
@@ -1803,8 +1828,20 @@ def create_upload():
     if kind == 'rent_roll':
         options["property_address"] = (request.form.get('property_address') or '').strip() or None
 
-    job_id = database.create_upload_job(team_id, user["id"], kind, filename, stored_path, size, content_hash,
-                                        detected.extension, options)
+    try:
+        job_id = database.create_upload_job(team_id, user["id"], kind, filename, stored_path, size, content_hash,
+                                            detected.extension, options,
+                                            max_active=upload_jobs.MAX_ACTIVE_JOBS_PER_TEAM)
+    except Exception:
+        # Usually the write lock timing out under load. Remove the stored
+        # file either way, or refused uploads pile up until the disk check
+        # turns every upload away.
+        logger.exception("Could not record upload job for team %s", team_id)
+        upload_jobs.remove_file(stored_path)
+        return jsonify({"error": "The server is busy right now. Please try again in a few minutes."}), 503
+    if job_id is None:
+        upload_jobs.remove_file(stored_path)
+        return jsonify({"error": too_many_jobs}), 429
     try:
         upload_jobs.start_job(job_id)
     except Exception:
