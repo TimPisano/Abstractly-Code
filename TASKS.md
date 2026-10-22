@@ -123,9 +123,9 @@ those by taking **main's** TASKS.md, not the branch's.
 - Worktree: ~/dev/projects/abstractly-holdout-public
 - Goal: a public real-document holdout set (8 affordable docs, 6 rent rolls, up to 4 non-EDGAR commercial leases) with hand-written answer keys, never used for tuning.
 - **Do not read, tune on, or look at `tests/eval/holdout_public/` (any branch) until Tim says so.**
-- Loop step: 3. Plan written, waiting for user approval.
-- Last update: 2026-10-22 by start-task
-- Next action: user reviews docs/plans/feature-holdout-public.md
+- Loop step: 4. Building (approved 2026-10-22: CLAUDE.md line on `chore/holdout-claude-md` waiting for /merge-branch; deny rule drafted, to be applied after the build if Tim approves; format-only test; stop rather than lower the privacy bar; executed leases only).
+- Last update: 2026-10-22 by build session
+- Next action: 3 collection agents running (affordable, rent rolls, city leases), all staged outside the repo until screened.
 
 ### feature/affordable-real-accuracy
 - Worktree: ~/dev/projects/abstractly-affordable-real
