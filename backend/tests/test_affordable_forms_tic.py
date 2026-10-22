@@ -119,7 +119,39 @@ def test_illinois_tic_unflattened_form_fields():
     print("✓ test_illinois_tic_unflattened_form_fields: PASS")
 
 
+def _ocr_pages(phrases, source="ocr"):
+    from app.affordable.layout import PageLayout, Word
+    words = []
+    for i, phrase in enumerate(phrases):
+        x = 40.0
+        for token in phrase.split():
+            words.append(Word(token, x, x + 6 * len(token), 40 + 14 * i, 49 + 14 * i))
+            x += 6 * len(token) + 4
+    return [PageLayout(page=1, width=612, height=792, words=words, source=source)]
+
+
+def test_a_scanned_tic_whose_title_ocr_garbled_is_still_recognised():
+    """Regression: OCR turned "Initial LIHTC Qualification Date" into "ne bce
+    Date!", so the national TIC scored 3.0 on its title phrases against a 3.5
+    minimum and two scanned TICs (SC, LA) came back unrecognised. Its own
+    field labels were still there."""
+    from app.affordable.extract import detect_form
+    from app.affordable.forms.lihtc_tic import TIC_NATIONAL
+    labels = sorted({p for p in TIC_NATIONAL.label_phrases() if "Qualification" not in p})
+    text = ["TENANT INCOME CERTIFICATION", "PART VII. RENT", "ne bce Date! 11/1/2026"] + labels
+    spec, _ = detect_form(_ocr_pages(text), [])
+    assert spec is not None and spec.id == "tic_national"
+    # born-digital text is unchanged: titles alone decide
+    spec, _ = detect_form(_ocr_pages(text, source="text"), [])
+    assert spec is None
+    # a few labels aren't enough
+    spec, _ = detect_form(_ocr_pages(text[:3] + labels[:4]), [])
+    assert spec is None
+    print("✓ test_a_scanned_tic_whose_title_ocr_garbled_is_still_recognised: PASS")
+
+
 if __name__ == "__main__":
+    test_a_scanned_tic_whose_title_ocr_garbled_is_still_recognised()
     test_national_tic_louisiana()
     test_national_tic_new_jersey_scanned_blank()
     test_county_value_containing_the_word_county()

@@ -64,7 +64,41 @@ def detect_form(pages: List[PageLayout], acro: List[FormFieldValue],
             score += sum(1.0 for rx in spec.acro_signature if any(re.search(rx, n) for n in names))
         if score >= spec.min_score and score > best_score:
             best, best_score = spec, score
+    if best is None and _mostly_ocr(pages[:4]):
+        best = _by_labels(text, forms or all_forms())
     return best, best_score
+
+
+# OCR can garble a form's title phrases past recognition ("Initial LIHTC
+# Qualification Date" -> "ne bce Date!") while most of its field labels
+# survive. On OCR'd pages only, a form whose own labels are mostly there,
+# clearly more than any other form's, and with at least one title phrase,
+# is recognised by its labels.
+LABEL_SHARE_MIN = 0.75
+LABEL_SHARE_MARGIN = 0.10
+MIN_LABEL_CHARS = 8          # shorter labels ("BIN #:", "City:") turn up on any form
+
+
+def _mostly_ocr(pages: List[PageLayout]) -> bool:
+    return bool(pages) and sum(p.source == "ocr" for p in pages) * 2 > len(pages)
+
+
+def _label_share(text: str, spec: FormSpec) -> float:
+    labels = {_norm(p) for p in spec.label_phrases() if len(_norm(p)) >= MIN_LABEL_CHARS}
+    return sum(1 for p in labels if p in text) / len(labels) if labels else 0.0
+
+
+def _by_labels(text: str, forms: List[FormSpec]) -> Optional[FormSpec]:
+    ranked = sorted(((_label_share(text, f), f) for f in forms), key=lambda x: -x[0])
+    if not ranked:
+        return None
+    share, spec = ranked[0]
+    runner_up = ranked[1][0] if len(ranked) > 1 else 0.0
+    if share < LABEL_SHARE_MIN or share - runner_up < LABEL_SHARE_MARGIN:
+        return None
+    if not any(_norm(phrase) in text for phrase, _ in spec.detect):
+        return None
+    return spec
 
 
 # ---------------------------------------------------------------------------
