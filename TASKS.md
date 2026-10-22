@@ -125,7 +125,8 @@ those by taking **main's** TASKS.md, not the branch's.
 - **Do not read, tune on, or look at `tests/eval/holdout_public/` (any branch) until Tim says so.**
 - Loop step: 4. Collection done, short of target: **2 of 18** kept (1 HAP renewal, 1 executed city lease, 0 rent rolls), privacy bar not lowered. Tip `e6c7b1a`, suite 97/97, not pushed.
 - Last update: 2026-10-22 by build session
-- Next action: (1) done: CLAUDE.md holdout line merged as `6efe4bd` (awaiting push). Tim (2) approves or declines the drafted deny rule (applied only after the build), (3) decides whether to keep collecting (e.g. from portals he names) or accept 2. One robots.txt breach logged in SOURCES.md.
+- Next action: pass 2 collecting (2026-10-22): affordable from Santa Ana Laserfiche (publicdocs.santa-ana.org) + 2-3 other PHAs, target 8 affordable total; rent rolls = public vendor SAMPLE reports (Yardi, RealPage, AppFolio, Entrata, Buildium, Rent Manager, ResMan), labeled format samples, target 6 vendors; samples with realistic resident names rejected and counted. Staged in the session scratchpad, then copied into the worktree. CLAUDE.md line merged + pushed (`6efe4bd`).
+- **Deny rule DEFERRED by Tim:** apply only after collection is finished, and remind Tim then (it would block the building session).
 
 ### feature/affordable-real-accuracy
 - Worktree: ~/dev/projects/abstractly-affordable-real
