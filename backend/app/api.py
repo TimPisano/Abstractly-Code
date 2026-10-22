@@ -1565,6 +1565,13 @@ def import_rent_roll():
     never fatal to the rest of the file -- see `skipped_rows` in the
     response for what got skipped and why.
     """
+    # Same per-user rate limit as POST /leases and POST /uploads, checked
+    # before request.files receives the body (usage limits are owned by
+    # feature/tester-ready; this only calls them).
+    from app import usage_limits
+    if usage_limits._extraction_rate_limited(current_user()["id"]):
+        return jsonify({"error": f"Rate limit exceeded: maximum {usage_limits.EXTRACTION_RATE_LIMIT_PER_USER_PER_MINUTE} extractions per minute."}), 429
+
     if 'file' not in request.files:
         return jsonify({"error": "No file uploaded"}), 400
     file_storage = request.files['file']

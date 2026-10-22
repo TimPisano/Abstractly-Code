@@ -405,6 +405,42 @@ def test_refused_uploads_are_refused_before_the_body_is_read():
     print("✓ test_refused_uploads_are_refused_before_the_body_is_read: PASS")
 
 
+# ---------------------------------------------------------------------------
+# Fix 5: rate limit on POST /leases/import-rent-roll
+
+
+def _post_rent_roll_csv(client, n=0):
+    csv = f"Unit,Tenant,Monthly Rent,Lease Start,Lease End\n{100 + n},Example Tenant {n} LLC,2500,2024-01-01,2026-12-31\n"
+    return client.post("/leases/import-rent-roll", data={"file": (io.BytesIO(csv.encode()), f"roll{n}.csv")},
+                       content_type="multipart/form-data")
+
+
+def test_import_rent_roll_is_rate_limited_before_the_body_is_read():
+    """Security re-audit: POST /leases/import-rent-roll had no rate limit; any number of imports a minute were parsed."""
+    from unittest import mock
+    db = _fresh_db()
+    try:
+        client = _client()
+        limit = usage_limits.EXTRACTION_RATE_LIMIT_PER_USER_PER_MINUTE
+        statuses = [_post_rent_roll_csv(client, n).status_code for n in range(limit)]
+        assert statuses == [201] * limit, statuses
+        before = _team_lease_count()
+        resp = _post_rent_roll_csv(client, limit)
+        assert resp.status_code == 429, (resp.status_code, resp.get_json())
+        assert "Rate limit exceeded" in resp.get_json()["error"]
+        assert _team_lease_count() == before, "a rate-limited import was still saved"
+        # Per user: a teammate isn't held up.
+        assert _post_rent_roll_csv(_client(user_id=2, team_id=1), 999).status_code == 201
+        # Refused without receiving and parsing the upload.
+        body_read = mock.PropertyMock(side_effect=AssertionError("request body parsed before the refusal"))
+        with mock.patch.object(app.request_class, "form", body_read, create=True), \
+                mock.patch.object(app.request_class, "files", body_read, create=True):
+            assert _post_rent_roll_csv(client, limit + 1).status_code == 429
+    finally:
+        os.unlink(db)
+    print("✓ test_import_rent_roll_is_rate_limited_before_the_body_is_read: PASS")
+
+
 if __name__ == "__main__":
     test_post_leases_refuses_an_excel_entity_bomb()
     test_post_leases_batch_refuses_an_excel_entity_bomb()
@@ -417,4 +453,5 @@ if __name__ == "__main__":
     test_concurrent_job_creation_holds_the_cap_exactly()
     test_rent_roll_uploads_are_rate_limited_like_leases()
     test_refused_uploads_are_refused_before_the_body_is_read()
+    test_import_rent_roll_is_rate_limited_before_the_body_is_read()
     print("\nAll upload hardening tests passed!")
