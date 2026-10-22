@@ -213,9 +213,21 @@ def _missing_test_env(filenames):
     return missing
 
 
+def _unregistered(registered):
+    """test_*.py files in this folder that neither list names (a merge that kept only one side's list drops them silently)."""
+    return sorted(f for f in os.listdir(TESTS_DIR or ".")
+                  if f.startswith("test_") and f.endswith(".py") and f not in registered)
+
+
 def main():
     run_live = "--live" in sys.argv
     suite = UNIT_TESTS + (LIVE_API_TESTS if run_live else [])
+
+    unregistered = _unregistered(UNIT_TESTS + LIVE_API_TESTS)
+    if unregistered:
+        print("These test files aren't in UNIT_TESTS or LIVE_API_TESTS, so they would never run:")
+        print("\n".join(f"  {f}" for f in unregistered))
+        return False
 
     missing = _missing_test_env(UNIT_TESTS)
     if missing:
