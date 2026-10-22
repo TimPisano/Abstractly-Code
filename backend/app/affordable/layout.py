@@ -118,6 +118,47 @@ def _bytes(source: Source) -> bytes:
         return f.read()
 
 
+VALUE_DPI = 400          # a second, sharper reading of one value box
+VALUE_WHITELIST = {"money": "0123456789$,.", "int": "0123456789", "pct": "0123456789.%"}
+_HIRES: Dict[Tuple[str, int], object] = {}   # (file hash, page) -> 400 DPI page image, current document only
+
+
+def ocr_value_box(source: Source, page_no: int, box: Tuple[float, float, float, float], vtype: str) -> str:
+    """
+    Read one value box (x0, top, x1, bottom in PDF points) again, on its own,
+    from a 400 DPI render: a second opinion on what the whole-page OCR read.
+    Scanner dust is filtered out first (a box read alone comes back empty on
+    a dusty scan), and money / count / percent boxes may hold only digits
+    and their marks. Returns "" when nothing can be read.
+    """
+    data = _bytes(source)
+    key = (_hash(data), page_no)
+    image = _HIRES.get(key)
+    try:
+        from PIL import ImageFilter, ImageOps
+        import pytesseract
+        if image is None:
+            from pdf2image import convert_from_bytes
+            if not any(k[0] == key[0] for k in _HIRES):
+                _HIRES.clear()
+            image = convert_from_bytes(data, dpi=VALUE_DPI, first_page=page_no, last_page=page_no,
+                                       grayscale=True)[0]
+            _HIRES[key] = image
+        scale = VALUE_DPI / 72.0
+        x0, top, x1, bottom = box
+        left, upper = max(0, int((x0 - 2) * scale)), max(0, int((top - 2) * scale))
+        right, lower = min(image.width, int((x1 + 2) * scale)), min(image.height, int((bottom + 2) * scale))
+        if right - left < 16 or lower - upper < 16:
+            return ""
+        crop = ImageOps.expand(image.crop((left, upper, right, lower)).filter(ImageFilter.MedianFilter(3)),
+                               border=20, fill=255)
+        config = "--psm 7" + (f" -c tessedit_char_whitelist={VALUE_WHITELIST[vtype]}" if vtype in VALUE_WHITELIST else "")
+        return pytesseract.image_to_string(crop, config=config).strip()
+    except Exception as e:  # tesseract/poppler missing or failed: no second reading, not a crash
+        logger.warning("value box OCR failed on page %d: %s", page_no, type(e).__name__)
+        return ""
+
+
 def read_layout(source: Source, *, ocr: bool = True) -> List[PageLayout]:
     """Positioned words for every page. Pages with almost no text layer are
     OCR'd (if `ocr`). Results are cached per file content for the process."""

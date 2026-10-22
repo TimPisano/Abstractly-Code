@@ -24,7 +24,7 @@ from .acroform import FormFieldValue, read_acroform
 from .checks import run_checks
 from .forms import all_forms
 from .forms.base import Anchor, FormSpec, Rule
-from .layout import PageLayout, Word, chains, group_lines, ocr_region, read_layout
+from .layout import PageLayout, Word, chains, group_lines, ocr_region, ocr_value_box, read_layout
 from .pii import is_restricted_field, mask_ssns
 from .values import coerce, fill_address_parts, tidy
 
@@ -187,7 +187,15 @@ def _box_text(page: PageLayout, anchor: Anchor, hit) -> Tuple[str, Tuple[float, 
     return text, (bx0, max(by0, bottoma + 1 if below_only else by0), bx1, by1)
 
 
+SECOND_READ_TYPES = ("money", "int", "pct", "date")
+SECOND_READ_NOTE = "Verify against the document."
+
+
 def _from_anchors(rule: Rule, pages: List[PageLayout], phrases, data: bytes) -> Optional[Tuple[str, int, str]]:
+    """(value, page, raw) from the first anchor that yields a value. On an
+    OCR'd page a typed value also gets a second reading of its box alone
+    (ocr_value_box), returned as a 4th item: a note when the readings
+    disagree, or when the box reading is the only one."""
     for anchor in rule.anchors:
         candidates = [p for p in pages if anchor.page is None or p.page == anchor.page]
         hits = []
@@ -203,8 +211,19 @@ def _from_anchors(rule: Rule, pages: List[PageLayout], phrases, data: bytes) -> 
             # whole-page OCR can drop short values beside table rules; re-read the box alone
             raw = ocr_region(data, page.page, box)
             value = _parse(rule, raw, phrases)
+        if page.source == "ocr" and rule.type in SECOND_READ_TYPES:
+            second_raw = ocr_value_box(data, page.page, box, rule.type)
+            second = _parse(rule, second_raw, phrases)
+            if value is None and second is not None:
+                return second, page.page, second_raw, (
+                    f"Read from the value box alone ('{second_raw}'); the page's OCR found nothing here. "
+                    f"{SECOND_READ_NOTE}")
+            if value is not None and second is not None and second != value:
+                return value, page.page, raw, (
+                    f"The page's OCR reads '{raw.strip()}' here, but a second reading of the box alone at 400 DPI "
+                    f"reads '{second_raw}'. {SECOND_READ_NOTE}")
         if value is not None:
-            return value, page.page, raw
+            return value, page.page, raw, None
     return None
 
 
@@ -290,7 +309,8 @@ def extract_document(source: Source, *, use_acroform: bool = True, ocr: bool = T
             method = "ocr" if found and any(p.page == found[1] and p.source == "ocr" for p in pages) else "layout"
         if found is None:
             continue
-        value, page_no, raw = found
+        value, page_no, raw = found[:3]
+        note = found[3] if len(found) > 3 else None
         result["program_fields"][rule.name] = {
             "value": tidy(rule.name, value),
             "source": {"page": page_no, "quote": mask_ssns(raw)[:200]},
@@ -298,6 +318,8 @@ def extract_document(source: Source, *, use_acroform: bool = True, ocr: bool = T
             "method": method,
             "canonical": rule.canonical,
         }
+        if note:
+            result["program_fields"][rule.name].update(confidence="low", check_note=mask_ssns(note))
     if spec.program == "PBV" and spec.doc_kind == "hap_contract":
         # units, bedroom mix and rents live in the PHA's Exhibit A, not on the form
         from .exhibits import read_exhibit_a
