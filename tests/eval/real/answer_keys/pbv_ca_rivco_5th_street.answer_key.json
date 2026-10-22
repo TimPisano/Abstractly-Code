@@ -1,0 +1,103 @@
+{
+  "id": "pbv_ca_rivco_5th_street",
+  "form": "HUD-52530B PBV HAP Contract for Existing Housing, Part 1 (04/2023), with the PHA's Exhibit A",
+  "program": "PBV",
+  "doc_type": "hap_contract",
+  "real": true,
+  "doc_file": "docs/pbv_ca_rivco_5th_street.pdf",
+  "source_url": "https://media.rivcocob.org/proceeds/2026/p2026_01_13_files/13.01001.pdf",
+  "source_pages": [
+    4,
+    13
+  ],
+  "notes": "Form of contract approved by the board; effective date blank. The owner's name is spelled three ways in the packet: 'Mercy Housing Living Centers' (contract p.1), 'Mercy House Living Centers' (execution page, typed) and 'Mercy Housing Leasing Centers' (staff report); the cover letter says 'Mercy House'. The PDF keeps three fillable-field values that are not in its printed text: owner name, '20 years' and '7' (meaning of '7' unclear). PBV contracts are not in HUD's multifamily Section 8 database, and the project is not in the LIHTC database.",
+  "lease_fields": {
+    "tenant": null,
+    "landlord": "Mercy House Living Centers",
+    "rent_amount": null,
+    "lease_start_date": null,
+    "lease_end_date": null,
+    "property_address": "926 and 932 W. 5th Street, Corona, CA 92882",
+    "security_deposit": null,
+    "cam_charges": null,
+    "rent_escalation": null,
+    "renewal_options": null,
+    "permitted_use": null,
+    "exclusivity_clause": null,
+    "insurance_requirements": null,
+    "default_cure_period": null,
+    "square_footage": null
+  },
+  "lease_field_status": {
+    "landlord": {
+      "status": "proposed",
+      "basis": "p.8 execution page (p.1 s.1a prints 'Mercy Housing Living Centers')"
+    },
+    "property_address": {
+      "status": "proposed",
+      "basis": "Exhibit A"
+    }
+  },
+  "program_fields": {
+    "pha_name": {
+      "value": "Housing Authority of the County of Riverside",
+      "type": "text",
+      "status": "proposed",
+      "basis": "Part 1 s.1a"
+    },
+    "owner_name": {
+      "value": "Mercy House Living Centers",
+      "type": "text",
+      "status": "proposed",
+      "basis": "p.8 execution page and the packet's cover letter ('Mercy House'); p.1 s.1a prints 'Mercy Housing Living Centers'. Corrected after the first run, see REVIEW.md"
+    },
+    "initial_term": {
+      "value": "20 years",
+      "type": "text",
+      "status": "proposed",
+      "basis": "fillable form field 'Textfield-2' on Part 1 (the value is in the PDF's form fields, not its printed text)"
+    },
+    "project_name": {
+      "value": "5th Street Housing",
+      "type": "text",
+      "status": "proposed",
+      "basis": "Exhibit A"
+    },
+    "street_address": {
+      "value": "926 and 932 W. 5th Street, Corona, CA 92882",
+      "type": "text",
+      "status": "proposed",
+      "basis": "Exhibit A"
+    },
+    "contract_units": {
+      "value": "11",
+      "type": "int",
+      "status": "proposed",
+      "basis": "Exhibit A"
+    },
+    "total_units": {
+      "value": "12",
+      "type": "int",
+      "status": "proposed",
+      "basis": "Exhibit A"
+    },
+    "pbv_units_1br": {
+      "value": "4",
+      "type": "int",
+      "status": "proposed",
+      "basis": "Exhibit A"
+    },
+    "pbv_units_2br": {
+      "value": "7",
+      "type": "int",
+      "status": "proposed",
+      "basis": "Exhibit A"
+    },
+    "ami_limit_pct": {
+      "value": "30%",
+      "type": "pct",
+      "status": "proposed",
+      "basis": "Exhibit A table"
+    }
+  }
+}

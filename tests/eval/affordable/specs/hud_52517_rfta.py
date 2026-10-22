@@ -1,0 +1,68 @@
+"""HUD-52517 Request for Tenancy Approval (HCV), SFHA copy of the HUD form. AcroForm."""
+
+OWNER = "Maple Ridge Housing Partners LP"
+HEAD = "Renata Quillfeather"
+UNIT = "1450 Maple Ridge Drive, Apt 2B, Riverbend, IN 46990"
+
+SPEC = {
+    "id": "hud_52517_rfta",
+    "source": "hud_52517_rfta.pdf",
+    "form": "HUD-52517 Request for Tenancy Approval (exp. 04/30/2026)",
+    "program": "HCV",
+    "doc_type": "rfta",
+    "notes": "Same fictional HCV unit as the hud_52641_* HAP contract samples (requested rent = contract rent).",
+    "placements": [
+        {"acro": "1 Name of Public Housing Agency PHA", "text": "Riverbend Housing Authority"},
+        {"acro": "2 Address of Unit street address unit  city state", "text": UNIT, "size": 8},
+        {"acro": "3 Requested Lease Start Date", "text": "12/01/2026"},
+        {"acro": "4 Number of Bedrooms", "text": "2"},
+        {"acro": "5Year Constructed", "text": "1998"},
+        {"acro": "6 Proposed Rent", "text": "$1,325.00"},
+        {"acro": "7Security Deposit Amt", "text": "$1,000.00"},
+        {"acro": "Text4", "text": "11/01/2026"},
+        {"acro": "Lowrise apartment building 4 stories or fewer", "text": "X"},
+        {"acro": "Natural gas", "text": "X"},
+        {"acro": "Paid by-0", "text": "T"},
+        {"acro": "Electric-0", "text": "X"},
+        {"acro": "Paid by-1", "text": "T"},
+        {"acro": "Natural gas-1", "text": "X"},
+        {"acro": "Paid by-2", "text": "O"},
+        {"acro": "Textfield-1", "text": "T"},
+        {"acro": "Textfield-2", "text": "O"},
+        {"acro": "Textfield-3", "text": "O"},
+        {"acro": "Textfield-4", "text": "O"},
+        {"acro": "Textfield-5", "text": "T"},
+        {"acro": "Print or Type Name of OwnerOwner Representative", "text": OWNER},
+        {"acro": "Print or Type Name of Household Head", "text": HEAD},
+        {"acro": "Business Address", "text": "200 Commerce Way, Suite 410, Riverbend, IN 46990", "size": 8},
+        {"acro": "Present Address", "text": "88 Juniper Court, Riverbend, IN 46991", "size": 8},
+        {"acro": "Telephone Number", "text": "(317) 555-0142"},
+        {"acro": "Date mmddyyyy", "text": "10/14/2026"},
+        {"acro": "Telephone Number-0", "text": "(317) 555-0188"},
+        {"acro": "Date mmddyyyy-0", "text": "10/14/2026"},
+    ],
+    # Expected values for our 15 lease fields; None = the form doesn't state it.
+    "lease_fields": {
+        "tenant": HEAD,
+        "landlord": OWNER,
+        "rent_amount": "$1,325.00",
+        "lease_start_date": "12/01/2026",
+        "lease_end_date": None,
+        "property_address": UNIT,
+        "security_deposit": "$1,000.00",
+    },
+    "program_fields": {
+        "pha_name": {"value": "Riverbend Housing Authority", "type": "text"},
+        "unit_address": {"value": UNIT, "type": "text"},
+        "requested_lease_start": {"value": "12/01/2026", "type": "date"},
+        "bedrooms": {"value": "2", "type": "int"},
+        "year_constructed": {"value": "1998", "type": "int"},
+        "proposed_rent": {"value": "$1,325.00", "type": "money"},
+        "security_deposit": {"value": "$1,000.00", "type": "money"},
+        "date_unit_available": {"value": "11/01/2026", "type": "date"},
+        "owner_name": {"value": OWNER, "type": "text"},
+        "household_head": {"value": HEAD, "type": "text"},
+        "structure_type": {"value": "Low-rise apartment building", "type": "checkbox"},
+        "heating_fuel": {"value": "Natural gas, paid by tenant", "type": "checkbox"},
+    },
+}

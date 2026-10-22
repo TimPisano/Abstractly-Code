@@ -1,0 +1,101 @@
+{
+  "id": "hud_52670",
+  "form": "HUD-52670 Housing Owner's Certification & Application for Housing Assistance Payments (05/2014)",
+  "program": "PBRA",
+  "doc_type": "pbra_voucher",
+  "source_file": "sources/hud_52670.pdf",
+  "sample_file": "samples/hud_52670.pdf",
+  "synthetic": true,
+  "notes": "December 2026 voucher for the fictional 48-unit Oakmont Terrace (same project as hud_50059). No tenant, owner, unit rent or address on this form, so every lease field is None.",
+  "lease_fields": {
+    "tenant": null,
+    "landlord": null,
+    "rent_amount": null,
+    "lease_start_date": null,
+    "lease_end_date": null,
+    "property_address": null,
+    "security_deposit": null
+  },
+  "program_fields": {
+    "project_name": {
+      "value": "Oakmont Terrace",
+      "type": "text"
+    },
+    "project_number": {
+      "value": "073-35412",
+      "type": "text"
+    },
+    "contract_number": {
+      "value": "IN36L991417",
+      "type": "text"
+    },
+    "subsidy_type": {
+      "value": "Section 8",
+      "type": "text"
+    },
+    "management_agent": {
+      "value": "Oakmont Property Management LLC",
+      "type": "text"
+    },
+    "total_units": {
+      "value": "48",
+      "type": "int"
+    },
+    "units_subsidized": {
+      "value": "45",
+      "type": "int"
+    },
+    "units_abated": {
+      "value": "0",
+      "type": "int"
+    },
+    "units_vacant": {
+      "value": "2",
+      "type": "int"
+    },
+    "units_market": {
+      "value": "1",
+      "type": "int"
+    },
+    "voucher_month": {
+      "value": "12/2026",
+      "type": "text"
+    },
+    "regular_units_billed": {
+      "value": "45",
+      "type": "int"
+    },
+    "regular_assistance": {
+      "value": "$31,486.00",
+      "type": "money",
+      "shown_as": "31,486.00"
+    },
+    "adjustment_units": {
+      "value": "2",
+      "type": "int"
+    },
+    "adjustment_amount": {
+      "value": "$412.00",
+      "type": "money",
+      "shown_as": "412.00"
+    },
+    "vacancy_claim_units": {
+      "value": "1",
+      "type": "int"
+    },
+    "vacancy_claim_amount": {
+      "value": "$1,104.00",
+      "type": "money",
+      "shown_as": "1,104.00"
+    },
+    "total_requested": {
+      "value": "$33,002.00",
+      "type": "money",
+      "shown_as": "33,002.00"
+    },
+    "signer_date": {
+      "value": "12/10/2026",
+      "type": "date"
+    }
+  }
+}

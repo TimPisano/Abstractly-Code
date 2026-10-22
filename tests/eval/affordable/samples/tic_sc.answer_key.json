@@ -1,0 +1,169 @@
+{
+  "id": "tic_sc",
+  "form": "SC Housing Tenant Income Certification (2024)",
+  "program": "LIHTC",
+  "doc_type": "tic",
+  "source_file": "sources/tic_sc.pdf",
+  "sample_file": "samples/tic_sc.pdf",
+  "synthetic": true,
+  "notes": "Initial certification, 3-person household, 2BR at 60% AMI, no rental assistance. Gross rent = tenant rent + UA; max rent = 30% of the 60% limit at 3 persons / 12.",
+  "lease_fields": {
+    "tenant": "Marguerite Ashdown",
+    "landlord": null,
+    "rent_amount": "$1,166",
+    "lease_start_date": null,
+    "lease_end_date": null,
+    "property_address": "410 Wren Hollow Road, Greenfield, SC 29640",
+    "security_deposit": null
+  },
+  "program_fields": {
+    "certification_type": {
+      "value": "Initial Certification",
+      "type": "checkbox"
+    },
+    "effective_date": {
+      "value": "11/01/2026",
+      "type": "date"
+    },
+    "initial_qualification_date": {
+      "value": "11/01/2026",
+      "type": "date"
+    },
+    "move_in_date": {
+      "value": "11/01/2026",
+      "type": "date"
+    },
+    "property_name": {
+      "value": "Palmetto Bend Apartments",
+      "type": "text"
+    },
+    "county": {
+      "value": "Maple Ridge County",
+      "type": "text"
+    },
+    "bin": {
+      "value": "SC-26-00123",
+      "type": "text"
+    },
+    "building_address": {
+      "value": "410 Wren Hollow Road, Greenfield, SC 29640",
+      "type": "text"
+    },
+    "unit_number": {
+      "value": "C-204",
+      "type": "text"
+    },
+    "bedrooms": {
+      "value": "2",
+      "type": "int"
+    },
+    "household_size": {
+      "value": "3",
+      "type": "int"
+    },
+    "head_of_household": {
+      "value": "Marguerite Ashdown",
+      "type": "text"
+    },
+    "total_employment_income": {
+      "value": "$33,800",
+      "type": "money"
+    },
+    "total_other_income": {
+      "value": "$2,400",
+      "type": "money"
+    },
+    "asset_income": {
+      "value": "$9",
+      "type": "money"
+    },
+    "total_annual_income": {
+      "value": "$36,209",
+      "type": "money"
+    },
+    "income_limit": {
+      "value": "$52,950",
+      "type": "money"
+    },
+    "designated_income_restriction_pct": {
+      "value": "60%",
+      "type": "checkbox"
+    },
+    "household_income_at_move_in": {
+      "value": "$36,209",
+      "type": "money"
+    },
+    "household_size_at_move_in": {
+      "value": "3",
+      "type": "int"
+    },
+    "tenant_paid_rent": {
+      "value": "$1,166",
+      "type": "money"
+    },
+    "utility_allowance": {
+      "value": "$142",
+      "type": "money"
+    },
+    "gross_rent": {
+      "value": "$1,308",
+      "type": "money"
+    },
+    "program": {
+      "value": "Housing Credit",
+      "type": "checkbox"
+    },
+    "member_1_last_name": {
+      "value": "Ashdown",
+      "type": "text"
+    },
+    "member_1_first_name": {
+      "value": "Marguerite",
+      "type": "text"
+    },
+    "member_1_relationship": {
+      "value": "Head",
+      "type": "text"
+    },
+    "member_1_dob": {
+      "value": "04/17/1992",
+      "type": "date"
+    },
+    "member_2_last_name": {
+      "value": "Ashdown",
+      "type": "text"
+    },
+    "member_2_first_name": {
+      "value": "Felix",
+      "type": "text"
+    },
+    "member_2_relationship": {
+      "value": "Child",
+      "type": "text"
+    },
+    "member_2_dob": {
+      "value": "08/02/2017",
+      "type": "date"
+    },
+    "member_3_last_name": {
+      "value": "Ashdown",
+      "type": "text"
+    },
+    "member_3_first_name": {
+      "value": "Iris",
+      "type": "text"
+    },
+    "member_3_relationship": {
+      "value": "Child",
+      "type": "text"
+    },
+    "member_3_dob": {
+      "value": "01/23/2020",
+      "type": "date"
+    },
+    "maximum_rent_limit": {
+      "value": "$1,323",
+      "type": "money"
+    }
+  }
+}

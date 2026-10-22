@@ -1,0 +1,82 @@
+{
+  "id": "lura_co_chfa",
+  "form": "CHFA Low-Income Housing Tax Credit Land Use Restriction Agreement (2024 template, 9/23 rev)",
+  "program": "LIHTC",
+  "doc_type": "lura",
+  "source_file": "sources/lura_co_chfa.pdf",
+  "sample_file": "samples/lura_co_chfa.pdf",
+  "synthetic": true,
+  "notes": "Agreement date's year (2024) is printed by the template; only 'December 9' is typed. Bracketed drafter options left unresolved. Signers are fictional.",
+  "lease_fields": {
+    "tenant": null,
+    "landlord": "Cedar Hollow Housing LP",
+    "rent_amount": null,
+    "lease_start_date": null,
+    "lease_end_date": null,
+    "property_address": "2750 Cedar Hollow Lane, Alder Springs, CO 81099",
+    "security_deposit": null
+  },
+  "program_fields": {
+    "agreement_date": {
+      "value": "December 9, 2024",
+      "shown_as": "December 9",
+      "type": "date"
+    },
+    "owner_name": {
+      "value": "Cedar Hollow Housing LP",
+      "type": "text"
+    },
+    "owner_entity_type": {
+      "value": "limited partnership",
+      "type": "text"
+    },
+    "total_units": {
+      "value": "46",
+      "type": "int"
+    },
+    "city": {
+      "value": "Alder Springs",
+      "type": "text"
+    },
+    "county": {
+      "value": "Larkspur",
+      "type": "text"
+    },
+    "project_name": {
+      "value": "Cedar Hollow Apartments",
+      "type": "text"
+    },
+    "minimum_set_aside": {
+      "value": "40-60",
+      "type": "checkbox"
+    },
+    "units_at_60_pct_ami": {
+      "value": "44",
+      "type": "int"
+    },
+    "owner_notice_contact": {
+      "value": "Dana Whitlock-Reyes",
+      "type": "text"
+    },
+    "owner_notice_email": {
+      "value": "notices@cedarhollow.example",
+      "type": "text"
+    },
+    "authority_signer": {
+      "value": "Marta Evergreen-Soto",
+      "type": "text"
+    },
+    "street_address": {
+      "value": "2750 Cedar Hollow Lane, Alder Springs, CO 81099",
+      "type": "text"
+    },
+    "bin": {
+      "value": "CO-26-00417",
+      "type": "text"
+    },
+    "min_applicable_fraction": {
+      "value": "95.65",
+      "type": "pct"
+    }
+  }
+}

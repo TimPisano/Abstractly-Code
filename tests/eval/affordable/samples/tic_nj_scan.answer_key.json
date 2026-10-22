@@ -1,0 +1,197 @@
+{
+  "id": "tic_nj_scan",
+  "form": "NJ HMFA Tenant Income Certification (2025), scanned/OCR'd copy",
+  "program": "LIHTC",
+  "doc_type": "tic",
+  "source_file": "sources/tic_nj_scan.pdf",
+  "sample_file": "samples/tic_nj_scan.pdf",
+  "synthetic": true,
+  "notes": "Move-in certification, 5-person household, 3BR income-averaging unit designated at 80% AMI. Gross rent = tenant rent + UA + $25 mandatory fee. OCR text layer underneath; positions approximate.",
+  "lease_fields": {
+    "tenant": "Desmond Okafor-Lind",
+    "landlord": null,
+    "rent_amount": "$1,810",
+    "lease_start_date": null,
+    "lease_end_date": null,
+    "property_address": "75 Quarry Lane, Bramwell, NJ 08999",
+    "security_deposit": null
+  },
+  "program_fields": {
+    "certification_type": {
+      "value": "Move-in",
+      "type": "checkbox"
+    },
+    "effective_date": {
+      "value": "10/15/2026",
+      "type": "date"
+    },
+    "initial_qualification_date": {
+      "value": "10/15/2026",
+      "type": "date"
+    },
+    "move_in_date": {
+      "value": "10/15/2026",
+      "type": "date"
+    },
+    "property_name": {
+      "value": "Quarry Lane Residences",
+      "type": "text"
+    },
+    "county": {
+      "value": "Maple Ridge County",
+      "type": "text"
+    },
+    "bin": {
+      "value": "NJ-26-00977",
+      "type": "text"
+    },
+    "building_address": {
+      "value": "75 Quarry Lane, Bramwell, NJ 08999",
+      "type": "text"
+    },
+    "unit_number": {
+      "value": "3C",
+      "type": "text"
+    },
+    "bedrooms": {
+      "value": "3",
+      "type": "int"
+    },
+    "household_size": {
+      "value": "5",
+      "type": "int"
+    },
+    "head_of_household": {
+      "value": "Desmond Okafor-Lind",
+      "type": "text"
+    },
+    "total_employment_income": {
+      "value": "$76,000",
+      "type": "money"
+    },
+    "asset_income": {
+      "value": "$64",
+      "type": "money"
+    },
+    "total_annual_income": {
+      "value": "$76,064",
+      "type": "money"
+    },
+    "income_limit": {
+      "value": "$84,700",
+      "type": "money"
+    },
+    "designated_income_restriction_pct": {
+      "value": "80%",
+      "type": "checkbox"
+    },
+    "household_income_at_move_in": {
+      "value": "$76,064",
+      "type": "money"
+    },
+    "household_size_at_move_in": {
+      "value": "5",
+      "type": "int"
+    },
+    "tenant_paid_rent": {
+      "value": "$1,810",
+      "type": "money"
+    },
+    "utility_allowance": {
+      "value": "$188",
+      "type": "money"
+    },
+    "other_non_optional_fees": {
+      "value": "$25",
+      "type": "money"
+    },
+    "gross_rent": {
+      "value": "$2,023",
+      "type": "money"
+    },
+    "program": {
+      "value": "Housing Credit",
+      "type": "checkbox"
+    },
+    "member_1_last_name": {
+      "value": "Okafor-Lind",
+      "type": "text"
+    },
+    "member_1_first_name": {
+      "value": "Desmond",
+      "type": "text"
+    },
+    "member_1_relationship": {
+      "value": "Head",
+      "type": "text"
+    },
+    "member_1_dob": {
+      "value": "06/14/1982",
+      "type": "date"
+    },
+    "member_2_last_name": {
+      "value": "Okafor-Lind",
+      "type": "text"
+    },
+    "member_2_first_name": {
+      "value": "Priya",
+      "type": "text"
+    },
+    "member_2_relationship": {
+      "value": "Spouse",
+      "type": "text"
+    },
+    "member_2_dob": {
+      "value": "02/27/1985",
+      "type": "date"
+    },
+    "member_3_last_name": {
+      "value": "Okafor-Lind",
+      "type": "text"
+    },
+    "member_3_first_name": {
+      "value": "Rafael",
+      "type": "text"
+    },
+    "member_3_relationship": {
+      "value": "Child",
+      "type": "text"
+    },
+    "member_3_dob": {
+      "value": "09/05/2007",
+      "type": "date"
+    },
+    "member_4_last_name": {
+      "value": "Okafor-Lind",
+      "type": "text"
+    },
+    "member_4_first_name": {
+      "value": "Amara",
+      "type": "text"
+    },
+    "member_4_relationship": {
+      "value": "Child",
+      "type": "text"
+    },
+    "member_4_dob": {
+      "value": "12/11/2013",
+      "type": "date"
+    },
+    "member_5_last_name": {
+      "value": "Okafor-Lind",
+      "type": "text"
+    },
+    "member_5_first_name": {
+      "value": "Teo",
+      "type": "text"
+    },
+    "member_5_relationship": {
+      "value": "Child",
+      "type": "text"
+    },
+    "member_5_dob": {
+      "value": "05/20/2018",
+      "type": "date"
+    }
+  }
+}

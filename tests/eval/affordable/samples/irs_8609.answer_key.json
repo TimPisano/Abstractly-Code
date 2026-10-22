@@ -1,0 +1,109 @@
+{
+  "id": "irs_8609",
+  "form": "IRS Form 8609 Low-Income Housing Credit Allocation and Certification (Rev. 12-2021)",
+  "program": "LIHTC",
+  "doc_type": "irs_lihtc_form",
+  "source_file": "sources/irs_8609.pdf",
+  "sample_file": "samples/irs_8609.pdf",
+  "synthetic": true,
+  "notes": "Same fictional building as irs_8586, irs_8823 and lura_co_chfa. TINs/EINs are masked on purpose.",
+  "lease_fields": {
+    "tenant": null,
+    "landlord": "Cedar Hollow Housing LP",
+    "rent_amount": null,
+    "lease_start_date": null,
+    "lease_end_date": null,
+    "property_address": "2750 Cedar Hollow Lane, Alder Springs, CO 81099",
+    "security_deposit": null
+  },
+  "program_fields": {
+    "building_name": {
+      "value": "Cedar Hollow Apartments",
+      "type": "text"
+    },
+    "building_address": {
+      "value": "2750 Cedar Hollow Lane, Alder Springs, CO 81099",
+      "type": "text"
+    },
+    "agency_name": {
+      "value": "Colorado Housing and Finance Authority",
+      "type": "text"
+    },
+    "owner_name": {
+      "value": "Cedar Hollow Housing LP",
+      "type": "text"
+    },
+    "owner_tin_masked": {
+      "value": "XX-XXX4821",
+      "type": "text"
+    },
+    "bin": {
+      "value": "CO-26-00417",
+      "type": "text"
+    },
+    "allocation_date": {
+      "value": "06/14/2024",
+      "type": "date"
+    },
+    "max_credit_amount": {
+      "value": "415,800",
+      "type": "money"
+    },
+    "credit_percentage": {
+      "value": "9.00",
+      "type": "pct"
+    },
+    "max_qualified_basis": {
+      "value": "4,620,000",
+      "type": "money"
+    },
+    "placed_in_service_date": {
+      "value": "09/30/2026",
+      "type": "date"
+    },
+    "agency_official": {
+      "value": "Marta Evergreen-Soto",
+      "type": "text"
+    },
+    "agency_signature_date": {
+      "value": "11/20/2026",
+      "type": "date"
+    },
+    "eligible_basis": {
+      "value": "4,830,000",
+      "type": "money"
+    },
+    "original_qualified_basis": {
+      "value": "4,620,000",
+      "type": "money"
+    },
+    "owner_signature_date": {
+      "value": "02/15/2027",
+      "type": "date"
+    },
+    "owner_signer": {
+      "value": "Dana Whitlock-Reyes",
+      "type": "text"
+    },
+    "first_credit_year": {
+      "value": "2026",
+      "type": "int"
+    },
+    "allocation_type": {
+      "value": "6b Newly constructed and not federally subsidized",
+      "type": "checkbox"
+    },
+    "multiple_building_project": {
+      "value": "No",
+      "type": "checkbox"
+    },
+    "begin_credit_year_after_pis": {
+      "value": "No",
+      "type": "checkbox"
+    },
+    "minimum_set_aside": {
+      "value": "40-60",
+      "type": "checkbox"
+    }
+  }
+}

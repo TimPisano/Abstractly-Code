@@ -1,0 +1,78 @@
+{
+  "id": "hud_52530a",
+  "form": "HUD-52530A PBV HAP Contract Part 1, New Construction or Rehabilitation (07/2019)",
+  "program": "PBV",
+  "doc_type": "hap_contract",
+  "source_file": "sources/hud_52530a.pdf",
+  "sample_file": "samples/hud_52530a.pdf",
+  "synthetic": true,
+  "notes": "Single-stage PBV new construction project, 20-year initial term, 12 units designated for elderly families. Multi-stage execution pages (10-13) left blank, as a single-stage contract would.",
+  "lease_fields": {
+    "tenant": null,
+    "landlord": "Maple Ridge Commons II LLC",
+    "rent_amount": null,
+    "lease_start_date": "July 1, 2027",
+    "lease_end_date": null,
+    "property_address": "Maple Ridge Commons Phase II, 1520 Maple Ridge Drive, Riverbend, IN 46990",
+    "security_deposit": null
+  },
+  "program_fields": {
+    "contract_number": {
+      "value": "RHA-PBV-2027-011",
+      "type": "text"
+    },
+    "project": {
+      "value": "Maple Ridge Commons Phase II, 1520 Maple Ridge Drive, Riverbend, IN 46990",
+      "type": "text"
+    },
+    "pha_name": {
+      "value": "Riverbend Housing Authority",
+      "type": "text"
+    },
+    "owner_name": {
+      "value": "Maple Ridge Commons II LLC",
+      "type": "text"
+    },
+    "effective_date": {
+      "value": "07/01/2027",
+      "type": "date",
+      "shown_as": "July 1, 2027"
+    },
+    "initial_term": {
+      "value": "20 years",
+      "type": "text"
+    },
+    "units_prior_hud_assistance": {
+      "value": "0",
+      "type": "int"
+    },
+    "units_federal_rent_restriction": {
+      "value": "0",
+      "type": "int"
+    },
+    "elderly_designated_units": {
+      "value": "12",
+      "type": "int"
+    },
+    "pha_signatory": {
+      "value": "Delphine Arkwright, Executive Director",
+      "type": "text"
+    },
+    "pha_signature_date": {
+      "value": "06/24/2027",
+      "type": "date"
+    },
+    "owner_signatory": {
+      "value": "Imogen Fairbairn, Manager",
+      "type": "text"
+    },
+    "owner_signature_date": {
+      "value": "06/22/2027",
+      "type": "date"
+    },
+    "project_type": {
+      "value": "Single-stage",
+      "type": "checkbox"
+    }
+  }
+}

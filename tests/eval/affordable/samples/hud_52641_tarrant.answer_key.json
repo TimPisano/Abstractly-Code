@@ -1,0 +1,89 @@
+{
+  "id": "hud_52641_tarrant",
+  "form": "HUD-52641 HAP Contract, Section 8 Tenant-Based Assistance (4/2023)",
+  "program": "HCV",
+  "doc_type": "hap_contract",
+  "source_file": "sources/hud_52641_tarrant.pdf",
+  "sample_file": "samples/hud_52641_tarrant.pdf",
+  "synthetic": true,
+  "notes": "Same fictional HCV unit as hud_52517_rfta and hud_52641_rhanc. Text layer of the source has no word spaces. HAP = min(payment standard $1,480, gross rent $1,467) - TTP $755.",
+  "lease_fields": {
+    "tenant": "Renata Quillfeather",
+    "landlord": "Maple Ridge Housing Partners LP",
+    "rent_amount": "$1,325.00",
+    "lease_start_date": "December 1, 2026",
+    "lease_end_date": "November 30, 2027",
+    "property_address": "1450 Maple Ridge Drive, Apt 2B, Riverbend, IN 46990",
+    "security_deposit": null
+  },
+  "program_fields": {
+    "tenant_name": {
+      "value": "Renata Quillfeather",
+      "type": "text"
+    },
+    "contract_unit_address": {
+      "value": "1450 Maple Ridge Drive, Apt 2B, Riverbend, IN 46990",
+      "type": "text"
+    },
+    "household_member_1": {
+      "value": "Renata Quillfeather",
+      "type": "text"
+    },
+    "household_member_2": {
+      "value": "Milo Quillfeather",
+      "type": "text"
+    },
+    "household_member_3": {
+      "value": "Ivy Quillfeather",
+      "type": "text"
+    },
+    "lease_term_start": {
+      "value": "12/01/2026",
+      "type": "date",
+      "shown_as": "December 1, 2026"
+    },
+    "lease_term_end": {
+      "value": "11/30/2027",
+      "type": "date",
+      "shown_as": "November 30, 2027"
+    },
+    "initial_rent_to_owner": {
+      "value": "$1,325",
+      "type": "money",
+      "shown_as": "1,325.00"
+    },
+    "initial_hap": {
+      "value": "$712",
+      "type": "money",
+      "shown_as": "712"
+    },
+    "pha_name": {
+      "value": "Riverbend Housing Authority",
+      "type": "text"
+    },
+    "owner_name": {
+      "value": "Maple Ridge Housing Partners LP",
+      "type": "text"
+    },
+    "pha_signature_date": {
+      "value": "11/24/2026",
+      "type": "date"
+    },
+    "owner_signature_date": {
+      "value": "11/20/2026",
+      "type": "date"
+    },
+    "payee_address": {
+      "value": "200 Commerce Way, Suite 410",
+      "type": "text"
+    },
+    "heating_paid_by": {
+      "value": "T",
+      "type": "checkbox"
+    },
+    "water_paid_by": {
+      "value": "O",
+      "type": "checkbox"
+    }
+  }
+}

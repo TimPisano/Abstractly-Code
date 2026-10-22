@@ -1,0 +1,123 @@
+{
+  "id": "lura_ma_olympia_oaks",
+  "form": "Massachusetts DHCD Tax Credit Regulatory Agreement and Declaration of Restrictive Covenants (MHP 2006 template), unsigned execution copy",
+  "program": "LIHTC",
+  "doc_type": "lura",
+  "real": true,
+  "doc_file": "docs/lura_ma_olympia_oaks.pdf",
+  "source_url": "https://www.amherstma.gov/DocumentCenter/View/23669/735H-AMHR-Tax-Credit-Regulatory-Agreement-Olympia-Oaks",
+  "source_pages": [
+    1,
+    20
+  ],
+  "notes": "Execution copy posted by the Town (dated 'August __, 2013', signature blocks blank except the Town Manager's typed name). The AMI percentage in the Low-Income Tenant definition is left blank in the document, so it is not in the key. HUD's database lists the project under the owner's name ('OLYMPIA AMHERST LP') with 42 units and allocation year 2012; low-income units and bedroom mix are blank there.",
+  "lease_fields": {
+    "tenant": null,
+    "landlord": null,
+    "rent_amount": null,
+    "lease_start_date": null,
+    "lease_end_date": null,
+    "property_address": "85 Olympia Drive, Amherst, Massachusetts",
+    "security_deposit": null,
+    "cam_charges": null,
+    "rent_escalation": null,
+    "renewal_options": null,
+    "permitted_use": null,
+    "exclusivity_clause": null,
+    "insurance_requirements": null,
+    "default_cure_period": null,
+    "square_footage": null
+  },
+  "lease_field_status": {
+    "property_address": {
+      "status": "verified",
+      "basis": "p.3 'Project Land'; HUD LIHTC Database (LIHTCPUB, huduser.gov, file dated 2026-04-30): proj_add '85 OLYMPIA DR', AMHERST MA (hud_id MAC00000077)"
+    }
+  },
+  "program_fields": {
+    "project_name": {
+      "value": "Olympia Oaks",
+      "type": "text",
+      "status": "proposed",
+      "basis": "p.1 recital C"
+    },
+    "owner_name": {
+      "value": "Olympia Amherst Limited Partnership",
+      "type": "text",
+      "status": "verified",
+      "basis": "p.1; HUD LIHTC Database (LIHTCPUB, huduser.gov, file dated 2026-04-30): project 'OLYMPIA AMHERST LP'"
+    },
+    "agency_name": {
+      "value": "Department of Housing and Community Development",
+      "type": "text",
+      "status": "proposed",
+      "basis": "p.1"
+    },
+    "street_address": {
+      "value": "85 Olympia Drive",
+      "type": "text",
+      "status": "verified",
+      "basis": "p.3; HUD LIHTC Database (LIHTCPUB, huduser.gov, file dated 2026-04-30): proj_add '85 OLYMPIA DR'"
+    },
+    "city": {
+      "value": "Amherst",
+      "type": "text",
+      "status": "verified",
+      "basis": "p.3; HUD LIHTC Database (LIHTCPUB, huduser.gov, file dated 2026-04-30): proj_cty 'AMHERST'"
+    },
+    "total_units": {
+      "value": "42",
+      "type": "int",
+      "status": "verified",
+      "basis": "p.1 recital C '42 residential rental unit'; HUD LIHTC Database (LIHTCPUB, huduser.gov, file dated 2026-04-30): n_units 42"
+    },
+    "low_income_units": {
+      "value": "42",
+      "type": "int",
+      "status": "proposed",
+      "basis": "s.5.1: 'no less than 100 percent of the residential units', 'all of the units'"
+    },
+    "min_applicable_fraction": {
+      "value": "100%",
+      "type": "pct",
+      "status": "proposed",
+      "basis": "s.2 'Applicable Fraction ... 100%'"
+    },
+    "units_1br": {
+      "value": "8",
+      "type": "int",
+      "status": "proposed",
+      "basis": "s.5.1"
+    },
+    "units_2br": {
+      "value": "21",
+      "type": "int",
+      "status": "proposed",
+      "basis": "s.5.1"
+    },
+    "units_3br": {
+      "value": "13",
+      "type": "int",
+      "status": "proposed",
+      "basis": "s.5.1"
+    },
+    "units_at_30_pct_ami": {
+      "value": "8",
+      "type": "int",
+      "status": "proposed",
+      "basis": "s.5.1 'no less than 8 ... 30% or less'"
+    },
+    "extended_use_years": {
+      "value": "99",
+      "type": "int",
+      "status": "proposed",
+      "basis": "s.2 'Low-Income Tenant Rental Period ... ninety-nine (99) years'"
+    },
+    "area": {
+      "value": "Springfield, MA HMFA",
+      "type": "text",
+      "status": "proposed",
+      "basis": "s.2 'Area'"
+    }
+  }
+}

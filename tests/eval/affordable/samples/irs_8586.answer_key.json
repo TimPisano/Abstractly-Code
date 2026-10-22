@@ -1,0 +1,45 @@
+{
+  "id": "irs_8586",
+  "form": "IRS Form 8586 Low-Income Housing Credit (Rev. 12-2023)",
+  "program": "LIHTC",
+  "doc_type": "irs_lihtc_form",
+  "source_file": "sources/irs_8586.pdf",
+  "sample_file": "samples/irs_8586.pdf",
+  "synthetic": true,
+  "notes": "Same fictional building as irs_8609. First-year credit simplified to 3/12 of the annual amount.",
+  "lease_fields": {
+    "tenant": null,
+    "landlord": "Cedar Hollow Housing LP",
+    "rent_amount": null,
+    "lease_start_date": null,
+    "lease_end_date": null,
+    "property_address": null,
+    "security_deposit": null
+  },
+  "program_fields": {
+    "taxpayer_name": {
+      "value": "Cedar Hollow Housing LP",
+      "type": "text"
+    },
+    "identifying_number_masked": {
+      "value": "XX-XXX4821",
+      "type": "text"
+    },
+    "forms_8609a_attached": {
+      "value": "1",
+      "type": "int"
+    },
+    "qualified_basis_decreased": {
+      "value": "No",
+      "type": "checkbox"
+    },
+    "current_year_credit": {
+      "value": "103,950",
+      "type": "money"
+    },
+    "total_credit_line5": {
+      "value": "103,950",
+      "type": "money"
+    }
+  }
+}

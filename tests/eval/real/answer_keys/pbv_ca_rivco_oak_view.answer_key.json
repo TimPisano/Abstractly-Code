@@ -1,0 +1,103 @@
+{
+  "id": "pbv_ca_rivco_oak_view",
+  "form": "HUD-52530A PBV HAP Contract for New Construction/Rehab, Part 1 (04/2023), with the PHA's Exhibits A-D",
+  "program": "PBV",
+  "doc_type": "hap_contract",
+  "real": true,
+  "doc_file": "docs/pbv_ca_rivco_oak_view.pdf",
+  "source_url": "https://media.rivcocob.org/proceeds/2025/p2025_05_06_files/13.01001.pdf",
+  "source_pages": [
+    64,
+    85
+  ],
+  "notes": "Form of contract approved by the board; dates blank. Not in HUD's LIHTC database (too new or under another name).",
+  "lease_fields": {
+    "tenant": null,
+    "landlord": "NCRC Murrieta Senior Housing LP",
+    "rent_amount": null,
+    "lease_start_date": null,
+    "lease_end_date": null,
+    "property_address": "24960 Adams Avenue, Murrieta CA 92562",
+    "security_deposit": null,
+    "cam_charges": null,
+    "rent_escalation": null,
+    "renewal_options": null,
+    "permitted_use": null,
+    "exclusivity_clause": null,
+    "insurance_requirements": null,
+    "default_cure_period": null,
+    "square_footage": null
+  },
+  "lease_field_status": {
+    "landlord": {
+      "status": "proposed",
+      "basis": "Part 1 s.1a"
+    },
+    "property_address": {
+      "status": "proposed",
+      "basis": "Exhibit A"
+    }
+  },
+  "program_fields": {
+    "pha_name": {
+      "value": "Housing Authority of the County of Riverside",
+      "type": "text",
+      "status": "proposed",
+      "basis": "Part 1 s.1a"
+    },
+    "owner_name": {
+      "value": "NCRC Murrieta Senior Housing LP",
+      "type": "text",
+      "status": "proposed",
+      "basis": "Part 1 s.1a"
+    },
+    "project_name": {
+      "value": "Oak View Ranch Senior Apartments",
+      "type": "text",
+      "status": "proposed",
+      "basis": "Exhibit A"
+    },
+    "street_address": {
+      "value": "24960 Adams Avenue, Murrieta CA 92562",
+      "type": "text",
+      "status": "proposed",
+      "basis": "Exhibit A"
+    },
+    "total_units": {
+      "value": "81",
+      "type": "int",
+      "status": "proposed",
+      "basis": "Exhibit A"
+    },
+    "contract_units": {
+      "value": "40",
+      "type": "int",
+      "status": "proposed",
+      "basis": "Exhibit A"
+    },
+    "pbv_units_1br": {
+      "value": "35",
+      "type": "int",
+      "status": "proposed",
+      "basis": "Exhibit A"
+    },
+    "pbv_units_2br": {
+      "value": "5",
+      "type": "int",
+      "status": "proposed",
+      "basis": "Exhibit A"
+    },
+    "contract_rent_1br": {
+      "value": "1937",
+      "type": "money",
+      "status": "proposed",
+      "basis": "Exhibit A"
+    },
+    "contract_rent_2br": {
+      "value": "2226",
+      "type": "money",
+      "status": "proposed",
+      "basis": "Exhibit A"
+    }
+  }
+}

@@ -1,0 +1,157 @@
+{
+  "id": "tic_la_lhc",
+  "form": "Louisiana Housing Corporation Tenant Income Certification (HOTMA forms, 2024 layout)",
+  "program": "LIHTC",
+  "doc_type": "tic",
+  "source_file": "sources/tic_la_lhc.pdf",
+  "sample_file": "samples/tic_la_lhc.pdf",
+  "synthetic": true,
+  "notes": "Annual recertification, elderly 2-person household, 1BR at 50% AMI, HCV voucher pays $520 of $807 rent to owner. Recert-only 140% line filled; not over income.",
+  "lease_fields": {
+    "tenant": "Augustin Delacroix-Pell",
+    "landlord": null,
+    "rent_amount": "$287",
+    "lease_start_date": null,
+    "lease_end_date": null,
+    "property_address": "2250 Magnolia Ferry Road, Port Allard, LA 70999",
+    "security_deposit": null
+  },
+  "program_fields": {
+    "certification_type": {
+      "value": "Recertification",
+      "type": "checkbox"
+    },
+    "effective_date": {
+      "value": "09/01/2026",
+      "type": "date"
+    },
+    "initial_qualification_date": {
+      "value": "09/01/2023",
+      "type": "date"
+    },
+    "move_in_date": {
+      "value": "09/01/2023",
+      "type": "date"
+    },
+    "property_name": {
+      "value": "Bayou Cypress Commons",
+      "type": "text"
+    },
+    "county": {
+      "value": "Maple Ridge Parish",
+      "type": "text"
+    },
+    "bin": {
+      "value": "LA-23-00418",
+      "type": "text"
+    },
+    "building_address": {
+      "value": "2250 Magnolia Ferry Road, Port Allard, LA 70999",
+      "type": "text"
+    },
+    "unit_number": {
+      "value": "114",
+      "type": "text"
+    },
+    "bedrooms": {
+      "value": "1",
+      "type": "int"
+    },
+    "household_size": {
+      "value": "2",
+      "type": "int"
+    },
+    "head_of_household": {
+      "value": "Augustin Delacroix-Pell",
+      "type": "text"
+    },
+    "total_ss_pension_income": {
+      "value": "$27,840",
+      "type": "money"
+    },
+    "asset_income": {
+      "value": "$31",
+      "type": "money"
+    },
+    "total_annual_income": {
+      "value": "$27,871",
+      "type": "money"
+    },
+    "income_limit": {
+      "value": "$39,200",
+      "type": "money"
+    },
+    "designated_income_restriction_pct": {
+      "value": "50%",
+      "type": "checkbox"
+    },
+    "household_income_at_move_in": {
+      "value": "$26,118",
+      "type": "money"
+    },
+    "household_size_at_move_in": {
+      "value": "2",
+      "type": "int"
+    },
+    "tenant_paid_rent": {
+      "value": "$287",
+      "type": "money"
+    },
+    "utility_allowance": {
+      "value": "$96",
+      "type": "money"
+    },
+    "rental_assistance": {
+      "value": "$520",
+      "type": "money"
+    },
+    "gross_rent": {
+      "value": "$383",
+      "type": "money"
+    },
+    "program": {
+      "value": "LIHTC",
+      "type": "checkbox"
+    },
+    "member_1_last_name": {
+      "value": "Delacroix-Pell",
+      "type": "text"
+    },
+    "member_1_first_name": {
+      "value": "Augustin",
+      "type": "text"
+    },
+    "member_1_relationship": {
+      "value": "Head",
+      "type": "text"
+    },
+    "member_1_dob": {
+      "value": "03/09/1958",
+      "type": "date"
+    },
+    "member_2_last_name": {
+      "value": "Delacroix-Pell",
+      "type": "text"
+    },
+    "member_2_first_name": {
+      "value": "Celestine",
+      "type": "text"
+    },
+    "member_2_relationship": {
+      "value": "Spouse",
+      "type": "text"
+    },
+    "member_2_dob": {
+      "value": "11/30/1959",
+      "type": "date"
+    },
+    "designated_limit_x_140": {
+      "value": "$54,880",
+      "type": "money"
+    },
+    "assistance_source": {
+      "value": "HUD Housing Choice Voucher",
+      "type": "checkbox"
+    }
+  }
+}

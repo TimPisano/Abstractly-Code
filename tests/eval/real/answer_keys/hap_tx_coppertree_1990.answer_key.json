@@ -1,0 +1,97 @@
+{
+  "id": "hap_tx_coppertree_1990",
+  "form": "HUD Section 8 HAP Contract, Disposition of HUD-Owned Projects, Parts I and II (1990, typewritten, scanned)",
+  "program": "PBRA",
+  "doc_type": "hap_contract",
+  "real": true,
+  "doc_file": "docs/hap_tx_coppertree_1990.pdf",
+  "source_url": "https://www.nhlp.org/wp-content/uploads/HAP-Original-Contract-1990.pdf",
+  "source_pages": [
+    1,
+    47
+  ],
+  "notes": "Heavy OCR noise in the text layer. Two stages: Exhibit 1 lists 114 units (stage 1) and 90 units (stage 2) by OCR. HUD's database shows 263 assisted units today, after later renewals, so the 1990 unit counts are not checkable against it. The PDF is a compilation: page 10 is headed 'HUNTINGTON FOREST', and pages 22-27 are a HAP addendum whose signature block reads 'Owner Shannon Place, Ltd.', 'Russell E. Lomax', dated July 1986. These may be earlier names of the same project or other projects' pages; unresolved. The key only uses pages 1-14 and 28, which name Coppertree / TX24-E000-008.",
+  "lease_fields": {
+    "tenant": null,
+    "landlord": "Texas-Coppertree Village Limited Partnership",
+    "rent_amount": null,
+    "lease_start_date": "November 3, 1990",
+    "lease_end_date": null,
+    "property_address": null,
+    "security_deposit": null,
+    "cam_charges": null,
+    "rent_escalation": null,
+    "renewal_options": null,
+    "permitted_use": null,
+    "exclusivity_clause": null,
+    "insurance_requirements": null,
+    "default_cure_period": null,
+    "square_footage": null
+  },
+  "lease_field_status": {
+    "landlord": {
+      "status": "proposed",
+      "basis": "p.2 (OCR: 'TFXAS- CnPPgRTP.F.E VIT,LAGE LIMITED PARTNERSHIP')"
+    },
+    "lease_start_date": {
+      "status": "proposed",
+      "basis": "p.2 s.1.1(a) stage 1 effective date"
+    }
+  },
+  "program_fields": {
+    "contract_number": {
+      "value": "TX24E000008",
+      "type": "text",
+      "status": "verified",
+      "basis": "p.2 'SECTION 8 PROJECT NUMBER: TX24-E000-008'; HUD Multifamily Assistance & Section 8 Contracts DB, contracts table (current as of 2026-10-06): contract_number TX24E000008"
+    },
+    "rems_property_id": {
+      "value": "800020793",
+      "type": "text",
+      "status": "verified",
+      "basis": "p.1 'REMS ID: 800020793'; HUD Multifamily Assistance & Section 8 Contracts DB, contracts table (current as of 2026-10-06): property_id 800020793"
+    },
+    "owner_name": {
+      "value": "Texas-Coppertree Village Limited Partnership",
+      "type": "text",
+      "status": "proposed",
+      "basis": "p.2"
+    },
+    "effective_date": {
+      "value": "11/03/1990",
+      "type": "date",
+      "status": "proposed",
+      "basis": "p.2 s.1.1(a) stage 1"
+    },
+    "stage1_units": {
+      "value": "114",
+      "type": "int",
+      "status": "proposed",
+      "basis": "p.8 Exhibit 1 stage 1: 64 + 49 + 1"
+    },
+    "stage2_units": {
+      "value": "90",
+      "type": "int",
+      "status": "proposed",
+      "basis": "p.11 Exhibit 1 stage 2: 49 + 39 + 2"
+    },
+    "contract_rent_1br": {
+      "value": "250",
+      "type": "money",
+      "status": "proposed",
+      "basis": "p.11 Exhibit 1"
+    },
+    "contract_rent_2br": {
+      "value": "350",
+      "type": "money",
+      "status": "proposed",
+      "basis": "p.11 Exhibit 1"
+    },
+    "contract_rent_3br": {
+      "value": "395",
+      "type": "money",
+      "status": "proposed",
+      "basis": "p.8/p.11 Exhibit 1"
+    }
+  }
+}
