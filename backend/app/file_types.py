@@ -230,6 +230,21 @@ def _declares_dtd(archive: zipfile.ZipFile, info: zipfile.ZipInfo) -> bool:
             tail = window[-overlap:]
 
 
+def require_safe_excel_parser() -> None:
+    """
+    Refuse to start the app unless openpyxl parses with defusedxml. The
+    DOCTYPE checks only cover the upload routes; every other Excel reader
+    (T-12, deal mismatch, the table path in POST /leases) relies on
+    openpyxl refusing entities, which it does only when defusedxml is
+    installed and OPENPYXL_DEFUSEDXML isn't turned off. Without it, one
+    ~1 KB .xlsx expands to gigabytes (security re-audit).
+    """
+    import openpyxl
+    if not openpyxl.DEFUSEDXML:
+        raise RuntimeError("openpyxl is not using defusedxml, so Excel uploads could expand XML entities. "
+                           "Run `pip install -r backend/requirements.txt` and don't set OPENPYXL_DEFUSEDXML.")
+
+
 def office_bytes_declare_dtd(file_bytes: bytes) -> bool:
     """
     _declares_dtd for the routes that hold an upload in memory (POST

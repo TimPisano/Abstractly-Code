@@ -142,6 +142,10 @@ class _UploadSizedRequest(Request):
         return LEGACY_MAX_CONTENT_LENGTH
 
 
+# Fails startup (gunicorn and run.py) if Excel parsing isn't entity-safe.
+file_types.require_safe_excel_parser()
+
+
 app = Flask(__name__)
 app.request_class = _UploadSizedRequest
 
@@ -1824,8 +1828,17 @@ def create_upload():
     if kind == 'rent_roll':
         options["property_address"] = (request.form.get('property_address') or '').strip() or None
 
-    job_id = database.create_upload_job(team_id, user["id"], kind, filename, stored_path, size, content_hash,
-                                        detected.extension, options, max_active=upload_jobs.MAX_ACTIVE_JOBS_PER_TEAM)
+    try:
+        job_id = database.create_upload_job(team_id, user["id"], kind, filename, stored_path, size, content_hash,
+                                            detected.extension, options,
+                                            max_active=upload_jobs.MAX_ACTIVE_JOBS_PER_TEAM)
+    except Exception:
+        # Usually the write lock timing out under load. Remove the stored
+        # file either way, or refused uploads pile up until the disk check
+        # turns every upload away.
+        logger.exception("Could not record upload job for team %s", team_id)
+        upload_jobs.remove_file(stored_path)
+        return jsonify({"error": "The server is busy right now. Please try again in a few minutes."}), 503
     if job_id is None:
         upload_jobs.remove_file(stored_path)
         return jsonify({"error": too_many_jobs}), 429

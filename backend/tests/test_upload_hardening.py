@@ -182,6 +182,34 @@ def test_real_excel_uploads_still_import():
     print("✓ test_real_excel_uploads_still_import: PASS")
 
 
+def test_the_app_refuses_to_start_without_defusedxml():
+    """
+    Security re-audit: only defusedxml stops the entity bomb on the Excel
+    routes without a DOCTYPE pre-check (T-12, deal mismatch). If it were
+    dropped from requirements, the app must not start at all.
+    """
+    import subprocess
+    from unittest import mock
+    import openpyxl
+    from app import file_types
+    with mock.patch.object(openpyxl, "DEFUSEDXML", False):
+        try:
+            file_types.require_safe_excel_parser()
+        except RuntimeError as e:
+            assert "defusedxml" in str(e)
+        else:
+            raise AssertionError("started without defusedxml")
+    file_types.require_safe_excel_parser()  # installed: no error
+    # The real startup path: importing app.api with defusedxml missing fails.
+    here = os.path.dirname(os.path.abspath(__file__))
+    script = ("import sys; sys.modules['defusedxml'] = None; sys.path.insert(0, '..'); "
+              "import _test_env; import app.api")
+    run = subprocess.run([sys.executable, "-c", script], cwd=here, capture_output=True, text=True, timeout=120)
+    assert run.returncode != 0, "app.api imported without defusedxml"
+    assert "openpyxl is not using defusedxml" in run.stderr, run.stderr[-1000:]
+    print("✓ test_the_app_refuses_to_start_without_defusedxml: PASS")
+
+
 # ---------------------------------------------------------------------------
 # Fix 2: time limits on reading a PDF in the background pipeline
 
@@ -405,6 +433,31 @@ def test_refused_uploads_are_refused_before_the_body_is_read():
     print("✓ test_refused_uploads_are_refused_before_the_body_is_read: PASS")
 
 
+def test_a_database_timeout_on_job_creation_removes_the_upload():
+    """
+    Security re-audit: if the job insert timed out waiting for the database
+    write lock, POST /uploads answered 500 and left the stored file behind;
+    enough of them fill the upload disk and every later upload gets a 503.
+    """
+    import sqlite3
+    from unittest import mock
+    db = _fresh_db()
+    upload_dir, patches = _large_uploads_on()
+    try:
+        with mock.patch.object(database, "create_upload_job",
+                               side_effect=sqlite3.OperationalError("database is locked")):
+            resp = _post_upload(_client(), 1)
+        assert resp.status_code == 503, (resp.status_code, resp.get_data(as_text=True)[:300])
+        assert "try again" in resp.get_json()["error"]
+        assert not os.listdir(upload_dir), f"stored upload left behind: {os.listdir(upload_dir)}"
+        assert _active_jobs() == 0
+    finally:
+        for p in patches:
+            p.stop()
+        os.unlink(db)
+    print("✓ test_a_database_timeout_on_job_creation_removes_the_upload: PASS")
+
+
 # ---------------------------------------------------------------------------
 # Fix 5: rate limit on POST /leases/import-rent-roll
 
@@ -447,11 +500,13 @@ if __name__ == "__main__":
     test_import_rent_roll_refuses_an_excel_entity_bomb()
     test_every_excel_reader_refuses_entities_instead_of_expanding_them()
     test_real_excel_uploads_still_import()
+    test_the_app_refuses_to_start_without_defusedxml()
     test_a_hung_pdf_renderer_is_stopped_at_its_time_limit()
     test_pdf_reading_stops_at_the_overall_time_limit()
     test_simultaneous_uploads_cannot_pass_the_active_job_cap()
     test_concurrent_job_creation_holds_the_cap_exactly()
     test_rent_roll_uploads_are_rate_limited_like_leases()
     test_refused_uploads_are_refused_before_the_body_is_read()
+    test_a_database_timeout_on_job_creation_removes_the_upload()
     test_import_rent_roll_is_rate_limited_before_the_body_is_read()
     print("\nAll upload hardening tests passed!")
