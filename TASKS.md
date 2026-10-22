@@ -125,7 +125,7 @@ those by taking **main's** TASKS.md, not the branch's.
 - **Do not read, tune on, or look at `tests/eval/holdout_public/` (any branch) until Tim says so.**
 - Loop step: 4. Collection done, short of target: **2 of 18** kept (1 HAP renewal, 1 executed city lease, 0 rent rolls), privacy bar not lowered. Tip `e6c7b1a`, suite 97/97, not pushed.
 - Last update: 2026-10-22 by build session
-- Next action: pass 2 collecting (2026-10-22): affordable from Santa Ana Laserfiche (publicdocs.santa-ana.org) + 2-3 other PHAs, target 8 affordable total; rent rolls = public vendor SAMPLE reports (Yardi, RealPage, AppFolio, Entrata, Buildium, Rent Manager, ResMan), labeled format samples, target 6 vendors; samples with realistic resident names rejected and counted. Staged in the session scratchpad, then copied into the worktree. CLAUDE.md line merged + pushed (`6efe4bd`).
+- Next action: pass 2 done 2026-10-22, **0 new kept** (holdout still 2 of 18). Santa Ana publicdocs needs a WebLink sign-in (robots 404, stopped after 2 tries); other PHAs gave only blank forms/RFPs. No public vendor sample rent rolls (Yardi robots unverifiable behind Cloudflare, Rent Manager robots blocks PDFs, RealPage hit was a live property report, others had none). Logs: session scratchpad holdout/affordable2, rentrolls2. Tim decides: stop at 2, public-records requests, vendor-requested samples (needs a form), or PHA-posted vendor-format rent rolls.
 - **Deny rule DEFERRED by Tim:** apply only after collection is finished, and remind Tim then (it would block the building session).
 
 ### feature/affordable-real-accuracy
