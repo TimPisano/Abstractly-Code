@@ -1,0 +1,199 @@
+{
+ "model": "claude-sonnet-5",
+ "tool": "record_affordable_abstraction",
+ "max_tokens": 8192,
+ "created": "2026-10-22T17:09:17+00:00",
+ "usage": {
+  "input_tokens": 65720,
+  "output_tokens": 2273
+ },
+ "stop_reason": "tool_use",
+ "tool_input": {
+  "project_name": {
+   "value": "Coppertree Village",
+   "confidence": "medium",
+   "source_text": "TEXAS-COPPERTREE VILLAGE LIMITED PARTNERSHIP"
+  },
+  "owner_name": {
+   "value": "Texas-Coppertree Village Limited Partnership",
+   "confidence": "high",
+   "source_text": "TFXAS-CnPPgRTP.F.E VIT,LAGE LIMITED PARTNERSHIP"
+  },
+  "property_address": {
+   "value": "1415 W. Gulf Bank Road, Houston, Texas",
+   "confidence": "medium",
+   "source_text": "Street Address:     1415 W.  Gulf Bank Road"
+  },
+  "street_address": {
+   "value": "1415 W. Gulf Bank Road",
+   "confidence": "high",
+   "source_text": "Street Address:     1415 W.  Gulf Bank Road"
+  },
+  "city": {
+   "value": "Houston",
+   "confidence": "high",
+   "source_text": "Project Name:    Huntineton Forest City:     Houston"
+  },
+  "state": {
+   "value": "Texas",
+   "confidence": "high",
+   "source_text": "State:     Texas"
+  },
+  "zip": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "building_addresses": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "county": {
+   "value": "Harris",
+   "confidence": "high",
+   "source_text": "County:    Harris"
+  },
+  "total_units": {
+   "value": "324",
+   "confidence": "high",
+   "source_text": "Project consists of 19 two- story buildings with 324 1-, 2-,  and 3-\nbedroom units of which 263 will be assisted."
+  },
+  "contract_number": {
+   "value": "TX24-E000-008",
+   "confidence": "high",
+   "source_text": "SECTION 8 PROJECT NUMBER;       TX24- E000- 008"
+  },
+  "rems_property_id": {
+   "value": "800020793",
+   "confidence": "high",
+   "source_text": "REMS ID:  800020793"
+  },
+  "program_type": {
+   "value": "Section 8 HAP - Disposition of Previously HUD-Owned Projects (Part 886, Subpart C)",
+   "confidence": "medium",
+   "source_text": "SECTION8 HOUSINGASSISTANCEPAYMENTSPROGRAM\nDISPOSITION OF PREVIOUSLYEDD-OWNEDPROJECTS"
+  },
+  "pha_name": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "contract_administrator": {
+   "value": "HUD",
+   "confidence": "medium",
+   "source_text": "HUD is the Contract Administrator or \" CA.\")"
+  },
+  "assignee_name": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "contract_units": {
+   "value": "263",
+   "confidence": "high",
+   "source_text": "Project consists of 19 two- story buildings with 324 1-, 2-,  and 3-\nbedroom units of which 263 will be assisted."
+  },
+  "effective_date": {
+   "value": "November 3, 1990",
+   "confidence": "high",
+   "source_text": "a)  Effective Date of Contract:  STAGE.  2y-   \nNovember 3. r\n1990"
+  },
+  "expiration_date": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "initial_term": {
+   "value": "15 years",
+   "confidence": "high",
+   "source_text": "Thetermof this Contractfor anyunit shall be15\nyears,  beginningvith the effective dateof this Contractfor such unit."
+  },
+  "renewal_term_years": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "renewal_option": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "document_date": {
+   "value": "November 3, 1990",
+   "confidence": "high",
+   "source_text": "Date November 3 19 90"
+  },
+  "ami_limit_pct": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "unit_mix": {
+   "rows": [
+    {
+     "stage": "1",
+     "bedrooms": "1",
+     "total_units": null,
+     "contract_units": "64",
+     "contract_rent": "295",
+     "utility_allowance": "35",
+     "gross_rent": null,
+     "proposed_rent": null
+    },
+    {
+     "stage": "1",
+     "bedrooms": "2",
+     "total_units": null,
+     "contract_units": "49",
+     "contract_rent": "410",
+     "utility_allowance": "45",
+     "gross_rent": "455",
+     "proposed_rent": null
+    },
+    {
+     "stage": "1",
+     "bedrooms": "3",
+     "total_units": null,
+     "contract_units": "1",
+     "contract_rent": "395",
+     "utility_allowance": "53",
+     "gross_rent": "448",
+     "proposed_rent": null
+    },
+    {
+     "stage": "2",
+     "bedrooms": "1",
+     "total_units": null,
+     "contract_units": "49",
+     "contract_rent": "250",
+     "utility_allowance": "35",
+     "gross_rent": "295",
+     "proposed_rent": null
+    },
+    {
+     "stage": "2",
+     "bedrooms": "2",
+     "total_units": null,
+     "contract_units": "39",
+     "contract_rent": "350",
+     "utility_allowance": "45",
+     "gross_rent": "395",
+     "proposed_rent": null
+    },
+    {
+     "stage": "2",
+     "bedrooms": "3",
+     "total_units": null,
+     "contract_units": "2",
+     "contract_rent": "395",
+     "utility_allowance": "53",
+     "gross_rent": "448",
+     "proposed_rent": null
+    }
+   ],
+   "confidence": "medium",
+   "source_text": "1 64  `/       Family 35 295\n2 49 Family 3 0 45 5\n3 1         Family 395 53 448 ... 1 49 Family 250 35 295\n2 39   Family 350 45 395\n3 2 Family 395 53 448"
+  }
+ }
+}

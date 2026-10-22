@@ -573,3 +573,35 @@ Rescored from the cache: 10 cached, **0 sent, $0.00**. Results: `results/routed_
 - **Amanda Brooke owner (1)** and **Cottonwood "Ave." (1).** These are answer-key questions (REVIEW.md, questions 7 and 8), not reader bugs.
 
 **Suite:** 103 / 103 offline.
+
+### Paid run 2: staged HAP contracts (2026-10-22, user-approved up to $0.45)
+
+**User decisions, 2026-10-22:**
+- Amanda Brooke: the key's value moves to `assignee_name`, and `owner_name` is null. A null key field scores right when nothing is extracted and isn't in the total.
+- Cottonwood: "Ave." dropped from the key.
+- 2013 renewal: compare the OCR layer with a second pass and flag disagreements, without picking a value.
+
+**Field-list change:** the HAP unit-mix table gains a `stage` column. A contract built in stages reports one row per bedroom size per stage, and the code adds each stage's rows into `stageN_units` (method "derived", with the sum shown). Rents by size come from the latest stage, the most recently set; counts by size add up over every stage. This changes the request for all six HAP documents.
+
+**Cost check:** `--estimate` said ~$0.47 (it assumes 3,000 output tokens per call); the realistic figure from earlier output sizes was ~$0.42. To stay under $0.45, the documents were sent one at a time. Before each send, the spend so far plus a worst case for that document had to fit under the cap.
+
+**Billed:** 6 calls, 147,619 input + 12,460 output tokens = **$0.4198**, 0 errors. Coppertree 1990 $0.1542; Amanda Brooke $0.0469; 2013 renewal $0.0645; 5th Street $0.0479; Cottonwood $0.0550; Oak View $0.0515. All six cached; the six responses to the old prompt stay in the cache too (16 files), so going back costs nothing. **Task total: $0.64 + $0.42 = $1.06.**
+
+**Free changes in the same commit:**
+- **Second OCR pass** (`ocr_check.py`). Scanned pages with their own OCR layer are re-read by tesseract at 400 DPI. A number read from a table cell where the two readings disagree drops to low confidence, with both readings in the note and "Verify against the document." Neither reading is preferred, and no value changes. On the 2013 renewal it flags 158 / 156 (1BR units), 102 / 162 (2BR units) and 145 / 445 (3BR UA); the note shows the "1 SIR" / "1 BR" label on that row. On Coppertree 1990 it flags 395 / 355 (3BR rent; 395 is what you checked by hand).
+- A term written in words with no digits is written in digits ("Twenty years" → "20 years"); "Fifteen (15) years" is left as written.
+- Eval only: an address that differs from the key only by a comma counts as right. A stray OCR period still counts as wrong.
+
+| | Lease verified | Lease proposed | Program verified | Program proposed | **All** |
+|---|---|---|---|---|---|
+| Step 7, free parts | 2 / 2 | 20 / 21 | 23 / 25 | 111 / 117 | 156 / 165 (94.5%) |
+| **Paid run 2 + free changes** | **2 / 2** | **21 / 21** | **24 / 25** | **116 / 117** | **163 / 165 (98.8%)** |
+
+**Still wrong (2), both on the 2013 renewal, both from the PDF's OCR layer:** `units_1br` 158 (flagged low, both readings shown) and `contract_units` 265. The 265 is the AI's own total of the rows that include 158, and it isn't flagged. A follow-up could carry an OCR flag through to a total built from flagged cells.
+
+**Synthetic set (form reader, no AI), unchanged:** clean 93.8% lease / 91.7% program, acroform 91.7% / 95.2%, scan 87.5% / 85.0%, **holdout 93.8% / 89.4%**, **holdout scan 56.2% / 57.8%**. A first version of the term and address changes moved these (the NJ TIC's "Fifteen (15) years" became "15 (15) years", and stray OCR periods passed). Both were narrowed and now have tests.
+
+**Why the scanned holdout is at 57.8% program (196 / 339; the clean holdout reads 303).** Of the 107 lost fields:
+1. **58: the form isn't recognised once scanned** (tic_sc, tic_la_lhc). Detection needs exact title phrases; OCR garbles "Initial LIHTC Qualification Date", so the score is 3.0 against a 3.5 minimum.
+2. **29: OCR misreads the value itself.** Digits and commas are dropped from money amounts ($44,100 → $600, $1,308 → $5.00, $29,800 → $29.00), and dates are off by a digit.
+3. **24: the value is in the OCR text but the reader doesn't pick it up.** OCR shifts or garbles the label, so the box lands next to the value or the label isn't found (household size, dependents, city, signature dates).

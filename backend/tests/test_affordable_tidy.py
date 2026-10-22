@@ -52,6 +52,16 @@ def test_legal_entity_descriptors_are_not_part_of_the_name():
     assert tidy("owner_name", "Maple Ridge II, L.P.") == "Maple Ridge II, L.P."
 
 
+def test_a_spelled_out_term_is_written_in_digits():
+    """Regression: the AI returned "Twenty years" for a term the field list asks for as "20 years"."""
+    assert tidy("initial_term", "Twenty years") == "20 years"
+    assert tidy("initial_term", "Fifteen (15) years") == "Fifteen (15) years"   # digits already there
+    assert tidy("renewal_term_years", "Twenty") == "20"
+    assert tidy("initial_term", "twenty-five years") == "25 years"
+    assert tidy("initial_term", "20 years") == "20 years"
+    assert tidy("project_name", "Twenty Oaks") == "Twenty Oaks"        # only term fields
+
+
 def test_numbers_are_never_rewritten():
     for v in ("$1,592.00", "32", "30%", "04/01/2013"):
         assert tidy("contract_rent_2br", v) == v
@@ -123,6 +133,7 @@ if __name__ == "__main__":
     test_vulgar_fractions_are_spelled_out()
     test_hud_contract_numbers_lose_separators()
     test_legal_entity_descriptors_are_not_part_of_the_name()
+    test_a_spelled_out_term_is_written_in_digits()
     test_numbers_are_never_rewritten()
     test_ai_values_are_tidied()
     print("\nAll affordable value cleanup tests passed.")

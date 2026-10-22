@@ -166,6 +166,20 @@ ENTITY_DESCRIPTOR = re.compile(
     r"public agency|municipal corporation)\.?$", re.I)
 
 
+_ONES = ["one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve",
+         "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"]
+_TENS = {"twenty": 20, "thirty": 30, "forty": 40, "fifty": 50}
+NUMBER_WORDS = {w: i + 1 for i, w in enumerate(_ONES)}
+NUMBER_WORD = re.compile(r"\b(?:(twenty|thirty|forty|fifty)(?:[\s-]+(one|two|three|four|five|six|seven|eight|nine))?"
+                         r"|(" + "|".join(_ONES) + r"))\b", re.I)
+
+
+def _number_word(m: re.Match) -> str:
+    if m.group(3):
+        return str(NUMBER_WORDS[m.group(3).lower()])
+    return str(_TENS[m.group(1).lower()] + (NUMBER_WORDS[m.group(2).lower()] if m.group(2) else 0))
+
+
 def tidy(name: str, value):
     """Clean OCR and typing noise out of a read value. Only rewrites shapes
     that can't be anything else; never turns one number into another."""
@@ -178,6 +192,10 @@ def tidy(name: str, value):
     if name.endswith(("owner_name", "assignee_name", "landlord")) or name in ("landlord",):
         # "NCRC Example LP, a California limited partnership": the descriptor isn't part of the name
         text = ENTITY_DESCRIPTOR.sub("", text)
+    if name.endswith(("_term", "term_years")) and not re.search(r"\d", text):
+        # a contract term, asked for as "20 years": "Twenty years" is the same term
+        # ("Fifteen (15) years" already gives the digits and is left as written)
+        text = NUMBER_WORD.sub(_number_word, text)
     if name.startswith("contract_number"):
         m = HUD_CONTRACT.fullmatch(text.strip())
         if m:

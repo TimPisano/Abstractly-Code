@@ -84,3 +84,9 @@ No routes, tables or queries change. The module stays unwired from uploads. The 
 ## Open questions
 1. **Amasa address:** the key says "109 Kane Creek Blvd."; the agreement lists six building addresses. Keep the key, or score the list as right? Until answered: keep the key (the conservative choice).
 2. **Holdout:** 90% here is tuned on the same 11 documents. Should we score 2–3 documents outside this set before calling it done? Default: yes, if the user can name sources. Otherwise it's listed as not verified.
+
+## Follow-up, 2026-10-22 (user-approved)
+- Keys: Amanda Brooke `owner_name` → null, value moved to `assignee_name`; Cottonwood "Ave." dropped.
+- Paid: a `stage` column in the HAP unit-mix table, with the six HAP documents re-sent under a $0.45 cap. Billed $0.4198.
+- Free: `ocr_check.py`, a second OCR pass at 400 DPI on scanned pages with their own OCR layer. Values from disputed table cells are flagged low, and no value changes.
+- Result: 163 / 165. Scanned-holdout causes and free fixes are listed in `docs/research/eval-baseline.md`; not built (user asked for the list only).

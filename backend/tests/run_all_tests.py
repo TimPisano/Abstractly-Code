@@ -134,6 +134,8 @@ UNIT_TESTS = [
     "test_affordable_exhibits.py",
     "test_affordable_ai_fields.py",
     "test_affordable_forms_811.py",
+    "test_affordable_eval_scoring.py",
+    "test_affordable_ocr_check.py",
 ]
 
 LIVE_API_TESTS = [

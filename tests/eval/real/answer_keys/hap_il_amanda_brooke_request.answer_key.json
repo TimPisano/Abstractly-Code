@@ -67,10 +67,16 @@
       "basis": "p.3 'benefits all 120 units'; HUD Multifamily Assistance & Section 8 Contracts DB, contracts table (current as of 2026-10-06): assisted_units_count 120"
     },
     "owner_name": {
+      "value": null,
+      "type": "text",
+      "status": "verified",
+      "basis": "The letter never names the current owner (only 'the Seller'). User decision 2026-10-22: owner_name null; the named party is the proposed owner, keyed as assignee_name."
+    },
+    "assignee_name": {
       "value": "FH Amanda Brooke LLC",
       "type": "text",
       "status": "verified",
-      "basis": "p.1 proposed owner; HUD Multifamily Assistance & Section 8 Contracts DB, properties table (current as of 2026-10-06): owner_organization_name 'FH Amanda Brooke LLC'"
+      "basis": "p.1 'FH Amanda Brooke LLC (the “Purchaser”), the proposed owner'; HUD Multifamily Assistance & Section 8 Contracts DB, properties table (current as of 2026-10-06): owner_organization_name 'FH Amanda Brooke LLC'. Moved from owner_name at the user's request, 2026-10-22."
     },
     "renewal_term_years": {
       "value": "20",

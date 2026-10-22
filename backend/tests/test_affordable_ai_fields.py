@@ -155,10 +155,37 @@ def test_failures_raise_like_the_lease_engine():
     print("✓ test_failures_raise_like_the_lease_engine: PASS")
 
 
+def test_a_contract_built_in_stages():
+    """Regression: a 1990 contract lists units and rents in one exhibit per
+    construction stage. The table had no stage column, so the AI tabled
+    stage 1 only and the stage unit counts had nowhere to go."""
+    rows = [
+        {"stage": "1", "bedrooms": "1", "contract_units": "20", "contract_rent": "$410"},
+        {"stage": "1", "bedrooms": "2", "contract_units": "10", "contract_rent": "$520"},
+        {"stage": "2", "bedrooms": "1", "contract_units": "12", "contract_rent": "$430"},
+        {"stage": "2", "bedrooms": "2", "contract_units": "6", "contract_rent": "$545"},
+    ]
+    for r in rows:
+        r.update(total_units=None, utility_allowance=None, gross_rent=None, proposed_rent=None)
+    payload = _payload("hap_contract", {}, {"unit_mix": {"rows": rows, "confidence": "medium",
+        "source_text": "Stage 1: 20 1 410; 10 2 520. Stage 2: 12 1 430; 6 2 545"}})
+    pf = ai_fields.extract_program_fields(HAP_PAGES, "hap_contract", client=_mock_client(payload))["program_fields"]
+    assert (pf["stage1_units"]["value"], pf["stage2_units"]["value"]) == ("30", "18")
+    assert pf["stage1_units"]["method"] == "derived" and pf["stage1_units"]["source"]["quote"] == "derived: stage 1 rows 20 + 10"
+    # rents by size come from the latest stage's exhibit (the rents most recently set) ...
+    assert (pf["contract_rent_1br"]["value"], pf["contract_rent_2br"]["value"]) == ("$430", "$545")
+    # ... and counts by size cover the whole contract, every stage
+    assert (pf["contract_units_1br"]["value"], pf["contract_units_2br"]["value"]) == ("32", "16")
+    tool = ai_fields._build_tool("hap_contract")
+    assert "stage" in tool["input_schema"]["properties"]["unit_mix"]["properties"]["rows"]["items"]["properties"]
+    print("✓ test_a_contract_built_in_stages: PASS")
+
+
 if __name__ == "__main__":
     test_classify_doc_kind()
     test_the_ai_is_asked_for_program_fields()
     test_hap_contract_values_and_unit_mix()
+    test_a_contract_built_in_stages()
     test_lura_set_asides_and_bins()
     test_failures_raise_like_the_lease_engine()
     print("\nAll affordable AI field-list tests passed.")

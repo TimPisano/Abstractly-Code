@@ -1,0 +1,199 @@
+{
+ "model": "claude-sonnet-5",
+ "tool": "record_affordable_abstraction",
+ "max_tokens": 8192,
+ "created": "2026-10-22T17:11:02+00:00",
+ "usage": {
+  "input_tokens": 15946,
+  "output_tokens": 2310
+ },
+ "stop_reason": "tool_use",
+ "tool_input": {
+  "project_name": {
+   "value": "Courtyards at Cottonwood II",
+   "confidence": "high",
+   "source_text": "Project Name: Courtvards at Cottonwood II"
+  },
+  "owner_name": {
+   "value": "Courtyards at Cottonwood II, L.P.",
+   "confidence": "high",
+   "source_text": "Courtyards at Cottonwood ll, L.P (owner)."
+  },
+  "property_address": {
+   "value": "24550 & 24570 Cottonwood, Moreno Valley, CA 92553",
+   "confidence": "medium",
+   "source_text": "Address: 24550 & 24570 Cottonwood Moreno Vallev 92553"
+  },
+  "street_address": {
+   "value": "24550 & 24570 Cottonwood",
+   "confidence": "medium",
+   "source_text": "Address: 24550 & 24570 Cottonwood Moreno Vallev 92553"
+  },
+  "city": {
+   "value": "Moreno Valley",
+   "confidence": "medium",
+   "source_text": "Address: 24550 & 24570 Cottonwood Moreno Vallev 92553"
+  },
+  "state": {
+   "value": "CA",
+   "confidence": "medium",
+   "source_text": "Riverside Co u n rlCrf do of3f p2Sggrf"
+  },
+  "zip": {
+   "value": "92553",
+   "confidence": "medium",
+   "source_text": "Address: 24550 & 24570 Cottonwood Moreno Vallev 92553"
+  },
+  "building_addresses": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "county": {
+   "value": "Riverside",
+   "confidence": "high",
+   "source_text": "Housing Authority of the County of Riverside"
+  },
+  "total_units": {
+   "value": "32",
+   "confidence": "high",
+   "source_text": "Total Number Units in the Project: 32 Units"
+  },
+  "contract_number": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "rems_property_id": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "program_type": {
+   "value": "PBV (Project-Based Voucher)",
+   "confidence": "high",
+   "source_text": "SECTION 8 PROJECT-BASED VOUCHER PROGRAM"
+  },
+  "pha_name": {
+   "value": "Housing Authority of the County of Riverside",
+   "confidence": "high",
+   "source_text": "Housing Authority of the County of Riverside ( PHA)"
+  },
+  "contract_administrator": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "assignee_name": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "contract_units": {
+   "value": "8",
+   "confidence": "high",
+   "source_text": "Total Number of Project Based Voucher (PBV) Units in Project Covered by HAP Contract: 8\nPBVs"
+  },
+  "effective_date": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "expiration_date": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "initial_term": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "renewal_term_years": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "renewal_option": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "document_date": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "ami_limit_pct": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "unit_mix": {
+   "rows": [
+    {
+     "stage": null,
+     "bedrooms": "2",
+     "total_units": "16",
+     "contract_units": "2",
+     "contract_rent": "$1,592",
+     "utility_allowance": "$67",
+     "gross_rent": null,
+     "proposed_rent": null
+    },
+    {
+     "stage": null,
+     "bedrooms": "2",
+     "total_units": "16",
+     "contract_units": "1",
+     "contract_rent": "$1,592",
+     "utility_allowance": "$67",
+     "gross_rent": null,
+     "proposed_rent": null
+    },
+    {
+     "stage": null,
+     "bedrooms": "3",
+     "total_units": "12",
+     "contract_units": "2",
+     "contract_rent": "$2,041",
+     "utility_allowance": "$84",
+     "gross_rent": null,
+     "proposed_rent": null
+    },
+    {
+     "stage": null,
+     "bedrooms": "3",
+     "total_units": "12",
+     "contract_units": "1",
+     "contract_rent": "$2,041",
+     "utility_allowance": "$84",
+     "gross_rent": null,
+     "proposed_rent": null
+    },
+    {
+     "stage": null,
+     "bedrooms": "3",
+     "total_units": "12",
+     "contract_units": "1",
+     "contract_rent": "$2,041",
+     "utility_allowance": "$84",
+     "gross_rent": null,
+     "proposed_rent": null
+    },
+    {
+     "stage": null,
+     "bedrooms": "3",
+     "total_units": "12",
+     "contract_units": "1",
+     "contract_rent": "$2,041",
+     "utility_allowance": "$84",
+     "gross_rent": null,
+     "proposed_rent": null
+    }
+   ],
+   "confidence": "medium",
+   "source_text": "PBV units: 2/BR 2 units (30o/o),1 Unit (a0%) 3/BR 2 units (30%), 1 unit(  }yo),1 unit (45o/o),1 units (50%). Total units: 16 2-bedroom, 12 3-bedroom and 4 4-bedroom ... Contract rent for 2br apartment: $1,592 = ($1 ,659 payment std - $67 UA) Contract rent for 3br apartment: $2,041 -- ($2,225 payment std - $84 UA) ... Bedroom/Bathroom AMl Quantity Unit #s ... Two Bedroom/One Bathroom 30% 40% 2 1 5105 & 5208 6201 Three Bedroom/Two Bathroom 30% 40% 45% 50% 2 1 1 1 5107 & 6103 5203 6106 6206 Total Units 8"
+  }
+ }
+}

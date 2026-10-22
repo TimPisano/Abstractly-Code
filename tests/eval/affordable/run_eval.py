@@ -189,13 +189,16 @@ def run_pipeline(pdf_path: Path, engine: str, routed_res=None):
             from app.affordable.route import merge_reads
             from app.affordable.values import fill_address_parts
             program = merge_reads(res["program_fields"], routed_res.get("program_fields") or {})
+            # scanned pages with their own OCR layer: mark values from cells a second pass reads differently
+            from app.affordable.ocr_check import flag_ocr_disagreements, pages_to_compare, second_ocr_disagreements
+            ocr_checks = flag_ocr_disagreements(program, second_ocr_disagreements(data, pages_to_compare(data, program)))
             fill_address_parts(program)
             lease = dict(res["lease_fields"])
             for f, v in (routed_res.get("lease_fields") or {}).items():
                 if v.get("value") and not (lease.get(f) or {}).get("value"):
                     lease[f] = v
             out.update(ranges=1, fields=lease, program_fields=program,
-                       ai_meta=res["_ai_meta"], checks=run_checks(program))
+                       ai_meta=res["_ai_meta"], checks=ocr_checks + run_checks(program))
             return out
 
     fx = FieldExtractor()
@@ -333,6 +336,14 @@ def program_match(vtype: str, got: str, expected: str) -> bool:
 ADDRESS_FIELDS = ("property_address", "street_address")
 
 
+def address_match(got, expected) -> bool:
+    """The same address with or without a comma ("Murrieta, CA" / "Murrieta CA"). Other
+    marks still count: a stray OCR period ("1450. Maple") is a misread."""
+    def bare(s):
+        return re.sub(r"\s+", " ", str(s).replace(",", " ")).strip().lower()
+    return bool(got and expected) and bare(got) == bare(expected)
+
+
 def address_list_match(got, expected) -> bool:
     """A list of building addresses ("57, 81, 109 and 119 Kane Creek Blvd")
     counts as right when one of them is the key's address (user's rule,
@@ -374,6 +385,17 @@ def sample_path(key: dict, variant: str) -> Path:
     return clean if variant == "clean" else clean.with_name(f"{clean.stem}.{variant}.pdf")
 
 
+def absent_program_fields(key_fields: dict, extracted: dict) -> list:
+    """Key fields the document doesn't state (value null), like a null lease
+    field: right when nothing is extracted, and never counted in the total."""
+    out = []
+    for name, entry in key_fields.items():
+        if entry["value"] is None:
+            got = (extracted.get(name) or {}).get("value")
+            out.append({"field": name, "extracted": got, "kind": "correct_absent" if got is None else "spurious"})
+    return out
+
+
 def evaluate(key: dict, engine: str, variant: str = "clean") -> dict:
     hits_before = len(_CACHE_STATS["hits"])
     result = run_pipeline(sample_path(key, variant), engine)
@@ -390,7 +412,8 @@ def evaluate(key: dict, engine: str, variant: str = "clean") -> dict:
             a, b = money_value(s["extracted"]), money_value(expected)
             if a is not None and b is not None and abs(a - b) <= 1.0:
                 s.update(correct=True, kind="correct_found", asserted_wrong=False)
-        if field in ADDRESS_FIELDS and not s["correct"] and address_list_match(s["extracted"], expected):
+        if field in ADDRESS_FIELDS and not s["correct"] and (address_match(s["extracted"], expected)
+                                                              or address_list_match(s["extracted"], expected)):
             s.update(correct=True, kind="correct_found", asserted_wrong=False, address_list_match=True)
         s["in_text_layer"] = None if expected is None else in_text(
             expected, "money" if field in MONEY_FIELDS else "date" if field.endswith("_date") else "text", text)
@@ -400,8 +423,9 @@ def evaluate(key: dict, engine: str, variant: str = "clean") -> dict:
 
     program_scores = []
     extracted_program = result.get("program_fields") or {}
+    absent = absent_program_fields(key["program_fields"], extracted_program)
     for name, entry in key["program_fields"].items():
-        if entry["type"] == "checkbox":
+        if entry["type"] == "checkbox" or entry["value"] is None:
             continue
         shown = entry.get("shown_as", entry["value"])
         hit = extracted_program.get(name) or extracted_program.get(_alias(name) or "") or {}
@@ -453,6 +477,7 @@ def evaluate(key: dict, engine: str, variant: str = "clean") -> dict:
             "correct": sum(1 for s in program_scores if s["correct"]),
             "in_text_layer": sum(1 for s in program_scores if s["in_text_layer"]),
             "scores": program_scores,
+            "absent": absent,
         },
     }
 

@@ -22,8 +22,8 @@ In the tables, "p." means a page of the cut document in `docs/`, not of the orig
 4. **`pbv_ca_rivco_cottonwood2`, address.** Exhibit A says "24550 & 24570 Cottonwood"; HUD's LIHTC database says "24580 Cottonwood Ave". I used Exhibit A.
 5. **`sample_tx_811_*`, rent.** I used contract rent ($841) as `rent_amount`, which matches the synthetic HUD-form keys. The tenant pays $350 of it.
 6. **`pbv_ca_rivco_5th_street`, owner name: changed after the first run.** I first keyed page 1's "Mercy Housing Living Centers". The form reader returned "Mercy House Living Centers" from the execution page. That is what the execution page prints, and it matches the cover letter ("Mercy House"), so I changed the key. The PDF disagrees with itself; please confirm the legal name. Also, what is the fillable-field value "7"?
-7. **`hap_il_amanda_brooke_request`, owner (verified field, scored as a miss).** The letter never names the current owner, only "the Seller". It names FH Amanda Brooke LLC as "the Purchaser, the proposed owner". The AI puts that in `assignee_name` and leaves `owner_name` empty, which matches the page. The key's `owner_name` comes from HUD's database after the sale closed. Options: move the key value to `assignee_name` (what the letter says; my recommendation), or keep it. I won't make the code copy a proposed owner into `owner_name`.
-8. **`pbv_ca_rivco_cottonwood2`, "Ave." in the key.** Question 4 says the key uses Exhibit A, but the key reads "24550 & 24570 Cottonwood **Ave.**, Moreno Valley, CA 92553", and Exhibit A prints no "Ave.". The extracted value is Exhibit A's text. Drop "Ave." from the key?
+7. *(Decided by the user 2026-10-22.)* **`hap_il_amanda_brooke_request`, owner.** The letter names FH Amanda Brooke LLC only as "the proposed owner", so the key now has it as `assignee_name` and `owner_name` is null (the letter never names the current owner).
+8. *(Decided by the user 2026-10-22.)* **`pbv_ca_rivco_cottonwood2`, "Ave."** dropped from the key, to match Exhibit A.
 
 ### `hap_il_amanda_brooke_request`
 
@@ -31,7 +31,7 @@ Consultant's cover letter to HUD requesting HAP assignment and an Option 1-A 20-
 
 A letter, not a contract: tests whether contract facts are read from prose. The letter is dated 'April 14, 2024' but the file name says 04.14.2025 and it cites 2025 FMRs, so the printed year looks like a typo; the key uses the printed date. HUD's database shows the renewal took effect 2026-04-01 for 240 months with FH Amanda Brooke LLC as owner. Contains business contact emails and a phone number (consultant, title company, HUD inbox); no tenant data.
 
-Verified against HUD data (no action needed): `contract_number`, `rems_property_id`, `project_name`, `city`, `total_units`, `contract_units`, `owner_name`, `renewal_term_years`.
+Verified against HUD data (no action needed): `contract_number`, `rems_property_id`, `project_name`, `city`, `total_units`, `contract_units`, `assignee_name` (the proposed owner; `owner_name` is null, user decision 2026-10-22), `renewal_term_years`.
 
 | OK? | Field | Proposed value | Where it comes from |
 |---|---|---|---|

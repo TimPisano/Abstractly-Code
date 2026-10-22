@@ -1,0 +1,159 @@
+{
+ "model": "claude-sonnet-5",
+ "tool": "record_affordable_abstraction",
+ "max_tokens": 8192,
+ "created": "2026-10-22T17:10:43+00:00",
+ "usage": {
+  "input_tokens": 14819,
+  "output_tokens": 1822
+ },
+ "stop_reason": "tool_use",
+ "tool_input": {
+  "project_name": {
+   "value": "5th Street Housing",
+   "confidence": "high",
+   "source_text": "Project Name: 5th Street Housing"
+  },
+  "owner_name": {
+   "value": "Mercy House Living Centers",
+   "confidence": "high",
+   "source_text": "Mercy House Living Centers"
+  },
+  "property_address": {
+   "value": "926 and 932 W. 5th Street, Corona, CA 92882",
+   "confidence": "high",
+   "source_text": "Address: 926 and 932 W. 5th Street, Corona, CA 92882"
+  },
+  "street_address": {
+   "value": "926 and 932 W. 5th Street",
+   "confidence": "high",
+   "source_text": "Address: 926 and 932 W. 5th Street, Corona, CA 92882"
+  },
+  "city": {
+   "value": "Corona",
+   "confidence": "high",
+   "source_text": "926 and 932 W. 5th Street, Corona, CA 92882"
+  },
+  "state": {
+   "value": "CA",
+   "confidence": "high",
+   "source_text": "926 and 932 W. 5th Street, Corona, CA 92882"
+  },
+  "zip": {
+   "value": "92882",
+   "confidence": "high",
+   "source_text": "926 and 932 W. 5th Street, Corona, CA 92882"
+  },
+  "building_addresses": {
+   "value": "926 and 932 W. 5th Street",
+   "confidence": "high",
+   "source_text": "Address: 926 and 932 W. 5th Street, Corona, CA 92882"
+  },
+  "county": {
+   "value": "Riverside",
+   "confidence": "high",
+   "source_text": "Housing Authority of the County of Riverside"
+  },
+  "total_units": {
+   "value": "12",
+   "confidence": "high",
+   "source_text": "Total Number Units in the Project: 12"
+  },
+  "contract_number": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "rems_property_id": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "program_type": {
+   "value": "PBV",
+   "confidence": "high",
+   "source_text": "SECTION 8 PROJECT-BASED VOUCHER PROGRAM HOUSING ASSISTANCE PAYMENTS CONTRACT"
+  },
+  "pha_name": {
+   "value": "Housing Authority of the County of Riverside",
+   "confidence": "high",
+   "source_text": "Housing Authority of the County of Riverside"
+  },
+  "contract_administrator": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "assignee_name": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "contract_units": {
+   "value": "11",
+   "confidence": "high",
+   "source_text": "Total Number of Project Based Voucher (PBV) Units in Project Covered by HAP Contract: 11"
+  },
+  "effective_date": {
+   "value": null,
+   "confidence": "low",
+   "source_text": "b. For all contract units, the effective date of the HAP contract is: \n________________________________."
+  },
+  "expiration_date": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "initial_term": {
+   "value": null,
+   "confidence": "low",
+   "source_text": "a. Subject to paragraph 2.b, the initial term of the HAP contract for \nall contract units is: \n________________________________."
+  },
+  "renewal_term_years": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "renewal_option": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "document_date": {
+   "value": null,
+   "confidence": null,
+   "source_text": null
+  },
+  "ami_limit_pct": {
+   "value": "30%",
+   "confidence": "high",
+   "source_text": "One Bedroom/ \nOne Bathroom \n30% 4 (designated for \nchronic homeless)"
+  },
+  "unit_mix": {
+   "rows": [
+    {
+     "stage": null,
+     "bedrooms": "1",
+     "total_units": "4",
+     "contract_units": "4",
+     "contract_rent": null,
+     "utility_allowance": null,
+     "gross_rent": null,
+     "proposed_rent": null
+    },
+    {
+     "stage": null,
+     "bedrooms": "2",
+     "total_units": "8",
+     "contract_units": "7",
+     "contract_rent": null,
+     "utility_allowance": null,
+     "gross_rent": null,
+     "proposed_rent": null
+    }
+   ],
+   "confidence": "high",
+   "source_text": "PBV units: 4 one-bedroom, 7 two-bedroom \nTotal units: 4 one-bedroom, 8 two-bedroom"
+  }
+ }
+}

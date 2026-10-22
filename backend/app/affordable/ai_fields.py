@@ -78,8 +78,11 @@ HAP_CONTRACT_FIELDS = _COMMON + [
 ]
 HAP_TABLES = {
     "unit_mix": (
-        "One row per bedroom size listed in the contract or its exhibits (unit schedule, rent schedule).",
-        [("bedrooms", "int", "Bedrooms: 0 for studio / efficiency / SRO."),
+        "One row per bedroom size listed in the contract or its exhibits (unit schedule, rent schedule). If the "
+        "contract lists units and rents separately for each construction stage (one exhibit per stage), give one row "
+        "per bedroom size per stage, from every stage's exhibit.",
+        [("stage", "int", "The stage this row's exhibit is for, if the contract is built in stages (\"Stage 2\" -> \"2\"); otherwise null."),
+         ("bedrooms", "int", "Bedrooms: 0 for studio / efficiency / SRO."),
          ("total_units", "int", "Units of this size in the whole property, if stated separately."),
          ("contract_units", "int", "Units of this size covered by the contract."),
          ("contract_rent", "money", "Current monthly contract rent for this size."),
@@ -245,7 +248,23 @@ def _flatten_tables(payload: Dict[str, Any], kind: str, pages) -> Dict[str, Dict
             else:
                 put(name, value)
 
-        for i, row in enumerate(r for r in raw["rows"] if isinstance(r, dict)):
+        rows = [r for r in raw["rows"] if isinstance(r, dict)]
+        if table == "unit_mix" and kind == "hap_contract":
+            # A contract built in stages: each stage's units add up to that stage's
+            # count. The latest stage comes first, so rents by size are the ones
+            # most recently set; counts by size still add up over every stage.
+            stages: Dict[str, List[int]] = {}
+            for row in rows:
+                stage, units = _number(row.get("stage")), _number(row.get("contract_units"))
+                if stage and units:
+                    stages.setdefault(stage, []).append(int(float(units)))
+            for stage, counts in stages.items():
+                out[f"stage{stage}_units"] = {
+                    "value": str(sum(counts)), "confidence": "medium", "method": "derived",
+                    "source": {**(source.get("source") or {}),
+                               "quote": f"derived: stage {stage} rows " + " + ".join(map(str, counts))}}
+            rows.sort(key=lambda r: -float(_number(r.get("stage")) or 0))
+        for i, row in enumerate(rows):
             if table == "bins":
                 put("bin" if i == 0 else f"bin_{i + 1}", row.get("bin"))
                 continue
