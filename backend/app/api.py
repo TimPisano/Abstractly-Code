@@ -18,7 +18,7 @@ Three layers of endpoints:
     report.py) — the actual logic lives there, not here.
 """
 
-from flask import Flask, request, jsonify, Response, session, redirect
+from flask import Flask, Request, request, jsonify, Response, session, redirect
 from werkzeug.datastructures import FileStorage
 from werkzeug.exceptions import HTTPException
 from flask_cors import CORS
@@ -62,6 +62,8 @@ from app.document_extractor import DocumentExtractionError
 from app import database
 from app import email_service
 from app import jobs
+from app import file_types
+from app import upload_jobs
 from app import sample_deal
 from app.risk_analysis import analyze_lease_risks
 from app.qa_engine import answer_question
@@ -121,7 +123,27 @@ from app.auth import verify_password, require_role, require_owner, current_user,
 from app import password_rules
 
 
+
+class _UploadSizedRequest(Request):
+    """
+    The body-size cap Werkzeug enforces, decided per request: POST /uploads
+    gets the large-file limit when LARGE_FILE_UPLOADS is on; every other
+    route keeps app.config's 16 MB. Werkzeug applies this both to a
+    declared Content-Length (413 before reading) and, for a chunked body
+    with no Content-Length, by cutting the stream off at the limit -- which
+    a check on request.content_length alone misses (security review of
+    this branch: a chunked 17 MB body reached POST /leases with the flag on).
+    """
+
+    @property
+    def max_content_length(self):
+        if self.method == "POST" and self.path == "/uploads" and upload_jobs.enabled():
+            return upload_jobs.MAX_REQUEST_BYTES
+        return LEGACY_MAX_CONTENT_LENGTH
+
+
 app = Flask(__name__)
+app.request_class = _UploadSizedRequest
 
 # Every per-IP rate limit in this file keys on request.remote_addr. Behind
 # Render's proxy that is the PROXY's address, so without this every
@@ -255,6 +277,9 @@ app.permanent_session_lifetime = timedelta(days=30)
 
 # Configure upload settings
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 MB max file size
+# Every route except POST /uploads keeps exactly that 16 MB limit; see
+# _UploadSizedRequest above for the one exception.
+LEGACY_MAX_CONTENT_LENGTH = app.config['MAX_CONTENT_LENGTH']
 # The single source of truth for "what can be uploaded as a lease
 # document" is document_extractor.SUPPORTED_EXTENSIONS -- this is just
 # its key set, kept as its own name here since ALLOWED_EXTENSIONS is
@@ -330,9 +355,15 @@ def handle_not_found(e):
     return jsonify({"error": "Not found"}), 404
 
 
+def _is_large_upload_request():
+    return request.path == '/uploads' and request.method == 'POST' and upload_jobs.enabled()
+
+
 @app.errorhandler(413)
 def handle_too_large(e):
-    max_mb = app.config['MAX_CONTENT_LENGTH'] // (1024 * 1024)
+    if _is_large_upload_request():
+        return jsonify({"error": upload_jobs.too_large_message(request.content_length)}), 413
+    max_mb = LEGACY_MAX_CONTENT_LENGTH // (1024 * 1024)
     return jsonify({"error": f"File too large. Maximum size is {max_mb}MB."}), 413
 
 
@@ -986,10 +1017,15 @@ def _run_reconciliation_sweep():
     upsert-by-natural-key, so re-running against unchanged data
     produces zero new rows.
     """
-    leases = database.get_all_effective_leases(team_id=current_team_id())
+    return _run_reconciliation_sweep_for_team(current_team_id())
+
+
+def _run_reconciliation_sweep_for_team(team_id):
+    """_run_reconciliation_sweep for an explicit team -- for callers with no request session (the background upload runner, app/upload_jobs.py)."""
+    leases = database.get_all_effective_leases(team_id=team_id)
 
     rent_roll_result = compute_rent_roll_reconciliation(leases)
-    sync_rent_roll_reconciliation(rent_roll_result["mismatches"], team_id=current_team_id())
+    sync_rent_roll_reconciliation(rent_roll_result["mismatches"], team_id=team_id)
 
     context = portfolio_context_for_risk_analysis(leases)
     cross_lease_mismatches = compute_cross_lease_mismatches(leases)
@@ -999,10 +1035,10 @@ def _run_reconciliation_sweep():
         cross_lease_flags = cross_lease_mismatches.get(lease["id"], [])
         flags = analyze_lease_risks(lease["extracted_fields"], context, date_candidates, cross_lease_flags)
         per_lease_flags.append((lease["id"], flags))
-    sync_all_lease_risk_flags_bulk(per_lease_flags, team_id=current_team_id())
+    sync_all_lease_risk_flags_bulk(per_lease_flags, team_id=team_id)
 
     _invalidate_discrepancy_derived_caches()
-    alert_result = generate_alerts(team_id=current_team_id())
+    alert_result = generate_alerts(team_id=team_id)
 
     return {
         "leases_checked": len(leases),
@@ -1636,6 +1672,164 @@ def import_rent_roll():
         "warnings": parsed.get("warnings", []),
         **({"ocr_confidence": parsed["ocr_confidence"]} if "ocr_confidence" in parsed else {}),
     }), 201
+
+
+# ----------------------------------------------------------------------
+# Large-file uploads, processed in the background (LARGE_FILE_UPLOADS,
+# default off). See app/upload_jobs.py. New routes only: POST /leases and
+# POST /leases/import-rent-roll are unchanged.
+# ----------------------------------------------------------------------
+
+def _upload_job_view(job, include_result=False):
+    """The JSON a browser sees for one upload job. `result` (with lease summaries) only once it's complete."""
+    total, current = job.get("progress_total"), job.get("progress_current")
+    view = {
+        "id": job["id"],
+        "kind": job["kind"],
+        "filename": job["filename"],
+        "detected_type": file_types.DetectedType(job["detected_type"], "").label if job.get("detected_type") else None,
+        "status": job["status"],
+        "stage": job.get("stage"),
+        "message": job.get("message"),
+        "progress": {
+            "current": current,
+            "total": total,
+            "percent": int(100 * current / total) if total and current is not None else None,
+        },
+        "error": job.get("error"),
+        "created_at": job["created_at"],
+        "updated_at": job["updated_at"],
+        "finished_at": job.get("finished_at"),
+    }
+    if include_result and job["status"] == "complete" and job.get("result"):
+        result = dict(job["result"])
+        lease_ids = result.get("lease_ids") or []
+        by_id = database.get_leases_by_ids(lease_ids, team_id=job["team_id"])
+        summaries = []
+        for lease in (by_id[i] for i in lease_ids if i in by_id):
+            lease["amendment_count"] = 0
+            lease["tags"] = []
+            summary = _lease_summary(lease)
+            summary["possible_resubmission_of"] = (result.get("possible_resubmission_of") or {}).get(str(lease["id"]))
+            summaries.append(summary)
+        result["leases"] = summaries
+        view["result"] = result
+    return view
+
+
+@app.route('/uploads/config', methods=['GET'])
+@require_role()
+def upload_config():
+    """Whether large-file background uploads are on, and their limits and accepted types (for the upload page)."""
+    return jsonify(upload_jobs.public_config()), 200
+
+
+@app.route('/uploads', methods=['POST'])
+@require_role('analyst')
+def create_upload():
+    """
+    Accept one lease document or rent roll for background processing.
+    Multipart: 'file', 'kind' ('lease' | 'rent_roll', default 'lease'),
+    optional 'property_address' (rent rolls). The file is streamed to disk
+    and its type checked by content; then 202 with the job, which the
+    client polls at GET /uploads/<id>. 404 unless LARGE_FILE_UPLOADS is on.
+    """
+    if not upload_jobs.enabled():
+        return jsonify({"error": "Not found"}), 404
+
+    kind = (request.form.get('kind') or 'lease').strip()
+    if kind not in ('lease', 'rent_roll'):
+        return jsonify({"error": "kind must be 'lease' or 'rent_roll'."}), 400
+    if 'file' not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
+    file = request.files['file']
+    if not file.filename:
+        return jsonify({"error": "No file selected"}), 400
+
+    from app import usage_limits
+    user = current_user()
+    team_id = current_team_id()
+    if kind == 'lease':
+        # The same request-time checks POST /leases makes (usage limits are
+        # owned by feature/tester-ready; this only calls them).
+        if usage_limits._extraction_rate_limited(user["id"]):
+            return jsonify({"error": f"Rate limit exceeded: maximum {usage_limits.EXTRACTION_RATE_LIMIT_PER_USER_PER_MINUTE} extractions per minute."}), 429
+        msg = usage_limits.check_team_quota(team_id)
+        if msg:
+            return jsonify({"error": msg}), 403
+
+    if database.count_active_upload_jobs(team_id) >= upload_jobs.MAX_ACTIVE_JOBS_PER_TEAM:
+        return jsonify({"error": f"Your team already has {upload_jobs.MAX_ACTIVE_JOBS_PER_TEAM} uploads processing. "
+                                 "Wait for one to finish, then upload this file."}), 429
+    if not upload_jobs.has_room_for_an_upload():
+        logger.error("Upload refused: not enough free disk in the upload directory")
+        return jsonify({"error": "The server can't take large uploads right now. Please try again in a few minutes."}), 503
+
+    try:
+        stored_path, size, content_hash = upload_jobs.save_upload(file)
+    except upload_jobs.UploadTooLarge:
+        return jsonify({"error": upload_jobs.too_large_message(request.content_length)}), 413
+
+    try:
+        detected = file_types.detect_file_type(stored_path, file.filename, kind)
+    except file_types.UnsupportedFileType as e:
+        upload_jobs.remove_file(stored_path)
+        return jsonify({"error": str(e)}), 415
+
+    limit_mb = upload_jobs.in_memory_limit_mb(detected.extension)
+    if limit_mb and size > limit_mb * 1024 * 1024:
+        upload_jobs.remove_file(stored_path)
+        return jsonify({"error": upload_jobs.too_large_message(
+            size, limit_mb, applies_to=f"for a {detected.label}")}), 413
+
+    filename = os.path.basename(file.filename)[:255]
+    if kind == 'lease':
+        dup = usage_limits.find_duplicate_upload(team_id, content_hash)
+        if dup:
+            upload_jobs.remove_file(stored_path)
+            upload_jobs._retry_when_locked(usage_limits.log_usage_event, team_id, user["id"], dup["id"], None, None,
+                                           event_type="dedup_reuse")
+            return jsonify({
+                "leases": [dup],
+                "split_count": 1,
+                "reused_existing_upload": True,
+                "message": "This document was previously uploaded. Returning the existing lease.",
+            }), 200
+
+    options = {"canonical_filename": detected.canonical_filename(filename)}
+    if detected.mismatched_name:
+        options["renamed_from"] = (f"This file is named like a .{detected.original_extension or '?'} file but is "
+                                   f"actually a {detected.label}, so it was read as one.")
+    if kind == 'rent_roll':
+        options["property_address"] = (request.form.get('property_address') or '').strip() or None
+
+    job_id = database.create_upload_job(team_id, user["id"], kind, filename, stored_path, size, content_hash,
+                                        detected.extension, options)
+    try:
+        upload_jobs.start_job(job_id)
+    except Exception:
+        logger.exception("Could not queue upload job %s", job_id)
+        upload_jobs.remove_file(stored_path)
+        message = "The processing queue is unavailable right now. Please try again in a few minutes."
+        database.update_upload_job(job_id, status="failed", stage="failed", error=message, message=message,
+                                   stored_path=None)
+        return jsonify({"error": message}), 503
+
+    return jsonify({"upload": _upload_job_view(database.get_upload_job(job_id, team_id))}), 202
+
+
+@app.route('/uploads/<int:job_id>', methods=['GET'])
+@require_role('analyst')
+def get_upload(job_id):
+    """One upload job's status and progress (this team's only); includes the result once it's complete."""
+    if not upload_jobs.enabled():
+        return jsonify({"error": "Not found"}), 404
+    team_id = current_team_id()
+    upload_jobs.fail_stale_jobs(team_id)
+    job = database.get_upload_job(job_id, team_id)
+    if not job:
+        return jsonify({"error": "Not found"}), 404
+    return jsonify({"upload": _upload_job_view(job, include_result=True)}), 200
 
 
 @app.route('/sample-deal/load', methods=['POST'])

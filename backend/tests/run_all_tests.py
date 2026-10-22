@@ -120,6 +120,12 @@ UNIT_TESTS = [
     # Overnight reliability gauntlet (qa/overnight-gauntlet, 2026-10-05):
     # one regression test per bug the gauntlet found.
     "test_gauntlet_regressions.py",
+    # Large files + any file type (feature/large-files-any-type).
+    "test_file_types.py",
+    "test_large_file_extraction.py",
+    "test_ai_chunked_extraction.py",
+    "test_upload_jobs.py",
+    "test_large_upload_frontend.py",
 ]
 
 LIVE_API_TESTS = [

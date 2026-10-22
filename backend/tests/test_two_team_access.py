@@ -25,10 +25,14 @@ unchanged, and none of team B's new rows may point at a team A record.
 """
 
 import _test_env  # noqa: F401  -- first: temp DB, no .env, no real network (see _test_env.py)
+import atexit
 import io
 import os
 import re
+import shutil
 import sys
+import tempfile
+from unittest import mock
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -36,7 +40,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import openpyxl
 import pypdf
 
-from app import database
+from app import database, upload_jobs
 from app.api import app
 from app.auth import hash_password
 from test_monthly_page_limit import _Uploads, _pdf
@@ -44,6 +48,10 @@ from test_team_invites import _bearer, _link_token, _login, _outbox
 
 GOOD_PASSWORD = "maple ridge closing day"
 MARKER = "harborcapmarker"
+# Large-file uploads are on for this test, so GET /uploads/<job_id> answers
+# team B with its real ownership check instead of the flag-off 404.
+_UPLOAD_DIR = tempfile.mkdtemp(prefix="abstractly-test-uploads-")
+atexit.register(shutil.rmtree, _UPLOAD_DIR, True)
 
 # Body each mutating per-lease route gets, so a missing ownership check
 # would actually reach the write instead of failing validation first.
@@ -195,6 +203,7 @@ def _readable_text(resp):
     return data.decode("utf-8", "replace")
 
 
+@mock.patch.dict(os.environ, {"LARGE_FILE_UPLOADS": "true", "LARGE_FILE_UPLOAD_DIR": _UPLOAD_DIR})
 def test_two_accounts_share_one_team_and_another_team_sees_nothing():
     with _Uploads() as client:
         _make_owner()
@@ -257,8 +266,15 @@ def test_two_accounts_share_one_team_and_another_team_sees_nothing():
         email_account_id = database.upsert_linked_email_account(
             admin_id, "google", "avery@harbor.test", "not-a-real-token", "not-a-real-token", "2099-01-01T00:00:00", "email.send", team_id=team_a,
         )
+        # A large-file upload job, left queued: owning the row is what matters here, not running it.
+        with mock.patch.object(upload_jobs, "start_job"):
+            job = client.post("/uploads", data={"file": (io.BytesIO(_pdf(1)), f"{MARKER}-upload.pdf"), "kind": "lease"},
+                              headers=admin, content_type="multipart/form-data")
+        assert job.status_code == 202, job.get_json()
+        job_id = job.get_json()["upload"]["id"]
+        assert client.get(f"/uploads/{job_id}", headers=_bearer(teammate_token)).status_code == 200
         record_ids = {
-            "alert_id": alert_id, "discrepancy_id": disc_id, "task_id": task_id,
+            "job_id": job_id, "alert_id": alert_id, "discrepancy_id": disc_id, "task_id": task_id,
             "assignment_id": assignment.get_json()["id"], "thread_id": thread_id,
             "invite_id": pending.get_json()["invite"]["id"], "member_id": teammate_id,
             "account_id": email_account_id, "user_id": admin_id, "team_id": team_a,
